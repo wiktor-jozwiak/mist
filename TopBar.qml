@@ -38,19 +38,8 @@ PanelWindow {
     readonly property real vol: sink && sink.audio ? sink.audio.volume : 0
     readonly property bool muted: !sink || !sink.audio || sink.audio.muted
 
-    // network type (nmcli, every 20 s)
-    property string net: "ethernet"
-    Process {
-        id: nmP
-        command: ["nmcli", "-t", "-f", "TYPE,STATE", "device"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const l = this.text.split("\n").filter(x => x.endsWith(":connected"))
-                bar.net = l.some(x => x.startsWith("ethernet")) ? "ethernet" : l.some(x => x.startsWith("wifi")) ? "wifi" : "none"
-            }
-        }
-    }
-    Timer { interval: 20000; running: true; repeat: true; triggeredOnStart: true; onTriggered: nmP.running = true }
+    // network type (Net.qml: NetworkManager events)
+    readonly property string net: Net.type
 
     // Do Not Disturb of Mist's notification server
     readonly property bool dnd: Notifs.dnd

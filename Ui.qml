@@ -9,6 +9,9 @@ Singleton {
     property string popup: ""          // "", "start", "calendar", "control"
     property string screenName: ""
     property string page: ""           // Control centre page: "" (home), "sound", "network", "bluetooth"
+    // diagnostics (ipc call mist perf <key> <value>): sky "auto" | "fast" | "off"
+    property string dbgSky: "auto"
+    signal dbgGrab(string what, string path)     // ipc call mist perf grab <png>: the weather card as an image
     property var notifHidden: ({})     // Notification centre: group -> newest hidden received_wall_ms (session)
     // night light: Hyprland screen shader shaders/nightlight.glsl (~4000 K), remembered across restarts
     property bool nightLight: false

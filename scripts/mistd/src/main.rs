@@ -3,6 +3,7 @@
 //   mistd data weather|garmin|running|calendar|sys
 //   mistd tiles <icon name | path | @glyph> ...  dock tiles -> ~/.cache/mist/tiles
 //   mistd notifimg | clipstore | cliplist <dir>
+//   mistd stats                                  CPU / RAM / network for the bar (changes only)
 //   mistd filemanager1                           org.freedesktop.FileManager1 for Mist Files (D-Bus activated)
 mod calls;
 mod common;
@@ -11,6 +12,7 @@ mod filemanager;
 mod island;
 mod notify;
 mod phone;
+mod stats;
 mod tiles;
 mod tools;
 
@@ -43,6 +45,10 @@ fn main() {
         "notifimg" => tools::notifimg(),
         "clipstore" => tools::clipstore(),
         "cliplist" => tools::cliplist(a(1)),
+        "stats" => {
+            common::pdeath();
+            stats::main()
+        }
         "filemanager1" => {
             if let Err(e) = filemanager::main() {
                 eprintln!("filemanager1: {}", e);
@@ -50,7 +56,7 @@ fn main() {
             }
         }
         _ => {
-            eprintln!("usage: mistd notify|island|calls|phone|data <src>|tiles <names>|notifimg|clipstore|cliplist <dir>|filemanager1");
+            eprintln!("usage: mistd notify|island|calls|phone|data <src>|tiles <names>|notifimg|clipstore|cliplist <dir>|stats|filemanager1");
             std::process::exit(2);
         }
     }

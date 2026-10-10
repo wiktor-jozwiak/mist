@@ -47,42 +47,24 @@ Singleton {
     Source { name: "calendar"; every: 900; target: v => root.calendar = v }
     Source { id: sysSrc; name: "sys"; every: 30; active: root.sysActive; target: v => root.sys = v }
 
-    // ------------------------------------------------------------ live CPU % and network speed (2 s)
+    // ------------------------------------------------------------ live CPU %, RAM and network speed (2 s)
     property int cpuPct: 0
     property real memUsed: 0             // GiB
     property real memTotal: 0
-    property bool barStats: false        // true = sample CPU / RAM / network all the time (for a bar); Noctalia owns the bar now
+    property bool barStats: false        // true = sample CPU / RAM / network all the time (TopBar stats)
     property real rxRate: 0
     property real txRate: 0
-    property var _cpu: null
-    property var _net: null
-    // /proc files report size 0, FileView reads them empty: one long-lived bash prints a sample every 2 s
-    // using builtins only (read / echo, `read -t` as sleep) -> no fork per tick; runs only while needed
+    // mistd stats (native): "cpu% usedGiB totalGiB rx tx" every 2 s, only when a shown value changed
     Process {
         running: root.sysActive || root.barStats
-        command: ["setpriv", "--pdeathsig", "TERM", "bash", "-c", "exec 9<> <(:); while :; do read -r l < /proc/stat; echo \"$l\"; echo @@; "
-            + "while IFS= read -r l; do echo \"$l\"; done < /proc/meminfo; echo @@; "
-            + "while IFS= read -r l; do echo \"$l\"; done < /proc/net/dev; echo @@@; read -t 2 -u 9; done"]
-        stdout: SplitParser { splitMarker: "@@@"; onRead: d => root.sample(d) }
-    }
-    function sample(text) {
-        const parts = text.split("@@\n")
-        if (parts.length < 3) return
-        const mi = {}
-        for (const l of parts[1].split("\n")) { const p = l.split(/:\s+/); if (p.length === 2) mi[p[0]] = parseInt(p[1]) }
-        if (mi.MemTotal) { root.memTotal = mi.MemTotal / 1048576; root.memUsed = (mi.MemTotal - mi.MemAvailable) / 1048576 }
-        const a = parts[0].trim().split(/\s+/).slice(1).map(Number)
-        const tot = a.reduce((x, y) => x + y, 0), idle = a[3] + a[4]
-        if (root._cpu) root.cpuPct = Math.round(100 * (1 - (idle - root._cpu[1]) / Math.max(1, tot - root._cpu[0])))
-        root._cpu = [tot, idle]
-        let rx = 0, tx = 0
-        for (const l of parts[2].split("\n").slice(2)) {
-            const p = l.trim().split(/[:\s]+/)
-            if (p.length > 9 && p[0] !== "lo" && !p[0].startsWith("docker") && !p[0].startsWith("veth") && !p[0].startsWith("br-")) { rx += +p[1]; tx += +p[9] }
+        command: [root.script, "stats"]
+        stdout: SplitParser {
+            onRead: l => {
+                const v = l.split(" ")
+                if (v.length < 5) return
+                root.cpuPct = +v[0]; root.memUsed = +v[1]; root.memTotal = +v[2]; root.rxRate = +v[3]; root.txRate = +v[4]
+            }
         }
-        const t = Date.now()
-        if (root._net) { const dt = (t - root._net[2]) / 1000; root.rxRate = (rx - root._net[0]) / dt; root.txRate = (tx - root._net[1]) / dt }
-        root._net = [rx, tx, t]
     }
     function bytes(b) {
         if (b < 1024) return Math.round(b) + " B"

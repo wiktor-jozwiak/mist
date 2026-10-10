@@ -240,11 +240,13 @@ Scope {
     readonly property real wxW: 548
     readonly property real colW: 308
     readonly property real bentoGap: 16
+    readonly property real stageTop: 118
     PanelWindow {
+        id: stageWin
         screen: desk.modelData
         visible: desk.primary
         anchors.top: true
-        margins.top: 118
+        margins.top: desk.stageTop
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: WlrLayer.Bottom
         WlrLayershell.namespace: "mist-desktop"
@@ -297,7 +299,7 @@ Scope {
                     }
                 }
                 Component { id: gComp; GarminCard {} }
-                Component { id: wComp; WeatherCard {} }
+                Component { id: wComp; WeatherSlot {} }
                 Component { id: rComp; RunningCard {} }
             }
         }
@@ -309,6 +311,7 @@ Scope {
     // Hover the sun times or the moon in the header for details. Leaving the card returns to "now".
     component WeatherCard: CardGlass {
         id: wc
+        property point origin                 // top-left on the monitor (WeatherSlot), for Cover
         readonly property real cardH: desk.bentoH
         property int selDay: 0
         property bool pinned: false          // a clicked day / hour stays until clicked again (or 20 s away)
@@ -543,8 +546,8 @@ Scope {
                 snowDepth: wc.wx.snowDepth || 0
                 kp: wc.wx.kp ?? 0; lat: wc.lat; lon: wc.lon
                 now: Data.now
-                animate: !desk.fsCover
-                slow: { const p = sky.mapToItem(null, 0, 0); return Cover.hidden(desk.modelData.name, desk.modelData.x + p.x, desk.modelData.y + p.y, sky.width, sky.height) }
+                animate: !desk.fsCover && Ui.dbgSky !== "off"
+                slow: Ui.dbgSky !== "fast" && Cover.hidden(desk.modelData.name, desk.modelData.x + wc.origin.x + sky.x, desk.modelData.y + wc.origin.y + sky.y, sky.width, sky.height)
             }
             // soft shade behind the headline (top left), so the text never fights a bright sky
             Rectangle {
@@ -921,6 +924,35 @@ Scope {
     readonly property real heroY: 26
     readonly property real bandY: 102
     readonly property real footY: desk.bentoH - 2 * desk.pad - 24
+    // The weather card lives in its own small window over its place in the bento row (layer Bottom, above the
+    // stage, no blur: the sky covers the card). Its live sky redraws 30 times a second; in the stage window
+    // every frame re-rendered the whole stage and made Hyprland redo the blur under it.
+    component WeatherSlot: Item {
+        id: slot
+        implicitWidth: desk.wxW; implicitHeight: desk.bentoH
+        // top-left of the card on the monitor (the stage window is centred horizontally, desk.stageTop from the top)
+        readonly property point at: {
+            const w = slot.Window.width, lx = slot.parent ? slot.parent.x : 0
+            const p = slot.mapToItem(null, 0, 0)
+            return Qt.point(Math.round((desk.modelData.width - w) / 2 + p.x + 0 * lx), Math.round(desk.stageTop + p.y))
+        }
+        readonly property int pad: 40          // room for the card's shadow
+        PanelWindow {
+            screen: desk.modelData
+            visible: desk.primary
+            anchors { top: true; left: true }
+            margins { left: slot.at.x - slot.pad; top: slot.at.y - slot.pad }
+            implicitWidth: slot.width + 2 * slot.pad; implicitHeight: slot.height + 2 * slot.pad
+            exclusionMode: ExclusionMode.Ignore
+            WlrLayershell.layer: WlrLayer.Bottom
+            WlrLayershell.namespace: "mist-desktop-card"
+            color: "transparent"
+            mask: Region { item: card }
+            WeatherCard { id: card; x: slot.pad; y: slot.pad; width: slot.width; height: slot.height; origin: slot.at }
+            Connections { target: Ui; function onDbgGrab(what, path) { if (what === "weather") card.grabToImage(r => r.saveToFile(path)) } }
+        }
+    }
+
     component Caps: CTxt { size: Theme.fsXs; w: 650; color: desk.faint; font.capitalization: Font.AllUppercase; font.letterSpacing: 1.3 }
     component Hero: CTxt { size: 58; w: 300; color: desk.fg; font.letterSpacing: -2.5; font.features: ({ "tnum": 1 }) }
     component Footer: Item {

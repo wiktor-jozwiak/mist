@@ -173,7 +173,9 @@ Item {
             sky.offX = (sky.offX + sky.cloudSpeed * dt) % 1e6
             sky.evo += (0.03 + sky.wind * 0.001) * dt
             sky.strike()
-            sky.ct = sky.t; sky.cOff = sky.offX; sky.cEvo = sky.evo
+            // the cloud pass (into a texture: Qt renders such a frame twice) every 2nd tick, 15 fps: clouds
+            // drift slowly; rain, drops and lightning in the sharp pass keep the full rate
+            if (sky.slow || (++sky._tick & 1) === 0) { sky.ct = sky.t; sky.cOff = sky.offX; sky.cEvo = sky.evo; cloudTex.scheduleUpdate() }
         }
     }
 
@@ -205,11 +207,23 @@ Item {
         property vector4d wx2: Qt.vector4d(sky.stormK, sky.moonLight, sky.auroraK, sky._haze)
         property vector4d bolt: sky.bolt
         property vector4d fx: Qt.vector4d(sky.bowK, sky.hor, sky._gsnow, 0)
+        // the rest of its inputs change rarely (weather reading, sun, lightning): grab again then too
+        onFovChanged: cloudTex.scheduleUpdate()
+        onPitchChanged: cloudTex.scheduleUpdate()
+        onSizeChanged: cloudTex.scheduleUpdate()
+        onSunDirChanged: cloudTex.scheduleUpdate()
+        onWxChanged: cloudTex.scheduleUpdate()
+        onWx2Changed: cloudTex.scheduleUpdate()
+        onBoltChanged: cloudTex.scheduleUpdate()
+        onFxChanged: cloudTex.scheduleUpdate()
     }
     ShaderEffectSource {
         id: cloudTex
         sourceItem: cloudPass
         hideSource: true
+        // grabbed only when the cloud pass changed: a live source re-rendered its window at the monitor rate
+        // (60 frames/s) even with the sky ticking 5 times a second
+        live: false
         smooth: true
         textureSize: Qt.size(Math.ceil(sky.width / 2), Math.ceil(sky.height / 2))
     }

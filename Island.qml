@@ -439,15 +439,7 @@ PanelWindow {
             push({ view: "info", key: "vpn" + m[1], prio: 2, dur: 2600, icon: "shield", color: on ? Theme.green : Theme.t3, title: on ? "VPN połączony" : "VPN rozłączony", sub: m[1] })
         }
     }
-    Process {
-        id: nm; running: true
-        environment: ({ LC_ALL: "C", LANG: "C" })
-        // setpriv --pdeathsig: the kernel stops the helper if Quickshell dies (a crash skips onDestruction)
-        command: ["setpriv", "--pdeathsig", "TERM", "nmcli", "monitor"]
-        stdout: SplitParser { onRead: l => win.nmLine(l) }
-        onExited: nmRestart.restart()
-    }
-    Timer { id: nmRestart; interval: 15000; onTriggered: nm.running = true }
+    Connections { target: Net; function onLine(l) { win.nmLine(l) } }
 
     // ------------------------------------------------------------ power: charging, low battery (laptops), power profile
     Connections {
@@ -626,7 +618,7 @@ PanelWindow {
     }
     Timer { id: syswRestart; interval: 5000; onTriggered: sysw.running = true }
     // a hot reload left busctl / nmcli orphaned (one pair per reload): stop them explicitly
-    Component.onDestruction: { nmRestart.stop(); syswRestart.stop(); nm.running = false; sysw.running = false }
+    Component.onDestruction: { syswRestart.stop(); sysw.running = false }
 
     // ------------------------------------------------------------ track change, play / pause from outside
     property string lastTrack: ""
