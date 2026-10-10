@@ -1,0 +1,17 @@
+[package]
+name = "mist-wall"
+version = "0.1.0"
+edition = "2024"
+description = "Mist live wallpaper on the GPU (the only Mist process with a GL context; runs only while a live scene is chosen)"
+
+[dependencies]
+smithay-client-toolkit = { version = "0.20", default-features = false, features = ["calloop"] }
+wayland-client = "0.31"
+wayland-egl = "0.32"
+khronos-egl = { version = "6", features = ["static"] }
+glow = "0.16"
+calloop = "0.14"
+calloop-wayland-source = "0.4"
+serde_json = "1"
+libc = "0.2"
+zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }

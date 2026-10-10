@@ -231,7 +231,7 @@ Scope {
         }
     }
 
-    // (the vignette under the cards is drawn by LiveWallpaper.qml, shaders/vignette.frag)
+    // (the vignette under the cards is drawn natively: mist-ui on the photo, mist-wall over the scene; shaders/vignette.frag)
 
     // ================================================================== stage
     // One centred composition, like a lock screen: date in spaced caps, the big clock, the sun's path,

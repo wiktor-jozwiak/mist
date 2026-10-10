@@ -140,6 +140,7 @@ pub struct App {
     last_call_key: String,
     pub qh: QueueHandle<App>,
     pub test: bool,
+    pub wall: crate::wall::Wall,
 }
 
 impl App {
@@ -191,6 +192,7 @@ impl App {
             last_call_key: String::new(),
             qh: qh.clone(),
             test,
+            wall: { let mut w = crate::wall::Wall::new(); w.off = test || std::env::var("MIST_UI_NO_WALL").is_ok(); w },
         }
     }
 
@@ -201,6 +203,7 @@ impl App {
         if self.test && name != "HDMI-A-1" {
             return;
         }
+        self.wall.add_output(&output, &name, &self.compositor, &self.layer_shell, &self.qh);
         if !self.bars.iter().any(|b| b.name == name) && std::env::var("MIST_UI_NO_BAR").is_err() {
             let surface = self.compositor.create_surface(&self.qh);
             let layer = self.layer_shell.create_layer_surface(&self.qh, surface, if self.test { Layer::Overlay } else { Layer::Top }, Some("mist-bar"), Some(&output));
@@ -273,12 +276,18 @@ impl App {
     }
 
     pub fn animating(&self) -> bool {
-        self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE) || self.dock.animating() || self.dock_hide_at.is_some() || self.dock_show_at.is_some() || self.island.animating()
+        self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE) || self.dock.animating() || self.dock_hide_at.is_some() || self.dock_show_at.is_some() || self.island.animating() || self.wall.busy()
     }
 
     // timers (dock hide 400 ms / reveal 80 ms) and animation frames
     // once a second (and every animation frame): island timers, minute boundary, phone call timeout
+    fn outs(&self) -> Vec<(wl_output::WlOutput, String)> {
+        self.outputs.outputs().filter_map(|o| self.outputs.info(&o).and_then(|i| i.name.clone()).map(|n| (o, n))).collect()
+    }
+
     pub fn slow_tick(&mut self) {
+        let outs = self.outs();
+        self.wall.slow_tick(&self.compositor, &self.layer_shell, &self.qh, &outs);
         let (ringing, call) = { let s = self.phone.st.lock().unwrap(); (s.ringing(), s.call().is_some()) };
         if self.island.tick(ringing, call) {
             self.island_dirty = true;
@@ -307,6 +316,9 @@ impl App {
     }
     pub fn tick(&mut self) {
         let now = Instant::now();
+        if self.wall.busy() {
+            self.wall.tick(&self.shm);
+        }
         if self.island.animating() {
             self.island_dirty = true;
         }
@@ -1190,6 +1202,10 @@ impl App {
             Msg::Phone(p) => self.st.phone = p,
             Msg::Ui(p, s) => self.ui_popup = (p, s),
             Msg::Dnd(d) => self.st.dnd = d,
+            Msg::Wall(live, image) => {
+                let outs = self.outs();
+                self.wall.set(live, image, &self.compositor, &self.layer_shell, &self.qh, &outs);
+            }
             Msg::Tray(t) => self.tray_items = t,
             Msg::Ipc(r) => self.on_ipc(r),
             Msg::Note(n) => {
@@ -1251,6 +1267,7 @@ impl OutputHandler for App {
     fn update_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {}
     fn output_destroyed(&mut self, _: &Connection, _: &QueueHandle<Self>, o: wl_output::WlOutput) {
         self.bars.retain(|b| b.output != o);
+        self.wall.remove_output(&o);
         if self.dock_surf.as_ref().map(|d| d.output == o).unwrap_or(false) {
             self.dock_surf = None;
         }
@@ -1259,8 +1276,12 @@ impl OutputHandler for App {
 impl LayerShellHandler for App {
     fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, l: &LayerSurface) {
         self.bars.retain(|b| &b.layer != l);
+        self.wall.closed(l);
     }
     fn configure(&mut self, _: &Connection, _: &QueueHandle<Self>, l: &LayerSurface, c: LayerSurfaceConfigure, _: u32) {
+        if self.wall.configure(l, c.new_size.0, c.new_size.1) {
+            return;
+        }
         if let Some(b) = self.bars.iter_mut().find(|b| &b.layer == l) {
             b.w = c.new_size.0.max(1);
             b.configured = true;

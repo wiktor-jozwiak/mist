@@ -10,7 +10,7 @@ ShellRoot {
     readonly property var primary: Quickshell.screens.filter(s => s.name === "DP-3")
 
     // wallpaper: the photo or the animated scene chosen in ~/.config/mist/wallpaper.json
-    Variants { model: Quickshell.screens; LiveWallpaper {} }
+    // wallpaper: native (mist-ui draws the photo, mist-wall the animated scene)
     // top bar: native now (native/mist-ui, drawn on the CPU); TopBar.qml stays for reference / fallback
     Variants { model: primary; Desktop {} }
     // Dynamic Island: native now (native/mist-ui island.rs), with the notification server, the phone and MPRIS

@@ -23,6 +23,7 @@ mod sys;
 mod text;
 mod theme;
 mod tray;
+mod wall;
 
 use calloop::{channel, timer::{TimeoutAction, Timer}, EventLoop};
 use calloop_wayland_source::WaylandSource;
@@ -33,6 +34,17 @@ fn main() {
     if args.get(1).map(|s| s.as_str()) == Some("msg") {
         // client of the running mist-ui: mist-ui-bin msg <target> <function> [args...]
         std::process::exit(ipc::call(&args[2..]));
+    }
+    // `--wall-ppm out.ppm`: the main monitor's photo wallpaper (with the vignette), for checks
+    if args.get(1).map(|s| s.as_str()) == Some("--wall-ppm") {
+        let (_, image) = wall::Wall::read_cfg();
+        let px = wall::render(&image, 1920, 1080, true);
+        let mut out = b"P6\n1920 1080\n255\n".to_vec();
+        for p in px.chunks_exact(4) {
+            out.extend_from_slice(&[p[2], p[1], p[0]]);
+        }
+        std::fs::write(&args[2], out).unwrap();
+        return;
     }
     if args.get(1).map(|s| s.as_str()) == Some("--png") {
         return png(&args);

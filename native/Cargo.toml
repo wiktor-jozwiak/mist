@@ -1,5 +1,5 @@
 [workspace]
-members = ["mist-ui"]
+members = ["mist-ui", "mist-wall"]
 resolver = "2"
 
 [profile.release]

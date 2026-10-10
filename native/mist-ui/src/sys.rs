@@ -58,6 +58,7 @@ pub enum Msg {
     Profile(String),
     Sys(Value),
     NmLine(String),
+    Wall(String, String),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -388,6 +389,10 @@ pub fn state_files(tx: Sender<Msg>) {
                 let n = read_json(&format!("{st}/notifications.json"));
                 let _ = tx.send(Msg::Dnd(n["dnd"].as_bool().unwrap_or(false)));
             }
+            if which.is_empty() || which == "wallpaper.json" {
+                let (live, image) = crate::wall::Wall::read_cfg();
+                let _ = tx.send(Msg::Wall(live, image));
+            }
         };
         send_all("");
         unsafe {
@@ -408,7 +413,7 @@ pub fn state_files(tx: Sender<Msg>) {
                     let ev = &*(buf.as_ptr().add(i) as *const libc::inotify_event);
                     let name_len = ev.len as usize;
                     let name = std::ffi::CStr::from_ptr(buf.as_ptr().add(i + std::mem::size_of::<libc::inotify_event>()) as *const libc::c_char).to_string_lossy().to_string();
-                    if matches!(name.as_str(), "phone.json" | "ui.json" | "notifications.json") {
+                    if matches!(name.as_str(), "phone.json" | "ui.json" | "notifications.json" | "wallpaper.json") {
                         send_all(&name);
                     } else if name == "apps.json" {
                         let _ = tx.send(Msg::Pins);
