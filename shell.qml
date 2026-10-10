@@ -35,7 +35,6 @@ ShellRoot {
                 LazyLoader { active: (Ui.popup === "spotlight" || Ui.popup === "emoji") && Ui.screenName === s.modelData.name; Spotlight { modelData: s.modelData } }
                 LazyLoader { active: Ui.popup === "control" && Ui.screenName === s.modelData.name; Control { modelData: s.modelData } }
                 LazyLoader { active: Ui.popup === "notifications" && Ui.screenName === s.modelData.name; Notifications { modelData: s.modelData } }
-                LazyLoader { active: Ui.popup === "session" && Ui.screenName === s.modelData.name; Session { modelData: s.modelData } }
                 LazyLoader { active: Ui.popup === "wallpaper" && Ui.screenName === s.modelData.name; Wallpapers { modelData: s.modelData } }
             }
         }

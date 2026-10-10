@@ -28,7 +28,14 @@ Singleton {
         onLoaded: if (text().trim() === "1") setNightLight(true)
     }
     function focusedScreen() { return Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "DP-3" }
+    // popups drawn by mist-ui now (native/mist-ui pane.rs): opened there
+    readonly property var native: ["session"]
     function toggle(name, scr) {
+        if (native.includes(name)) {
+            popup = ""
+            Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/mist-ui-bin", "msg", "mist", "toggleOn", name, scr || focusedScreen()])
+            return
+        }
         if (popup === name) { popup = ""; return }
         screenName = scr || focusedScreen()
         popup = name

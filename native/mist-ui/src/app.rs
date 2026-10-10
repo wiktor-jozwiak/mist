@@ -99,6 +99,15 @@ struct Popup {
     canvas: Canvas,
 }
 
+pub struct PaneSurf {
+    p: Box<dyn crate::pane::Pane>,
+    layer: LayerSurface,
+    screen: String,
+    configured: bool,
+    dirty: bool,
+    canvas: Canvas,
+}
+
 pub struct App {
     pub registry: RegistryState,
     pub outputs: OutputState,
@@ -147,6 +156,8 @@ pub struct App {
     pub tx: Option<calloop::channel::Sender<Msg>>,
     polkit: Option<(crate::polkit::Sheet, LayerSurface, bool, bool, Canvas)>,
     polkit_queue: Vec<crate::polkit::Begin>,
+    pane: Option<PaneSurf>,
+    pane_ptr: (f32, f32),
     desk_serial: u32,
     desk_cursor: &'static str,
 }
@@ -206,6 +217,8 @@ impl App {
             tx: None,
             polkit: None,
             polkit_queue: Vec::new(),
+            pane: None,
+            pane_ptr: (0.0, 0.0),
             desk_serial: 0,
             desk_cursor: "",
             wall: { let mut w = crate::wall::Wall::new(); w.off = test || std::env::var("MIST_UI_NO_WALL").is_ok(); w },
@@ -308,7 +321,7 @@ impl App {
         if !s.primary {
             s.phone = None;
         }
-        s.control_open = self.ui_popup.0 == "control";
+        s.control_open = self.popup_name() == "control";
         s.tray = self.tray_items.iter().map(|t| TrayItem { id: t.key.clone(), icon: None }).collect();
         s
     }
@@ -327,7 +340,7 @@ impl App {
     }
 
     pub fn animating(&self) -> bool {
-        self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE) || self.dock.animating() || self.dock_hide_at.is_some() || self.dock_show_at.is_some() || self.island.animating() || self.wall.busy() || self.desk.animating() || self.polkit.as_ref().map(|p| p.0.animating()).unwrap_or(false)
+        self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE) || self.dock.animating() || self.dock_hide_at.is_some() || self.dock_show_at.is_some() || self.island.animating() || self.wall.busy() || self.desk.animating() || self.polkit.as_ref().map(|p| p.0.animating()).unwrap_or(false) || self.pane.as_ref().map(|p| p.p.animating()).unwrap_or(false)
     }
 
     // timers (dock hide 400 ms / reveal 80 ms) and animation frames
@@ -340,6 +353,13 @@ impl App {
         self.idle.reap();
         if let Some(p) = self.polkit.as_mut() {
             p.3 = true; // the cursor blinks
+        }
+        if let Some(p) = self.pane.as_mut() {
+            if p.p.slow() {
+                p.dirty = true;
+            }
+            let a = p.p.timer();
+            self.pane_act(a);
         }
         let outs = self.outs();
         self.wall.slow_tick(&self.compositor, &self.layer_shell, &self.qh, &outs);
@@ -398,6 +418,11 @@ impl App {
                 p.3 = true;
             }
         }
+        if let Some(p) = self.pane.as_mut() {
+            if p.p.animating() {
+                p.dirty = true;
+            }
+        }
         if self.desk.wx.fx.running() {
             self.desk.card_dirty = true;
         }
@@ -446,6 +471,114 @@ impl App {
         }
         self.draw_desk();
         self.draw_polkit();
+        self.draw_pane();
+    }
+
+    // ---------------------------------------------------------------- popups (Ui.qml)
+    fn focused_screen(&self) -> String {
+        self.hypr.monitors.iter().find(|m| m.2 == self.hypr.focused_ws).map(|m| m.1.clone()).unwrap_or(PRIMARY.into())
+    }
+    // which popup is open (native first, else Quickshell's)
+    pub fn popup_name(&self) -> String {
+        self.pane.as_ref().map(|p| p.p.name().to_string()).unwrap_or(self.ui_popup.0.clone())
+    }
+    pub fn ui_toggle(&mut self, name: &str, screen: &str) {
+        let scr = if screen.is_empty() { self.focused_screen() } else { screen.to_string() };
+        if self.pane.as_ref().map(|p| p.p.name() == name).unwrap_or(false) {
+            self.pane_close();
+            return;
+        }
+        if crate::pane::native(name) {
+            if !self.ui_popup.0.is_empty() {
+                ipc(&["close"]);
+            }
+            self.pane_open(name, "", &scr);
+        } else {
+            self.pane_close();
+            ipc(&["toggleOn", name, &scr]);
+        }
+    }
+    pub fn ui_control(&mut self, page: &str, screen: &str) {
+        let scr = if screen.is_empty() { self.focused_screen() } else { screen.to_string() };
+        self.pane_close();
+        ipc(&["controlOn", page, &scr]);
+    }
+    fn pane_open(&mut self, name: &str, page: &str, scr: &str) {
+        self.pane = None;
+        let Some(p) = crate::pane::make(name, page) else { return };
+        let outs = self.outs();
+        let Some((o, sname)) = outs.iter().find(|(_, n)| n == scr).or(outs.first()).cloned() else { return };
+        let surface = self.compositor.create_surface(&self.qh);
+        let layer = self.layer_shell.create_layer_surface(&self.qh, surface, Layer::Overlay, Some(p.namespace()), Some(&o));
+        layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
+        layer.set_exclusive_zone(-1);
+        layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
+        layer.commit();
+        self.pane = Some(PaneSurf { p, layer, screen: sname, configured: false, dirty: true, canvas: Canvas::new(1, 1) });
+        self.mark_all();
+    }
+    pub fn pane_close(&mut self) {
+        if self.pane.take().is_some() {
+            self.mark_all();
+        }
+    }
+    fn pane_act(&mut self, a: crate::pane::Act) {
+        use crate::pane::Act;
+        match a {
+            Act::None => {}
+            Act::Redraw => {
+                if let Some(p) = self.pane.as_mut() {
+                    p.dirty = true;
+                }
+            }
+            Act::Close => self.pane_close(),
+            Act::Run(cmd) => {
+                self.pane_close();
+                let v: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
+                spawn(&v);
+            }
+        }
+    }
+    fn draw_pane(&mut self) {
+        let Some(p) = self.pane.as_mut() else { return };
+        if !p.configured || !p.dirty {
+            return;
+        }
+        p.dirty = false;
+        let mut c = std::mem::replace(&mut p.canvas, Canvas::new(1, 1));
+        let mut cx = crate::pane::Ctx { t: &mut self.text };
+        p.p.paint(&mut c, &mut cx);
+        Self::commit(&mut self.pool, &p.layer, &c);
+        p.canvas = c;
+    }
+    fn pane_pointer(&mut self, e: &PointerEvent) {
+        use crate::pane::Ptr;
+        let (x, y) = (e.position.0 as f32, e.position.1 as f32);
+        self.pane_ptr = (x, y);
+        let ev = match e.kind {
+            PointerEventKind::Enter { serial } => {
+                self.desk_serial = serial;
+                self.desk_cursor = "?";
+                Ptr::Enter
+            }
+            PointerEventKind::Leave { .. } => Ptr::Leave,
+            PointerEventKind::Motion { .. } => Ptr::Motion,
+            PointerEventKind::Press { button, .. } => Ptr::Press(button),
+            PointerEventKind::Release { button, .. } => Ptr::Release(button),
+            PointerEventKind::Axis { vertical, .. } => {
+                let dy = if vertical.discrete != 0 { vertical.discrete as f32 } else { vertical.absolute as f32 / 10.0 };
+                if dy == 0.0 {
+                    return;
+                }
+                Ptr::Wheel(dy)
+            }
+        };
+        let Some(p) = self.pane.as_mut() else { return };
+        let mut cx = crate::pane::Ctx { t: &mut self.text };
+        let a = p.p.pointer(ev, x, y, &mut cx);
+        let hand = p.p.hand();
+        self.desk_cursor(if hand { "hand" } else { "" });
+        self.pane_act(a);
     }
 
     // ---------------------------------------------------------------- polkit sheet
@@ -823,7 +956,7 @@ impl App {
             return;
         }
         if mode == "idle" || mode == "glance" {
-            ipc(&["toggleOn", "calendar", PRIMARY]);
+            self.ui_toggle("calendar", PRIMARY);
         } else if mode != "player" && mode != "call" {
             if let Some(e) = self.island.ev.clone() {
                 self.island_act(&e);
@@ -852,7 +985,7 @@ impl App {
             }
             Act::Focus(a) => focus_win(&format!("0x{}", a.trim_start_matches("0x"))),
             Act::Open(p) => spawn(&["xdg-open", p]),
-            Act::Popup(p) => ipc(&["toggleOn", p, PRIMARY]),
+            Act::Popup(p) => self.ui_toggle(p, PRIMARY),
             Act::TimerStop => self.island.timer_stop(),
             Act::Phone(f) => self.phone.send(f, None),
         }
@@ -911,6 +1044,29 @@ impl App {
                 String::new()
             }
             ("ui", "ping") => "pong".into(),
+            ("mist", "toggle") => {
+                let n = a(0);
+                if n == "control" { self.ui_control("", "") } else { self.ui_toggle(&n, "") }
+                String::new()
+            }
+            ("mist", "toggleOn") => {
+                self.ui_toggle(&a(0), &a(1));
+                String::new()
+            }
+            ("mist", "control") => {
+                self.ui_control(&a(0), "");
+                String::new()
+            }
+            ("mist", "controlOn") => {
+                self.ui_control(&a(0), &a(1));
+                String::new()
+            }
+            ("mist", "close") => {
+                self.pane_close();
+                ipc(&["close"]);
+                String::new()
+            }
+            ("ui", "popup") => self.popup_name(),
             ("lock", "lock") => {
                 self.idle.lock(None);
                 String::new()
@@ -929,6 +1085,16 @@ impl App {
                 String::new()
             }
             ("ui", "stats") => DRAWS.with(|d| format!("{:?} fades {} dock {} hide {} show {} island {} wall {} desk {} {}", d.borrow(), self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE), self.dock.animating(), self.dock_hide_at.is_some(), self.dock_show_at.is_some(), self.island.animating(), self.wall.busy(), self.desk.fx.running(), self.desk.wx.fx.running())),
+            // not native yet: Quickshell's IPC
+            (t, f) if matches!(t, "mist" | "switcher" | "snap" | "clipboard" | "shot") => {
+                let qs = format!("{}/.local/bin/mist-qs", home());
+                let dir = format!("{}/.config/quickshell/mist", home());
+                let mut v: Vec<String> = vec![qs, "-p".into(), dir, "ipc".into(), "call".into(), t.into(), f.into()];
+                v.extend(r.args.iter().cloned());
+                let v2: Vec<&str> = v.iter().map(|s| s.as_str()).collect();
+                spawn(&v2);
+                String::new()
+            }
             _ => "unknown".into(),
         };
         let _ = r.reply.send(out);
@@ -1077,7 +1243,7 @@ impl App {
     fn dock_click(&mut self, i: usize, button: u32) {
         let slot = self.dock.slots[i].clone();
         match slot {
-            Slot::Start => ipc(&["toggleOn", "start", PRIMARY]),
+            Slot::Start => self.ui_toggle("start", PRIMARY),
             Slot::Trash => spawn(&[&format!("{}/.local/bin/mist-files", home()), "trash:///"]),
             Slot::Sep => {}
             Slot::App(key) => {
@@ -1203,6 +1369,10 @@ impl App {
             self.island_pointer(e);
             return;
         }
+        if self.pane.as_ref().map(|p| p.layer.wl_surface() == &e.surface).unwrap_or(false) {
+            self.pane_pointer(e);
+            return;
+        }
         if self.polkit.as_ref().map(|p| p.1.wl_surface() == &e.surface).unwrap_or(false) {
             let (x, y) = (e.position.0 as f32, e.position.1 as f32);
             let p = self.polkit.as_mut().unwrap();
@@ -1306,15 +1476,15 @@ impl App {
         let mid = button == BTN_MIDDLE;
         let right = button == BTN_RIGHT;
         match h {
-            Hit::Start => ipc(&["toggleOn", "start", &scr]),
+            Hit::Start => self.ui_toggle("start", &scr),
             Hit::Stats => spawn(&["kitty", "-e", "btop"]),
-            Hit::Phone => if mid { ipc(&["phoneRing"]) } else { ipc(&["toggleOn", "phone", &scr]) },
-            Hit::Bluetooth => ipc(&["controlOn", "bluetooth", &scr]),
-            Hit::Network => ipc(&["controlOn", "network", &scr]),
-            Hit::Volume => if mid { sh("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle") } else { ipc(&["controlOn", "sound", &scr]) },
-            Hit::Bell => if right { ipc(&["dnd", if self.st.dnd { "false" } else { "true" }]) } else { ipc(&["toggleOn", "notifications", &scr]) },
-            Hit::Adjust => ipc(&["controlOn", "", &scr]),
-            Hit::Power => ipc(&["toggleOn", "session", &scr]),
+            Hit::Phone => if mid { ipc(&["phoneRing"]) } else { self.ui_toggle("phone", &scr) },
+            Hit::Bluetooth => self.ui_control("bluetooth", &scr),
+            Hit::Network => self.ui_control("network", &scr),
+            Hit::Volume => if mid { sh("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle") } else { self.ui_control("sound", &scr) },
+            Hit::Bell => if right { let on = !self.st.dnd; let _ = self.notif_tx.send(crate::notif::Cmd::Dnd(on)); self.st.dnd = on; self.mark_all(); } else { self.ui_toggle("notifications", &scr) },
+            Hit::Adjust => self.ui_control("", &scr),
+            Hit::Power => self.ui_toggle("session", &scr),
             Hit::Tray(key) => {
                 let Some(it) = self.tray_items.iter().find(|t| &t.key == key).cloned() else { return };
                 if right || it.item_is_menu {
@@ -1679,10 +1849,24 @@ impl LayerShellHandler for App {
     fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, l: &LayerSurface) {
         self.bars.retain(|b| &b.layer != l);
         self.wall.closed(l);
+        if self.pane.as_ref().map(|p| &p.layer == l).unwrap_or(false) {
+            self.pane = None;
+        }
     }
     fn configure(&mut self, _: &Connection, _: &QueueHandle<Self>, l: &LayerSurface, c: LayerSurfaceConfigure, _: u32) {
         if self.wall.configure(l, c.new_size.0, c.new_size.1) {
             return;
+        }
+        if let Some(p) = self.pane.as_mut() {
+            if &p.layer == l {
+                let (w, h) = (c.new_size.0.max(1), c.new_size.1.max(1));
+                if p.canvas.pm.width() != w || p.canvas.pm.height() != h {
+                    p.canvas = Canvas::new(w, h);
+                }
+                p.configured = true;
+                p.dirty = true;
+                return;
+            }
         }
         if let Some(p) = self.polkit.as_mut() {
             if &p.1 == l {
@@ -1791,6 +1975,12 @@ impl KeyboardHandler for App {
     fn press_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, ev: KeyEvent) {
         if self.polkit.is_some() {
             self.polkit_key(&ev);
+            return;
+        }
+        if let Some(p) = self.pane.as_mut() {
+            let mut cx = crate::pane::Ctx { t: &mut self.text };
+            let a = p.p.key(&ev, &mut cx);
+            self.pane_act(a);
             return;
         }
         if !self.island.replying {
