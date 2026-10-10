@@ -12,6 +12,10 @@ pub enum Act {
     Close,
     // close, then run a command (detached)
     Run(Vec<String>),
+    // run a command, stay open
+    Exec(Vec<String>),
+    // open another popup instead
+    Toggle(&'static str),
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -27,6 +31,10 @@ pub enum Ptr {
 pub struct Ctx<'a> {
     pub t: &'a mut Text,
     pub cal: &'a serde_json::Value,
+    pub icons: &'a mut crate::apps::Icons,
+    pub imgs: &'a mut crate::img::Images,
+    pub apps: &'a crate::apps::Apps,
+    pub notif_hidden: &'a mut std::collections::HashMap<String, i64>,
 }
 
 pub trait Pane {
@@ -44,6 +52,10 @@ pub trait Pane {
     fn slow(&mut self) -> bool {
         false
     }
+    // a data source changed ("notifications", ...); true = repaint
+    fn data(&mut self, _what: &str) -> bool {
+        false
+    }
     // every 250 ms: a timed action (the session menu's countdown)
     fn timer(&mut self) -> Act {
         Act::None
@@ -56,12 +68,13 @@ pub trait Pane {
 
 // the popups that are native now (the rest are forwarded to Quickshell)
 pub fn native(name: &str) -> bool {
-    matches!(name, "session" | "calendar")
+    matches!(name, "session" | "calendar" | "notifications")
 }
 pub fn make(name: &str, _page: &str) -> Option<Box<dyn Pane>> {
     match name {
         "session" => Some(Box::new(crate::session::Session::new())),
         "calendar" => Some(Box::new(crate::calendar::Calendar::new())),
+        "notifications" => Some(Box::new(crate::notifcenter::NotifCenter::new())),
         _ => None,
     }
 }

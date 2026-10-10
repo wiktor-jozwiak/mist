@@ -30,6 +30,7 @@ mod polkit;
 mod pane;
 mod session;
 mod calendar;
+mod notifcenter;
 mod wxcard;
 #[path = "../../common/astro.rs"]
 mod astro;

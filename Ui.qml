@@ -29,7 +29,7 @@ Singleton {
     }
     function focusedScreen() { return Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "DP-3" }
     // popups drawn by mist-ui now (native/mist-ui pane.rs): opened there
-    readonly property var native: ["session", "calendar"]
+    readonly property var native: ["session", "calendar", "notifications"]
     function toggle(name, scr) {
         if (native.includes(name)) {
             popup = ""

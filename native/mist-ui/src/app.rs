@@ -158,6 +158,7 @@ pub struct App {
     polkit_queue: Vec<crate::polkit::Begin>,
     pane: Option<PaneSurf>,
     pane_ptr: (f32, f32),
+    notif_hidden: std::collections::HashMap<String, i64>,
     desk_serial: u32,
     desk_cursor: &'static str,
 }
@@ -219,6 +220,7 @@ impl App {
             polkit_queue: Vec::new(),
             pane: None,
             pane_ptr: (0.0, 0.0),
+            notif_hidden: std::collections::HashMap::new(),
             desk_serial: 0,
             desk_cursor: "",
             wall: { let mut w = crate::wall::Wall::new(); w.off = test || std::env::var("MIST_UI_NO_WALL").is_ok(); w },
@@ -537,6 +539,17 @@ impl App {
                 let v: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
                 spawn(&v);
             }
+            Act::Exec(cmd) => {
+                let v: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
+                spawn(&v);
+                if let Some(p) = self.pane.as_mut() {
+                    p.dirty = true;
+                }
+            }
+            Act::Toggle(name) => {
+                let scr = self.pane.as_ref().map(|p| p.screen.clone()).unwrap_or_default();
+                self.ui_toggle(name, &scr);
+            }
         }
     }
     fn draw_pane(&mut self) {
@@ -546,7 +559,7 @@ impl App {
         }
         p.dirty = false;
         let mut c = std::mem::replace(&mut p.canvas, Canvas::new(1, 1));
-        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar };
+        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden };
         p.p.paint(&mut c, &mut cx);
         Self::commit(&mut self.pool, &p.layer, &c);
         p.canvas = c;
@@ -574,7 +587,7 @@ impl App {
             }
         };
         let Some(p) = self.pane.as_mut() else { return };
-        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar };
+        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden };
         let a = p.p.pointer(ev, x, y, &mut cx);
         let hand = p.p.hand();
         self.desk_cursor(if hand { "hand" } else { "" });
@@ -1749,7 +1762,14 @@ impl App {
             }
             Msg::Phone(p) => self.st.phone = p,
             Msg::Ui(p, s) => self.ui_popup = (p, s),
-            Msg::Dnd(d) => self.st.dnd = d,
+            Msg::Dnd(d) => {
+                self.st.dnd = d;
+                if let Some(p) = self.pane.as_mut() {
+                    if p.p.data("notifications") {
+                        p.dirty = true;
+                    }
+                }
+            }
             Msg::Lock => self.idle.lock(None),
             Msg::Polkit(ev) => self.on_polkit(ev),
             Msg::IdleCfg => {
@@ -1978,7 +1998,7 @@ impl KeyboardHandler for App {
             return;
         }
         if let Some(p) = self.pane.as_mut() {
-            let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar };
+            let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden };
             let a = p.p.key(&ev, &mut cx);
             self.pane_act(a);
             return;
