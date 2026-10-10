@@ -61,6 +61,7 @@ pub enum Msg {
     Wall(String, String),
     Lock,
     IdleCfg,
+    Polkit(crate::polkit::Ev),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

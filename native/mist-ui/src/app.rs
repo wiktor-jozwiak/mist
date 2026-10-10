@@ -144,6 +144,9 @@ pub struct App {
     pub desk: crate::desktop::Desk,
     pub idle: crate::idle::Idle,
     seat: Option<wl_seat::WlSeat>,
+    pub tx: Option<calloop::channel::Sender<Msg>>,
+    polkit: Option<(crate::polkit::Sheet, LayerSurface, bool, bool, Canvas)>,
+    polkit_queue: Vec<crate::polkit::Begin>,
     desk_serial: u32,
     desk_cursor: &'static str,
 }
@@ -200,6 +203,9 @@ impl App {
             desk: crate::desktop::Desk::new(),
             idle: { let mut i = crate::idle::Idle::default(); if !test { i.bind(globals, qh); } i },
             seat: None,
+            tx: None,
+            polkit: None,
+            polkit_queue: Vec::new(),
             desk_serial: 0,
             desk_cursor: "",
             wall: { let mut w = crate::wall::Wall::new(); w.off = test || std::env::var("MIST_UI_NO_WALL").is_ok(); w },
@@ -321,7 +327,7 @@ impl App {
     }
 
     pub fn animating(&self) -> bool {
-        self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE) || self.dock.animating() || self.dock_hide_at.is_some() || self.dock_show_at.is_some() || self.island.animating() || self.wall.busy() || self.desk.animating()
+        self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE) || self.dock.animating() || self.dock_hide_at.is_some() || self.dock_show_at.is_some() || self.island.animating() || self.wall.busy() || self.desk.animating() || self.polkit.as_ref().map(|p| p.0.animating()).unwrap_or(false)
     }
 
     // timers (dock hide 400 ms / reveal 80 ms) and animation frames
@@ -332,6 +338,9 @@ impl App {
 
     pub fn slow_tick(&mut self) {
         self.idle.reap();
+        if let Some(p) = self.polkit.as_mut() {
+            p.3 = true; // the cursor blinks
+        }
         let outs = self.outs();
         self.wall.slow_tick(&self.compositor, &self.layer_shell, &self.qh, &outs);
         let n = crate::wxcard::Wx::n_insights(&self.desk.weather, &self.desk.garmin, &self.desk.cfg);
@@ -384,6 +393,11 @@ impl App {
         if self.desk.fx.running() {
             self.desk.dirty = true;
         }
+        if let Some(p) = self.polkit.as_mut() {
+            if p.0.animating() {
+                p.3 = true;
+            }
+        }
         if self.desk.wx.fx.running() {
             self.desk.card_dirty = true;
         }
@@ -431,6 +445,109 @@ impl App {
             self.draw_island();
         }
         self.draw_desk();
+        self.draw_polkit();
+    }
+
+    // ---------------------------------------------------------------- polkit sheet
+    fn on_polkit(&mut self, ev: crate::polkit::Ev) {
+        use crate::polkit::Ev;
+        let Some(tx) = self.tx.clone() else { return };
+        match ev {
+            Ev::Begin(b) => {
+                if self.polkit.is_some() {
+                    self.polkit_queue.push(b);
+                } else {
+                    self.polkit_open(b);
+                }
+            }
+            Ev::Cancel(cookie) => {
+                if self.polkit.as_ref().map(|p| p.0.req.cookie == cookie).unwrap_or(false) {
+                    if let Some(p) = self.polkit.as_mut() {
+                        p.0.cancel();
+                    }
+                    self.polkit_close();
+                } else {
+                    self.polkit_queue.retain(|b| b.cookie != cookie);
+                }
+            }
+            Ev::Prompt(p, echo) => {
+                if let Some(s) = self.polkit.as_mut() {
+                    s.0.prompt = p;
+                    s.0.echo = echo;
+                    s.0.busy = false;
+                    s.3 = true;
+                }
+            }
+            Ev::Info(m, err) => {
+                if let Some(s) = self.polkit.as_mut() {
+                    s.0.info = m;
+                    s.0.info_err = err;
+                    s.3 = true;
+                }
+            }
+            Ev::Done(ok) => {
+                let close = self.polkit.as_mut().map(|s| { s.3 = true; s.0.done(ok, tx.clone()) }).unwrap_or(false);
+                if close {
+                    self.polkit_close();
+                }
+            }
+        }
+    }
+    fn polkit_open(&mut self, b: crate::polkit::Begin) {
+        let Some(tx) = self.tx.clone() else { return };
+        // the focused monitor
+        let name = self.hypr.monitors.iter().find(|m| m.2 == self.hypr.focused_ws).map(|m| m.1.clone()).unwrap_or(PRIMARY.into());
+        let outs = self.outs();
+        let Some((o, _)) = outs.iter().find(|(_, n)| *n == name).or(outs.first()) else { return };
+        let surface = self.compositor.create_surface(&self.qh);
+        let layer = self.layer_shell.create_layer_surface(&self.qh, surface, Layer::Overlay, Some("mist-session"), Some(o));
+        layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
+        layer.set_exclusive_zone(-1);
+        layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
+        layer.commit();
+        self.polkit = Some((crate::polkit::Sheet::new(b, tx), layer, false, true, Canvas::new(1, 1)));
+    }
+    fn polkit_close(&mut self) {
+        self.polkit = None;
+        if !self.polkit_queue.is_empty() {
+            let b = self.polkit_queue.remove(0);
+            self.polkit_open(b);
+        }
+    }
+    fn draw_polkit(&mut self) {
+        let Some(p) = self.polkit.as_mut() else { return };
+        if !p.2 || !p.3 {
+            return;
+        }
+        p.3 = false;
+        let mut c = std::mem::replace(&mut p.4, Canvas::new(1, 1));
+        p.0.paint(&mut c, &mut self.text);
+        Self::commit(&mut self.pool, &p.1, &c);
+        p.4 = c;
+    }
+    fn polkit_key(&mut self, ev: &KeyEvent) {
+        let Some(p) = self.polkit.as_mut() else { return };
+        p.3 = true;
+        p.0.blink = Instant::now();
+        match ev.keysym {
+            Keysym::Return | Keysym::KP_Enter => p.0.submit(),
+            Keysym::Escape => {
+                p.0.cancel();
+                self.polkit_close();
+            }
+            Keysym::BackSpace => {
+                if !p.0.busy {
+                    p.0.pw.pop();
+                }
+            }
+            _ => {
+                if let Some(t) = &ev.utf8 {
+                    if !p.0.busy && !t.chars().any(|c| c.is_control()) {
+                        p.0.pw.push_str(t);
+                    }
+                }
+            }
+        }
     }
 
     // ---------------------------------------------------------------- desktop
@@ -803,6 +920,14 @@ impl App {
                 String::new()
             }
             ("lock", "isLocked") => crate::idle::Idle::locked().to_string(),
+            ("polkit", "state") => self.polkit.as_ref().map(|p| format!("open {} queue {}", p.0.req.action, self.polkit_queue.len())).unwrap_or("closed".into()),
+            ("polkit", "cancel") => {
+                if let Some(p) = self.polkit.as_mut() {
+                    p.0.cancel();
+                }
+                self.polkit_close();
+                String::new()
+            }
             ("ui", "stats") => DRAWS.with(|d| format!("{:?} fades {} dock {} hide {} show {} island {} wall {} desk {} {}", d.borrow(), self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE), self.dock.animating(), self.dock_hide_at.is_some(), self.dock_show_at.is_some(), self.island.animating(), self.wall.busy(), self.desk.fx.running(), self.desk.wx.fx.running())),
             _ => "unknown".into(),
         };
@@ -1076,6 +1201,36 @@ impl App {
         }
         if self.island_surf.as_ref().map(|i| i.layer.wl_surface() == &e.surface).unwrap_or(false) {
             self.island_pointer(e);
+            return;
+        }
+        if self.polkit.as_ref().map(|p| p.1.wl_surface() == &e.surface).unwrap_or(false) {
+            let (x, y) = (e.position.0 as f32, e.position.1 as f32);
+            let p = self.polkit.as_mut().unwrap();
+            match e.kind {
+                PointerEventKind::Enter { serial } => {
+                    self.desk_serial = serial;
+                    self.set_cursor(serial, wp_cursor_shape_device_v1::Shape::Default);
+                }
+                PointerEventKind::Motion { .. } => {
+                    let h = p.0.hit(x, y);
+                    if h != p.0.hover {
+                        p.0.hover = h;
+                        p.3 = true;
+                    }
+                }
+                PointerEventKind::Release { button, .. } if button == BTN_LEFT => match p.0.hit(x, y) {
+                    Some(0) => {
+                        p.0.cancel();
+                        self.polkit_close();
+                    }
+                    Some(1) => {
+                        p.0.submit();
+                        p.3 = true;
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
             return;
         }
         if self.desk.stage.as_ref().map(|l| l.wl_surface() == &e.surface).unwrap_or(false) {
@@ -1396,6 +1551,7 @@ impl App {
             Msg::Wall(..) => "Wall",
             Msg::Lock => "Lock",
             Msg::IdleCfg => "IdleCfg",
+            Msg::Polkit(..) => "Polkit",
         };
         DRAWS.with(|d| *d.borrow_mut().entry(k).or_insert(0) += 1);
         match m {
@@ -1425,6 +1581,7 @@ impl App {
             Msg::Ui(p, s) => self.ui_popup = (p, s),
             Msg::Dnd(d) => self.st.dnd = d,
             Msg::Lock => self.idle.lock(None),
+            Msg::Polkit(ev) => self.on_polkit(ev),
             Msg::IdleCfg => {
                 if self.idle.changed() {
                     if let Some(s) = self.seat.clone() {
@@ -1527,6 +1684,17 @@ impl LayerShellHandler for App {
         if self.wall.configure(l, c.new_size.0, c.new_size.1) {
             return;
         }
+        if let Some(p) = self.polkit.as_mut() {
+            if &p.1 == l {
+                let (w, h) = (c.new_size.0.max(1), c.new_size.1.max(1));
+                if p.4.pm.width() != w || p.4.pm.height() != h {
+                    p.4 = Canvas::new(w, h);
+                }
+                p.2 = true;
+                p.3 = true;
+                return;
+            }
+        }
         if self.desk.stage.as_ref() == Some(l) {
             self.desk.stage_cfg = true;
             self.desk.dirty = true;
@@ -1621,6 +1789,10 @@ impl KeyboardHandler for App {
     fn enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: &wl_surface::WlSurface, _: u32, _: &[u32], _: &[Keysym]) {}
     fn leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: &wl_surface::WlSurface, _: u32) {}
     fn press_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, ev: KeyEvent) {
+        if self.polkit.is_some() {
+            self.polkit_key(&ev);
+            return;
+        }
         if !self.island.replying {
             return;
         }

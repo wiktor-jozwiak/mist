@@ -676,6 +676,7 @@ dependencies = [
 name = "mist-ui"
 version = "0.1.0"
 dependencies = [
+ "async-io",
  "calloop",
  "calloop-wayland-source",
  "image",

@@ -16,8 +16,7 @@ ShellRoot {
     // Dynamic Island: native now (native/mist-ui island.rs), with the notification server, the phone and MPRIS
     // dock: native now (native/mist-ui dock.rs); Dock.qml stays for reference / fallback
     Snap { id: snapper }
-    // lock (mist-ui-bin lock) and idle: native; polkit agent still here
-    Polkit {}
+    // lock (mist-ui-bin lock), idle and the polkit agent: native (mist-ui)
     // macOS-style overlays (single instance, follow the focused monitor)
     Switcher {}
     Clipboard {}

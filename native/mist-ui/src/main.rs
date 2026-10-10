@@ -26,6 +26,7 @@ mod tray;
 mod desktop;
 mod lock;
 mod idle;
+mod polkit;
 mod wxcard;
 #[path = "../../common/astro.rs"]
 mod astro;
@@ -154,6 +155,7 @@ fn main() {
     let phone = if native_services { phone::Phone::start(tx.clone()) } else { phone::Phone::start_idle() };
     if std::env::var("MIST_UI_DEBUG").is_ok() { eprintln!("dbg: before App::new"); }
     let mut app = app::App::new(&globals, &qh, req_tx, test, phone, ntx, mdtx);
+    app.tx = Some(tx.clone());
     lh.insert_source(rx, |e, _, app: &mut app::App| {
         if let channel::Event::Msg(m) = e {
             app.on_msg(m);
@@ -176,6 +178,7 @@ fn main() {
     if native_services {
         // the services Quickshell ran: notifications, players, data, phone, the island's event sources
         notif::spawn(tx.clone(), nrx);
+        polkit::spawn(tx.clone());
     }
     if native_services || std::env::var("MIST_UI_SOCK").is_ok() {
         if std::env::var("MIST_UI_DEBUG").is_ok() { eprintln!("dbg: ipc serve {}", ipc::path()); }
