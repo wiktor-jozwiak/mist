@@ -68,6 +68,11 @@ Singleton {
 
     function send(c, a) { if (watch.running) watch.write(JSON.stringify(a === undefined ? { c: c } : { c: c, a: a }) + "\n") }
     function ring() { send("ring") }
+    // state for the native bar (native/mist-ui): $XDG_RUNTIME_DIR/mist/phone.json
+    readonly property string barState: JSON.stringify({ online: online, pair: pairRequested, battery: battery, charging: charging })
+    onBarStateChanged: barF.setText(barState)
+    FileView { id: barF; path: Quickshell.env("XDG_RUNTIME_DIR") + "/mist/phone.json"; printErrors: false }
+    Component.onCompleted: { Quickshell.execDetached(["mkdir", "-p", Quickshell.env("XDG_RUNTIME_DIR") + "/mist"]); Qt.callLater(() => barF.setText(barState)) }
     function ping() { send("ping") }
     function sendClipboard() { send("clip") }
     function browse() { send("browse") }

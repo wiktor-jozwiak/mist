@@ -11,7 +11,7 @@ ShellRoot {
 
     // wallpaper: the photo or the animated scene chosen in ~/.config/mist/wallpaper.json
     Variants { model: Quickshell.screens; LiveWallpaper {} }
-    Variants { model: Quickshell.screens; TopBar {} }
+    // top bar: native now (native/mist-ui, drawn on the CPU); TopBar.qml stays for reference / fallback
     Variants { model: primary; Desktop {} }
     Variants { model: primary; Island {} }
     Variants { model: primary; Dock {} }
@@ -52,6 +52,11 @@ ShellRoot {
         // Control centre on a page: "" | sound | network | bluetooth
         function control(page: string): void { Ui.control(page, "") }
         function close(): void { Ui.close() }
+        // the native bar (native/mist-ui) opens popups on its own monitor
+        function toggleOn(name: string, screen: string): void { Ui.toggle(name, screen) }
+        function controlOn(page: string, screen: string): void { Ui.control(page, screen) }
+        function dnd(on: bool): void { Notifs.setDnd(on) }
+        function phoneRing(): void { Phone.ring() }
         // media keys for scripts and the phone (KDE Connect run-command): toggle | next | prev
         function media(action: string): void {
             const ps = Mpris.players.values, p = ps.find(p => p.isPlaying) || ps.find(p => p.trackTitle) || ps[0]

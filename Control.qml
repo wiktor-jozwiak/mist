@@ -127,6 +127,8 @@ PanelWindow {
     readonly property string netSub: !net.dev ? "…" : !net.up ? "Rozłączono" : net.speed > 0 ? "Połączono · " + (net.speed >= 1000 ? net.speed / 1000 + " Gb/s" : net.speed + " Mb/s") : "Połączono"
 
     onVisibleChanged: if (visible) { netQ.running = true; sheet.forceActiveFocus() }
+    // live download / upload speed for the network page (the bar is native now and samples on its own)
+    Binding { target: Data; property: "barStats"; value: win.visible }
     Component.onCompleted: { netQ.running = true; if (scanning && !bt.discovering) bt.discovering = true }
     Component.onDestruction: if (bt && bt.discovering) bt.discovering = false
 

@@ -1,0 +1,10 @@
+[workspace]
+members = ["mist-ui"]
+resolver = "2"
+
+[profile.release]
+opt-level = 3
+lto = false          # Arch rustc + system LLVM segfaults with lto (see scripts/mistd)
+codegen-units = 4
+panic = "abort"
+strip = true

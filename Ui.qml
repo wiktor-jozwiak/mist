@@ -33,6 +33,10 @@ Singleton {
         popup = name
     }
     function close() { popup = "" }
+    // which popup is open, for the native bar (native/mist-ui): $XDG_RUNTIME_DIR/mist/ui.json
+    readonly property string barState: JSON.stringify({ popup: popup, screen: screenName, page: page })
+    onBarStateChanged: uiF.setText(barState)
+    FileView { id: uiF; path: Quickshell.env("XDG_RUNTIME_DIR") + "/mist/ui.json"; printErrors: false }
     // bar icons open the Control centre straight on their page; the same icon again closes it
     function control(pg, scr) {
         if (popup === "control" && page === pg) { popup = ""; return }
