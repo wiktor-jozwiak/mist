@@ -54,13 +54,21 @@ impl Canvas {
     pub fn text(&mut self, t: &mut Text, x: f32, cy: f32, s: &str, st: &Style, c: Rgba) -> f32 {
         let sh = t.shape(s, st);
         let base = (cy - (sh.ascent + sh.descent) / 2.0 + sh.ascent).round();
-        for &(id, gx) in &sh.glyphs {
+        for (k, &(id, gx)) in sh.glyphs.iter().enumerate() {
             let px = x + gx;
             let ix = px.floor();
             let sub = (((px - ix) * 4.0).round() as u8).min(3);
-            let g = t.glyph(st, id, sub);
+            let face = sh.faces.get(k).copied().unwrap_or(st.face);
+            let g = t.glyph_in(face, st, id, sub);
             let (ox, oy) = (ix as i32 + g.left, base as i32 - g.top);
-            blend_alpha(&mut self.pm, ox, oy, g.w, g.h, &g.data, c);
+            if g.color {
+                // colour emoji: its own colours, the text's opacity
+                if let Some(pm) = tiny_skia::PixmapRef::from_bytes(&g.data, g.w, g.h) {
+                    self.pm.draw_pixmap(ox, oy, pm, &tiny_skia::PixmapPaint { opacity: c.3.clamp(0.0, 1.0), ..Default::default() }, Transform::identity(), None);
+                }
+            } else {
+                blend_alpha(&mut self.pm, ox, oy, g.w, g.h, &g.data, c);
+            }
         }
         sh.width
     }
