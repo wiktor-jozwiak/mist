@@ -13,12 +13,11 @@ ShellRoot {
     Variants { model: Quickshell.screens; LiveWallpaper {} }
     // top bar: native now (native/mist-ui, drawn on the CPU); TopBar.qml stays for reference / fallback
     Variants { model: primary; Desktop {} }
-    Variants { model: primary; Island {} }
+    // Dynamic Island: native now (native/mist-ui island.rs), with the notification server, the phone and MPRIS
     // dock: native now (native/mist-ui dock.rs); Dock.qml stays for reference / fallback
     Snap { id: snapper }
     Lock {}
-    // services Noctalia used to run: notification server (singleton, created here), polkit agent, idle lock
-    Component.onCompleted: Notifs.dnd
+    // services Noctalia used to run: polkit agent, idle lock (notifications: native/mist-ui)
     Polkit {}
     Idle {}
     // macOS-style overlays (single instance, follow the focused monitor)

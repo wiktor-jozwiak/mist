@@ -7,8 +7,15 @@ mod anim;
 mod app;
 mod apps;
 mod bar;
+mod data;
 mod dock;
 mod glass;
+mod img;
+mod ipc;
+mod island;
+mod media;
+mod notif;
+mod phone;
 mod popup;
 mod gfx;
 mod icons;
@@ -23,6 +30,10 @@ use wayland_client::{globals::registry_queue_init, Connection};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(|s| s.as_str()) == Some("msg") {
+        // client of the running mist-ui: mist-ui-bin msg <target> <function> [args...]
+        std::process::exit(ipc::call(&args[2..]));
+    }
     if args.get(1).map(|s| s.as_str()) == Some("--png") {
         return png(&args);
     }
@@ -83,7 +94,12 @@ fn main() {
     let (tx, rx) = channel::channel::<sys::Msg>();
     let (mtx, mrx) = channel::channel::<(String, Vec<tray::MenuEntry>)>();
     let (req_tx, req_rx) = std::sync::mpsc::channel::<tray::Req>();
-    let mut app = app::App::new(&globals, &qh, req_tx, test);
+    let (ntx, nrx) = std::sync::mpsc::channel::<notif::Cmd>();
+    let (mdtx, mdrx) = std::sync::mpsc::channel::<media::Cmd>();
+    let native_services = std::env::var("MIST_UI_NO_SERVICES").is_err() && !test;
+    let phone = if native_services { phone::Phone::start(tx.clone()) } else { phone::Phone::start_idle() };
+    if std::env::var("MIST_UI_DEBUG").is_ok() { eprintln!("dbg: before App::new"); }
+    let mut app = app::App::new(&globals, &qh, req_tx, test, phone, ntx, mdtx);
     lh.insert_source(rx, |e, _, app: &mut app::App| {
         if let channel::Event::Msg(m) = e {
             app.on_msg(m);
@@ -101,7 +117,21 @@ fn main() {
     sys::bluetooth(tx.clone());
     sys::audio(tx.clone());
     sys::stats(tx.clone());
+    if std::env::var("MIST_UI_DEBUG").is_ok() { eprintln!("dbg: before state_files"); }
     sys::state_files(tx.clone());
+    if native_services {
+        // the services Quickshell ran: notifications, players, data, phone, the island's event sources
+        notif::spawn(tx.clone(), nrx);
+    }
+    if native_services || std::env::var("MIST_UI_SOCK").is_ok() {
+        if std::env::var("MIST_UI_DEBUG").is_ok() { eprintln!("dbg: ipc serve {}", ipc::path()); }
+        ipc::serve(tx.clone());
+    }
+    media::spawn(tx.clone(), mdrx);
+    data::spawn(tx.clone());
+    sys::power_profile(tx.clone());
+    sys::island_events(tx.clone());
+    sys::nm_monitor(tx.clone());
     tray::spawn(tx, req_rx, mtx);
 
     // animation tick, only while something fades
@@ -110,6 +140,12 @@ fn main() {
             app.tick();
         }
         TimeoutAction::ToDuration(app::tick_interval())
+    })
+    .unwrap();
+    // seconds: island timers, the clock's minute, call timeouts
+    lh.insert_source(Timer::from_duration(std::time::Duration::from_millis(250)), |_, _, app: &mut app::App| {
+        app.slow_tick();
+        TimeoutAction::ToDuration(std::time::Duration::from_millis(250))
     })
     .unwrap();
     loop {

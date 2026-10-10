@@ -5,7 +5,7 @@ edition = "2024"
 description = "Mist shell surfaces drawn on the CPU (no GPU context): bar, dock, island, desktop, panels"
 
 [dependencies]
-smithay-client-toolkit = { version = "0.20", default-features = false, features = ["calloop"] }
+smithay-client-toolkit = { version = "0.20", default-features = false, features = ["calloop", "xkbcommon"] }
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 calloop = "0.14"
@@ -16,3 +16,4 @@ serde_json = "1"
 libc = "0.2"
 calloop-wayland-source = "0.4"
 resvg = { version = "0.45", default-features = false }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }

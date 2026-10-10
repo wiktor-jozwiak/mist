@@ -76,6 +76,23 @@ impl Canvas {
         crate::icons::icon(name).map(|ch| t.width(&ch.to_string(), &Style::icon(size))).unwrap_or(0.0)
     }
 
+    // circle / ring arc (IslandRing): from -90° clockwise over `frac` of the turn
+    pub fn arc(&mut self, cx: f32, cy: f32, r: f32, frac: f32, width: f32, c: Rgba) {
+        let mut pb = PathBuilder::new();
+        let n = ((64.0 * frac).ceil() as i32).max(2);
+        for i in 0..=n {
+            let a = -std::f32::consts::FRAC_PI_2 + std::f32::consts::TAU * frac * i as f32 / n as f32;
+            let (px, py) = (cx + r * a.cos(), cy + r * a.sin());
+            if i == 0 { pb.move_to(px, py) } else { pb.line_to(px, py) }
+        }
+        let Some(p) = pb.finish() else { return };
+        let mut paint = Paint::default();
+        paint.set_color(c.skia());
+        paint.anti_alias = true;
+        let st = tiny_skia::Stroke { width, line_cap: tiny_skia::LineCap::Round, ..Default::default() };
+        self.pm.stroke_path(&p, &paint, &st, Transform::identity(), None);
+    }
+
     // BGRA (wl_shm Argb8888 little endian) copy of the premultiplied canvas
     pub fn to_bgra(&self, out: &mut [u8]) {
         for (d, s) in out.chunks_exact_mut(4).zip(self.pm.data().chunks_exact(4)) {
@@ -147,4 +164,28 @@ pub fn blend_alpha(pm: &mut Pixmap, ox: i32, oy: i32, w: u32, h: u32, mask: &[u8
             data[i + 3] = (a * 255.0 + data[i + 3] as f32 * inv).round() as u8;
         }
     }
+}
+
+// word wrap (Text.Wrap + maximumLineCount + elide on the last line)
+pub fn wrap(t: &mut Text, s: &str, st: &Style, max_w: f32, max_lines: usize) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for para in s.split('\n') {
+        let mut cur = String::new();
+        for word in para.split(' ') {
+            let cand = if cur.is_empty() { word.to_string() } else { format!("{cur} {word}") };
+            if t.width(&cand, st) <= max_w || cur.is_empty() {
+                cur = cand;
+            } else {
+                lines.push(std::mem::take(&mut cur));
+                cur = word.to_string();
+            }
+        }
+        lines.push(cur);
+    }
+    if lines.len() > max_lines {
+        lines.truncate(max_lines);
+        let last = lines.pop().unwrap_or_default();
+        lines.push(crate::bar::elide(t, &(last + " …"), st, max_w));
+    }
+    lines.into_iter().map(|l| if t.width(&l, st) > max_w { crate::bar::elide(t, &l, st, max_w) } else { l }).collect()
 }

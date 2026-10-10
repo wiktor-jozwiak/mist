@@ -11,12 +11,13 @@ use crate::text::Text;
 use crate::tray::{self, MenuEntry, Req};
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState, Region},
-    delegate_compositor, delegate_layer, delegate_output, delegate_pointer, delegate_registry, delegate_seat, delegate_shm,
+    delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_pointer, delegate_registry, delegate_seat, delegate_shm,
     output::{OutputHandler, OutputState},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
     seat::{
-        pointer::{PointerEvent, PointerEventKind, PointerHandler, BTN_MIDDLE, BTN_RIGHT},
+        keyboard::{KeyEvent, KeyboardHandler, Keysym, Modifiers, RawModifiers},
+        pointer::{PointerEvent, PointerEventKind, PointerHandler, BTN_LEFT, BTN_MIDDLE, BTN_RIGHT},
         Capability, SeatHandler, SeatState,
     },
     shell::{
@@ -28,7 +29,7 @@ use smithay_client_toolkit::{
 use std::time::{Duration, Instant};
 use wayland_client::{
     globals::GlobalList,
-    protocol::{wl_output, wl_pointer, wl_seat, wl_shm, wl_surface},
+    protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_shm, wl_surface},
     Connection, QueueHandle,
 };
 use wayland_protocols::wp::cursor_shape::v1::client::{wp_cursor_shape_device_v1, wp_cursor_shape_manager_v1};
@@ -49,6 +50,14 @@ pub struct BarSurf {
     pressed: Option<Hit>,
     stats_open: bool,
     left_end: f32,
+    canvas: Canvas,
+}
+
+struct IslandSurf {
+    layer: LayerSurface,
+    configured: bool,
+    input: Option<(i32, i32, i32, i32)>,
+    focus_kbd: bool,
     canvas: Canvas,
 }
 
@@ -118,12 +127,23 @@ pub struct App {
     pending_menu: Option<(String, usize, i32, i32)>,
     dock_hide_at: Option<Instant>,
     dock_show_at: Option<Instant>,
+    island_surf: Option<IslandSurf>,
+    pub island: crate::island::Island,
+    pub imgs: crate::img::Images,
+    pub phone: crate::phone::Phone,
+    pub notif_tx: std::sync::mpsc::Sender<crate::notif::Cmd>,
+    pub media_tx: std::sync::mpsc::Sender<crate::media::Cmd>,
+    keyboard: Option<wl_keyboard::WlKeyboard>,
+    island_dirty: bool,
+    last_minute: i64,
+    pos_tick: Instant,
+    last_call_key: String,
     pub qh: QueueHandle<App>,
     pub test: bool,
 }
 
 impl App {
-    pub fn new(globals: &GlobalList, qh: &QueueHandle<App>, tray_req: std::sync::mpsc::Sender<Req>, test: bool) -> App {
+    pub fn new(globals: &GlobalList, qh: &QueueHandle<App>, tray_req: std::sync::mpsc::Sender<Req>, test: bool, phone: crate::phone::Phone, notif_tx: std::sync::mpsc::Sender<crate::notif::Cmd>, media_tx: std::sync::mpsc::Sender<crate::media::Cmd>) -> App {
         let compositor = CompositorState::bind(globals, qh).expect("wl_compositor");
         let layer_shell = LayerShell::bind(globals, qh).expect("layer shell");
         let shm = Shm::bind(globals, qh).expect("wl_shm");
@@ -158,6 +178,17 @@ impl App {
             pending_menu: None,
             dock_hide_at: None,
             dock_show_at: None,
+            island_surf: None,
+            island: crate::island::Island::new(),
+            imgs: crate::img::Images::new(),
+            phone,
+            notif_tx,
+            media_tx,
+            keyboard: None,
+            island_dirty: true,
+            last_minute: 0,
+            pos_tick: Instant::now(),
+            last_call_key: String::new(),
             qh: qh.clone(),
             test,
         }
@@ -179,6 +210,17 @@ impl App {
             layer.set_keyboard_interactivity(KeyboardInteractivity::None);
             layer.commit();
             self.bars.push(BarSurf { output: output.clone(), name: name.clone(), layer, w: 0, configured: false, dirty: true, items: Vec::new(), hover: None, pressed: None, stats_open: false, left_end: 0.0, canvas: Canvas::new(1, 1) });
+        }
+        let island_here = if self.test { name == "HDMI-A-1" } else { name == PRIMARY };
+        if island_here && self.island_surf.is_none() && std::env::var("MIST_UI_NO_ISLAND").is_err() {
+            let surface = self.compositor.create_surface(&self.qh);
+            let layer = self.layer_shell.create_layer_surface(&self.qh, surface, Layer::Overlay, Some("mist-island"), Some(&output));
+            layer.set_anchor(Anchor::TOP);
+            layer.set_size(crate::island::WIN_W, crate::island::WIN_H);
+            layer.set_exclusive_zone(-1);
+            layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+            layer.commit();
+            self.island_surf = Some(IslandSurf { layer, configured: false, input: None, focus_kbd: false, canvas: Canvas::new(crate::island::WIN_W, crate::island::WIN_H) });
         }
         let dock_here = if self.test { name == "HDMI-A-1" } else { name == PRIMARY };
         if dock_here && self.dock_surf.is_none() && std::env::var("MIST_UI_NO_DOCK").is_err() {
@@ -231,12 +273,43 @@ impl App {
     }
 
     pub fn animating(&self) -> bool {
-        self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE) || self.dock.animating() || self.dock_hide_at.is_some() || self.dock_show_at.is_some()
+        self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE) || self.dock.animating() || self.dock_hide_at.is_some() || self.dock_show_at.is_some() || self.island.animating()
     }
 
     // timers (dock hide 400 ms / reveal 80 ms) and animation frames
+    // once a second (and every animation frame): island timers, minute boundary, phone call timeout
+    pub fn slow_tick(&mut self) {
+        let (ringing, call) = { let s = self.phone.st.lock().unwrap(); (s.ringing(), s.call().is_some()) };
+        if self.island.tick(ringing, call) {
+            self.island_dirty = true;
+        }
+        if self.phone.tick() {
+            self.island_dirty = true;
+        }
+        let m = crate::data::now() / 60;
+        if m != self.last_minute {
+            self.last_minute = m;
+            self.island.minute();
+            self.island_dirty = true;
+            self.mark_all();
+        }
+        let mode = self.island.mode(ringing, call);
+        if self.island.timer_on() || (call && mode == "call") || (mode == "player" && self.island.playing()) {
+            self.island_dirty = true;
+        }
+        if mode == "player" && self.pos_tick.elapsed().as_secs() >= 5 {
+            self.pos_tick = Instant::now();
+            let _ = self.media_tx.send(crate::media::Cmd::Refresh);
+        }
+        if self.island.playing() && matches!(mode, "idle" | "track") {
+            self.island_dirty = true;
+        }
+    }
     pub fn tick(&mut self) {
         let now = Instant::now();
+        if self.island.animating() {
+            self.island_dirty = true;
+        }
         if self.dock_hide_at.map(|t| now >= t).unwrap_or(false) {
             self.dock_hide_at = None;
             if !self.dock.menu_open {
@@ -274,7 +347,273 @@ impl App {
         if self.popup.as_ref().map(|m| m.configured && m.dirty).unwrap_or(false) {
             self.draw_popup();
         }
+        if self.island_dirty && self.island_surf.as_ref().map(|i| i.configured).unwrap_or(false) {
+            self.draw_island();
+        }
     }
+
+    // ---------------------------------------------------------------- island
+    fn draw_island(&mut self) {
+        self.island_dirty = false;
+        let st = self.phone.st.lock().unwrap();
+        let (ringing, call) = (st.ringing(), st.call().is_some());
+        self.island.phone_name = st.name();
+        let Some(isf) = self.island_surf.as_mut() else { return };
+        let mut cx = crate::island::Ctx { t: &mut self.text, icons: &mut self.icons, imgs: &mut self.imgs, phone: &st, now: crate::data::now() };
+        self.island.draw(&mut isf.canvas, &mut cx, ringing, call);
+        drop(cx);
+        drop(st);
+        // input region: the shape (nothing while it hides under a fullscreen window)
+        let mode = self.island.mode(ringing, call);
+        let hidden = self.island.fullscreen && mode == "idle";
+        let w = self.island.w.cur;
+        let r = if hidden { (0, 0, 0, 0) } else { (((crate::island::WIN_W as f32 - w) / 2.0) as i32, self.island.y.cur.max(0.0) as i32, w.ceil() as i32, self.island.h.cur.ceil() as i32) };
+        if isf.input != Some(r) {
+            if let Ok(reg) = Region::new(&self.compositor) {
+                if r.2 > 0 {
+                    reg.add(r.0, r.1, r.2, r.3);
+                }
+                isf.layer.wl_surface().set_input_region(Some(reg.wl_region()));
+            }
+            isf.input = Some(r);
+        }
+        // the keyboard only while a reply is typed
+        if isf.focus_kbd != self.island.replying {
+            isf.focus_kbd = self.island.replying;
+            isf.layer.set_keyboard_interactivity(if self.island.replying { KeyboardInteractivity::OnDemand } else { KeyboardInteractivity::None });
+        }
+        Self::commit(&mut self.pool, &isf.layer, &isf.canvas);
+    }
+
+    fn island_hit(&self, x: f32, y: f32) -> Option<crate::island::Hit> {
+        self.island.hits.iter().rev().find(|h| x >= h.0 && x < h.0 + h.2 && y >= h.1 && y < h.1 + h.3).map(|h| h.4.clone())
+    }
+    fn island_in_shape(&self, x: f32, y: f32) -> bool {
+        let w = self.island.w.cur;
+        let x0 = (crate::island::WIN_W as f32 - w) / 2.0;
+        x >= x0 && x < x0 + w && y >= self.island.y.cur && y < self.island.y.cur + self.island.h.cur
+    }
+    fn island_mode(&self) -> &'static str {
+        let s = self.phone.st.lock().unwrap();
+        self.island.mode(s.ringing(), s.call().is_some())
+    }
+
+    fn island_pointer(&mut self, e: &PointerEvent) {
+        use crate::island::Hit as IH;
+        let (x, y) = (e.position.0 as f32, e.position.1 as f32);
+        let mode = self.island_mode();
+        match e.kind {
+            PointerEventKind::Enter { serial } => {
+                let shape = if mode == "idle" || mode == "glance" || self.island.ev.as_ref().map(|e| e.act != crate::island::Act::None).unwrap_or(false) { wp_cursor_shape_device_v1::Shape::Pointer } else { wp_cursor_shape_device_v1::Shape::Default };
+                self.set_cursor(serial, shape);
+                self.island.set_hover(true, mode);
+                self.island.hover_hit = self.island_hit(x, y);
+            }
+            PointerEventKind::Leave { .. } => {
+                self.island.set_hover(false, mode);
+                self.island.hover_hit = None;
+            }
+            PointerEventKind::Motion { .. } => {
+                let inside = self.island_in_shape(x, y);
+                self.island.set_hover(inside, mode);
+                self.island.hover_hit = self.island_hit(x, y);
+                if self.island.seek_drag.is_some() {
+                    let (a, b) = self.island.seek_track(self.island.w.to);
+                    self.island.seek_drag = Some(((x - a) / (b - a)).clamp(0.0, 1.0));
+                }
+            }
+            PointerEventKind::Press { button, .. } => {
+                if button == BTN_LEFT && self.island_hit(x, y) == Some(IH::Seek) {
+                    let (a, b) = self.island.seek_track(self.island.w.to);
+                    self.island.seek_drag = Some(((x - a) / (b - a)).clamp(0.0, 1.0));
+                }
+            }
+            PointerEventKind::Release { button, .. } => {
+                if let Some(f) = self.island.seek_drag.take() {
+                    if let Some(p) = self.island.player().cloned() {
+                        let _ = self.media_tx.send(crate::media::Cmd::Seek(p.bus.clone(), p.track_id.clone(), f as f64 * p.length));
+                    }
+                    self.island_dirty = true;
+                    return;
+                }
+                self.island_click(button, x, y, mode);
+            }
+            PointerEventKind::Axis { vertical, .. } => {
+                let dy = if vertical.discrete != 0 { vertical.discrete as f64 } else { vertical.absolute };
+                if dy != 0.0 {
+                    let up = dy < 0.0;
+                    let mut cmd = String::new();
+                    if self.island.audio.mute && up {
+                        cmd.push_str("wpctl set-mute @DEFAULT_AUDIO_SINK@ 0; ");
+                    }
+                    cmd.push_str(if up { "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+" } else { "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-" });
+                    sh(&cmd);
+                }
+            }
+        }
+        self.island_dirty = true;
+    }
+
+    fn island_click(&mut self, button: u32, x: f32, y: f32, mode: &str) {
+        use crate::island::Hit as IH;
+        if button == BTN_MIDDLE {
+            if let Some(p) = self.island.player().cloned() {
+                self.island.mine();
+                let _ = self.media_tx.send(crate::media::Cmd::Toggle(p.bus));
+            }
+            return;
+        }
+        if button == BTN_RIGHT {
+            if self.island.ev.is_some() || !self.island.queue.is_empty() {
+                self.island.clear_all();
+            } else if self.island.timer_on() {
+                self.island.timer_stop();
+            }
+            return;
+        }
+        if let Some(h) = self.island_hit(x, y) {
+            let p = self.island.player().cloned();
+            let note = { let s = self.phone.st.lock().unwrap(); self.island.ev.clone().and_then(|e| crate::island::phone_note(e.phone.as_ref(), &s)) };
+            match h {
+                IH::Ctl(c) => {
+                    if let Some(p) = p {
+                        self.island.mine();
+                        let cmd = match c {
+                            "prev" => crate::media::Cmd::Prev(p.bus),
+                            "next" => crate::media::Cmd::Next(p.bus),
+                            "play" => crate::media::Cmd::Toggle(p.bus),
+                            "shuffle" => crate::media::Cmd::Shuffle(p.bus, !p.shuffle.unwrap_or(false)),
+                            _ => crate::media::Cmd::Loop(p.bus, match p.loop_status.as_deref() { Some("None") => "Playlist", Some("Playlist") => "Track", _ => "None" }.into()),
+                        };
+                        let _ = self.media_tx.send(cmd);
+                    }
+                }
+                IH::Chip => self.island.next_player(),
+                IH::Seek | IH::Shell => {}
+                IH::CallAnswer => self.phone.answer(),
+                IH::CallHangup => self.phone.hangup(),
+                IH::CallMute => self.phone.tel("mute", None),
+                IH::CallAudio => self.phone.tel("pc", None),
+                IH::Keypad => self.island.keypad = !self.island.keypad,
+                IH::Key(k) => self.phone.tel("tones", Some(serde_json::json!(k))),
+                IH::NoteReply => {
+                    self.island.replying = true;
+                    self.island.reply.clear();
+                }
+                IH::NoteAction(a) => {
+                    if let Some(n) = note {
+                        self.phone.send("action", Some(serde_json::json!({ "id": n["id"], "action": a })));
+                        self.phone_done(&format!("wysłano · {a}"));
+                    }
+                }
+                IH::NoteDismiss => {
+                    if let Some(n) = note {
+                        self.phone.send("dismiss", Some(n["id"].clone()));
+                        self.phone_done("");
+                    }
+                }
+                IH::ReplySend => self.reply_send(),
+            }
+            return;
+        }
+        if !self.island_in_shape(x, y) {
+            return;
+        }
+        if mode == "idle" || mode == "glance" {
+            ipc(&["toggleOn", "calendar", PRIMARY]);
+        } else if mode != "player" && mode != "call" {
+            if let Some(e) = self.island.ev.clone() {
+                self.island_act(&e);
+            }
+            self.island.next();
+        }
+    }
+
+    fn island_act(&mut self, e: &crate::island::Ev) {
+        use crate::island::Act;
+        match &e.act {
+            Act::None => {}
+            Act::Nid(id, names, entry) => {
+                let _ = self.notif_tx.send(crate::notif::Cmd::Invoke(*id, "default".into()));
+                // the app's window (by class), else start the app
+                let names: Vec<String> = names.iter().filter(|n| !n.is_empty()).map(|n| n.to_lowercase()).collect();
+                let w = self.hypr.clients.iter().find(|c| {
+                    let cl = c.class.to_lowercase();
+                    !cl.is_empty() && names.iter().any(|n| cl == *n || cl.ends_with(&format!(".{n}")) || n.ends_with(&format!(".{cl}")) || n.replace(' ', "-") == cl)
+                });
+                if let Some(w) = w {
+                    focus_win(&w.address);
+                } else if let Some(en) = self.apps.entries.iter().find(|x| &x.id == entry) {
+                    launch(&en.exec.clone());
+                }
+            }
+            Act::Focus(a) => focus_win(&format!("0x{}", a.trim_start_matches("0x"))),
+            Act::Open(p) => spawn(&["xdg-open", p]),
+            Act::Popup(p) => ipc(&["toggleOn", p, PRIMARY]),
+            Act::TimerStop => self.island.timer_stop(),
+            Act::Phone(f) => self.phone.send(f, None),
+        }
+    }
+    fn phone_done(&mut self, msg: &str) {
+        self.island.replying = false;
+        if msg.is_empty() {
+            self.island.next();
+            return;
+        }
+        self.island.clear_ev();
+        let name = { let s = self.phone.st.lock().unwrap(); s.name() };
+        self.island.push(crate::island::Ev { view: "info", key: "phoneMsg".into(), prio: 2, dur: 2000, icon: "check".into(), color: Some(crate::theme::GREEN), title: if name.is_empty() { "Telefon".into() } else { name }, sub: msg.into(), value: -1, ..Default::default() });
+    }
+    fn reply_send(&mut self) {
+        let t = self.island.reply.trim().to_string();
+        let note = { let s = self.phone.st.lock().unwrap(); self.island.ev.clone().and_then(|e| crate::island::phone_note(e.phone.as_ref(), &s)) };
+        if let (false, Some(n)) = (t.is_empty(), note) {
+            self.phone.send("reply", Some(serde_json::json!({ "id": n["id"], "text": t })));
+            self.phone_done("odpowiedź wysłana");
+        }
+    }
+
+    // ---------------------------------------------------------------- IPC
+    fn on_ipc(&mut self, r: crate::ipc::Request) {
+        let a = |i: usize| r.args.get(i).cloned().unwrap_or_default();
+        let out: String = match (r.target.as_str(), r.func.as_str()) {
+            ("island", "show") => { self.island.push(crate::island::Ev { view: "info", prio: 2, dur: 3500, icon: a(0), color: Some(crate::theme::ACCENT), title: a(1), sub: a(2), value: -1, ..Default::default() }); String::new() }
+            ("island", "demo") => { self.island.demo(&a(0)); String::new() }
+            ("island", "timer") => { self.island.timer_start(a(0).parse().unwrap_or(0.0), &a(1)); String::new() }
+            ("island", "timerStop") => { self.island.timer_stop(); String::new() }
+            ("island", "dismiss") => { self.island.clear_all(); String::new() }
+            ("island", "click") => { if let Some(e) = self.island.ev.clone() { self.island_act(&e); self.island.next(); } String::new() }
+            ("island", "state") => {
+                let mode = self.island_mode();
+                serde_json::json!({ "mode": mode, "ev": self.island.ev.as_ref().map(|e| format!("{} {} {}", e.view, e.title, e.sub)), "queue": self.island.queue.len(), "timer": self.island.timer_left(), "expanded": self.island.expanded, "w": self.island.w.cur, "h": self.island.h.cur }).to_string()
+            }
+            ("island", "grab") => {
+                if let Some(i) = &self.island_surf { let _ = i.canvas.pm.save_png(a(0)); }
+                String::new()
+            }
+            ("notif", "dnd") => { let on = a(0) == "true" || a(0) == "1"; let _ = self.notif_tx.send(crate::notif::Cmd::Dnd(on)); self.st.dnd = on; self.mark_all(); String::new() }
+            ("notif", "clear") => { let _ = self.notif_tx.send(crate::notif::Cmd::Clear); String::new() }
+            ("notif", "invoke") => { let _ = self.notif_tx.send(crate::notif::Cmd::Invoke(a(0).parse().unwrap_or(0), if a(1).is_empty() { "default".into() } else { a(1) })); String::new() }
+            ("phone", "send") => { let v: serde_json::Value = serde_json::from_str(&a(0)).unwrap_or_default(); self.phone.send(v["c"].as_str().unwrap_or(""), v.get("a").cloned()); String::new() }
+            ("phone", "tel") => { let v: serde_json::Value = serde_json::from_str(&a(0)).unwrap_or_default(); self.phone.tel(v["c"].as_str().unwrap_or(""), v.get("a").cloned()); String::new() }
+            ("phone", "answer") => { self.phone.answer(); String::new() }
+            ("phone", "hangup") => { self.phone.hangup(); String::new() }
+            ("phone", "call") => { self.phone.call_number(&a(0)); String::new() }
+            ("mist", "media") => {
+                let ps = &self.island.players;
+                let p = ps.iter().find(|p| p.playing).or_else(|| ps.iter().find(|p| !p.title.is_empty())).or(ps.first()).cloned();
+                if let Some(p) = p {
+                    let _ = self.media_tx.send(match a(0).as_str() { "next" => crate::media::Cmd::Next(p.bus), "prev" => crate::media::Cmd::Prev(p.bus), _ => crate::media::Cmd::Toggle(p.bus) });
+                }
+                String::new()
+            }
+            ("ui", "ping") => "pong".into(),
+            _ => "unknown".into(),
+        };
+        let _ = r.reply.send(out);
+        self.island_dirty = true;
+    }
+
 
     fn commit(pool: &mut SlotPool, layer: &LayerSurface, canvas: &Canvas) {
         let (wi, hi) = (canvas.pm.width() as i32, canvas.pm.height() as i32);
@@ -535,6 +874,10 @@ impl App {
         }
         if self.dock_surf.as_ref().map(|d| d.layer.wl_surface() == &e.surface).unwrap_or(false) {
             self.dock_pointer(e);
+            return;
+        }
+        if self.island_surf.as_ref().map(|i| i.layer.wl_surface() == &e.surface).unwrap_or(false) {
+            self.island_pointer(e);
             return;
         }
         let Some(i) = self.bar_at(&e.surface) else { return };
@@ -825,6 +1168,9 @@ impl App {
             Msg::Hypr(h) => {
                 self.hypr = h;
                 self.dock_rebuild();
+                // only real fullscreen (mode 2) on the island's monitor hides the idle pill
+                let mon = self.hypr.monitors.iter().find(|m| m.1 == PRIMARY).map(|m| m.2);
+                self.island.fullscreen = self.hypr.clients.iter().any(|c| Some(c.ws_id) == mon && c.fullscreen == 2);
             }
             Msg::Net(n) => self.st.net = n,
             Msg::Bt(on, dev) => {
@@ -845,6 +1191,37 @@ impl App {
             Msg::Ui(p, s) => self.ui_popup = (p, s),
             Msg::Dnd(d) => self.st.dnd = d,
             Msg::Tray(t) => self.tray_items = t,
+            Msg::Ipc(r) => self.on_ipc(r),
+            Msg::Note(n) => {
+                let notes = self.phone.st.lock().unwrap().notes();
+                self.island.on_note(&n, &self.apps, &notes);
+            }
+            Msg::Phone2(ev) => {
+                let (call, bat) = { let s = self.phone.st.lock().unwrap(); (s.call(), s.battery()) };
+                let key = call.as_ref().map(|c| format!("{}|{}", c["path"], c["state"])).unwrap_or_default();
+                if key != self.last_call_key {
+                    self.last_call_key = key;
+                    self.island.on_call(call.as_ref());
+                }
+                if let Some(ev) = ev {
+                    self.island.on_phone_event(&ev, bat);
+                }
+            }
+            Msg::Players(ps) => self.island.set_players(ps),
+            Msg::Data(name, v) => match name.as_str() {
+                "weather" => self.island.on_weather(v),
+                "calendar" => self.island.calendar = v,
+                _ => {}
+            },
+            Msg::HyprEv(n, d) => {
+                let active = self.hypr.clients.iter().find(|c| c.focus == 0).map(|c| c.address.clone()).unwrap_or_default();
+                self.island.on_hypr(&n, &d, &self.apps, &self.hypr.clients, &active);
+            }
+            Msg::Audio(a) => self.island.on_audio(a),
+            Msg::BtDevs(d) => { let on = self.st.bt_on; self.island.on_bt(on, Some(d)); }
+            Msg::Profile(p) => self.island.on_profile(p),
+            Msg::Sys(v) => self.island.on_sys(&v),
+            Msg::NmLine(l) => self.island.on_nm(&l),
             Msg::Pins => {
                 self.dock.load_pins();
                 self.dock.forget_tiles();
@@ -852,6 +1229,7 @@ impl App {
             }
         }
         self.mark_all();
+        self.island_dirty = true;
     }
 }
 
@@ -889,6 +1267,14 @@ impl LayerShellHandler for App {
             b.dirty = true;
             return;
         }
+        if let Some(i) = self.island_surf.as_mut() {
+            if &i.layer == l {
+                i.configured = true;
+                i.input = None;
+                self.island_dirty = true;
+                return;
+            }
+        }
         if let Some(d) = self.dock_surf.as_mut() {
             if &d.layer == l {
                 if c.new_size.0 > 0 {
@@ -910,7 +1296,7 @@ impl LayerShellHandler for App {
                 if let Some(vp) = &m.viewport {
                     vp.set_destination(cw, ch);
                     if let Ok((buf, data)) = self.pool.create_buffer(1, 1, 4, wl_shm::Format::Argb8888) {
-                        data.copy_from_slice(&[0, 0, 0, 0]);
+                        data.fill(0);
                         let s = m.catcher.wl_surface();
                         let _ = buf.attach_to(s);
                         s.damage_buffer(0, 0, 1, 1);
@@ -930,6 +1316,9 @@ impl SeatHandler for App {
         if cap == Capability::Pointer && self.pointer.is_none() {
             self.pointer = self.seats.get_pointer(qh, &seat).ok();
         }
+        if cap == Capability::Keyboard && self.keyboard.is_none() {
+            self.keyboard = self.seats.get_keyboard(qh, &seat, None).ok();
+        }
     }
     fn remove_capability(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat, cap: Capability) {
         if cap == Capability::Pointer {
@@ -948,6 +1337,33 @@ impl PointerHandler for App {
         }
     }
 }
+impl KeyboardHandler for App {
+    fn enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: &wl_surface::WlSurface, _: u32, _: &[u32], _: &[Keysym]) {}
+    fn leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: &wl_surface::WlSurface, _: u32) {}
+    fn press_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, ev: KeyEvent) {
+        if !self.island.replying {
+            return;
+        }
+        match ev.keysym {
+            Keysym::Return | Keysym::KP_Enter => self.reply_send(),
+            Keysym::Escape => self.island.replying = false,
+            Keysym::BackSpace => { self.island.reply.pop(); }
+            _ => {
+                if let Some(t) = ev.utf8 {
+                    if !t.chars().any(|c| c.is_control()) {
+                        self.island.reply.push_str(&t);
+                    }
+                }
+            }
+        }
+        self.island_dirty = true;
+    }
+    fn repeat_key(&mut self, c: &Connection, q: &QueueHandle<Self>, k: &wl_keyboard::WlKeyboard, s: u32, ev: KeyEvent) {
+        self.press_key(c, q, k, s, ev);
+    }
+    fn release_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, _: KeyEvent) {}
+    fn update_modifiers(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, _: Modifiers, _: RawModifiers, _: u32) {}
+}
 impl ShmHandler for App {
     fn shm_state(&mut self) -> &mut Shm {
         &mut self.shm
@@ -964,6 +1380,7 @@ delegate_output!(App);
 delegate_shm!(App);
 delegate_seat!(App);
 delegate_pointer!(App);
+delegate_keyboard!(App);
 delegate_layer!(App);
 delegate_registry!(App);
 wayland_client::delegate_noop!(App: ignore wp_cursor_shape_manager_v1::WpCursorShapeManagerV1);

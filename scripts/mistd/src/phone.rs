@@ -654,8 +654,9 @@ fn mist_cmd(a: &[&str]) -> String {
     format!("{}/.local/bin/mist-qs ipc -p {}/.config/quickshell/mist call {}", home(), home(), a.join(" "))
 }
 
+// the island is native (native/mist-ui): its IPC client
 fn show(icon: &str, title: &str, sub: &str) -> String {
-    mist_cmd(&["island", "show", icon, &format!("'{}'", title), &format!("'{}'", sub)])
+    format!("{}/.local/bin/mist-ui-bin msg island show {} '{}' '{}'", home(), icon, title, sub)
 }
 
 fn pc_commands(did: &str) -> Vec<(&'static str, &'static str, String)> {

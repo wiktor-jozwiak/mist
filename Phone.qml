@@ -3,8 +3,9 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// The phone (KDE Connect, kdeconnectd is the backend), shared by Start, the top bar and the Dynamic Island.
-// mistd phone (scripts/mistd) reads the daemon only after its D-Bus signals (no polling) and takes commands on stdin.
+// The phone (KDE Connect, kdeconnectd is the backend), shared by Start, the phone panel and the Control centre.
+// Bridge: native/mist-ui (phone.rs) runs mistd phone + mistd calls and follows the calls; this reads its state
+// ($XDG_RUNTIME_DIR/mist/phone-state.json) and sends commands over `mist-ui-bin msg phone ...`.
 // The full view is PhonePanel.qml (Ui popup "phone"). Notifications, calls and SMS of the phone reach the Island on their own: kdeconnectd posts them as desktop
 // notifications (mistd notify). Media playing on the phone is an MPRIS player (mprisremote plugin),
 // clipboard sync is the clipboard plugin: nothing extra here.
@@ -66,13 +67,9 @@ Singleton {
     // {k: conn|disc|pairreq|paired|unpaired|plug|full|photo|shot|call|done|err, name, text, ...} (call: what = ringing|talking|missedCall, who, number)
     signal event(var e)
 
-    function send(c, a) { if (watch.running) watch.write(JSON.stringify(a === undefined ? { c: c } : { c: c, a: a }) + "\n") }
+    function msg(args) { Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/mist-ui-bin", "msg", "phone"].concat(args)) }
+    function send(c, a) { msg(["send", JSON.stringify(a === undefined ? { c: c } : { c: c, a: a })]) }
     function ring() { send("ring") }
-    // state for the native bar (native/mist-ui): $XDG_RUNTIME_DIR/mist/phone.json
-    readonly property string barState: JSON.stringify({ online: online, pair: pairRequested, battery: battery, charging: charging })
-    onBarStateChanged: barF.setText(barState)
-    FileView { id: barF; path: Quickshell.env("XDG_RUNTIME_DIR") + "/mist/phone.json"; printErrors: false }
-    Component.onCompleted: { Quickshell.execDetached(["mkdir", "-p", Quickshell.env("XDG_RUNTIME_DIR") + "/mist"]); Qt.callLater(() => barF.setText(barState)) }
     function ping() { send("ping") }
     function sendClipboard() { send("clip") }
     function browse() { send("browse") }
@@ -92,24 +89,21 @@ Singleton {
     function batteryIcon() { return charging ? "charging" : battery >= 0 && battery <= 15 ? "battLow" : "battery" }
     function batteryColor() { return charging ? Theme.green : battery >= 0 && battery <= 15 ? Theme.danger : battery <= 30 ? Theme.yellow : Theme.t1 }
 
-    Process {
-        id: watch; running: true; stdinEnabled: true
-        command: ["setpriv", "--pdeathsig", "TERM", Quickshell.shellDir + "/scripts/bin/mistd", "phone"]
-        stdout: SplitParser {
-            onRead: l => {
-                let o
-                try { o = JSON.parse(l) } catch (e) { return }
-                if (o.t === "state") { root.ok = o.ok; root.devs = o.devs || []; root.main = o.main || null }
-                else if (o.t === "sms") root.threads = o.threads || []
-                else if (o.t === "conv") { const c = Object.assign({}, root.convs); c[o.thread] = o.msgs || []; root.convs = c }
-                else if (o.t === "contacts") root.contacts = o.list || []
-                else if (o.t === "adb") root.adb = o
-                else if (o.t === "ev") { if (o.k === "call") root.kdeCall(o); root.event(o) }
-            }
+    FileView {
+        path: Quickshell.env("XDG_RUNTIME_DIR") + "/mist/phone-state.json"
+        watchChanges: true; printErrors: false
+        onFileChanged: reload()
+        onLoaded: {
+            let o
+            try { o = JSON.parse(text()) } catch (e) { return }
+            root.ok = !!o.ok; root.devs = o.devs || []; root.main = o.main || null
+            root.threads = o.threads || []; root.convs = o.convs || ({}); root.contacts = o.contacts || []
+            root.adb = o.adb || ({ ok: false, have: false })
+            root.hfp = !!o.hfp; root.btCalls = o.btCalls || []
+            root.callAudio = o.callAudio || ({ on: false, pc: true, mute: false, err: "" })
+            root.kcCall = o.kcCall || null
         }
-        onExited: restart.restart()
     }
-    Timer { id: restart; interval: 5000; onTriggered: watch.running = true }
 
     // ------------------------------------------------------------ calls
     // Over Bluetooth (the computer is the phone's hands-free kit, mistd calls + PipeWire telephony):
@@ -130,51 +124,12 @@ Singleton {
     // KDE Connect: ringing / talking / missedCall, never the end of a call. ADB (mistd phone call_watch): every state
     // change of the phone's calls, incoming and outgoing (ringing / dialing / talking / held / idle): a call it
     // follows is not dropped by KDE Connect's events.
-    function kdeCall(o) {
-        if (o.src === "adb") {
-            const st = { ringing: "incoming", talking: "active", dialing: "alerting", held: "held" }[o.what]
-            if (!st) { kcCall = null; kcT.stop(); return }
-            const keep = kcCall && kcCall.adb && (kcCall.path === o.id || kcCall.pending) ? kcCall : null
-            kcCall = { state: st, bt: false, adb: true, path: o.id || "", since: o.since || 0,
-                       who: o.who && o.who !== "Nieznany numer" ? o.who : keep ? keep.who : (o.who || "Nieznany numer"),
-                       number: o.number || (keep ? keep.number : "") }
-            kcT.stop()
-            return
-        }
-        if (kcCall && kcCall.adb && !kcCall.pending) {    // ADB already follows it: KDE Connect may only name the caller
-            if (o.what === "ringing" && kcCall.who === "Nieznany numer" && o.who) kcCall = Object.assign({}, kcCall, { who: o.who, number: o.number || kcCall.number })
-            return
-        }
-        if (o.what === "ringing") { kcCall = { state: "incoming", bt: false, who: o.who || o.number || "Nieznany numer", number: o.number || "", since: 0 }; kcT.restart() }
-        else kcCall = null                               // talking / missed: KDE Connect never says when it ends
-    }
-    Timer { id: kcT; interval: 45000; onTriggered: if (root.kcCall && (!root.kcCall.adb || root.kcCall.pending)) root.kcCall = null }
-    function answer() { if (call && call.bt) tel("answer", call.path); else { send("answer"); if (!(kcCall && kcCall.adb)) kcCall = null } }
-    function hangup() { if (call && call.bt) tel("hangup", call.path); else { send("hangup"); if (!(kcCall && kcCall.adb) || kcCall.pending) kcCall = null } }
-    function callNumber(n) {
-        if (hfp) { tel("dial", (n || "").replace(/[^\d+*#]/g, "")); return }
-        send("call", n)
-        if (adbOk && !call) {                            // shown at once; the phone's Telecom log takes over
-            kcCall = { state: "alerting", bt: false, adb: true, pending: true, path: "", since: 0, who: contactName(n) || n, number: n }
-            kcT.restart()
-        }
-    }
+    function kdeCall(o) {}                               // native (phone.rs) follows the calls
+    function answer() { msg(["answer"]) }
+    function hangup() { msg(["hangup"]) }
+    function callNumber(n) { msg(["call", n]) }
     function callMute() { tel("mute") }
     function callAudioToggle() { tel("pc") }                // through the computer / back to the phone
     function tones(t) { tel("tones", t) }
-    function tel(c, a) { if (calls.running) calls.write(JSON.stringify(a === undefined ? { c: c } : { c: c, a: a }) + "\n") }
-    Process {
-        id: calls; running: true; stdinEnabled: true
-        command: ["setpriv", "--pdeathsig", "TERM", Quickshell.shellDir + "/scripts/bin/mistd", "calls"]
-        stdout: SplitParser {
-            onRead: l => {
-                let o
-                try { o = JSON.parse(l) } catch (e) { return }
-                if (o.t === "tel") { root.hfp = (o.ags || []).length > 0; root.btCalls = o.calls || [] }
-                else if (o.t === "audio") root.callAudio = o
-            }
-        }
-        onExited: callsRestart.restart()
-    }
-    Timer { id: callsRestart; interval: 5000; onTriggered: calls.running = true }
+    function tel(c, a) { msg(["tel", JSON.stringify(a === undefined ? { c: c } : { c: c, a: a })]) }
 }
