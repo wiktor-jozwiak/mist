@@ -16,6 +16,8 @@ pub enum Act {
     Exec(Vec<String>),
     // open another popup instead
     Toggle(&'static str),
+    // the screenshot toolbar: capture now
+    Capture,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -65,6 +67,9 @@ pub trait Pane {
         Act::None
     }
     fn as_switcher(&mut self) -> Option<&mut crate::switcher::Switcher> {
+        None
+    }
+    fn as_shot(&mut self) -> Option<&mut crate::shot::Toolbar> {
         None
     }
     // what the pointer should look like (Pointer over something clickable)

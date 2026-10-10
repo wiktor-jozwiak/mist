@@ -61,7 +61,7 @@ PanelWindow {
             return isFinite(v) ? ("" + Math.round(v * 1e8) / 1e8).replace(".", ",") : null
         } catch (e) { return null }
     }
-    function mist(args) { return [Quickshell.env("HOME") + "/.local/bin/mist-qs", "-p", Quickshell.shellDir, "ipc", "call"].concat(args) }
+    function mist(args) { return [Quickshell.env("HOME") + "/.local/bin/mist-ui-bin", "msg"].concat(args) }
     readonly property var commands: [
         { k: "zablokuj lock ekran", title: "Zablokuj ekran", icon: "lock", cmd: [Quickshell.env("HOME") + "/.local/bin/mist-ui-bin", "lock"] },
         { k: "wylacz uruchom ponownie restart reboot shutdown uspij sleep wyloguj logout sesja", title: "Wyłącz / uruchom ponownie…", icon: "power", cmd: mist(["mist", "toggle", "session"]) },

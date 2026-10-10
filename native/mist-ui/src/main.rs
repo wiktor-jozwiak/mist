@@ -33,6 +33,7 @@ mod calendar;
 mod notifcenter;
 mod switcher;
 mod clipboard;
+mod shot;
 mod wxcard;
 #[path = "../../common/astro.rs"]
 mod astro;

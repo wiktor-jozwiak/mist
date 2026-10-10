@@ -161,6 +161,8 @@ pub struct App {
     notif_hidden: std::collections::HashMap<String, i64>,
     ctrl: bool,
     clip_watch: Option<std::process::Child>,
+    shot_opts: (&'static str, u32, bool),
+    thumb: Option<(crate::shot::Thumb, LayerSurface, bool, bool, Canvas, Instant)>,
     clip_retry: Instant,
     desk_serial: u32,
     desk_cursor: &'static str,
@@ -226,6 +228,8 @@ impl App {
             notif_hidden: std::collections::HashMap::new(),
             ctrl: false,
             clip_watch: None,
+            shot_opts: ("region", 0, true),
+            thumb: None,
             clip_retry: Instant::now(),
             desk_serial: 0,
             desk_cursor: "",
@@ -359,6 +363,10 @@ impl App {
 
     pub fn slow_tick(&mut self) {
         self.idle.reap();
+        // the screenshot thumbnail goes after 6 s (not while hovered)
+        if self.thumb.as_ref().map(|t| t.0.ptr.0 < 0.0 && t.5.elapsed().as_secs() >= 6).unwrap_or(false) {
+            self.thumb = None;
+        }
         // the clipboard history watcher (wl-paste --watch mistd clipstore), restarted when it exits
         if !self.test && std::env::var("MIST_UI_NO_SERVICES").is_err() {
             let dead = self.clip_watch.as_mut().map(|c| matches!(c.try_wait(), Ok(Some(_)))).unwrap_or(true);
@@ -488,6 +496,7 @@ impl App {
         self.draw_desk();
         self.draw_polkit();
         self.draw_pane();
+        self.draw_thumb();
     }
 
     // ---------------------------------------------------------------- popups (Ui.qml)
@@ -593,6 +602,14 @@ impl App {
                     p.dirty = true;
                 }
             }
+            Act::Capture => {
+                let o = self.pane.as_mut().and_then(|p| p.p.as_shot()).map(|t| (t.o.mode, t.o.delay, t.o.copy));
+                self.pane_close();
+                if let Some(o) = o {
+                    self.shot_opts = o;
+                    crate::shot::capture(&crate::shot::Opts { mode: o.0, delay: o.1, copy: o.2 }, self.tx.clone());
+                }
+            }
             Act::Toggle(name) => {
                 let scr = self.pane.as_ref().map(|p| p.screen.clone()).unwrap_or_default();
                 self.ui_toggle(name, &scr);
@@ -639,6 +656,36 @@ impl App {
         let hand = p.p.hand();
         self.desk_cursor(if hand { "hand" } else { "" });
         self.pane_act(a);
+    }
+
+    // ---------------------------------------------------------------- the screenshot thumbnail
+    fn thumb_show(&mut self, path: String) {
+        self.imgs.forget(&path);
+        let ih = self.imgs.get(&path, 480, &mut self.icons).map(|p| (224.0 * p.height() as f32 / p.width().max(1) as f32).min(150.0)).unwrap_or(120.0);
+        let th = crate::shot::Thumb { path, copy: self.shot_opts.2, ptr: (-1.0, -1.0), img_h: ih };
+        let outs = self.outs();
+        let scr = self.focused_screen();
+        let Some((o, _)) = outs.iter().find(|(_, n)| *n == scr).or(outs.first()).cloned() else { return };
+        self.thumb = None;
+        let surface = self.compositor.create_surface(&self.qh);
+        let layer = self.layer_shell.create_layer_surface(&self.qh, surface, Layer::Overlay, Some("mist-popup"), Some(&o));
+        layer.set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
+        layer.set_margin(0, 24, 24, 0);
+        layer.set_size(crate::shot::Thumb::W, th.height());
+        layer.set_exclusive_zone(-1);
+        layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+        layer.commit();
+        let (w, h) = (crate::shot::Thumb::W, th.height());
+        self.thumb = Some((th, layer, false, true, Canvas::new(w, h), Instant::now()));
+    }
+    fn draw_thumb(&mut self) {
+        let Some(t) = self.thumb.as_mut() else { return };
+        if !t.2 || !t.3 {
+            return;
+        }
+        t.3 = false;
+        t.0.paint(&mut t.4, &mut self.text, &mut self.imgs, &mut self.icons);
+        Self::commit(&mut self.pool, &t.1, &t.4);
     }
 
     // ---------------------------------------------------------------- polkit sheet
@@ -1127,6 +1174,28 @@ impl App {
                 String::new()
             }
             ("ui", "popup") => self.popup_name(),
+            ("shot", "toolbar") => {
+                if self.pane.as_ref().map(|p| p.p.name() == "shot").unwrap_or(false) {
+                    self.pane_close();
+                } else {
+                    let o = self.shot_opts;
+                    let scr = self.focused_screen();
+                    self.pane_open_box(Box::new(crate::shot::Toolbar::new(crate::shot::Opts { mode: o.0, delay: o.1, copy: o.2 })), &scr);
+                }
+                String::new()
+            }
+            // test hook: the thumbnail for an existing picture
+            ("shot", "thumb") => {
+                self.thumb_show(a(0));
+                String::new()
+            }
+            ("shot", m @ ("screen" | "window" | "region")) => {
+                let m: &'static str = match m { "screen" => "screen", "window" => "window", _ => "region" };
+                self.pane_close();
+                self.shot_opts.0 = m;
+                crate::shot::capture(&crate::shot::Opts { mode: m, delay: self.shot_opts.1, copy: self.shot_opts.2 }, self.tx.clone());
+                String::new()
+            }
             ("switcher", "next") => {
                 self.switcher_step(1);
                 String::new()
@@ -1154,7 +1223,7 @@ impl App {
             }
             ("ui", "stats") => DRAWS.with(|d| format!("{:?} fades {} dock {} hide {} show {} island {} wall {} desk {} {}", d.borrow(), self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE), self.dock.animating(), self.dock_hide_at.is_some(), self.dock_show_at.is_some(), self.island.animating(), self.wall.busy(), self.desk.fx.running(), self.desk.wx.fx.running())),
             // not native yet: Quickshell's IPC
-            (t, f) if matches!(t, "mist" | "snap" | "shot") => {
+            (t, f) if matches!(t, "mist" | "snap") => {
                 let qs = format!("{}/.local/bin/mist-qs", home());
                 let dir = format!("{}/.config/quickshell/mist", home());
                 let mut v: Vec<String> = vec![qs, "-p".into(), dir, "ipc".into(), "call".into(), t.into(), f.into()];
@@ -1439,6 +1508,26 @@ impl App {
         }
         if self.pane.as_ref().map(|p| p.layer.wl_surface() == &e.surface).unwrap_or(false) {
             self.pane_pointer(e);
+            return;
+        }
+        if self.thumb.as_ref().map(|t| t.1.wl_surface() == &e.surface).unwrap_or(false) {
+            let t = self.thumb.as_mut().unwrap();
+            t.0.ptr = (e.position.0 as f32, e.position.1 as f32);
+            t.3 = true;
+            t.5 = Instant::now(); // hovered: stays
+            match e.kind {
+                PointerEventKind::Enter { serial } => self.set_cursor(serial, wp_cursor_shape_device_v1::Shape::Pointer),
+                PointerEventKind::Leave { .. } => t.0.ptr = (-1.0, -1.0),
+                PointerEventKind::Release { button, .. } if button == BTN_LEFT => {
+                    let cmd = t.0.click();
+                    self.thumb = None;
+                    if let Some(c) = cmd {
+                        let v: Vec<&str> = c.iter().map(|s| s.as_str()).collect();
+                        spawn(&v);
+                    }
+                }
+                _ => {}
+            }
             return;
         }
         if self.polkit.as_ref().map(|p| p.1.wl_surface() == &e.surface).unwrap_or(false) {
@@ -1790,6 +1879,7 @@ impl App {
             Msg::Lock => "Lock",
             Msg::IdleCfg => "IdleCfg",
             Msg::Polkit(..) => "Polkit",
+            Msg::Shot(..) => "Shot",
         };
         DRAWS.with(|d| *d.borrow_mut().entry(k).or_insert(0) += 1);
         match m {
@@ -1827,6 +1917,7 @@ impl App {
             }
             Msg::Lock => self.idle.lock(None),
             Msg::Polkit(ev) => self.on_polkit(ev),
+            Msg::Shot(f) => self.thumb_show(f),
             Msg::IdleCfg => {
                 if self.idle.changed() {
                     if let Some(s) = self.seat.clone() {
@@ -1931,6 +2022,13 @@ impl LayerShellHandler for App {
     fn configure(&mut self, _: &Connection, _: &QueueHandle<Self>, l: &LayerSurface, c: LayerSurfaceConfigure, _: u32) {
         if self.wall.configure(l, c.new_size.0, c.new_size.1) {
             return;
+        }
+        if let Some(t) = self.thumb.as_mut() {
+            if &t.1 == l {
+                t.2 = true;
+                t.3 = true;
+                return;
+            }
         }
         if let Some(p) = self.pane.as_mut() {
             if &p.layer == l {
