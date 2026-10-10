@@ -26,6 +26,7 @@ pub enum Ptr {
 
 pub struct Ctx<'a> {
     pub t: &'a mut Text,
+    pub cal: &'a serde_json::Value,
 }
 
 pub trait Pane {
@@ -55,11 +56,12 @@ pub trait Pane {
 
 // the popups that are native now (the rest are forwarded to Quickshell)
 pub fn native(name: &str) -> bool {
-    matches!(name, "session")
+    matches!(name, "session" | "calendar")
 }
 pub fn make(name: &str, _page: &str) -> Option<Box<dyn Pane>> {
     match name {
         "session" => Some(Box::new(crate::session::Session::new())),
+        "calendar" => Some(Box::new(crate::calendar::Calendar::new())),
         _ => None,
     }
 }

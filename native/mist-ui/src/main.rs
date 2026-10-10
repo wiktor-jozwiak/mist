@@ -29,6 +29,7 @@ mod idle;
 mod polkit;
 mod pane;
 mod session;
+mod calendar;
 mod wxcard;
 #[path = "../../common/astro.rs"]
 mod astro;

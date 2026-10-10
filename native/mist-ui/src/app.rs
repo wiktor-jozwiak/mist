@@ -546,7 +546,7 @@ impl App {
         }
         p.dirty = false;
         let mut c = std::mem::replace(&mut p.canvas, Canvas::new(1, 1));
-        let mut cx = crate::pane::Ctx { t: &mut self.text };
+        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar };
         p.p.paint(&mut c, &mut cx);
         Self::commit(&mut self.pool, &p.layer, &c);
         p.canvas = c;
@@ -574,7 +574,7 @@ impl App {
             }
         };
         let Some(p) = self.pane.as_mut() else { return };
-        let mut cx = crate::pane::Ctx { t: &mut self.text };
+        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar };
         let a = p.p.pointer(ev, x, y, &mut cx);
         let hand = p.p.hand();
         self.desk_cursor(if hand { "hand" } else { "" });
@@ -1978,7 +1978,7 @@ impl KeyboardHandler for App {
             return;
         }
         if let Some(p) = self.pane.as_mut() {
-            let mut cx = crate::pane::Ctx { t: &mut self.text };
+            let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar };
             let a = p.p.key(&ev, &mut cx);
             self.pane_act(a);
             return;

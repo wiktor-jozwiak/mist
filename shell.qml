@@ -29,7 +29,6 @@ ShellRoot {
             Scope {
                 id: s
                 required property var modelData
-                LazyLoader { active: Ui.popup === "calendar" && Ui.screenName === s.modelData.name; Calendar { modelData: s.modelData } }
                 LazyLoader { active: Ui.popup === "start" && Ui.screenName === s.modelData.name; Start { modelData: s.modelData } }
                 LazyLoader { active: Ui.popup === "phone" && Ui.screenName === s.modelData.name; PhonePanel { modelData: s.modelData } }
                 LazyLoader { active: (Ui.popup === "spotlight" || Ui.popup === "emoji") && Ui.screenName === s.modelData.name; Spotlight { modelData: s.modelData } }
