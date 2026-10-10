@@ -508,6 +508,39 @@ impl App {
     fn pane_open(&mut self, name: &str, page: &str, scr: &str) {
         self.pane = None;
         let Some(p) = crate::pane::make(name, page) else { return };
+        self.pane_open_box(p, scr);
+    }
+    // Cmd+Tab: open on the focused monitor, or step when open
+    fn switcher_step(&mut self, d: i32) {
+        if let Some(sw) = self.pane.as_mut().and_then(|p| p.p.as_switcher()) {
+            sw.step(d);
+            self.pane.as_mut().unwrap().dirty = true;
+            return;
+        }
+        let mut cs = self.hypr.clients.clone();
+        cs.retain(|c| !c.class.is_empty());
+        cs.sort_by_key(|c| c.focus);
+        let mut apps: Vec<crate::switcher::App> = Vec::new();
+        for c in cs {
+            match apps.iter_mut().find(|a| a.cls == c.class) {
+                Some(a) => a.wins.push((c.address.clone(), c.ws_name.clone())),
+                None => {
+                    let e = self.apps.lookup(&c.class);
+                    apps.push(crate::switcher::App { cls: c.class.clone(), name: e.map(|e| e.name.clone()).unwrap_or(c.class.clone()), icon: e.map(|e| e.icon.clone()).unwrap_or(c.class.clone()), wins: vec![(c.address.clone(), c.ws_name.clone())] });
+                }
+            }
+        }
+        if apps.is_empty() {
+            return;
+        }
+        if !self.ui_popup.0.is_empty() {
+            ipc(&["close"]);
+        }
+        let scr = self.focused_screen();
+        self.pane_open_box(Box::new(crate::switcher::Switcher::new(apps, d)), &scr);
+    }
+    fn pane_open_box(&mut self, p: Box<dyn crate::pane::Pane>, scr: &str) {
+        self.pane = None;
         let outs = self.outs();
         let Some((o, sname)) = outs.iter().find(|(_, n)| n == scr).or(outs.first()).cloned() else { return };
         let surface = self.compositor.create_surface(&self.qh);
@@ -1080,6 +1113,14 @@ impl App {
                 String::new()
             }
             ("ui", "popup") => self.popup_name(),
+            ("switcher", "next") => {
+                self.switcher_step(1);
+                String::new()
+            }
+            ("switcher", "prev") => {
+                self.switcher_step(-1);
+                String::new()
+            }
             ("lock", "lock") => {
                 self.idle.lock(None);
                 String::new()
@@ -1099,7 +1140,7 @@ impl App {
             }
             ("ui", "stats") => DRAWS.with(|d| format!("{:?} fades {} dock {} hide {} show {} island {} wall {} desk {} {}", d.borrow(), self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE), self.dock.animating(), self.dock_hide_at.is_some(), self.dock_show_at.is_some(), self.island.animating(), self.wall.busy(), self.desk.fx.running(), self.desk.wx.fx.running())),
             // not native yet: Quickshell's IPC
-            (t, f) if matches!(t, "mist" | "switcher" | "snap" | "clipboard" | "shot") => {
+            (t, f) if matches!(t, "mist" | "snap" | "clipboard" | "shot") => {
                 let qs = format!("{}/.local/bin/mist-qs", home());
                 let dir = format!("{}/.config/quickshell/mist", home());
                 let mut v: Vec<String> = vec![qs, "-p".into(), dir, "ipc".into(), "call".into(), t.into(), f.into()];
@@ -2023,7 +2064,12 @@ impl KeyboardHandler for App {
     fn repeat_key(&mut self, c: &Connection, q: &QueueHandle<Self>, k: &wl_keyboard::WlKeyboard, s: u32, ev: KeyEvent) {
         self.press_key(c, q, k, s, ev);
     }
-    fn release_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, _: KeyEvent) {}
+    fn release_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, ev: KeyEvent) {
+        if let Some(p) = self.pane.as_mut() {
+            let a = p.p.key_release(&ev);
+            self.pane_act(a);
+        }
+    }
     fn update_modifiers(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, _: Modifiers, _: RawModifiers, _: u32) {}
 }
 impl ShmHandler for App {

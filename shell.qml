@@ -18,7 +18,6 @@ ShellRoot {
     Snap { id: snapper }
     // lock (mist-ui-bin lock), idle and the polkit agent: native (mist-ui)
     // macOS-style overlays (single instance, follow the focused monitor)
-    Switcher {}
     Clipboard {}
     Shot {}
 

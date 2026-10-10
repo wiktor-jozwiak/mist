@@ -60,6 +60,12 @@ pub trait Pane {
     fn timer(&mut self) -> Act {
         Act::None
     }
+    fn key_release(&mut self, _ev: &KeyEvent) -> Act {
+        Act::None
+    }
+    fn as_switcher(&mut self) -> Option<&mut crate::switcher::Switcher> {
+        None
+    }
     // what the pointer should look like (Pointer over something clickable)
     fn hand(&self) -> bool {
         false
