@@ -12,7 +12,7 @@ ShellRoot {
     // wallpaper: the photo or the animated scene chosen in ~/.config/mist/wallpaper.json
     // wallpaper: native (mist-ui draws the photo, mist-wall the animated scene)
     // top bar: native now (native/mist-ui, drawn on the CPU); TopBar.qml stays for reference / fallback
-    Variants { model: primary; Desktop {} }
+    // desktop (clock, cards, weather sky): native (mist-ui + mist-wall)
     // Dynamic Island: native now (native/mist-ui island.rs), with the notification server, the phone and MPRIS
     // dock: native now (native/mist-ui dock.rs); Dock.qml stays for reference / fallback
     Snap { id: snapper }
@@ -70,10 +70,6 @@ ShellRoot {
         function snapAssistPick(i: int): void { snapper.assistPick(snapper.assistWins[i]) }
         function snapFly(addr: string): void { snapper.openFly(addr, 900, 80, true) }
         function snapClose(): void { snapper.endAssist(); snapper.closeFly() }
-        // diagnostics: sky auto|fast|off, grab <png> (the weather card as an image)
-        function perf(key: string, value: string): void { if (key === "sky") Ui.dbgSky = value; else if (key === "grab") Ui.dbgGrab("weather", value); else if (key === "dock") Ui.dbgDock = value === "on"; else if (key === "grabdock") Ui.dbgGrab("dock", value) }
-        // windows per monitor and how much of each monitor they hide (Cover.qml)
-        function cover(): string { return JSON.stringify(Quickshell.screens.map(s => [s.name, Cover.wins[s.name], Cover.frac(s.name, s.x, s.y, s.width, s.height), Cover.monHidden(s)])) }
         function debug(): string { return JSON.stringify(Hyprland.monitors.values.map(m => [m.name, m.activeWorkspace ? m.activeWorkspace.id : -1, m.activeWorkspace ? m.activeWorkspace.toplevels.values.length : -1, Hyprland.toplevels.values.filter(t => t.workspace && m.activeWorkspace && t.workspace.id === m.activeWorkspace.id).length])) }
     }
 }

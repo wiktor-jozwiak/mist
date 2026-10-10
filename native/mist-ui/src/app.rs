@@ -141,6 +141,9 @@ pub struct App {
     pub qh: QueueHandle<App>,
     pub test: bool,
     pub wall: crate::wall::Wall,
+    pub desk: crate::desktop::Desk,
+    desk_serial: u32,
+    desk_cursor: &'static str,
 }
 
 impl App {
@@ -192,6 +195,9 @@ impl App {
             last_call_key: String::new(),
             qh: qh.clone(),
             test,
+            desk: crate::desktop::Desk::new(),
+            desk_serial: 0,
+            desk_cursor: "",
             wall: { let mut w = crate::wall::Wall::new(); w.off = test || std::env::var("MIST_UI_NO_WALL").is_ok(); w },
         }
     }
@@ -224,6 +230,41 @@ impl App {
             layer.set_keyboard_interactivity(KeyboardInteractivity::None);
             layer.commit();
             self.island_surf = Some(IslandSurf { layer, configured: false, input: None, focus_kbd: false, canvas: Canvas::new(crate::island::WIN_W, crate::island::WIN_H) });
+        }
+        if name == PRIMARY && !self.test && self.desk.stage.is_none() && std::env::var("MIST_UI_NO_DESK").is_err() {
+            self.desk.out_w = ow;
+            let h = crate::desktop::stage_h(&mut self.text) + 60.0;
+            let surface = self.compositor.create_surface(&self.qh);
+            let layer = self.layer_shell.create_layer_surface(&self.qh, surface, Layer::Bottom, Some("mist-desktop"), Some(&output));
+            layer.set_anchor(Anchor::TOP);
+            layer.set_margin(crate::desktop::STAGE_TOP, 0, 0, 0);
+            layer.set_size(crate::desktop::STAGE_W, h as u32);
+            layer.set_exclusive_zone(-1);
+            layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+            // input only over the bento row (mask: Region { item: bento })
+            if let Ok(r) = Region::new(&self.compositor) {
+                r.add(40, (h - 60.0 - crate::desktop::BENTO_H) as i32, crate::desktop::BENTO_W as i32, crate::desktop::BENTO_H as i32);
+                layer.wl_surface().set_input_region(Some(r.wl_region()));
+            }
+            layer.commit();
+            self.desk.stage = Some(layer);
+            // the weather card's own window above (no blur: its sky is mist-wall's)
+            let (x, y) = self.desk.card_at(&mut self.text);
+            let p = crate::desktop::CARD_PAD;
+            let surface = self.compositor.create_surface(&self.qh);
+            let layer = self.layer_shell.create_layer_surface(&self.qh, surface, Layer::Bottom, Some("mist-desktop-card"), Some(&output));
+            layer.set_anchor(Anchor::TOP | Anchor::LEFT);
+            layer.set_margin(y - p as i32, 0, 0, x - p as i32);
+            layer.set_size((crate::desktop::WX_W + 2.0 * p) as u32, (crate::desktop::BENTO_H + 2.0 * p) as u32);
+            layer.set_exclusive_zone(-1);
+            layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+            if let Ok(r) = Region::new(&self.compositor) {
+                r.add(p as i32, p as i32, crate::desktop::WX_W as i32, crate::desktop::BENTO_H as i32);
+                layer.wl_surface().set_input_region(Some(r.wl_region()));
+            }
+            layer.commit();
+            self.desk.card = Some(layer);
+            self.desk.write_sky(&mut self.text);
         }
         let dock_here = if self.test { name == "HDMI-A-1" } else { name == PRIMARY };
         if dock_here && self.dock_surf.is_none() && std::env::var("MIST_UI_NO_DOCK").is_err() {
@@ -276,7 +317,7 @@ impl App {
     }
 
     pub fn animating(&self) -> bool {
-        self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE) || self.dock.animating() || self.dock_hide_at.is_some() || self.dock_show_at.is_some() || self.island.animating() || self.wall.busy()
+        self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE) || self.dock.animating() || self.dock_hide_at.is_some() || self.dock_show_at.is_some() || self.island.animating() || self.wall.busy() || self.desk.animating()
     }
 
     // timers (dock hide 400 ms / reveal 80 ms) and animation frames
@@ -288,6 +329,10 @@ impl App {
     pub fn slow_tick(&mut self) {
         let outs = self.outs();
         self.wall.slow_tick(&self.compositor, &self.layer_shell, &self.qh, &outs);
+        let n = crate::wxcard::Wx::n_insights(&self.desk.weather, &self.desk.garmin, &self.desk.cfg);
+        if self.desk.wx.tick(n) {
+            self.desk.card_dirty = true;
+        }
         let (ringing, call) = { let s = self.phone.st.lock().unwrap(); (s.ringing(), s.call().is_some()) };
         if self.island.tick(ringing, call) {
             self.island_dirty = true;
@@ -300,6 +345,8 @@ impl App {
             self.last_minute = m;
             self.island.minute();
             self.island_dirty = true;
+            self.desk.dirty = true;
+            self.desk.card_dirty = true;
             self.mark_all();
         }
         let mode = self.island.mode(ringing, call);
@@ -315,9 +362,25 @@ impl App {
         }
     }
     pub fn tick(&mut self) {
+        DRAWS.with(|d| {
+            let mut d = d.borrow_mut();
+            *d.entry("tick").or_insert(0) += 1;
+            if self.island.animating() { *d.entry("a_island").or_insert(0) += 1; }
+            if self.island.eq_running() { *d.entry("a_eq").or_insert(0) += 1; }
+            if self.dock.animating() { *d.entry("a_dock").or_insert(0) += 1; }
+            if self.desk.animating() { *d.entry("a_desk").or_insert(0) += 1; }
+            if self.wall.busy() { *d.entry("a_wall").or_insert(0) += 1; }
+            if self.dock_hide_at.is_some() || self.dock_show_at.is_some() { *d.entry("a_dockt").or_insert(0) += 1; }
+        });
         let now = Instant::now();
         if self.wall.busy() {
             self.wall.tick(&self.shm);
+        }
+        if self.desk.fx.running() {
+            self.desk.dirty = true;
+        }
+        if self.desk.wx.fx.running() {
+            self.desk.card_dirty = true;
         }
         if self.island.animating() {
             self.island_dirty = true;
@@ -362,10 +425,116 @@ impl App {
         if self.island_dirty && self.island_surf.as_ref().map(|i| i.configured).unwrap_or(false) {
             self.draw_island();
         }
+        self.draw_desk();
+    }
+
+    // ---------------------------------------------------------------- desktop
+    fn draw_desk(&mut self) {
+        DRAWS.with(|d| *d.borrow_mut().entry("desk").or_insert(0) += 1);
+        if self.desk.dirty && self.desk.stage_cfg {
+            self.desk.dirty = false;
+            self.desk.paint_stage(&mut self.text);
+            if let Some(l) = &self.desk.stage {
+                Self::commit(&mut self.pool, l, &self.desk.canvas);
+            }
+        }
+        if self.desk.card_dirty && self.desk.card_cfg {
+            self.desk.card_dirty = false;
+            let p = crate::desktop::CARD_PAD;
+            let (w, h) = ((crate::desktop::WX_W + 2.0 * p) as u32, (crate::desktop::BENTO_H + 2.0 * p) as u32);
+            if self.desk.card_canvas.pm.width() != w {
+                self.desk.card_canvas = crate::gfx::Canvas::new(w, h);
+            }
+            let mut c = std::mem::replace(&mut self.desk.card_canvas, crate::gfx::Canvas::new(1, 1));
+            let (wx, g) = (self.desk.weather.clone(), self.desk.garmin.clone());
+            self.desk.wx.paint(&mut c, &mut self.text, &wx, &g, &self.desk.cfg);
+            self.desk.card_canvas = c;
+            if let Some(l) = &self.desk.card {
+                Self::commit(&mut self.pool, l, &self.desk.card_canvas);
+            }
+        }
+    }
+    fn desk_cursor(&mut self, want: &'static str) {
+        if want != self.desk_cursor {
+            self.desk_cursor = want;
+            let shape = match want {
+                "hand" => wp_cursor_shape_device_v1::Shape::Pointer,
+                "ew" => wp_cursor_shape_device_v1::Shape::EwResize,
+                _ => wp_cursor_shape_device_v1::Shape::Default,
+            };
+            self.set_cursor(self.desk_serial, shape);
+        }
+    }
+    fn desk_pointer(&mut self, e: &PointerEvent, card: bool) {
+        let (x, y) = (e.position.0 as f32, e.position.1 as f32);
+        let p = crate::desktop::CARD_PAD;
+        match e.kind {
+            PointerEventKind::Enter { serial } => {
+                self.desk_serial = serial;
+                self.desk_cursor = "?";
+                self.desk_motion(Some((x, y)), card);
+            }
+            PointerEventKind::Leave { .. } => self.desk_motion(None, card),
+            PointerEventKind::Motion { .. } => self.desk_motion(Some((x, y)), card),
+            PointerEventKind::Release { button, .. } if button == BTN_LEFT => {
+                if card {
+                    let wx = self.desk.weather.clone();
+                    if self.desk.wx.click(&mut self.desk.cfg, &wx) {
+                        self.desk.card_dirty = true;
+                        self.desk.dirty = true;
+                    }
+                } else if self.desk.stage_click() {
+                    self.desk.dirty = true;
+                }
+                // the order may have changed: the weather card and its sky move
+                self.desk_relayout();
+            }
+            PointerEventKind::Axis { vertical, .. } if card => {
+                let dy = if vertical.discrete != 0 { vertical.discrete as f64 } else { vertical.absolute };
+                if dy != 0.0 {
+                    let wx = self.desk.weather.clone();
+                    if self.desk.wx.wheel(dy > 0.0, &wx) {
+                        self.desk.card_dirty = true;
+                    }
+                }
+            }
+            _ => {}
+        }
+        let _ = p;
+    }
+    fn desk_motion(&mut self, pos: Option<(f32, f32)>, card: bool) {
+        let p = crate::desktop::CARD_PAD;
+        if card {
+            let before = self.desk.wx.sig();
+            self.desk.wx.motion(pos.map(|q| (q.0 - p, q.1 - p)));
+            if self.desk.wx.sig() != before {
+                self.desk.card_dirty = true;
+            }
+            let c = self.desk.wx.cursor;
+            self.desk_cursor(c);
+        } else {
+            let before = self.desk.sig();
+            self.desk.stage_motion(pos);
+            if self.desk.sig() != before {
+                self.desk.dirty = true;
+            }
+            let c = if self.desk.cursor_hand { "hand" } else { "" };
+            self.desk_cursor(c);
+        }
+    }
+    // the weather card follows its slot in the bento row
+    fn desk_relayout(&mut self) {
+        let Some(l) = &self.desk.card else { return };
+        let (x, y) = self.desk.card_at(&mut self.text);
+        let p = crate::desktop::CARD_PAD as i32;
+        l.set_margin(y - p, 0, 0, x - p);
+        l.commit();
+        self.desk.write_sky(&mut self.text);
     }
 
     // ---------------------------------------------------------------- island
     fn draw_island(&mut self) {
+        DRAWS.with(|d| *d.borrow_mut().entry("island").or_insert(0) += 1);
         self.island_dirty = false;
         let st = self.phone.st.lock().unwrap();
         let (ringing, call) = (st.ringing(), st.call().is_some());
@@ -620,6 +789,7 @@ impl App {
                 String::new()
             }
             ("ui", "ping") => "pong".into(),
+            ("ui", "stats") => DRAWS.with(|d| format!("{:?} fades {} dock {} hide {} show {} island {} wall {} desk {} {}", d.borrow(), self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE), self.dock.animating(), self.dock_hide_at.is_some(), self.dock_show_at.is_some(), self.island.animating(), self.wall.busy(), self.desk.fx.running(), self.desk.wx.fx.running())),
             _ => "unknown".into(),
         };
         let _ = r.reply.send(out);
@@ -639,6 +809,7 @@ impl App {
 
     // ---------------------------------------------------------------- bar
     fn draw_bar(&mut self, i: usize) {
+        DRAWS.with(|d| *d.borrow_mut().entry("bar").or_insert(0) += 1);
         let st = self.bar_state(&self.bars[i]);
         let w = self.bars[i].w;
         if self.bars[i].canvas.pm.width() != w {
@@ -668,6 +839,7 @@ impl App {
 
     // ---------------------------------------------------------------- dock
     fn draw_dock(&mut self) {
+        DRAWS.with(|d| *d.borrow_mut().entry("dock").or_insert(0) += 1);
         let Some(d) = self.dock_surf.as_mut() else { return };
         let want = self.dock.win_w().max(200);
         if want != d.w {
@@ -892,6 +1064,14 @@ impl App {
             self.island_pointer(e);
             return;
         }
+        if self.desk.stage.as_ref().map(|l| l.wl_surface() == &e.surface).unwrap_or(false) {
+            self.desk_pointer(e, false);
+            return;
+        }
+        if self.desk.card.as_ref().map(|l| l.wl_surface() == &e.surface).unwrap_or(false) {
+            self.desk_pointer(e, true);
+            return;
+        }
         let Some(i) = self.bar_at(&e.surface) else { return };
         let (x, _y) = e.position;
         match e.kind {
@@ -1032,6 +1212,7 @@ impl App {
         }
     }
     fn draw_popup(&mut self) {
+        DRAWS.with(|d| *d.borrow_mut().entry("popup").or_insert(0) += 1);
         let Some(m) = self.popup.as_mut() else { return };
         popup::paint(&mut m.canvas, &mut self.text, m.look, &m.rows, m.hover);
         Self::commit(&mut self.pool, &m.layer, &m.canvas);
@@ -1176,6 +1357,31 @@ pub fn launch(exec: &str) {
 // ---------------------------------------------------------------- messages from the data threads
 impl App {
     pub fn on_msg(&mut self, m: Msg) {
+        let k: &'static str = match &m {
+            Msg::Hypr(..) => "Hypr",
+            Msg::Net(..) => "Net",
+            Msg::Bt(..) => "Bt",
+            Msg::Volume(..) => "Volume",
+            Msg::Stats(..) => "Stats",
+            Msg::Phone(..) => "Phone",
+            Msg::Ui(..) => "Ui",
+            Msg::Dnd(..) => "Dnd",
+            Msg::Tray(..) => "Tray",
+            Msg::Pins => "Pins",
+            Msg::Ipc(..) => "Ipc",
+            Msg::Note(..) => "Note",
+            Msg::Phone2(..) => "Phone2",
+            Msg::Players(..) => "Players",
+            Msg::Data(..) => "Data",
+            Msg::HyprEv(..) => "HyprEv",
+            Msg::Audio(..) => "Audio",
+            Msg::BtDevs(..) => "BtDevs",
+            Msg::Profile(..) => "Profile",
+            Msg::Sys(..) => "Sys",
+            Msg::NmLine(..) => "NmLine",
+            Msg::Wall(..) => "Wall",
+        };
+        DRAWS.with(|d| *d.borrow_mut().entry(k).or_insert(0) += 1);
         match m {
             Msg::Hypr(h) => {
                 self.hypr = h;
@@ -1225,7 +1431,21 @@ impl App {
             }
             Msg::Players(ps) => self.island.set_players(ps),
             Msg::Data(name, v) => match name.as_str() {
-                "weather" => self.island.on_weather(v),
+                "weather" => {
+                    self.desk.weather = v.clone();
+                    self.desk.dirty = true;
+                    self.desk.card_dirty = true;
+                    self.island.on_weather(v)
+                }
+                "garmin" => {
+                    self.desk.garmin = v;
+                    self.desk.dirty = true;
+                    self.desk.card_dirty = true;
+                }
+                "running" => {
+                    self.desk.running = v;
+                    self.desk.dirty = true;
+                }
                 "calendar" => self.island.calendar = v,
                 _ => {}
             },
@@ -1280,6 +1500,16 @@ impl LayerShellHandler for App {
     }
     fn configure(&mut self, _: &Connection, _: &QueueHandle<Self>, l: &LayerSurface, c: LayerSurfaceConfigure, _: u32) {
         if self.wall.configure(l, c.new_size.0, c.new_size.1) {
+            return;
+        }
+        if self.desk.stage.as_ref() == Some(l) {
+            self.desk.stage_cfg = true;
+            self.desk.dirty = true;
+            return;
+        }
+        if self.desk.card.as_ref() == Some(l) {
+            self.desk.card_cfg = true;
+            self.desk.card_dirty = true;
             return;
         }
         if let Some(b) = self.bars.iter_mut().find(|b| &b.layer == l) {
@@ -1408,6 +1638,8 @@ wayland_client::delegate_noop!(App: ignore wp_cursor_shape_manager_v1::WpCursorS
 wayland_client::delegate_noop!(App: ignore wp_cursor_shape_device_v1::WpCursorShapeDeviceV1);
 wayland_client::delegate_noop!(App: ignore wp_viewporter::WpViewporter);
 wayland_client::delegate_noop!(App: ignore wp_viewport::WpViewport);
+
+thread_local! { static DRAWS: std::cell::RefCell<std::collections::BTreeMap<&'static str, u64>> = Default::default(); }
 
 pub fn tick_interval() -> Duration {
     Duration::from_millis(16)

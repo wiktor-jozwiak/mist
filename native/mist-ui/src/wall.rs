@@ -1,9 +1,8 @@
-// The wallpaper (was LiveWallpaper.qml). ~/.config/mist/wallpaper.json picks it:
-//  - "live": "" -> the photo "image", drawn here on the CPU once per monitor (cropped to the monitor,
-//    the desktop vignette baked in on the main one), cross-faded 600 ms when it changes. Only the shm
-//    buffer stays; the decoded pixels are dropped after the fade.
-//  - "live": "<preset>" -> mist-wall (the only Mist process with a GL context) draws the animated scene;
-//    the photo surfaces go away once it is up. mist-wall exits by itself when the photo comes back.
+// The wallpaper (was LiveWallpaper.qml), ~/.config/mist/wallpaper.json. mist-wall (the only Mist process
+// with a GL context) draws it, the animated scene or the photo (a texture: no shm copy here), and the
+// desktop weather sky; this starts it and restarts it. Only when it keeps crashing does mist-ui draw the
+// photo itself, on the CPU once per monitor (cropped to the monitor, the desktop vignette baked in on the
+// main one, cross-faded 600 ms when it changes; only the shm buffer stays).
 use smithay_client_toolkit::{
     compositor::{CompositorState, Region},
     shell::{
@@ -47,6 +46,7 @@ pub struct Wall {
     rx: mpsc::Receiver<(String, String, Vec<u8>)>,
     pending: usize,
     pub off: bool,
+    checked: Instant,
 }
 
 fn bin() -> String {
@@ -111,7 +111,7 @@ impl Wall {
     pub fn new() -> Wall {
         let (tx, rx) = mpsc::channel();
         let (live, image) = Wall::read_cfg();
-        Wall { surfs: Vec::new(), pool: None, live, image, child: None, started: None, crashes: Vec::new(), given_up: false, tx, rx, pending: 0, off: false }
+        Wall { surfs: Vec::new(), pool: None, live, image, child: None, started: None, crashes: Vec::new(), given_up: false, tx, rx, pending: 0, off: false, checked: Instant::now() }
     }
 
     pub fn read_cfg() -> (String, String) {
@@ -120,8 +120,20 @@ impl Wall {
         (c["live"].as_str().unwrap_or("").to_string(), c["image"].as_str().filter(|s| !s.is_empty()).unwrap_or(&def).to_string())
     }
 
+    // the CPU photo is needed (mist-wall gave up)
     pub fn photo(&self) -> bool {
-        self.live.is_empty() || self.given_up
+        self.given_up
+    }
+    // nobody holds mist-wall's lock (no instance runs, e.g. ours died while mist-ui restarted)
+    fn lock_free() -> bool {
+        let p = format!("{}/mist/wall.lock", std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".into()));
+        let Ok(f) = std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(p) else { return true };
+        let fd = std::os::fd::AsRawFd::as_raw_fd(&f);
+        if unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            unsafe { libc::flock(fd, libc::LOCK_UN) };
+            return true;
+        }
+        false
     }
 
     pub fn add_output(&mut self, o: &wl_output::WlOutput, name: &str, comp: &CompositorState, ls: &LayerShell, qh: &QueueHandle<crate::app::App>) {
@@ -175,7 +187,8 @@ impl Wall {
     // config changed (wallpaper.json)
     pub fn set(&mut self, live: String, image: String, comp: &CompositorState, ls: &LayerShell, qh: &QueueHandle<crate::app::App>, outs: &[(wl_output::WlOutput, String)]) {
         let was_photo = self.photo();
-        if live != self.live {
+        if live != self.live && self.given_up {
+            // another choice: give mist-wall another chance
             self.given_up = false;
             self.crashes.clear();
         }
@@ -220,8 +233,8 @@ impl Wall {
         if let Some(c) = &mut self.child {
             if let Ok(Some(st)) = c.try_wait() {
                 self.child = None;
-                // 3: another mist-wall already runs (mist-ui restarted); 0: back to the photo
-                if !self.photo() && st.code() != Some(3) && st.code() != Some(0) {
+                // 3: another mist-wall already runs (mist-ui restarted): watched through its lock below
+                if !self.photo() && st.code() != Some(3) {
                     self.crashes.retain(|t| t.elapsed().as_secs() < 120);
                     self.crashes.push(Instant::now());
                     if self.crashes.len() >= 5 {
@@ -234,6 +247,12 @@ impl Wall {
                         self.spawn();
                     }
                 }
+            }
+        }
+        if self.child.is_none() && !self.photo() && self.checked.elapsed().as_secs() >= 5 {
+            self.checked = Instant::now();
+            if Self::lock_free() {
+                self.spawn();
             }
         }
         // the scene is up: the photo surfaces (and their buffers) can go

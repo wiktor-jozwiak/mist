@@ -697,6 +697,7 @@ dependencies = [
  "calloop",
  "calloop-wayland-source",
  "glow",
+ "image",
  "khronos-egl",
  "libc",
  "serde_json",

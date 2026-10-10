@@ -5,6 +5,7 @@ edition = "2024"
 description = "Mist live wallpaper on the GPU (the only Mist process with a GL context; runs only while a live scene is chosen)"
 
 [dependencies]
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 smithay-client-toolkit = { version = "0.20", default-features = false, features = ["calloop"] }
 wayland-client = "0.31"
 wayland-egl = "0.32"

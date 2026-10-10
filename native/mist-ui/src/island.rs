@@ -1112,6 +1112,9 @@ impl Island {
         e.1.step();
         (e.0.value(), e.1.cur)
     }
+    pub fn eq_running(&self) -> bool {
+        self.eq.iter().any(|a| a.running())
+    }
     pub fn animating(&self) -> bool {
         self.w.moving || self.h.moving || self.y.moving || self.bump_at.map(|t| t.elapsed().as_millis() < 600).unwrap_or(false) || self.shadow.running()
             || self.panes.values().any(|p| p.0.running() || p.1.moving || p.2.is_some())

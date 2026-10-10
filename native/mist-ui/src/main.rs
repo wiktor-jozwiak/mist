@@ -23,6 +23,12 @@ mod sys;
 mod text;
 mod theme;
 mod tray;
+mod desktop;
+mod wxcard;
+#[path = "../../common/astro.rs"]
+mod astro;
+#[path = "../../common/sky.rs"]
+mod sky;
 mod wall;
 
 use calloop::{channel, timer::{TimeoutAction, Timer}, EventLoop};
@@ -34,6 +40,36 @@ fn main() {
     if args.get(1).map(|s| s.as_str()) == Some("msg") {
         // client of the running mist-ui: mist-ui-bin msg <target> <function> [args...]
         std::process::exit(ipc::call(&args[2..]));
+    }
+    // `--desk-png dir`: the desktop stage and the weather card (cached data), for checks
+    if args.get(1).map(|s| s.as_str()) == Some("--desk-png") {
+        let mut t = text::Text::new();
+        let mut d = desktop::Desk::new();
+        let rd = |n: &str| -> serde_json::Value { std::fs::read_to_string(format!("{}/.cache/mist/{n}.json", std::env::var("HOME").unwrap_or_default())).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default() };
+        d.weather = rd("weather");
+        d.garmin = rd("garmin");
+        d.running = rd("running");
+        let t0 = std::time::Instant::now();
+        d.paint_stage(&mut t);
+        eprintln!("stage {:?}", t0.elapsed());
+        let t0 = std::time::Instant::now();
+        d.dirty = true;
+        d.paint_stage(&mut t);
+        eprintln!("stage again {:?}", t0.elapsed());
+        let t0 = std::time::Instant::now();
+        for _ in 0..100 {
+            wxcard::Wx::n_insights(&d.weather, &d.garmin, &d.cfg);
+        }
+        eprintln!("insights x100 {:?}", t0.elapsed());
+        d.canvas.pm.save_png(format!("{}/stage.png", args[2])).unwrap();
+        let p = desktop::CARD_PAD;
+        let mut c = gfx::Canvas::new((desktop::WX_W + 2.0 * p) as u32, (desktop::BENTO_H + 2.0 * p) as u32);
+        let (wx, g) = (d.weather.clone(), d.garmin.clone());
+        let t0 = std::time::Instant::now();
+        d.wx.paint(&mut c, &mut t, &wx, &g, &d.cfg);
+        eprintln!("card {:?}", t0.elapsed());
+        c.pm.save_png(format!("{}/card.png", args[2])).unwrap();
+        return;
     }
     // `--wall-ppm out.ppm`: the main monitor's photo wallpaper (with the vignette), for checks
     if args.get(1).map(|s| s.as_str()) == Some("--wall-ppm") {
