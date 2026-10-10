@@ -159,6 +159,9 @@ pub struct App {
     pane: Option<PaneSurf>,
     pane_ptr: (f32, f32),
     notif_hidden: std::collections::HashMap<String, i64>,
+    ctrl: bool,
+    clip_watch: Option<std::process::Child>,
+    clip_retry: Instant,
     desk_serial: u32,
     desk_cursor: &'static str,
 }
@@ -221,6 +224,9 @@ impl App {
             pane: None,
             pane_ptr: (0.0, 0.0),
             notif_hidden: std::collections::HashMap::new(),
+            ctrl: false,
+            clip_watch: None,
+            clip_retry: Instant::now(),
             desk_serial: 0,
             desk_cursor: "",
             wall: { let mut w = crate::wall::Wall::new(); w.off = test || std::env::var("MIST_UI_NO_WALL").is_ok(); w },
@@ -353,6 +359,14 @@ impl App {
 
     pub fn slow_tick(&mut self) {
         self.idle.reap();
+        // the clipboard history watcher (wl-paste --watch mistd clipstore), restarted when it exits
+        if !self.test && std::env::var("MIST_UI_NO_SERVICES").is_err() {
+            let dead = self.clip_watch.as_mut().map(|c| matches!(c.try_wait(), Ok(Some(_)))).unwrap_or(true);
+            if dead && self.clip_retry.elapsed().as_secs() >= 3 {
+                self.clip_retry = Instant::now();
+                self.clip_watch = crate::clipboard::watch();
+            }
+        }
         if let Some(p) = self.polkit.as_mut() {
             p.3 = true; // the cursor blinks
         }
@@ -592,7 +606,7 @@ impl App {
         }
         p.dirty = false;
         let mut c = std::mem::replace(&mut p.canvas, Canvas::new(1, 1));
-        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden };
+        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl };
         p.p.paint(&mut c, &mut cx);
         Self::commit(&mut self.pool, &p.layer, &c);
         p.canvas = c;
@@ -620,7 +634,7 @@ impl App {
             }
         };
         let Some(p) = self.pane.as_mut() else { return };
-        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden };
+        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl };
         let a = p.p.pointer(ev, x, y, &mut cx);
         let hand = p.p.hand();
         self.desk_cursor(if hand { "hand" } else { "" });
@@ -1140,7 +1154,7 @@ impl App {
             }
             ("ui", "stats") => DRAWS.with(|d| format!("{:?} fades {} dock {} hide {} show {} island {} wall {} desk {} {}", d.borrow(), self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE), self.dock.animating(), self.dock_hide_at.is_some(), self.dock_show_at.is_some(), self.island.animating(), self.wall.busy(), self.desk.fx.running(), self.desk.wx.fx.running())),
             // not native yet: Quickshell's IPC
-            (t, f) if matches!(t, "mist" | "snap" | "clipboard" | "shot") => {
+            (t, f) if matches!(t, "mist" | "snap" | "shot") => {
                 let qs = format!("{}/.local/bin/mist-qs", home());
                 let dir = format!("{}/.config/quickshell/mist", home());
                 let mut v: Vec<String> = vec![qs, "-p".into(), dir, "ipc".into(), "call".into(), t.into(), f.into()];
@@ -2039,7 +2053,7 @@ impl KeyboardHandler for App {
             return;
         }
         if let Some(p) = self.pane.as_mut() {
-            let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden };
+            let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl };
             let a = p.p.key(&ev, &mut cx);
             self.pane_act(a);
             return;
@@ -2070,7 +2084,9 @@ impl KeyboardHandler for App {
             self.pane_act(a);
         }
     }
-    fn update_modifiers(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, _: Modifiers, _: RawModifiers, _: u32) {}
+    fn update_modifiers(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, m: Modifiers, _: RawModifiers, _: u32) {
+        self.ctrl = m.ctrl;
+    }
 }
 impl ShmHandler for App {
     fn shm_state(&mut self) -> &mut Shm {

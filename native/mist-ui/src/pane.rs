@@ -35,6 +35,7 @@ pub struct Ctx<'a> {
     pub imgs: &'a mut crate::img::Images,
     pub apps: &'a crate::apps::Apps,
     pub notif_hidden: &'a mut std::collections::HashMap<String, i64>,
+    pub ctrl: bool,
 }
 
 pub trait Pane {
@@ -74,13 +75,14 @@ pub trait Pane {
 
 // the popups that are native now (the rest are forwarded to Quickshell)
 pub fn native(name: &str) -> bool {
-    matches!(name, "session" | "calendar" | "notifications")
+    matches!(name, "session" | "calendar" | "notifications" | "clipboard")
 }
 pub fn make(name: &str, _page: &str) -> Option<Box<dyn Pane>> {
     match name {
         "session" => Some(Box::new(crate::session::Session::new())),
         "calendar" => Some(Box::new(crate::calendar::Calendar::new())),
         "notifications" => Some(Box::new(crate::notifcenter::NotifCenter::new())),
+        "clipboard" => Some(Box::new(crate::clipboard::Clipboard::new())),
         _ => None,
     }
 }
@@ -127,4 +129,46 @@ pub fn full_name() -> String {
     let g = if pw.is_null() { String::new() } else { unsafe { std::ffi::CStr::from_ptr((*pw).pw_gecos).to_string_lossy().split(',').next().unwrap_or("").trim().to_string() } };
     let g = if g.is_empty() { user } else { g };
     g.split(' ').map(|s| { let mut c = s.chars(); c.next().map(|f| f.to_uppercase().collect::<String>() + &c.as_str().to_lowercase()).unwrap_or_default() }).collect::<Vec<_>>().join(" ")
+}
+
+// ------------------------------------------------------------------ a one-line text field (TextInput)
+#[derive(Default)]
+pub struct Field {
+    pub text: String,
+}
+impl Field {
+    // typing, Backspace, Ctrl+Backspace / Ctrl+W (a word), Ctrl+U (all), Ctrl+V (paste); true = changed
+    pub fn key(&mut self, ev: &KeyEvent, ctrl: bool) -> bool {
+        use smithay_client_toolkit::seat::keyboard::Keysym;
+        match ev.keysym {
+            Keysym::BackSpace if ctrl => {
+                let t = self.text.trim_end().to_string();
+                let cut = t.rfind(|c: char| c.is_whitespace()).map(|i| i + 1).unwrap_or(0);
+                self.text.truncate(cut);
+                true
+            }
+            Keysym::BackSpace => self.text.pop().is_some(),
+            Keysym::w | Keysym::W if ctrl => self.key(&KeyEvent { keysym: Keysym::BackSpace, ..ev.clone() }, true),
+            Keysym::u | Keysym::U if ctrl => {
+                self.text.clear();
+                true
+            }
+            Keysym::v | Keysym::V if ctrl => {
+                if let Ok(o) = std::process::Command::new("wl-paste").args(["--no-newline", "--type", "text/plain"]).output() {
+                    let s = String::from_utf8_lossy(&o.stdout).replace('\n', " ");
+                    self.text.push_str(&s);
+                    return true;
+                }
+                false
+            }
+            _ if ctrl => false,
+            _ => match &ev.utf8 {
+                Some(t) if !t.chars().any(|c| c.is_control()) => {
+                    self.text.push_str(t);
+                    true
+                }
+                _ => false,
+            },
+        }
+    }
 }
