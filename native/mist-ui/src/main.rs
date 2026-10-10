@@ -3,9 +3,13 @@
 //   mist-ui            run (bars on every monitor)
 //   mist-ui --test     one bar on HDMI-A-1 in the Overlay layer, no exclusive zone (side by side check)
 //   mist-ui --png <out.png> '<state json>'   render a bar into a PNG
+mod anim;
 mod app;
 mod apps;
 mod bar;
+mod dock;
+mod glass;
+mod popup;
 mod gfx;
 mod icons;
 mod sys;
@@ -21,6 +25,24 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(|s| s.as_str()) == Some("--png") {
         return png(&args);
+    }
+    if args.get(1).map(|s| s.as_str()) == Some("--dock-png") {
+        // the dock as it is now (hovering slot N when given) into a PNG
+        let h = sys::hypr_now();
+        let ap = apps::Apps::load();
+        let mut ic = apps::Icons::new();
+        let mut d = dock::Dock::new();
+        d.rebuild(&h, &ap);
+        d.bare = true;
+        d.hover_slot = args.get(3).and_then(|s| s.parse().ok());
+        d.update_lift();
+        d.update_y();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let mut t = text::Text::new();
+        let mut c = gfx::Canvas::new(d.win_w(), dock::WIN_H);
+        d.draw(&mut c, &mut t, &mut ic);
+        c.pm.save_png(&args[2]).unwrap();
+        return;
     }
     if args.get(1).map(|s| s.as_str()) == Some("--tray-dump") {
         // list the tray items and their menus (checks the SNI host + dbusmenu parsing without a click)
@@ -43,11 +65,7 @@ fn main() {
                 println!("menu of {k}:");
                 fn pr(v: &[tray::MenuEntry], d: usize) { for e in v { println!("{}{} {:?}{}{}", "  ".repeat(d + 1), e.id, e.label, if e.separator { " ---" } else { "" }, if e.enabled { "" } else { " (off)" }); pr(&e.submenu, d + 1); } }
                 pr(&entries, 0);
-                let mut t = text::Text::new();
-                let (w, h) = app::menu_size(&mut t, &entries);
-                let mut c = gfx::Canvas::new(w, h);
-                app::paint_menu(&mut c, &mut t, &entries, Some(1));
-                let _ = c.pm.save_png("/tmp/mist-tray-menu.png");
+
             }
         }).unwrap();
         let t0 = std::time::Instant::now();
@@ -74,7 +92,7 @@ fn main() {
     .unwrap();
     lh.insert_source(mrx, |e, _, app: &mut app::App| {
         if let channel::Event::Msg((k, entries)) = e {
-            app.open_menu(k, entries);
+            app.open_tray_menu(k, entries);
         }
     })
     .unwrap();
@@ -89,7 +107,7 @@ fn main() {
     // animation tick, only while something fades
     lh.insert_source(Timer::from_duration(app::tick_interval()), |_, _, app: &mut app::App| {
         if app.animating() {
-            app.mark_all();
+            app.tick();
         }
         TimeoutAction::ToDuration(app::tick_interval())
     })

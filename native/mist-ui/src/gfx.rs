@@ -87,6 +87,15 @@ impl Canvas {
     }
 }
 
+pub fn stroke_rrect(c: &mut Canvas, x: f32, y: f32, w: f32, h: f32, r: f32, col: Rgba) {
+    if let Some(p) = rrect_path(x, y, w, h, r) {
+        let mut paint = Paint::default();
+        paint.set_color(col.skia());
+        paint.anti_alias = true;
+        c.pm.stroke_path(&p, &paint, &tiny_skia::Stroke { width: 1.0, ..Default::default() }, Transform::identity(), None);
+    }
+}
+
 pub fn rrect_path(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<tiny_skia::Path> {
     if w <= 0.0 || h <= 0.0 {
         return None;

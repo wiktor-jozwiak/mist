@@ -28,7 +28,6 @@ Scope {
     function lock() {
         if (sessionLock.locked) return
         message = ""; busy = false; pending = ""
-        wallFile.reload()
         sessionLock.locked = true
     }
     function unlock() {

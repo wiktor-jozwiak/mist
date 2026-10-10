@@ -40,13 +40,18 @@ pub struct Style {
     pub size: f32,
     pub weight: f32,
     pub tnum: bool,
+    pub spacing: f32, // font.letterSpacing (px)
 }
 impl Style {
     pub fn ui(size: f32, weight: f32) -> Style {
-        Style { face: Face::Ui, size, weight, tnum: false }
+        Style { face: Face::Ui, size, weight, tnum: false, spacing: 0.0 }
     }
     pub fn icon(size: f32) -> Style {
-        Style { face: Face::Icons, size, weight: 400.0, tnum: false }
+        Style { face: Face::Icons, size, weight: 400.0, tnum: false, spacing: 0.0 }
+    }
+    pub fn spaced(mut self, s: f32) -> Style {
+        self.spacing = s;
+        self
     }
     pub fn tnum(mut self) -> Style {
         self.tnum = true;
@@ -99,7 +104,7 @@ impl Text {
     }
 
     pub fn shape(&mut self, s: &str, st: &Style) -> std::rc::Rc<Shaped> {
-        let key = (s.to_string(), st.face, st.size.to_bits(), st.weight.to_bits(), st.tnum);
+        let key = (s.to_string(), st.face, st.size.to_bits(), st.weight.to_bits() ^ st.spacing.to_bits().rotate_left(7), st.tnum);
         if let Some(r) = self.shaped.get(&key) {
             return r.clone();
         }
@@ -123,7 +128,7 @@ impl Text {
         sh.shape_with(|c| {
             for g in c.glyphs {
                 glyphs.push((g.id, x + g.x));
-                x += g.advance;
+                x += g.advance + st.spacing;
             }
         });
         let coords: Vec<i16> = if st.face == Face::Ui { font.variations().normalized_coords(vars.iter().copied()).collect() } else { Vec::new() };

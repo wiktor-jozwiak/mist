@@ -68,7 +68,7 @@ PanelWindow {
     readonly property bool bare: !hmon || !hmon.activeWorkspace || hmon.activeWorkspace.toplevels.values.length === 0
     property bool hovered: false
     property bool menuOpen: false
-    readonly property bool shown: bare || hovered || menuOpen
+    readonly property bool shown: bare || hovered || menuOpen || Ui.dbgDock
 
     // ---------------------------------------------------------------- minimize (Hyprland has none)
     // an app asks to minimize (Zen's yellow dot, xdg set_minimized) -> park it on special:minimized
@@ -89,6 +89,7 @@ PanelWindow {
         if (h) Quickshell.execDetached(["hyprctl", "eval", "MistRestore('0x" + h.address.replace(/^0x/, "") + "', " + ws + ")"])
     }
     Timer { id: hideT; interval: 400; onTriggered: dock.hovered = false }
+    Connections { target: Ui; function onDbgGrab(what, path) { if (what === "dock") slabBox.grabToImage(r => r.saveToFile(path)) } }
     onBareChanged: if (!bare) hideT.restart()
 
     Item {

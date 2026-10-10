@@ -10,3 +10,6 @@ pub const GREEN: Rgba = Rgba::rgb8(0x30, 0xD1, 0x58, 1.0);
 pub const YELLOW: Rgba = Rgba::rgb8(0xFF, 0xD6, 0x0A, 1.0);
 pub const ORANGE: Rgba = Rgba::rgb8(0xFF, 0x9F, 0x0A, 1.0);
 pub const DANGER: Rgba = Rgba::rgb8(0xFF, 0x45, 0x3A, 1.0);
+pub const HAIR: Rgba = Rgba(200.0 / 255.0, 214.0 / 255.0, 236.0 / 255.0, 0.1);
+pub const FILL: Rgba = Rgba(1.0, 1.0, 1.0, 0.055);
+pub const FILL2: Rgba = Rgba(1.0, 1.0, 1.0, 0.1);

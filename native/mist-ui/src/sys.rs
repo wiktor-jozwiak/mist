@@ -17,7 +17,19 @@ pub struct Win {
 }
 
 #[derive(Debug, Clone, Default)]
+pub struct Client {
+    pub address: String,
+    pub class: String,
+    pub title: String,
+    pub ws_name: String,
+    pub ws_id: i64,
+    pub focus: i64, // focusHistoryID, 0 = the active window
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct Hypr {
+    pub clients: Vec<Client>,
+    pub focused_ws: i64,
     pub active: Option<Win>,
     pub monitors: Vec<(i64, String, i64)>, // id, name, active workspace id
     pub ws_windows: Vec<(i64, i64)>,       // workspace id, window count
@@ -33,6 +45,7 @@ pub enum Msg {
     Ui(String, String),
     Dnd(bool),
     Tray(Vec<crate::tray::Item>),
+    Pins,
 }
 
 fn spawn<F: FnOnce() + Send + 'static>(name: &str, f: F) {
@@ -50,6 +63,9 @@ pub fn hypr_request(cmd: &str) -> Option<Value> {
     s.read_to_string(&mut out).ok()?;
     serde_json::from_str(&out).ok()
 }
+pub fn hypr_now() -> Hypr {
+    hypr_state()
+}
 fn hypr_state() -> Hypr {
     let mut h = Hypr::default();
     if let Some(a) = hypr_request("j/activewindow") {
@@ -65,6 +81,24 @@ fn hypr_state() -> Hypr {
         for m in ms {
             h.monitors.push((m["id"].as_i64().unwrap_or(0), m["name"].as_str().unwrap_or("").into(), m["activeWorkspace"]["id"].as_i64().unwrap_or(0)));
         }
+    }
+    if let Some(Value::Array(cs)) = hypr_request("j/clients") {
+        for c in cs {
+            if c["mapped"].as_bool() == Some(false) {
+                continue;
+            }
+            h.clients.push(Client {
+                address: c["address"].as_str().unwrap_or("").into(),
+                class: c["class"].as_str().unwrap_or("").into(),
+                title: c["title"].as_str().unwrap_or("").into(),
+                ws_name: c["workspace"]["name"].as_str().unwrap_or("").into(),
+                ws_id: c["workspace"]["id"].as_i64().unwrap_or(0),
+                focus: c["focusHistoryID"].as_i64().unwrap_or(99),
+            });
+        }
+    }
+    if let Some(a) = hypr_request("j/activeworkspace") {
+        h.focused_ws = a["id"].as_i64().unwrap_or(1);
     }
     if let Some(Value::Array(ws)) = hypr_request("j/workspaces") {
         for w in ws {
@@ -88,7 +122,17 @@ pub fn hyprland(tx: Sender<Msg>) {
                 break;
             }
             let ev = line.split(">>").next().unwrap_or("");
-            if matches!(ev, "activewindow" | "windowtitlev2" | "workspacev2" | "focusedmonv2" | "openwindow" | "closewindow" | "movewindowv2"
+            // an app asks to minimize (xdg set_minimized, Zen's yellow dot): park it on special:minimized
+            if ev == "minimized" {
+                if let Some(d) = line.trim_end().split(">>").nth(1) {
+                    if d.ends_with(",1") {
+                        let a = d.split(',').next().unwrap_or("");
+                        let a = if a.starts_with("0x") { a.to_string() } else { format!("0x{a}") };
+                        let _ = Command::new("hyprctl").args(["eval", &format!("MistMinimize('{a}')")]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+                    }
+                }
+            }
+            if matches!(ev, "activewindow" | "windowtitlev2" | "minimized" | "changefloatingmode" | "urgent" | "workspacev2" | "focusedmonv2" | "openwindow" | "closewindow" | "movewindowv2"
                 | "createworkspacev2" | "destroyworkspacev2" | "moveworkspacev2" | "monitoraddedv2" | "monitorremovedv2" | "activespecialv2")
             {
                 // coalesce bursts (a workspace switch sends several events)
@@ -214,6 +258,7 @@ pub fn state_files(tx: Sender<Msg>) {
     spawn("state", move || {
         let run = format!("{}/mist", std::env::var("XDG_RUNTIME_DIR").unwrap_or_default());
         let st = format!("{}/.local/state/mist", std::env::var("HOME").unwrap_or_default());
+        let cfg = format!("{}/.config/mist", std::env::var("HOME").unwrap_or_default());
         let _ = std::fs::create_dir_all(&run);
         let send_all = |which: &str| {
             if which.is_empty() || which == "phone.json" {
@@ -238,7 +283,7 @@ pub fn state_files(tx: Sender<Msg>) {
         send_all("");
         unsafe {
             let fd = libc::inotify_init1(libc::IN_CLOEXEC);
-            for d in [&run, &st] {
+            for d in [&run, &st, &cfg] {
                 let c = std::ffi::CString::new(d.as_str()).unwrap();
                 libc::inotify_add_watch(fd, c.as_ptr(), libc::IN_CLOSE_WRITE | libc::IN_MOVED_TO);
             }
@@ -256,6 +301,8 @@ pub fn state_files(tx: Sender<Msg>) {
                     let name = std::ffi::CStr::from_ptr(buf.as_ptr().add(i + std::mem::size_of::<libc::inotify_event>()) as *const libc::c_char).to_string_lossy().to_string();
                     if matches!(name.as_str(), "phone.json" | "ui.json" | "notifications.json") {
                         send_all(&name);
+                    } else if name == "apps.json" {
+                        let _ = tx.send(Msg::Pins);
                     }
                     i += std::mem::size_of::<libc::inotify_event>() + name_len;
                 }

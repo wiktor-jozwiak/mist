@@ -14,7 +14,7 @@ ShellRoot {
     // top bar: native now (native/mist-ui, drawn on the CPU); TopBar.qml stays for reference / fallback
     Variants { model: primary; Desktop {} }
     Variants { model: primary; Island {} }
-    Variants { model: primary; Dock {} }
+    // dock: native now (native/mist-ui dock.rs); Dock.qml stays for reference / fallback
     Snap { id: snapper }
     Lock {}
     // services Noctalia used to run: notification server (singleton, created here), polkit agent, idle lock
@@ -72,7 +72,7 @@ ShellRoot {
         function snapFly(addr: string): void { snapper.openFly(addr, 900, 80, true) }
         function snapClose(): void { snapper.endAssist(); snapper.closeFly() }
         // diagnostics: sky auto|fast|off, grab <png> (the weather card as an image)
-        function perf(key: string, value: string): void { if (key === "sky") Ui.dbgSky = value; else if (key === "grab") Ui.dbgGrab("weather", value) }
+        function perf(key: string, value: string): void { if (key === "sky") Ui.dbgSky = value; else if (key === "grab") Ui.dbgGrab("weather", value); else if (key === "dock") Ui.dbgDock = value === "on"; else if (key === "grabdock") Ui.dbgGrab("dock", value) }
         // windows per monitor and how much of each monitor they hide (Cover.qml)
         function cover(): string { return JSON.stringify(Quickshell.screens.map(s => [s.name, Cover.wins[s.name], Cover.frac(s.name, s.x, s.y, s.width, s.height), Cover.monHidden(s)])) }
         function debug(): string { return JSON.stringify(Hyprland.monitors.values.map(m => [m.name, m.activeWorkspace ? m.activeWorkspace.id : -1, m.activeWorkspace ? m.activeWorkspace.toplevels.values.length : -1, Hyprland.toplevels.values.filter(t => t.workspace && m.activeWorkspace && t.workspace.id === m.activeWorkspace.id).length])) }
