@@ -252,7 +252,7 @@ PanelWindow {
                 Row {
                     anchors.right: parent.right; spacing: 6
                     Btn { icon: "settings"; onClicked: Ui.toggle("wallpaper", win.modelData.name) }
-                    Btn { icon: "lock"; onClicked: { Ui.close(); Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/mist-qs", "-p", Quickshell.shellDir, "ipc", "call", "lock", "lock"]) } }
+                    Btn { icon: "lock"; onClicked: { Ui.close(); Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/mist-ui-bin", "lock"]) } }
                     Btn { icon: "power"; iconColor: Theme.danger; onClicked: Ui.toggle("session", win.modelData.name) }
                 }
             }

@@ -142,6 +142,8 @@ pub struct App {
     pub test: bool,
     pub wall: crate::wall::Wall,
     pub desk: crate::desktop::Desk,
+    pub idle: crate::idle::Idle,
+    seat: Option<wl_seat::WlSeat>,
     desk_serial: u32,
     desk_cursor: &'static str,
 }
@@ -196,6 +198,8 @@ impl App {
             qh: qh.clone(),
             test,
             desk: crate::desktop::Desk::new(),
+            idle: { let mut i = crate::idle::Idle::default(); if !test { i.bind(globals, qh); } i },
+            seat: None,
             desk_serial: 0,
             desk_cursor: "",
             wall: { let mut w = crate::wall::Wall::new(); w.off = test || std::env::var("MIST_UI_NO_WALL").is_ok(); w },
@@ -327,6 +331,7 @@ impl App {
     }
 
     pub fn slow_tick(&mut self) {
+        self.idle.reap();
         let outs = self.outs();
         self.wall.slow_tick(&self.compositor, &self.layer_shell, &self.qh, &outs);
         let n = crate::wxcard::Wx::n_insights(&self.desk.weather, &self.desk.garmin, &self.desk.cfg);
@@ -789,6 +794,15 @@ impl App {
                 String::new()
             }
             ("ui", "ping") => "pong".into(),
+            ("lock", "lock") => {
+                self.idle.lock(None);
+                String::new()
+            }
+            ("lock", "preview") => {
+                self.idle.lock(Some(r.args.first().and_then(|s| s.parse().ok()).unwrap_or(8)));
+                String::new()
+            }
+            ("lock", "isLocked") => crate::idle::Idle::locked().to_string(),
             ("ui", "stats") => DRAWS.with(|d| format!("{:?} fades {} dock {} hide {} show {} island {} wall {} desk {} {}", d.borrow(), self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE), self.dock.animating(), self.dock_hide_at.is_some(), self.dock_show_at.is_some(), self.island.animating(), self.wall.busy(), self.desk.fx.running(), self.desk.wx.fx.running())),
             _ => "unknown".into(),
         };
@@ -1380,6 +1394,8 @@ impl App {
             Msg::Sys(..) => "Sys",
             Msg::NmLine(..) => "NmLine",
             Msg::Wall(..) => "Wall",
+            Msg::Lock => "Lock",
+            Msg::IdleCfg => "IdleCfg",
         };
         DRAWS.with(|d| *d.borrow_mut().entry(k).or_insert(0) += 1);
         match m {
@@ -1408,6 +1424,15 @@ impl App {
             Msg::Phone(p) => self.st.phone = p,
             Msg::Ui(p, s) => self.ui_popup = (p, s),
             Msg::Dnd(d) => self.st.dnd = d,
+            Msg::Lock => self.idle.lock(None),
+            Msg::IdleCfg => {
+                if self.idle.changed() {
+                    if let Some(s) = self.seat.clone() {
+                        let qh = self.qh.clone();
+                        self.idle.arm(&s, &qh);
+                    }
+                }
+            }
             Msg::Wall(live, image) => {
                 let outs = self.outs();
                 self.wall.set(live, image, &self.compositor, &self.layer_shell, &self.qh, &outs);
@@ -1564,6 +1589,10 @@ impl SeatHandler for App {
     }
     fn new_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
     fn new_capability(&mut self, _: &Connection, qh: &QueueHandle<Self>, seat: wl_seat::WlSeat, cap: Capability) {
+        if self.seat.is_none() {
+            self.idle.arm(&seat, qh);
+            self.seat = Some(seat.clone());
+        }
         if cap == Capability::Pointer && self.pointer.is_none() {
             self.pointer = self.seats.get_pointer(qh, &seat).ok();
         }

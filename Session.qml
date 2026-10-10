@@ -29,10 +29,10 @@ PanelWindow {
 
     function mist(args) { return [Quickshell.env("HOME") + "/.local/bin/mist-qs", "-p", Quickshell.shellDir, "ipc", "call"].concat(args) }
     readonly property var actions: [
-        { id: "lock", icon: "lock", t: "Zablokuj", cmd: mist(["lock", "lock"]) },
+        { id: "lock", icon: "lock", t: "Zablokuj", cmd: [Quickshell.env("HOME") + "/.local/bin/mist-ui-bin", "lock"] },
         { id: "logout", icon: "logout", t: "Wyloguj", cmd: ["loginctl", "terminate-session", Quickshell.env("XDG_SESSION_ID") || "self"],
           q: "Czy na pewno chcesz zamknąć wszystkie aplikacje i się wylogować?", n: "wylogujesz się" },
-        { id: "suspend", icon: "zzz", t: "Uśpij", cmd: ["sh", "-c", "\"$0\" -p \"$1\" ipc call lock lock; sleep 0.6; systemctl suspend", Quickshell.env("HOME") + "/.local/bin/mist-qs", Quickshell.shellDir] },
+        { id: "suspend", icon: "zzz", t: "Uśpij", cmd: ["sh", "-c", "(\"$0\" lock &); sleep 0.6; systemctl suspend", Quickshell.env("HOME") + "/.local/bin/mist-ui-bin"] },
         { id: "reboot", icon: "reload", t: "Uruchom ponownie", cmd: ["systemctl", "reboot"],
           q: "Czy na pewno chcesz teraz ponownie uruchomić komputer?", n: "komputer uruchomi się ponownie" },
         { id: "poweroff", icon: "power", t: "Wyłącz", cmd: ["systemctl", "poweroff"],

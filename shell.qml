@@ -16,10 +16,8 @@ ShellRoot {
     // Dynamic Island: native now (native/mist-ui island.rs), with the notification server, the phone and MPRIS
     // dock: native now (native/mist-ui dock.rs); Dock.qml stays for reference / fallback
     Snap { id: snapper }
-    Lock {}
-    // services Noctalia used to run: polkit agent, idle lock (notifications: native/mist-ui)
+    // lock (mist-ui-bin lock) and idle: native; polkit agent still here
     Polkit {}
-    Idle {}
     // macOS-style overlays (single instance, follow the focused monitor)
     Switcher {}
     Clipboard {}

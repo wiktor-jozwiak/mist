@@ -63,7 +63,7 @@ PanelWindow {
     }
     function mist(args) { return [Quickshell.env("HOME") + "/.local/bin/mist-qs", "-p", Quickshell.shellDir, "ipc", "call"].concat(args) }
     readonly property var commands: [
-        { k: "zablokuj lock ekran", title: "Zablokuj ekran", icon: "lock", cmd: mist(["lock", "lock"]) },
+        { k: "zablokuj lock ekran", title: "Zablokuj ekran", icon: "lock", cmd: [Quickshell.env("HOME") + "/.local/bin/mist-ui-bin", "lock"] },
         { k: "wylacz uruchom ponownie restart reboot shutdown uspij sleep wyloguj logout sesja", title: "Wyłącz / uruchom ponownie…", icon: "power", cmd: mist(["mist", "toggle", "session"]) },
         { k: "tapeta wallpaper tlo", title: "Zmień tapetę", icon: "photo", cmd: mist(["mist", "toggle", "wallpaper"]) },
         { k: "schowek clipboard historia", title: "Historia schowka", icon: "clipboard", cmd: mist(["mist", "toggle", "clipboard"]) },

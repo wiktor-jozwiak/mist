@@ -24,6 +24,8 @@ mod text;
 mod theme;
 mod tray;
 mod desktop;
+mod lock;
+mod idle;
 mod wxcard;
 #[path = "../../common/astro.rs"]
 mod astro;
@@ -40,6 +42,10 @@ fn main() {
     if args.get(1).map(|s| s.as_str()) == Some("msg") {
         // client of the running mist-ui: mist-ui-bin msg <target> <function> [args...]
         std::process::exit(ipc::call(&args[2..]));
+    }
+    // `lock [preview N]`: the session lock, its own process while locked
+    if args.get(1).map(|s| s.as_str()) == Some("lock") {
+        std::process::exit(lock::run(&args[2..]));
     }
     // `--desk-png dir`: the desktop stage and the weather card (cached data), for checks
     if args.get(1).map(|s| s.as_str()) == Some("--desk-png") {
@@ -180,6 +186,7 @@ fn main() {
     sys::power_profile(tx.clone());
     sys::island_events(tx.clone());
     sys::nm_monitor(tx.clone());
+    idle::logind(tx.clone());
     tray::spawn(tx, req_rx, mtx);
 
     // animation tick, only while something fades

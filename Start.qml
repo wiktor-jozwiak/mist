@@ -220,7 +220,7 @@ PanelWindow {
         }
 
         const cmds = [
-            { k: "zablokuj lock", title: "Zablokuj ekran", cmd: [Quickshell.env("HOME") + "/.local/bin/mist-qs", "-p", Quickshell.shellDir, "ipc", "call", "lock", "lock"], icon: "lock" },
+            { k: "zablokuj lock", title: "Zablokuj ekran", cmd: [Quickshell.env("HOME") + "/.local/bin/mist-ui-bin", "lock"], icon: "lock" },
             { k: "ustawienia settings centrum sterowania", title: "Centrum sterowania", cmd: [Quickshell.env("HOME") + "/.local/bin/mist-qs", "-p", Quickshell.shellDir, "ipc", "call", "mist", "toggle", "control"], icon: "settings" },
             { k: "ustawienia settings wyglad qt motyw", title: "Wygląd aplikacji Qt", cmd: ["qt6ct"], icon: "settings" },
             { k: "ustawienia settings wyglad gtk motyw", title: "Wygląd aplikacji GTK", cmd: ["nwg-look"], icon: "settings" },
@@ -984,7 +984,7 @@ PanelWindow {
                 anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; spacing: 4
                 Repeater {
                     model: [
-                        ["lock", "Zablokuj", "", [Quickshell.env("HOME") + "/.local/bin/mist-qs", "-p", Quickshell.shellDir, "ipc", "call", "lock", "lock"]],
+                        ["lock", "Zablokuj", "", [Quickshell.env("HOME") + "/.local/bin/mist-ui-bin", "lock"]],
                         ["logout", "Wyloguj", "Wyloguj", ["loginctl", "terminate-session", Quickshell.env("XDG_SESSION_ID") || "self"]],
                         ["reload", "Uruchom ponownie", "Uruchom ponownie", ["systemctl", "reboot"]],
                         ["power", "Wyłącz", "Wyłącz", ["systemctl", "poweroff"]]

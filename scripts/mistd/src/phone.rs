@@ -650,8 +650,9 @@ fn call_watch() {
 }
 
 // ------------------------------------------------------------ runcommand: the phone controls the PC
+// the shell is native (native/mist-ui): its IPC client (lock lock, mist media ...)
 fn mist_cmd(a: &[&str]) -> String {
-    format!("{}/.local/bin/mist-qs ipc -p {}/.config/quickshell/mist call {}", home(), home(), a.join(" "))
+    format!("{}/.local/bin/mist-ui-bin msg {}", home(), a.join(" "))
 }
 
 // the island is native (native/mist-ui): its IPC client

@@ -59,6 +59,8 @@ pub enum Msg {
     Sys(Value),
     NmLine(String),
     Wall(String, String),
+    Lock,
+    IdleCfg,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -415,6 +417,8 @@ pub fn state_files(tx: Sender<Msg>) {
                     let name = std::ffi::CStr::from_ptr(buf.as_ptr().add(i + std::mem::size_of::<libc::inotify_event>()) as *const libc::c_char).to_string_lossy().to_string();
                     if matches!(name.as_str(), "phone.json" | "ui.json" | "notifications.json" | "wallpaper.json") {
                         send_all(&name);
+                    } else if name == "idle.json" {
+                        let _ = tx.send(Msg::IdleCfg);
                     } else if name == "apps.json" {
                         let _ = tx.send(Msg::Pins);
                     }
