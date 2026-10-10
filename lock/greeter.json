@@ -1,0 +1,8 @@
+{
+  "user": "wiktor",
+  "name": "Wiktor Józwiak",
+  "avatar": "",
+  "wallpaper": "/home/wiktor/Obrazy/Tapety/glow-aurora-night-dim.png",
+  "session": ["start-hyprland"],
+  "env": ["XDG_SESSION_TYPE=wayland", "XDG_CURRENT_DESKTOP=Hyprland", "XDG_SESSION_DESKTOP=Hyprland"]
+}

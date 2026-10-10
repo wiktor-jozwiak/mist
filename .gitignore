@@ -1,0 +1,20 @@
+# backups made before edits (history now lives in git; old ones: ~/.local/share/mist/archive)
+*.before-*
+*.before_*
+*.orig
+*.bak
+*.v1
+*.v2
+*.minimal
+*.rich-*
+*.apple-widgets
+*.clean-v6
+*.mag-transform
+*.garmin
+*.capsule
+*.realistic2d
+*.qsb.v1
+# Rust build output; the installed binary is built by scripts/mistd/install.sh
+scripts/mistd/target/
+scripts/bin/
+scripts/old-python/
