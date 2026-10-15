@@ -49,7 +49,7 @@ mod presets;
 mod sky;
 mod wall;
 
-use calloop::{channel, timer::{TimeoutAction, Timer}, EventLoop};
+use calloop::{channel, EventLoop};
 use calloop_wayland_source::WaylandSource;
 use wayland_client::{globals::registry_queue_init, Connection};
 
@@ -111,6 +111,82 @@ fn main() {
     if args.get(1).map(|s| s.as_str()) == Some("--png") {
         return png(&args);
     }
+    // `--island-bench <demo> [out.png]`: an island demo drawn every 16 ms for 1.5 s (frame cost, to_bgra cost),
+    // the last frame into a PNG
+    if args.get(1).map(|s| s.as_str()) == Some("--island-bench") {
+        let (mut t, mut ic, mut im, ph) = (text::Text::new(), apps::Icons::new(), img::Images::new(), phone::State::default());
+        let mut isl = island::Island::new();
+        let mut c = gfx::Canvas::new(island::WIN_W, island::WIN_H);
+        let now = data::now();
+        let mut frame = |isl: &mut island::Island, c: &mut gfx::Canvas| {
+            let mut cx = island::Ctx { t: &mut t, icons: &mut ic, imgs: &mut im, phone: &ph, now };
+            let t0 = std::time::Instant::now();
+            isl.draw(c, &mut cx, false, false);
+            t0.elapsed().as_micros() as u64
+        };
+        frame(&mut isl, &mut c);
+        let kind = args.get(2).map(|s| s.as_str()).unwrap_or("volume");
+        // `eq`: a playing track at rest, frames of the equalizer alone against full frames drawn right after
+        if kind == "eq" {
+            isl.set_players(vec![media::Player { identity: "Bench".into(), title: "Track".into(), artist: "Artist".into(), playing: true, ..Default::default() }]);
+            let start = std::time::Instant::now();
+            while !isl.eq_only() && start.elapsed().as_secs() < 5 {
+                frame(&mut isl, &mut c);
+                std::thread::sleep(std::time::Duration::from_millis(16));
+            }
+            let (mut n, mut fast_us, mut full_us, mut worst, mut off) = (0u64, 0u64, 0u64, 0u8, 0u64);
+            let start = std::time::Instant::now();
+            while start.elapsed().as_millis() < 1500 {
+                std::thread::sleep(std::time::Duration::from_millis(16));
+                let mut a = gfx::Canvas::new(island::WIN_W, island::WIN_H);
+                a.pm.data_mut().copy_from_slice(c.pm.data());
+                let t0 = std::time::Instant::now();
+                if isl.eq_frame(&mut a).is_none() {
+                    eprintln!("no eq spot");
+                    break;
+                }
+                fast_us += t0.elapsed().as_micros() as u64;
+                full_us += frame(&mut isl, &mut c);
+                for (i, (p, q)) in a.pm.data().iter().zip(c.pm.data()).enumerate() {
+                    let d = p.abs_diff(*q);
+                    if d > 4 && std::env::var("MIST_DIFF").is_ok() {
+                        eprintln!("px {} {} ch {} fast {p} full {q}", (i / 4) as u32 % island::WIN_W, (i / 4) as u32 / island::WIN_W, i % 4);
+                    }
+                    worst = worst.max(d);
+                    off += (d > 0) as u64;
+                }
+                n += 1;
+            }
+            println!("eq frames {n}: fast {} us full {} us; vs full: {off} channel values differ, worst {worst}", fast_us / n.max(1), full_us / n.max(1));
+            if let Some(p) = args.get(3) {
+                c.pm.save_png(p).unwrap();
+            }
+            return;
+        }
+        isl.demo(kind);
+        let (start, mut n, mut us) = (std::time::Instant::now(), 0u64, 0u64);
+        while start.elapsed().as_millis() < 1500 {
+            us += frame(&mut isl, &mut c);
+            n += 1;
+            std::thread::sleep(std::time::Duration::from_millis(16));
+        }
+        let mut buf = vec![0u8; (island::WIN_W * island::WIN_H * 4) as usize];
+        let t0 = std::time::Instant::now();
+        for _ in 0..200 {
+            c.to_bgra(&mut buf);
+        }
+        let bgra = t0.elapsed().as_micros() / 200;
+        let mut sc = gfx::Canvas::new(island::WIN_W, island::WIN_H);
+        let t0 = std::time::Instant::now();
+        for _ in 0..200 {
+            glass::shadow(&mut sc, 80.0, 13.0, 400.0, 110.0, 30.0, 24.0, -4.0, gfx::Rgba(0.0, 0.0, 0.0, 0.45));
+        }
+        println!("frames {n} draw {} us/frame to_bgra {bgra} us shadow(400x110) {} us", us / n.max(1), t0.elapsed().as_micros() / 200);
+        if let Some(p) = args.get(3) {
+            c.pm.save_png(p).unwrap();
+        }
+        return;
+    }
     if args.get(1).map(|s| s.as_str()) == Some("--dock-png") {
         // the dock as it is now (hovering slot N when given) into a PNG
         let h = sys::hypr_now();
@@ -126,6 +202,14 @@ fn main() {
         let mut t = text::Text::new();
         let mut c = gfx::Canvas::new(d.win_w(), dock::WIN_H);
         d.draw(&mut c, &mut t, &mut ic);
+        // MIST_BENCH=n: the average frame
+        if let Some(n) = std::env::var("MIST_BENCH").ok().and_then(|v| v.parse::<u32>().ok()) {
+            let t0 = std::time::Instant::now();
+            for _ in 0..n {
+                d.draw(&mut c, &mut t, &mut ic);
+            }
+            eprintln!("dock frame {:.0} us", t0.elapsed().as_secs_f64() * 1e6 / n.max(1) as f64);
+        }
         c.pm.save_png(&args[2]).unwrap();
         return;
     }
@@ -248,18 +332,19 @@ fn main() {
     idle::logind(tx.clone());
     tray::spawn(tx, req_rx, mtx);
 
-    // seconds: island timers, the clock's minute, call timeouts
-    lh.insert_source(Timer::from_duration(std::time::Duration::from_millis(250)), |_, _, app: &mut app::App| {
-        app.slow_tick();
-        TimeoutAction::ToDuration(std::time::Duration::from_millis(250))
-    })
-    .unwrap();
     // wait for events; draw what changed after each batch. The animation tick (16 ms) runs only while something
-    // animates: idle, the loop sleeps until an event (or the 250 ms slow tick)
+    // animates. The slow tick (island timers, the clock's minute, call timeouts) runs every 250 ms while
+    // something it times is pending, else every 1 s; an event that makes something pending pulls it in
     let mut last_tick = std::time::Instant::now();
+    let mut last_slow = std::time::Instant::now();
     loop {
-        let timeout = app.animating().then(|| app::tick_interval().saturating_sub(last_tick.elapsed()));
-        ev.dispatch(timeout, &mut app).expect("dispatch");
+        let slow_left = app.slow_period().saturating_sub(last_slow.elapsed());
+        let timeout = if app.animating() { slow_left.min(app::tick_interval().saturating_sub(last_tick.elapsed())) } else { slow_left };
+        ev.dispatch(Some(timeout), &mut app).expect("dispatch");
+        if last_slow.elapsed() >= app.slow_period() {
+            last_slow = std::time::Instant::now();
+            app.slow_tick();
+        }
         let t0 = std::time::Instant::now();
         if app.animating() && last_tick.elapsed() >= app::tick_interval() {
             last_tick = std::time::Instant::now();

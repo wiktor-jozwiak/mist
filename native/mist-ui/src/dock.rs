@@ -51,6 +51,8 @@ pub struct Dock {
     tiles: HashMap<String, Option<Rc<Tile>>>,
     pub asked: std::collections::HashSet<String>,
     glass_cache: Option<(u32, Canvas)>,
+    label_cache: HashMap<String, Canvas>, // label pills (glass + text), by text: drawn every hover frame
+
 }
 
 pub struct Tile {
@@ -70,7 +72,7 @@ pub fn slot_key(s: &Slot) -> String {
 
 impl Dock {
     pub fn new() -> Dock {
-        let mut d = Dock { pins: Vec::new(), apps: Vec::new(), slots: Vec::new(), hovered: false, menu_open: false, start_open: false, bare: true, y: Anim::new(68.0), hover_slot: None, pressed_slot: None, lift: HashMap::new(), label: HashMap::new(), tiles: HashMap::new(), asked: Default::default(), glass_cache: None };
+        let mut d = Dock { pins: Vec::new(), apps: Vec::new(), slots: Vec::new(), hovered: false, menu_open: false, start_open: false, bare: true, y: Anim::new(68.0), hover_slot: None, pressed_slot: None, lift: HashMap::new(), label: HashMap::new(), tiles: HashMap::new(), asked: Default::default(), glass_cache: None, label_cache: HashMap::new() };
         d.load_pins();
         d
     }
@@ -293,11 +295,18 @@ impl Dock {
             let pw = (tw + 20.0).min(260.0);
             let px = xs[i] + SIZE / 2.0 - pw / 2.0;
             let py = iy - PAD - 26.0 - 10.0;
-            let mut pc = Canvas::new((pw + 80.0) as u32, 26 + 80);
-            Glass { radius: 10.0, tint: 0.86, shadow_opacity: 0.25, ..Default::default() }.paint(&mut pc, 40.0, 40.0, pw, 26.0);
-            let label = crate::bar::elide(t, &txt, &st, pw - 20.0);
-            let lw = t.width(&label, &st);
-            pc.text(t, 40.0 + (pw - lw) / 2.0, 40.0 + 13.0, &label, &st, T1);
+            if !self.label_cache.contains_key(&txt) {
+                if self.label_cache.len() > 32 {
+                    self.label_cache.clear();
+                }
+                let mut pc = Canvas::new((pw + 80.0) as u32, 26 + 80);
+                Glass { radius: 10.0, tint: 0.86, shadow_opacity: 0.25, ..Default::default() }.paint(&mut pc, 40.0, 40.0, pw, 26.0);
+                let label = crate::bar::elide(t, &txt, &st, pw - 20.0);
+                let lw = t.width(&label, &st);
+                pc.text(t, 40.0 + (pw - lw) / 2.0, 40.0 + 13.0, &label, &st, T1);
+                self.label_cache.insert(txt.clone(), pc);
+            }
+            let pc = &self.label_cache[&txt];
             let paint = tiny_skia::PixmapPaint { opacity: op, ..Default::default() };
             c.pm.draw_pixmap((px - 40.0).round() as i32, (py - 40.0).round() as i32, pc.pm.as_ref(), &paint, tiny_skia::Transform::identity(), None);
         }

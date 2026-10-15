@@ -28,7 +28,7 @@ pub struct Wx {
     last_n: usize,
     // the insight carousel's fade (only the footer changes, linearly in its opacity): two renders, pixels blended
     foot_fast: bool,
-    foot_cache: Option<(Pixmap, Pixmap)>,
+    foot_cache: Option<(Pixmap, Pixmap, usize, usize)>, // + the rows that differ (start, end)
     foot_o: Option<f32>,
 }
 
@@ -323,18 +323,22 @@ impl Wx {
 
     // the card's window: card at (CARD_PAD, CARD_PAD); returns nothing, fills self.hits (card coords)
     // the carousel's fade: the footer at .2 and at 1 rendered once, the frames between blended (a full paint costs
-    // ~13 ms, a blend < 1 ms); the last frame is a full paint again
-    pub fn paint_cached(&mut self, c: &mut Canvas, t: &mut Text, wx: &Value, garmin: &Value, cfg: &Cfg) {
+    // ~13 ms, a blend < 1 ms) and only over the rows that differ; the last frame is a full paint again.
+    // Returns the rows changed (y, h) when the frame was a blend, None after a full paint
+    pub fn paint_cached(&mut self, c: &mut Canvas, t: &mut Text, wx: &Value, garmin: &Value, cfg: &Cfg) -> Option<(i32, i32)> {
         if !self.foot_fast {
             self.foot_cache = None;
-            return self.paint(c, t, wx, garmin, cfg);
+            self.paint(c, t, wx, garmin, cfg);
+            return None;
         }
         let k = self.turned.elapsed().as_secs_f32() * 1000.0 / 220.0;
         if k >= 1.0 {
             self.foot_fast = false;
             self.foot_cache = None;
-            return self.paint(c, t, wx, garmin, cfg);
+            self.paint(c, t, wx, garmin, cfg);
+            return None;
         }
+        let mut fresh = false;
         if self.foot_cache.as_ref().map(|f| f.0.width() != c.pm.width() || f.0.height() != c.pm.height()).unwrap_or(true) {
             self.foot_o = Some(0.2);
             self.paint(c, t, wx, garmin, cfg);
@@ -342,13 +346,26 @@ impl Wx {
             self.foot_o = Some(1.0);
             self.paint(c, t, wx, garmin, cfg);
             self.foot_o = None;
-            self.foot_cache = Some((f0, c.pm.clone()));
+            let row = c.pm.width() as usize * 4;
+            let same = |y: usize| f0.data()[y * row..(y + 1) * row] == c.pm.data()[y * row..(y + 1) * row];
+            let n = c.pm.height() as usize;
+            let r0 = (0..n).find(|&y| !same(y)).unwrap_or(n);
+            let r1 = (r0..n).rev().find(|&y| !same(y)).map(|y| y + 1).unwrap_or(r0);
+            self.foot_cache = Some((f0, c.pm.clone(), r0, r1));
+            fresh = true;
         }
-        let (f0, f1) = self.foot_cache.as_ref().unwrap();
+        let (f0, f1, r0, r1) = self.foot_cache.as_ref().unwrap();
         let kk = (k.max(0.0) * 256.0) as u32;
-        for (d, (a, b)) in c.pm.data_mut().iter_mut().zip(f0.data().iter().zip(f1.data())) {
+        let row = c.pm.width() as usize * 4;
+        let span = r0 * row..r1 * row;
+        for (d, (a, b)) in c.pm.data_mut()[span.clone()].iter_mut().zip(f0.data()[span.clone()].iter().zip(&f1.data()[span])) {
             *d = ((*a as u32 * (256 - kk) + *b as u32 * kk) >> 8) as u8;
         }
+        // outside the rows the canvas already holds the frame (f0 = f1 there)
+        if fresh {
+            return None;
+        }
+        Some((*r0 as i32, (*r1 - *r0) as i32))
     }
     pub fn paint(&mut self, c: &mut Canvas, t: &mut Text, wx: &Value, garmin: &Value, cfg: &Cfg) {
         c.clear();
@@ -905,7 +922,11 @@ impl Wx {
         self.pin_hour = -1;
         true
     }
-    // every 250 ms: back to "now" after leaving, the insight carousel; true = repaint
+    // a day / hour picked: the way back to "now" is timed by the 250 ms tick (the carousel's 8 s is not)
+    pub fn pending(&self) -> bool {
+        self.hovered || self.sel_day != 0 || self.pin_hour >= 0
+    }
+    // every 250 ms (1 s at rest): back to "now" after leaving, the insight carousel; true = repaint
     pub fn tick(&mut self, n_ins: usize) -> bool {
         let mut ch = false;
         if let Some(a) = self.away {

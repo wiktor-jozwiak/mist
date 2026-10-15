@@ -157,6 +157,7 @@ pub struct App {
     pub media_tx: std::sync::mpsc::Sender<crate::media::Cmd>,
     keyboard: Option<wl_keyboard::WlKeyboard>,
     island_dirty: bool,
+    island_eq_dirty: bool, // only the equalizer moved (Island::eq_frame)
     last_minute: i64,
     pos_tick: Instant,
     last_call_key: String,
@@ -226,6 +227,7 @@ impl App {
             media_tx,
             keyboard: None,
             island_dirty: true,
+            island_eq_dirty: false,
             last_minute: 0,
             pos_tick: Instant::now(),
             last_call_key: String::new(),
@@ -376,6 +378,13 @@ impl App {
         self.outputs.outputs().filter_map(|o| self.outputs.info(&o).and_then(|i| i.name.clone()).map(|n| (o, n))).collect()
     }
 
+    // the slow tick's period: 250 ms while something it times is pending, else 1 s (minute, watchers, carousel)
+    pub fn slow_period(&self) -> Duration {
+        let ringing = { let s = self.phone.st.lock().unwrap(); s.ringing() || s.call().is_some() };
+        let busy = self.thumb.is_some() || self.polkit.is_some() || self.pane.is_some() || self.island.pending() || self.desk.wx.pending() || ringing;
+        Duration::from_millis(if busy { 250 } else { 1000 })
+    }
+
     pub fn slow_tick(&mut self) {
         self.idle.reap();
         // the screenshot thumbnail goes after 6 s (not while hovered)
@@ -430,8 +439,13 @@ impl App {
             self.pos_tick = Instant::now();
             let _ = self.media_tx.send(crate::media::Cmd::Refresh);
         }
-        if self.island.playing() && matches!(mode, "idle" | "track") {
-            self.island_dirty = true;
+        // the equalizer's next heights: its box alone when the frame is at rest, nothing while hidden
+        if self.island.playing() && matches!(mode, "idle" | "track") && !self.island.is_hidden() {
+            if self.island.eq_only() {
+                self.island_eq_dirty = true;
+            } else {
+                self.island_dirty = true;
+            }
         }
     }
     pub fn tick(&mut self) {
@@ -466,7 +480,11 @@ impl App {
         if self.desk.wx.fx.running() {
             self.desk.card_dirty = true;
         }
-        if self.island.animating() {
+        if self.island.eq_only() {
+            if self.island.eq_running() {
+                self.island_eq_dirty = true;
+            }
+        } else if self.island.animating() {
             self.island_dirty = true;
         }
         if self.dock_hide_at.map(|t| now >= t).unwrap_or(false) {
@@ -506,9 +524,14 @@ impl App {
         if self.popup.as_ref().map(|m| m.configured && m.dirty).unwrap_or(false) {
             self.draw_popup();
         }
-        if self.island_dirty && self.island_surf.as_ref().map(|i| i.configured).unwrap_or(false) {
-            self.draw_island();
+        if self.island_surf.as_ref().map(|i| i.configured).unwrap_or(false) {
+            if self.island_dirty {
+                self.draw_island();
+            } else if self.island_eq_dirty {
+                self.draw_island_eq();
+            }
         }
+        self.island_eq_dirty = false;
         let t0 = Instant::now();
         self.draw_desk();
         count("wake_us", t0.elapsed().as_micros() as u64);
@@ -1106,14 +1129,16 @@ impl App {
                 self.desk.card_canvas = crate::gfx::Canvas::new(w, h);
             }
             let mut c = std::mem::replace(&mut self.desk.card_canvas, crate::gfx::Canvas::new(1, 1));
-            let (wx, g) = (self.desk.weather.clone(), self.desk.garmin.clone());
             let t0 = Instant::now();
-            self.desk.wx.paint_cached(&mut c, &mut self.text, &wx, &g, &self.desk.cfg);
+            let d = &mut self.desk;
+            let rows = d.wx.paint_cached(&mut c, &mut self.text, &d.weather, &d.garmin, &d.cfg);
             count("card", 1);
             count("card_us", t0.elapsed().as_micros() as u64);
             self.desk.card_canvas = c;
             if let Some(l) = &self.desk.card {
-                Self::commit(&mut self.pool, l, &self.desk.card_canvas);
+                let cw = self.desk.card_canvas.pm.width() as i32;
+                let (y, h) = rows.unwrap_or((0, self.desk.card_canvas.pm.height() as i32));
+                Self::commit_box(&mut self.pool, l, &self.desk.card_canvas, (0, y, cw, h));
             }
         }
     }
@@ -1230,6 +1255,19 @@ impl App {
             isf.layer.set_keyboard_interactivity(if self.island.replying { KeyboardInteractivity::OnDemand } else { KeyboardInteractivity::None });
         }
         Self::commit(&mut self.pool, &isf.layer, &isf.canvas);
+    }
+
+    // a frame of the equalizer alone: its box repainted over the last frame, only that box damaged
+    fn draw_island_eq(&mut self) {
+        let Some(isf) = self.island_surf.as_mut() else { return };
+        let t0 = Instant::now();
+        let Some(b) = self.island.eq_frame(&mut isf.canvas) else {
+            self.draw_island();
+            return;
+        };
+        count("island_eq", 1);
+        count("island_eq_us", t0.elapsed().as_micros() as u64);
+        Self::commit_box(&mut self.pool, &isf.layer, &isf.canvas, b);
     }
 
     fn island_hit(&self, x: f32, y: f32) -> Option<crate::island::Hit> {
@@ -1666,12 +1704,18 @@ impl App {
 
     fn commit(pool: &mut SlotPool, layer: &LayerSurface, canvas: &Canvas) {
         let (wi, hi) = (canvas.pm.width() as i32, canvas.pm.height() as i32);
+        Self::commit_box(pool, layer, canvas, (0, 0, wi, hi));
+    }
+    // the whole canvas into a new buffer, `damage` (buffer pixels) marked as changed
+    fn commit_box(pool: &mut SlotPool, layer: &LayerSurface, canvas: &Canvas, damage: (i32, i32, i32, i32)) {
+        let (wi, hi) = (canvas.pm.width() as i32, canvas.pm.height() as i32);
         let t0 = Instant::now();
         let Ok((buffer, data)) = pool.create_buffer(wi, hi, wi * 4, wl_shm::Format::Argb8888) else { return };
         canvas.to_bgra(data);
         count("commit_us", t0.elapsed().as_micros() as u64);
+        count("commits", 1);
         let s = layer.wl_surface();
-        s.damage_buffer(0, 0, wi, hi);
+        s.damage_buffer(damage.0, damage.1, damage.2, damage.3);
         let _ = buffer.attach_to(s);
         layer.commit();
     }

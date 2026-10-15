@@ -151,13 +151,65 @@ pub fn shadow(c: &mut Canvas, x: f32, y: f32, w: f32, h: f32, r: f32, blur: f32,
     let y1 = ((y + h + blur).ceil() as i32).min(ph);
     let (cx, cy, hx, hy) = (x + w / 2.0, y + h / 2.0, w / 2.0 - r, h / 2.0 - r);
     let data = c.pm.data_mut();
+    // the inside (d <= -blur/2: full alpha) is the shape shrunk by blur/2; its span per row is found
+    // analytically and blended without the distance maths (same formula, same pixels)
+    // and outside the shape grown by blur/2 nothing is drawn (k = 0): only the band between is computed
+    let m = blur * 0.5;
+    // half width at row offset dy of the shape grown by o (shrunk when o < 0)
+    let span = |dy: f32, o: f32| -> f32 {
+        let (ra, ha, hb) = (r + o, w / 2.0 + o, h / 2.0 + o);
+        if dy > hb || ha <= 0.0 {
+            -1.0
+        } else if ra <= 0.0 || dy <= hb - ra {
+            ha
+        } else {
+            let e = dy - (hb - ra);
+            (ha - ra) + (ra * ra - e * e).max(0.0).sqrt()
+        }
+    };
+    // pixel columns whose centre is inside [cx - half, cx + half]
+    let cols = |half: f32| if half > 0.0 { (((cx - half - 0.5).ceil() as i32).max(x0), ((cx + half - 0.5).floor() as i32 + 1).min(x1)) } else { (x1, x1) };
+    let a_in = color.3;
+    let (cr, cg, cb, ca) = (color.0 * 255.0 * a_in, color.1 * 255.0 * a_in, color.2 * 255.0 * a_in, a_in * 255.0);
+    let inv_in = 1.0 - a_in;
+    let kf = |qx: f32, qy: f32| -> f32 {
+        // hypot as glibc's hypotf does it (in f64), inline
+        let (ex, ey) = (qx.max(0.0) as f64, qy.max(0.0) as f64);
+        let d = ((ex * ex + ey * ey).sqrt() as f32) + qx.max(qy).min(0.0) - r;
+        // gaussian-like falloff over [-blur/2, blur/2]
+        let t = ((d + blur * 0.5) / blur).clamp(0.0, 1.0);
+        1.0 - t * t * (3.0 - 2.0 * t)
+    };
+    // beside the straight sides the falloff depends on the column only (qx > 0, qy <= 0: d = qx - r) or on
+    // the row only (qx <= 0, qy > 0: d = qy - r): computed once each; only the corners need the full formula
+    let qxs: Vec<f32> = (x0..x1).map(|px| ((px as f32 + 0.5) - cx).abs() - hx).collect();
+    let kcol: Vec<f32> = qxs.iter().map(|&qx| kf(qx, -1.0)).collect();
     for py in y0..y1 {
-        for px in x0..x1 {
-            let (qx, qy) = (((px as f32 + 0.5) - cx).abs() - hx, ((py as f32 + 0.5) - cy).abs() - hy);
-            let d = (qx.max(0.0).hypot(qy.max(0.0))) + qx.max(qy).min(0.0) - r;
-            // gaussian-like falloff over [-blur/2, blur/2]
-            let t = ((d + blur * 0.5) / blur).clamp(0.0, 1.0);
-            let k = 1.0 - t * t * (3.0 - 2.0 * t);
+        let dy = ((py as f32 + 0.5) - cy).abs();
+        let qy = dy - hy;
+        let krow = kf(-1.0, qy);
+        let (sx0, sx1) = cols(span(dy, -m) - 0.01);
+        let (bx0, bx1) = cols(span(dy, m) + 0.01);
+        let (bx0, bx1) = if bx0 >= bx1 { (x0, x0) } else { (bx0, bx1) };
+        let row = (py * pw) as usize * 4;
+        for px in sx0.max(x0)..sx1 {
+            let i = row + px as usize * 4;
+            data[i] = (cr + data[i] as f32 * inv_in) as u8;
+            data[i + 1] = (cg + data[i + 1] as f32 * inv_in) as u8;
+            data[i + 2] = (cb + data[i + 2] as f32 * inv_in) as u8;
+            data[i + 3] = (ca + data[i + 3] as f32 * inv_in) as u8;
+        }
+        for px in bx0..bx1 {
+            if px >= sx0 && px < sx1 {
+                continue;
+            }
+            let j = (px - x0) as usize;
+            let qx = qxs[j];
+            let k = match (qx > 0.0, qy > 0.0) {
+                (true, false) => kcol[j],
+                (false, true) => krow,
+                _ => kf(qx, qy),
+            };
             if k <= 0.0 {
                 continue;
             }
@@ -168,6 +220,64 @@ pub fn shadow(c: &mut Canvas, x: f32, y: f32, w: f32, h: f32, r: f32, blur: f32,
             data[i + 1] = (color.1 * 255.0 * a + data[i + 1] as f32 * inv) as u8;
             data[i + 2] = (color.2 * 255.0 * a + data[i + 2] as f32 * inv) as u8;
             data[i + 3] = (a * 255.0 + data[i + 3] as f32 * inv) as u8;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // the per-pixel version the fast path replaced: the reference
+    fn shadow_ref(c: &mut Canvas, x: f32, y: f32, w: f32, h: f32, r: f32, blur: f32, spread: f32, color: Rgba) {
+        let (x, y, w, h) = (x - spread, y - spread, w + 2.0 * spread, h + 2.0 * spread);
+        let r = (r + spread).max(0.0).min(w / 2.0).min(h / 2.0);
+        let (pw, ph) = (c.pm.width() as i32, c.pm.height() as i32);
+        let x0 = ((x - blur).floor() as i32).max(0);
+        let y0 = ((y - blur).floor() as i32).max(0);
+        let x1 = ((x + w + blur).ceil() as i32).min(pw);
+        let y1 = ((y + h + blur).ceil() as i32).min(ph);
+        let (cx, cy, hx, hy) = (x + w / 2.0, y + h / 2.0, w / 2.0 - r, h / 2.0 - r);
+        let data = c.pm.data_mut();
+        for py in y0..y1 {
+            for px in x0..x1 {
+                let (qx, qy) = (((px as f32 + 0.5) - cx).abs() - hx, ((py as f32 + 0.5) - cy).abs() - hy);
+                let d = (qx.max(0.0).hypot(qy.max(0.0))) + qx.max(qy).min(0.0) - r;
+                // gaussian-like falloff over [-blur/2, blur/2]
+                let t = ((d + blur * 0.5) / blur).clamp(0.0, 1.0);
+                let k = 1.0 - t * t * (3.0 - 2.0 * t);
+                if k <= 0.0 {
+                    continue;
+                }
+                let a = color.3 * k;
+                let i = ((py * pw + px) * 4) as usize;
+                let inv = 1.0 - a;
+                data[i] = (color.0 * 255.0 * a + data[i] as f32 * inv) as u8;
+                data[i + 1] = (color.1 * 255.0 * a + data[i + 1] as f32 * inv) as u8;
+                data[i + 2] = (color.2 * 255.0 * a + data[i + 2] as f32 * inv) as u8;
+                data[i + 3] = (a * 255.0 + data[i + 3] as f32 * inv) as u8;
+            }
+        }
+    }
+    #[test]
+    fn shadow_fast_inside_is_pixel_identical() {
+        let mut seed = 0x2545F4914F6CDD1Du64;
+        let mut rnd = |lo: f32, hi: f32| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            lo + (seed % 10_000) as f32 / 10_000.0 * (hi - lo)
+        };
+        for _ in 0..400 {
+            let (x, y, w, h) = (rnd(-40.0, 200.0), rnd(-40.0, 120.0), rnd(1.0, 300.0), rnd(1.0, 160.0));
+            let (r, blur, spread) = (rnd(0.0, 40.0), rnd(0.5, 40.0), rnd(-8.0, 8.0));
+            let col = Rgba(rnd(0.0, 1.0), rnd(0.0, 1.0), rnd(0.0, 1.0), rnd(0.05, 1.0));
+            let mut a = Canvas::new(320, 200);
+            a.rrect(10.0, 10.0, 200.0, 120.0, 20.0, Rgba(0.3, 0.6, 0.9, 0.7));
+            let mut b = Canvas::new(320, 200);
+            b.rrect(10.0, 10.0, 200.0, 120.0, 20.0, Rgba(0.3, 0.6, 0.9, 0.7));
+            shadow(&mut a, x, y, w, h, r, blur, spread, col);
+            shadow_ref(&mut b, x, y, w, h, r, blur, spread, col);
+            assert!(a.pm.data() == b.pm.data(), "differs: {x} {y} {w} {h} r{r} blur{blur} spread{spread}");
         }
     }
 }

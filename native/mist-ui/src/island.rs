@@ -21,6 +21,21 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+// the equalizer of a settled frame: its view layer's transform and opacity, and the box (view coords,
+// window pixels) that a frame of the bars alone repaints
+#[derive(Clone, Copy)]
+struct EqSpot {
+    tf: tiny_skia::Transform,
+    op: f32,
+    run: bool,
+    lx: f32, // the bars' origin in view coords
+    ly: f32,
+    bx: i32, // the small layer's origin in view coords (integer: same pixel phase as the view)
+    by: i32,
+    dst: (i32, i32, i32, i32), // window pixels repainted: x, y, w, h
+}
+const EQ_BOX: (i32, i32) = (24, 20); // 4 bars (5 px pitch, 3 wide, <= 14 high) + 3 px around
+
 pub const WIN_W: u32 = 560;
 pub const WIN_H: u32 = 240;
 const ORANGE_I: Rgba = Rgba(0xef as f32 / 255.0, 0xb0 as f32 / 255.0, 0x8a as f32 / 255.0, 1.0);
@@ -213,6 +228,9 @@ pub struct Island {
     shadow: Anim,
     eq: [Anim; 4],
     eq_at: Instant,
+    eq_pos: Option<(f32, f32, bool)>, // where the view being drawn put the equalizer (view coords), running
+    eq_spot: Option<EqSpot>,          // the settled frame's equalizer: redrawn alone (see eq_frame)
+    hidden: bool,                     // last frame was hidden under a fullscreen window
     pub hits: Vec<(f32, f32, f32, f32, Hit)>,
     pub hover_hit: Option<Hit>,
     pub seek_drag: Option<f32>,
@@ -233,7 +251,7 @@ impl Island {
             conn: "full".into(), primary: String::new(), last_call: None, keypad: false, call_at: None, last_note: (String::new(), None),
             weather: Value::Null, calendar: Value::Null, reminded: HashMap::new(), rain_at: None, timer_end: 0.0, timer_total: 0.0, timer_label: String::new(),
             w: Spring::new(120.0, 3.4, 0.3, 0.25), h: Spring::new(30.0, 3.4, 0.3, 0.25), y: Spring::new(5.0, 3.0, 0.32, 0.25), bump_at: None,
-            panes: HashMap::new(), shadow: Anim::new(0.0), eq: [Anim::new(4.0); 4], eq_at: now, hits: Vec::new(), hover_hit: None, seek_drag: None,
+            panes: HashMap::new(), shadow: Anim::new(0.0), eq: [Anim::new(4.0); 4], eq_at: now, eq_pos: None, eq_spot: None, hidden: false, hits: Vec::new(), hover_hit: None, seek_drag: None,
             phone_name: String::new(), track_h: Anim::new(5.0), note_bar: Anim::new(0.0),
         }
     }
@@ -1145,10 +1163,43 @@ impl Island {
         self.eq.iter().any(|a| a.running())
     }
     pub fn animating(&self) -> bool {
+        self.animating_but_eq() || self.eq_running()
+    }
+    fn animating_but_eq(&self) -> bool {
         self.w.moving || self.h.moving || self.y.moving || self.bump_at.map(|t| t.elapsed().as_millis() < 600).unwrap_or(false) || self.shadow.running()
             || self.panes.values().any(|p| p.0.running() || p.1.moving || p.2.is_some())
-            || self.eq.iter().any(|a| a.running())
             || self.note_bar.running() || self.track_h.running()
+    }
+    // only the equalizer changes: a frame of the bars alone will do (eq_frame)
+    pub fn eq_only(&self) -> bool {
+        self.eq_spot.is_some() && !self.animating_but_eq()
+    }
+    pub fn is_hidden(&self) -> bool {
+        self.hidden
+    }
+    // anything tick() still has to time (or a clock it shows): the slow tick stays at 250 ms
+    pub fn pending(&self) -> bool {
+        let at = [self.ev_until, self.open_at, self.close_at, self.self_until, self.track_at, self.state_at, self.dev_armed_at, self.vol_recent_until, self.share_at, self.shot_at, self.call_at, self.rain_at, self.bump_at, self.last_note.1];
+        !self.armed || self.ev.is_some() || !self.queue.is_empty() || at.iter().any(|t| t.is_some()) || self.timer_on() || self.playing() || self.hover || self.expanded || self.replying
+    }
+    // the equalizer alone over the last full frame: the box goes back to the black shape, the bars are drawn
+    // into a small layer at the view's pixel phase and composited like the view (same transform, opacity).
+    // The box (window pixels) to commit, or None when a full frame is needed.
+    pub fn eq_frame(&mut self, c: &mut Canvas) -> Option<(i32, i32, i32, i32)> {
+        let s = self.eq_spot?;
+        let mut layer = Canvas::new(EQ_BOX.0 as u32, EQ_BOX.1 as u32);
+        self.eq_draw(&mut layer, s.lx - s.bx as f32, s.ly - s.by as f32, s.run);
+        self.eq_spot = Some(s);
+        let (dx, dy, dw, dh) = s.dst;
+        let rect = tiny_skia::Rect::from_xywh(dx as f32, dy as f32, dw as f32, dh as f32)?;
+        let mut black = tiny_skia::Paint::default();
+        black.set_color_rgba8(0, 0, 0, 255);
+        c.pm.fill_rect(rect, &black, tiny_skia::Transform::identity(), None);
+        let tf = s.tf.pre_translate(s.bx as f32, s.by as f32);
+        let shader = tiny_skia::Pattern::new(layer.pm.as_ref(), tiny_skia::SpreadMode::Pad, tiny_skia::FilterQuality::Bilinear, s.op, tf);
+        let paint = tiny_skia::Paint { shader, anti_alias: true, ..Default::default() };
+        c.pm.fill_rect(rect, &paint, tiny_skia::Transform::identity(), None);
+        Some(s.dst)
     }
 
     // size of each view (implicitWidth / implicitHeight in Island.qml)
@@ -1273,6 +1324,8 @@ impl Island {
         self.w.set(tw);
         self.h.set(th);
         let hidden = self.fullscreen && mode == "idle";
+        self.hidden = hidden;
+        self.eq_spot = None;
         self.y.set(if hidden { -self.h.to - 8.0 } else { 5.0 });
         self.w.step();
         self.h.step();
@@ -1300,6 +1353,7 @@ impl Island {
             let (vw, vh) = if active { (tw, th) } else { self.size(view, cx) };
             let mut layer = Canvas::new(vw.ceil().max(1.0) as u32, vh.ceil().max(1.0) as u32);
             let hits0 = self.hits.len();
+            self.eq_pos = None;
             self.draw_view(view, &mut layer, cx, vw, vh, active);
             // pane placed centred in the shape
             let ox = WIN_W as f32 / 2.0 - vw / 2.0;
@@ -1313,6 +1367,21 @@ impl Island {
             }
             let s = sc * k;
             let tf = tiny_skia::Transform::from_translate(-vw / 2.0, -vh / 2.0).post_scale(s, s).post_translate(WIN_W as f32 / 2.0, oy + vh / 2.0);
+            // the active view at rest with an equalizer: remember where, for frames of the bars alone
+            if let (true, Some((lx, ly, run))) = (active && s == 1.0 && !hidden, self.eq_pos) {
+                let (bx, by) = (lx.floor() as i32 - 3, ly.floor() as i32 - 3);
+                let dst = ((tf.tx + bx as f32).floor() as i32, (tf.ty + by as f32).floor() as i32, EQ_BOX.0 + 1, EQ_BOX.1 + 1);
+                // the box must sit on the opaque black shape, inside the window
+                let rr = r * k;
+                let inside = |px: f32, py: f32| {
+                    let (qx, qy) = ((px - (sx + sw / 2.0)).abs() - (sw / 2.0 - rr), (py - (y + sh / 2.0)).abs() - (sh / 2.0 - rr));
+                    qx.max(0.0).hypot(qy.max(0.0)) + qx.max(qy).min(0.0) - rr < -1.5
+                };
+                let (x0, y0, x1, y1) = (dst.0 as f32, dst.1 as f32, (dst.0 + dst.2) as f32, (dst.1 + dst.3) as f32);
+                if dst.0 >= 0 && dst.1 >= 0 && dst.0 + dst.2 <= WIN_W as i32 && dst.1 + dst.3 <= WIN_H as i32 && inside(x0, y0) && inside(x1, y0) && inside(x0, y1) && inside(x1, y1) {
+                    self.eq_spot = Some(EqSpot { tf, op, run, lx, ly, bx, by, dst });
+                }
+            }
             let shader = tiny_skia::Pattern::new(layer.pm.as_ref(), tiny_skia::SpreadMode::Pad, tiny_skia::FilterQuality::Bilinear, op, tf);
             let paint = tiny_skia::Paint { shader, anti_alias: true, ..Default::default() };
             if let Some(clip) = tiny_skia::Rect::from_xywh(sx, y, sw, sh) {
@@ -1405,7 +1474,9 @@ impl Island {
     }
     // 4-bar equalizer, new heights every 130 ms (120 ms Behavior)
     fn eq_draw(&mut self, c: &mut Canvas, x: f32, y: f32, run: bool) {
-        if run && self.eq_at.elapsed().as_millis() >= 130 {
+        self.eq_pos = Some((x, y, run));
+        // nothing moves while the island hides under a fullscreen window
+        if run && !self.hidden && self.eq_at.elapsed().as_millis() >= 130 {
             self.eq_at = Instant::now();
             let seed = self.eq_at.elapsed().as_nanos() as u64 ^ (data::now() as u64).wrapping_mul(2654435761);
             for (i, a) in self.eq.iter_mut().enumerate() {
