@@ -11,7 +11,8 @@ use crate::theme::*;
 use serde_json::Value;
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
-const SW: f32 = 400.0; // sheet width
+const SW: f32 = 360.0; // sheet width
+const MAX_H: f32 = 640.0; // at most this tall (scrolls past it), not the whole monitor
 
 #[derive(Clone, PartialEq)]
 enum Hit {
@@ -159,8 +160,8 @@ impl Pane for NotifCenter {
         self.hits.clear();
         let secs = self.sections(cx.notif_hidden);
         let total: usize = secs.iter().map(|s| s.1.iter().map(|g| g.items.len()).sum::<usize>()).sum();
-        let (sx, sy) = (c.w() - 6.0 - 420.0 + 10.0, 40.0);
-        let max_h = c.h() - 40.0 - 20.0;
+        let (sx, sy) = (c.w() - 16.0 - SW, 40.0);
+        let max_h = (c.h() - 40.0 - 20.0).min(MAX_H);
         // content into its own layer (scrolled, clipped to the sheet)
         let cw = SW - 32.0;
         let mut l = Canvas::new(cw as u32, 4000);
@@ -282,7 +283,7 @@ impl Pane for NotifCenter {
                         th += crate::desktop::line_h(t, &s13) + 1.0;
                     }
                     if !body.is_empty() {
-                        th += crate::gfx::wrap(t, &body, &s125, tw, if expanded { 5 } else { 3 }).len() as f32 * crate::desktop::line_h(t, &s125);
+                        th += crate::gfx::wrap(t, &body, &s125, tw, if expanded { 5 } else { 2 }).len() as f32 * crate::desktop::line_h(t, &s125);
                     }
                     let h = th.max(if thumb.is_some() { 44.0 } else { 0.0 }) + if i > 0 { 18.0 } else { 4.0 };
                     heights.push(h);
@@ -379,7 +380,7 @@ impl Pane for NotifCenter {
                     }
                     let body = clean(n["body"].as_str().unwrap_or(""));
                     if !body.is_empty() {
-                        for line in crate::gfx::wrap(t, &body, &s125, tw, if expanded { 5 } else { 3 }) {
+                        for line in crate::gfx::wrap(t, &body, &s125, tw, if expanded { 5 } else { 2 }) {
                             crate::desktop::text(&mut l, t, ix, ty, &line, &s125, if title.is_empty() { T1 } else { T2 }, false, None);
                             ty += crate::desktop::line_h(t, &s125);
                         }

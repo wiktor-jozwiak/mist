@@ -1,18 +1,24 @@
-// "Dostosuj pulpit": every desktop widget setting in one sheet (right click on the desktop's cards, or
-// `msg ui toggle desk`). Tab Układ: how many cards, which widget in which place, the clock / date / sun path,
-// the cards' glass; one tab per widget with what it shows (the same options as its adjust button). Every click
-// is saved to ~/.config/mist/widgets.json and applied at once (Act::DeskCfg), the desktop stays visible.
+// "Dostosuj pulpit": every desktop widget setting in one sheet (right click on the desktop's cards or the
+// clock, or `msg mist toggleOn desk <screen>`). Tab Układ: how many cards, which widget in which place, the
+// clock / date / sun path, the cards' glass; one tab per widget with what it shows (the same options as its
+// adjust button). The look of the cards' backs (dark sheet, chips); a label column, options on the right;
+// the body scrolls under the fixed header + tabs. Every click is saved to ~/.config/mist/widgets.json and
+// applied at once (Act::DeskCfg), the desktop stays visible.
 use crate::anim::{Anim, Ease};
-use crate::desktop::{caps, chip, chip_w, groups, line_h, st, text, Cfg, FG2, MUTED};
-use crate::gfx::Canvas;
+use crate::desktop::{border, chip, chip_w, groups, line_h, rect, st, text, width, Cfg, FAINT, FG, FG2, HAIR, MUTED, WHITE};
+use crate::gfx::{Canvas, Rgba};
 use crate::pane::*;
 use serde_json::Value;
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
 const TABS: [(&str, &str); 4] = [("desk", "Układ"), ("garmin", "Garmin"), ("weather", "Pogoda"), ("running", "Bieganie")];
 const WIDGETS: [(&str, &str); 3] = [("garmin", "Garmin"), ("weather", "Pogoda"), ("running", "Bieganie")];
-const W: f32 = 600.0;
+const W: f32 = 620.0;
 const M: f32 = 40.0; // the layer's room for the sheet's shadow
+const TOP: f32 = 108.0; // header + tabs (fixed); the body scrolls under them
+const LX: f32 = 24.0; // label column
+const CX: f32 = 196.0; // options column
+const R: f32 = 24.0;
 
 #[derive(Clone, PartialEq, Debug)]
 enum H {
@@ -30,7 +36,15 @@ pub struct DeskSettings {
     ptr: (f32, f32),
     hits: Vec<(f32, f32, f32, f32, H)>,
     hot: Option<H>, // under the pointer at the start of the paint (the hits are rebuilt while painting)
+    scroll: f32,
+    max_scroll: f32,
     o: Anim,
+}
+
+// one row: a label on the left, its chips wrapped in the options column
+struct Row {
+    label: String,
+    items: Vec<(String, bool, H)>,
 }
 
 impl DeskSettings {
@@ -39,30 +53,45 @@ impl DeskSettings {
         let mut o = Anim::new(0.0);
         o.set(1.0, 140.0, Ease::OutCubic);
         let tab = TABS.iter().position(|t| t.0 == card).unwrap_or(0);
-        DeskSettings { cfg: Cfg::load(), tab, ptr: (-1.0, -1.0), hits: Vec::new(), hot: None, o }
+        DeskSettings { cfg: Cfg::load(), tab, ptr: (-1.0, -1.0), hits: Vec::new(), hot: None, scroll: 0.0, max_scroll: 0.0, o }
     }
     fn hit(&self) -> Option<H> {
         let p = self.ptr;
         self.hits.iter().rev().find(|r| p.0 >= r.0 && p.0 < r.0 + r.2 && p.1 >= r.1 && p.1 < r.1 + r.3).map(|r| r.4.clone())
     }
-    // a row of chips, wrapped at the sheet's width; returns the y under it
-    fn chips(&mut self, l: &mut Canvas, cx: &mut Ctx, ox: f32, oy: f32, y: f32, label: &str, items: Vec<(String, bool, H)>) -> f32 {
-        let ls = st(11.0, 600.0);
-        text(l, cx.t, 24.0, y, label, &ls, MUTED, true, None);
-        let mut cy = y + line_h(cx.t, &ls) + 6.0;
-        let mut x = 24.0;
-        let hot = self.hot.clone();
-        for (lab, on, h) in items {
-            let cw = chip_w(cx.t, &lab, on);
-            if x > 24.0 && x + cw > W - 24.0 {
-                x = 24.0;
-                cy += 32.0;
+    fn row(label: &str, card: &'static str, key: &'static str, cfg: &Cfg) -> Row {
+        let gr = groups(card).into_iter().find(|g| g.key == key);
+        let cur = cfg.opt(card, key);
+        let items = gr.as_ref().map(|gr| gr.opts.iter().map(|(v, lab)| {
+            let on = if gr.multi { cur.as_array().map(|a| a.contains(v)).unwrap_or(false) } else { &cur == v };
+            (lab.to_string(), on, H::Opt(card, gr.key, v.clone()))
+        }).collect()).unwrap_or_default();
+        Row { label: label.to_string(), items }
+    }
+    // the tab's content: sections (title, rows)
+    fn sections(&self) -> Vec<(&'static str, Vec<Row>)> {
+        let cfg = &self.cfg;
+        let card = TABS[self.tab].0;
+        if card == "desk" {
+            let order = cfg.order();
+            let mut cards = vec![Self::row("Liczba kart", "desk", "cards", cfg)];
+            for i in 0..cfg.cards() {
+                let items = WIDGETS.iter().map(|(k, lab)| (lab.to_string(), order.get(i).map(|o| o == k).unwrap_or(false), H::Slot(i, k))).collect();
+                cards.push(Row { label: format!("Miejsce {}", i + 1), items });
             }
-            chip(l, cx.t, x, cy, &lab, on, hot.as_ref() == Some(&h), 1.0);
-            self.hits.push((ox + x, oy + cy, cw, 26.0, h));
-            x += cw + 6.0;
+            return vec![
+                ("Karty", cards),
+                ("Zegar", vec![Self::row("Rozmiar", "desk", "clock", cfg), Self::row("Data", "desk", "date", cfg), Self::row("Wschód i zachód", "desk", "sun", cfg)]),
+                ("Wygląd", vec![Self::row("Tło kart", "desk", "glass", cfg)]),
+            ];
         }
-        cy + 26.0 + 14.0
+        let rows = groups(card).into_iter().map(|gr| {
+            let label = if gr.multi && gr.max > 0 { format!("{} (maks. {})", gr.label, gr.max) } else { gr.label.to_string() };
+            let mut r = Self::row(&label, card, gr.key, cfg);
+            r.label = label;
+            r
+        }).collect();
+        vec![("Dane na karcie", rows)]
     }
 }
 
@@ -80,73 +109,121 @@ impl Pane for DeskSettings {
         c.clear();
         self.hot = self.hit();
         self.hits.clear();
-        // the content first (its height decides the sheet's), then glass under it
-        let mut body = Canvas::new(W as u32, 1000);
-        let (ox, oy) = ((c.w() - W - 40.0).round(), 64.0);
-        // header: title · Gotowe
-        caps(&mut body, cx.t, 24.0, 22.0, "Dostosuj pulpit", FG2, None);
-        let dw = chip_w(cx.t, "Gotowe", true);
         let hot = self.hot.clone();
-        chip(&mut body, cx.t, W - 20.0 - dw, 16.0, "Gotowe", true, hot == Some(H::Done), 1.0);
-        self.hits.push((ox + W - 20.0 - dw, oy + 16.0, dw, 26.0, H::Done));
-        // tabs
-        let mut x = 24.0;
-        for (i, (_, lab)) in TABS.iter().enumerate() {
-            let cw = chip_w(cx.t, lab, i == self.tab);
-            chip(&mut body, cx.t, x, 56.0, lab, i == self.tab, hot == Some(H::Tab(i)), 1.0);
-            self.hits.push((ox + x, oy + 56.0, cw, 26.0, H::Tab(i)));
-            x += cw + 6.0;
-        }
-        crate::desktop::rect(&mut body, 24.0, 96.0, W - 48.0, 1.0, 0.0, crate::desktop::HAIR);
-        let mut y = 110.0;
+        let (ox, oy) = ((c.w() - W - 40.0).round(), 64.0);
         let card = TABS[self.tab].0;
-        if card == "desk" {
-            let order = self.cfg.order();
-            for gr in groups("desk") {
-                let cur = self.cfg.opt("desk", gr.key);
-                let items = gr.opts.iter().map(|(v, lab)| (lab.to_string(), &cur == v, H::Opt("desk", gr.key, v.clone()))).collect();
-                y = self.chips(&mut body, cx, ox, oy, y, gr.label, items);
-                // after the count: which widget goes where
-                if gr.key == "cards" {
-                    for i in 0..self.cfg.cards() {
-                        let items = WIDGETS.iter().map(|(k, lab)| (lab.to_string(), order.get(i).map(|o| o == k).unwrap_or(false), H::Slot(i, k))).collect();
-                        y = self.chips(&mut body, cx, ox, oy, y, &format!("Miejsce {}", i + 1), items);
+
+        // ---- the body (scrolls): sections of label | chips rows
+        let mut body = Canvas::new(W as u32, 1600);
+        let mut bh: Vec<(f32, f32, f32, f32, H)> = Vec::new();
+        let mut y = 4.0;
+        if card != "desk" && !self.cfg.shown().iter().any(|k| k == card) {
+            // a hidden card: say so, offer to show it
+            rect(&mut body, LX, y, W - 2.0 * LX, 48.0, 14.0, WHITE.alpha(0.05));
+            let ns = st(13.0, 550.0);
+            let nh = line_h(cx.t, &ns);
+            text(&mut body, cx.t, LX + 16.0, y + (48.0 - nh) / 2.0, "Ta karta jest ukryta", &ns, FG2, true, None);
+            let pw = chip_w(cx.t, "Pokaż na pulpicie", true);
+            let px = W - LX - 11.0 - pw;
+            chip(&mut body, cx.t, px, y + 11.0, "Pokaż na pulpicie", true, hot == Some(H::Show(card)), 1.0);
+            bh.push((px, y + 11.0, pw, 26.0, H::Show(card)));
+            y += 48.0 + 18.0;
+        }
+        let ls = st(12.5, 550.0);
+        let lsh = line_h(cx.t, &ls);
+        let caps_s = st(11.0, 650.0).spaced(1.2);
+        for (si, (title, rows)) in self.sections().into_iter().enumerate() {
+            if si > 0 {
+                rect(&mut body, LX, y, W - 2.0 * LX, 1.0, 0.0, HAIR);
+                y += 16.0;
+            }
+            text(&mut body, cx.t, LX, y, &title.to_uppercase(), &caps_s, FAINT, true, None);
+            y += line_h(cx.t, &caps_s) + 12.0;
+            for r in rows {
+                text(&mut body, cx.t, LX, y + (26.0 - lsh) / 2.0, &r.label, &ls, MUTED, true, Some(CX - LX - 12.0));
+                let mut x = CX;
+                let mut cy = y;
+                for (lab, on, h) in r.items {
+                    let cw = chip_w(cx.t, &lab, on);
+                    if x > CX && x + cw > W - LX {
+                        x = CX;
+                        cy += 32.0;
                     }
+                    chip(&mut body, cx.t, x, cy, &lab, on, hot == Some(h.clone()), 1.0);
+                    bh.push((x, cy, cw, 26.0, h));
+                    x += cw + 6.0;
                 }
+                y = cy + 26.0 + 12.0;
             }
-        } else {
-            if !self.cfg.shown().iter().any(|k| k == card) {
-                let ns = st(13.0, 550.0);
-                text(&mut body, cx.t, 24.0, y, "Ta karta jest teraz ukryta.", &ns, FG2, true, None);
-                let lw = crate::desktop::width(cx.t, "Ta karta jest teraz ukryta.", &ns);
-                let pw = chip_w(cx.t, "Pokaż na pulpicie", true);
-                let by = y + (line_h(cx.t, &ns) - 26.0) / 2.0;
-                chip(&mut body, cx.t, 24.0 + lw + 12.0, by, "Pokaż na pulpicie", true, hot == Some(H::Show(card)), 1.0);
-                self.hits.push((ox + 24.0 + lw + 12.0, oy + by, pw, 26.0, H::Show(card)));
-                y += 26.0 + 18.0;
+            y += 6.0;
+        }
+        let content_h = y + 8.0;
+
+        // ---- the sheet: fixed header + tabs, the body clipped under them
+        let max_h = (c.h() - oy - 24.0).max(TOP + 80.0);
+        let h = (TOP + content_h).min(max_h);
+        let view = h - TOP;
+        self.max_scroll = (content_h - view).max(0.0);
+        self.scroll = self.scroll.clamp(0.0, self.max_scroll);
+        let mut l = Canvas::new((W + 2.0 * M) as u32, (h + 2.0 * M) as u32);
+        // the cards' back: dark, nearly opaque, hairline rim, soft shadow
+        {
+            let mut s = Canvas::new((W + 2.0 * M) as u32, (h + 2.0 * M) as u32);
+            rect(&mut s, M, M, W, h, R, Rgba(0.0, 0.0, 0.0, 1.0));
+            let sh = crate::desktop::drop_shadow(&s.pm, 14.0, Rgba(0.0, 0.0, 0.0, 1.0), 0.45, 0, 8);
+            l.pm.draw_pixmap(0, 0, sh.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), None);
+        }
+        rect(&mut l, M, M, W, h, R, Rgba(10.0 / 255.0, 14.0 / 255.0, 24.0 / 255.0, 0.96));
+        border(&mut l, M, M, W, h, R, 1.0, WHITE.alpha(0.1));
+        // header: title · Gotowe
+        let ts = st(17.0, 650.0);
+        let tsh = line_h(cx.t, &ts);
+        text(&mut l, cx.t, M + LX, M + 18.0 + (30.0 - tsh) / 2.0, "Dostosuj pulpit", &ts, FG, true, None);
+        let dw = chip_w(cx.t, "Gotowe", true);
+        let (dx, dy) = (M + W - LX - dw, M + 20.0);
+        chip(&mut l, cx.t, dx, dy, "Gotowe", true, hot == Some(H::Done), 1.0);
+        self.hits.push((ox + W - LX - dw, oy + 20.0, dw, 26.0, H::Done));
+        // tabs: a segmented control
+        let (tx, ty, tw, th) = (M + LX, M + 60.0, W - 2.0 * LX, 32.0);
+        rect(&mut l, tx, ty, tw, th, 16.0, WHITE.alpha(0.06));
+        let segw = tw / TABS.len() as f32;
+        let tabs_s = st(13.0, 600.0);
+        for (i, (_, lab)) in TABS.iter().enumerate() {
+            let sx = tx + i as f32 * segw;
+            if i == self.tab {
+                rect(&mut l, sx + 3.0, ty + 3.0, segw - 6.0, th - 6.0, 13.0, WHITE.alpha(0.16));
+            } else if hot == Some(H::Tab(i)) {
+                rect(&mut l, sx + 3.0, ty + 3.0, segw - 6.0, th - 6.0, 13.0, WHITE.alpha(0.07));
             }
-            for gr in groups(card) {
-                let cur = self.cfg.opt(card, gr.key);
-                let label = if gr.multi && gr.max > 0 { format!("{}  ·  maks. {}", gr.label, gr.max) } else { gr.label.to_string() };
-                let items = gr.opts.iter().map(|(v, lab)| {
-                    let on = if gr.multi { cur.as_array().map(|a| a.contains(v)).unwrap_or(false) } else { &cur == v };
-                    (lab.to_string(), on, H::Opt(card, gr.key, v.clone()))
-                }).collect();
-                y = self.chips(&mut body, cx, ox, oy, y, &label, items);
+            let lw = width(cx.t, lab, &tabs_s);
+            let tbh = line_h(cx.t, &tabs_s);
+            text(&mut l, cx.t, (sx + (segw - lw) / 2.0).round(), ty + (th - tbh) / 2.0, lab, &tabs_s, if i == self.tab { FG } else { FG2 }, true, None);
+            self.hits.push((ox + sx - M, oy + ty - M, segw, th, H::Tab(i)));
+        }
+        // the body, clipped to the view under the tabs (rounded bottom corners)
+        if let Some(p) = crate::gfx::rrect_path(M, M, W, h, R) {
+            let mut mask = tiny_skia::Mask::new(l.pm.width(), l.pm.height()).unwrap();
+            mask.fill_path(&p, tiny_skia::FillRule::Winding, true, tiny_skia::Transform::identity());
+            // the rows above the view (header + tabs) masked out
+            let cut = ((M + TOP) as usize * l.pm.width() as usize).min(mask.data().len());
+            mask.data_mut()[..cut].fill(0);
+            l.pm.draw_pixmap(M as i32, (M + TOP - self.scroll) as i32, body.pm.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), Some(&mask));
+        }
+        // the header band's hairline, a scroll bar when it scrolls
+        rect(&mut l, M + LX, M + TOP - 1.0, W - 2.0 * LX, 1.0, 0.0, if self.scroll > 0.0 { WHITE.alpha(0.12) } else { HAIR });
+        if self.max_scroll > 0.0 {
+            let track = view - 16.0;
+            let bar = (track * view / content_h).max(28.0);
+            let by = M + TOP + 8.0 + (track - bar) * (self.scroll / self.max_scroll);
+            rect(&mut l, M + W - 8.0, by, 3.0, bar, 1.5, WHITE.alpha(0.25));
+        }
+        for (x, y, w, hh, hit) in bh {
+            let ry = oy + TOP + y - self.scroll;
+            if ry + hh > oy + TOP && ry < oy + h {
+                self.hits.push((ox + x, ry, w, hh, hit));
             }
         }
-        let h = (y + 6.0).min(c.h() - oy - 24.0);
         self.hits.insert(0, (ox, oy, W, h, H::Sheet));
-        // the sheet: glass + its content, faded in as one layer (sheet-sized, not the monitor)
-        let mut l = Canvas::new((W + 2.0 * M) as u32, (h + 2.0 * M) as u32);
-        glass(&mut l, M, M, W, h, 24.0, 0.85);
-        let clip = tiny_skia::Rect::from_xywh(M, M, W, h).and_then(|r| {
-            let mut m = tiny_skia::Mask::new(l.pm.width(), l.pm.height())?;
-            m.fill_path(&tiny_skia::PathBuilder::from_rect(r), tiny_skia::FillRule::Winding, false, tiny_skia::Transform::identity());
-            Some(m)
-        });
-        l.pm.draw_pixmap(M as i32, M as i32, body.pm.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), clip.as_ref());
-        glass_rim(&mut l, M, M, W, h, 24.0);
         let paint = tiny_skia::PixmapPaint { opacity: self.o.value(), ..Default::default() };
         c.pm.draw_pixmap((ox - M) as i32, (oy - M) as i32, l.pm.as_ref(), &paint, tiny_skia::Transform::identity(), None);
     }
@@ -154,12 +231,21 @@ impl Pane for DeskSettings {
         let before = self.hit();
         self.ptr = (x, y);
         match ev {
+            Ptr::Wheel(d) => {
+                let s = (self.scroll + d * 48.0).clamp(0.0, self.max_scroll);
+                if s != self.scroll {
+                    self.scroll = s;
+                    return Act::Redraw;
+                }
+                Act::None
+            }
             Ptr::Release(0x110) => match self.hit() {
                 None => Act::Close,
                 Some(H::Done) => Act::Close,
                 Some(H::Sheet) => Act::None,
                 Some(H::Tab(i)) => {
                     self.tab = i;
+                    self.scroll = 0.0;
                     Act::Redraw
                 }
                 Some(H::Opt(card, key, v)) => {
@@ -194,10 +280,20 @@ impl Pane for DeskSettings {
             Keysym::Escape | Keysym::Return | Keysym::KP_Enter => Act::Close,
             Keysym::Tab | Keysym::Right => {
                 self.tab = (self.tab + 1) % TABS.len();
+                self.scroll = 0.0;
                 Act::Redraw
             }
             Keysym::ISO_Left_Tab | Keysym::Left => {
                 self.tab = (self.tab + TABS.len() - 1) % TABS.len();
+                self.scroll = 0.0;
+                Act::Redraw
+            }
+            Keysym::Down | Keysym::Page_Down => {
+                self.scroll = (self.scroll + if ev.keysym == Keysym::Down { 48.0 } else { 240.0 }).min(self.max_scroll);
+                Act::Redraw
+            }
+            Keysym::Up | Keysym::Page_Up => {
+                self.scroll = (self.scroll - if ev.keysym == Keysym::Up { 48.0 } else { 240.0 }).max(0.0);
                 Act::Redraw
             }
             _ => Act::None,
