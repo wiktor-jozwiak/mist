@@ -472,10 +472,56 @@ PanelWindow {
     // from Notifs (Mist's notification server) as fields:
     //   app, icon, summary, body, urgency, desktop-entry, replaces-id, progress, sync-key, category, notification id
     property var lastNote: ["", 0]
+    function unescapeHtml(s) {
+        if (!s) return ""
+        const once = t => ("" + t).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
+        let s1 = once(s)
+        return s1.indexOf("&") >= 0 ? once(s1) : s1
+    }
+    function stripTags(s) {
+        if (!s) return ""
+        return unescapeHtml(s).replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim()
+    }
+    function parsePhoneMessage(rawSummary, rawBody) {
+        const s = unescapeHtml(rawBody || "")
+        let chatTitle = "", rest = s.trim()
+        const colonIdx = s.indexOf(": ")
+        if (colonIdx > 0 && colonIdx <= 120 && (s.indexOf("\n") === -1 || colonIdx < s.indexOf("\n"))) {
+            const w = s.slice(0, colonIdx)
+            if (w.indexOf("\n") === -1) {
+                chatTitle = stripTags(w)
+                rest = s.slice(colonIdx + 2).trim()
+            }
+        }
+        const lines = rest.split(/<br\s*\/?>|\r?\n/i).map(l => l.trim()).filter(l => l.length > 0)
+        if (!lines.length) return { title: chatTitle || stripTags(rawSummary), sender: "", msg: stripTags(rest) }
+        const msgs = []
+        let currentSender = ""
+        for (const line of lines) {
+            const bMatch = /^(?:<[bB]>)(.*?)(?:<\/[bB]>)(?::\s*|\s*)(.*)$/.exec(line)
+            if (bMatch) {
+                currentSender = stripTags(bMatch[1])
+                const after = stripTags(bMatch[2])
+                if (after) msgs.push({ sender: currentSender, msg: after })
+                continue
+            }
+            if (!currentSender) {
+                const sMatch = /^([^:\r\n]{1,40}):\s+(.*)$/.exec(line)
+                if (sMatch) {
+                    msgs.push({ sender: stripTags(sMatch[1]), msg: stripTags(sMatch[2]) })
+                    continue
+                }
+            }
+            msgs.push({ sender: currentSender, msg: stripTags(line) })
+        }
+        const last = msgs.length ? msgs[msgs.length - 1] : { sender: "", msg: stripTags(lines[lines.length - 1]) }
+        const title = chatTitle || last.sender || stripTags(rawSummary)
+        return { title: title, sender: last.sender, msg: last.msg }
+    }
+
     function notify(d) {
         if (d.length < 6) return
-        const strip = s => s.replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, "&").trim()
-        const title = strip(d[2]), body = strip(d[3])
+        const title = stripTags(d[2]), body = stripTags(d[3])
         if (!title && !body) return
         const de = d[5]
         const ent = DesktopEntries.byId(de || "") || DesktopEntries.heuristicLookup(de || d[0] || "")
@@ -490,7 +536,7 @@ PanelWindow {
         const sig = app + "|" + title + "|" + body
         if (lastNote[0] === sig && Date.now() - lastNote[1] < 2000 && value < 0) return
         lastNote = [sig, Date.now()]
-        if (/kdeconnect/i.test(d[0] + " " + de)) { phoneNotify(title, body, img, urgent); return }
+        if (/kdeconnect/i.test(d[0] + " " + de)) { phoneNotify(d[2], d[3], img, urgent); return }
         // updates of one notification replace it in place: sync hint, replaces-id of the one on screen, progress
         let key = sync ? "s:" + app + sync : value >= 0 ? "v:" + app + title : ""
         if (!key && rid > 0 && ev && ev.view === "notif" && ev.app === app) key = ev.key || ""
@@ -500,23 +546,26 @@ PanelWindow {
                title: sharing ? app : title || body, body: sharing ? "treść ukryta · udostępniasz ekran" : title ? body : "", urgent: urgent, value: value, at: Date.now(), pulse: urgent,
                action: { nid: +(d[10] || 0), app: [de, d[0], ent ? ent.id : "", ent ? ent.startupClass : "", app], entry: ent ? ent.id : "" } })
     }
-    // KDE Connect: a phone notification comes as summary = phone app, body = "sender: text"; kdeconnectd's own
+    // KDE Connect: summary = phone app, body = "sender: text"; kdeconnectd's own
     // messages (errors, sshfs, permissions) have the device name as summary and become one info line.
     // The phone note itself (icon, reply, actions, dismiss) is looked up in Phone.notes while it is shown:
     // phonewatch reads it a moment after the desktop notification arrives.
     function phoneNotify(title, body, img, urgent) {
         const dev = Phone.name || ""
-        if (!body || dev && title === dev) {
+        const cleanApp = stripTags(title)
+        if (!body || dev && cleanApp === dev) {
+            const bodyClean = stripTags(body)
             push({ view: "info", key: "phoneMsg", prio: urgent ? 3 : 2, dur: 4000, icon: "mobile", color: urgent ? Theme.danger : Theme.accent,
-                   title: dev || title, sub: body || title, action: { popup: "phone" } })
+                   title: dev || cleanApp, sub: bodyClean || cleanApp, action: { popup: "phone" } })
             return
         }
-        const m = /^([^:]{1,60}):\s+([\s\S]+)$/.exec(body)
-        const who = m ? m[1] : "", text = m ? m[2] : body
-        push({ view: "notif", key: "ph:" + title + "|" + who, prio: urgent ? 3 : 2, dur: urgent ? 9000 : 7000,
-               app: title + (dev ? " · " + dev : ""), phone: { app: title, raw: body },
-               icon: Quickshell.iconPath(title.toLowerCase().replace(/ /g, "-"), true) || img || Quickshell.iconPath("smartphone", true),
-               title: sharing ? title : who || title, body: sharing ? "treść ukryta · udostępniasz ekran" : who ? text : body,
+        const parsed = parsePhoneMessage(title, body)
+        const dispBody = parsed.sender && parsed.sender !== parsed.title ? (parsed.sender + ": " + parsed.msg) : parsed.msg
+        const appDisp = cleanApp || "Telefon"
+        push({ view: "notif", key: "ph:" + cleanApp + "|" + parsed.title, prio: urgent ? 3 : 2, dur: urgent ? 9000 : 7000,
+               app: appDisp + (dev ? " · " + dev : ""), phone: { app: cleanApp, raw: body },
+               icon: Quickshell.iconPath(cleanApp.toLowerCase().replace(/ /g, "-"), true) || img || Quickshell.iconPath("smartphone", true),
+               title: sharing ? cleanApp : parsed.title, body: sharing ? "treść ukryta · udostępniasz ekran" : dispBody,
                urgent: urgent, value: -1, at: Date.now(), pulse: urgent, action: { popup: "phone" } })
     }
     function phoneNote(p) {

@@ -23,7 +23,7 @@ pub struct Switcher {
     cells: Vec<(f32, f32, f32, f32)>,
 }
 
-fn hypr(lua: &str) -> Vec<String> {
+pub fn hypr(lua: &str) -> Vec<String> {
     vec!["hyprctl".into(), "eval".into(), lua.into()]
 }
 
@@ -48,7 +48,7 @@ impl Switcher {
             // windows-like.lua: back from the minimized drawer onto the active workspace
             return Act::Run(vec!["sh".into(), "-c".into(), format!("hyprctl eval \"MistRestore('{addr}', $(hyprctl activeworkspace -j | jq .id))\"")]);
         }
-        Act::Run(hypr(&format!("hl.dispatch(hl.dsp.focus({{ window = \"address:{addr}\" }}))")))
+        Act::Run(hypr(&format!("hl.dispatch(hl.dsp.focus({{ window = \"address:{addr}\" }})); hl.dispatch(hl.dsp.window.bring_to_top())")))
     }
     fn quit_app(&mut self) -> Act {
         if self.sel >= self.apps.len() {

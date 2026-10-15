@@ -1,4 +1,4 @@
-// The session lock (was Lock.qml + lock/MacLock.qml): `mist-ui-bin lock [preview N]`, its own process that
+// The session lock (was Lock.qml + lock/MacLock.qml, removed; see git history): `mist-ui-bin lock [preview N]`, its own process that
 // lives only while the screen is locked (ext-session-lock; if it dies the compositor keeps the session
 // locked and the next `mist-ui-bin lock` takes over). PAM "login" checks the password in a thread.
 // macOS look: the photo wallpaper, blurred and dimmed once awake (first key / mouse move, back after 30 s
@@ -103,6 +103,71 @@ mod pam {
             }
         }
     }
+}
+
+// ------------------------------------------------------------------ greetd (`mist-ui-bin greeter`)
+// IPC: u32 length (native endian) + JSON. create_session -> answer the auth prompts -> start_session.
+// Without GREETD_SOCK (dry run, tests) the password "test" logs in.
+mod greetd {
+    use serde_json::{json, Value};
+    use std::{
+        io::{Read, Write},
+        os::unix::net::UnixStream,
+    };
+
+    fn rpc(s: &mut UnixStream, v: Value) -> Result<Value, String> {
+        let b = v.to_string();
+        let io = |e: std::io::Error| format!("greetd: {e}");
+        s.write_all(&(b.len() as u32).to_ne_bytes()).map_err(io)?;
+        s.write_all(b.as_bytes()).map_err(io)?;
+        let mut l = [0u8; 4];
+        s.read_exact(&mut l).map_err(io)?;
+        let mut r = vec![0u8; u32::from_ne_bytes(l) as usize];
+        s.read_exact(&mut r).map_err(io)?;
+        serde_json::from_slice(&r).map_err(|e| format!("greetd: {e}"))
+    }
+
+    fn fail(s: &mut UnixStream, r: &Value) -> String {
+        let _ = rpc(s, json!({ "type": "cancel_session" }));
+        match r["error_type"].as_str() {
+            Some("auth_error") => "Nieprawidłowe hasło".into(),
+            _ => r["description"].as_str().unwrap_or("Błąd greetd").to_string(),
+        }
+    }
+
+    pub fn login(user: &str, pw: &str, cmd: &[String], env: &[String]) -> Result<(), String> {
+        let Ok(sock) = std::env::var("GREETD_SOCK") else {
+            return if pw == "test" { Ok(()) } else { Err("Nieprawidłowe hasło".into()) };
+        };
+        let mut s = UnixStream::connect(sock).map_err(|e| format!("greetd: {e}"))?;
+        let mut r = rpc(&mut s, json!({ "type": "create_session", "username": user }))?;
+        loop {
+            match r["type"].as_str() {
+                Some("auth_message") => {
+                    let answer = match r["auth_message_type"].as_str() {
+                        Some("secret") | Some("visible") => json!(pw),
+                        _ => Value::Null,
+                    };
+                    r = rpc(&mut s, json!({ "type": "post_auth_message_response", "response": answer }))?;
+                }
+                Some("success") => break,
+                _ => return Err(fail(&mut s, &r)),
+            }
+        }
+        r = rpc(&mut s, json!({ "type": "start_session", "cmd": cmd, "env": env }))?;
+        if r["type"] == "success" {
+            Ok(())
+        } else {
+            Err(fail(&mut s, &r))
+        }
+    }
+}
+
+/// greeter.json (install-greeter.sh): { user, name, avatar, wallpaper, session: [cmd...], env: [K=V...] },
+/// avatar / wallpaper relative to the file.
+struct Greeter {
+    session: Vec<String>,
+    env: Vec<String>,
 }
 
 // ------------------------------------------------------------------ pictures
@@ -234,6 +299,8 @@ struct L {
     exit: bool,
     tx: calloop::channel::Sender<Result<(), String>>,
     pending_len: usize,
+    wall: String,
+    greeter: Option<std::sync::Arc<Greeter>>,
 }
 
 impl L {
@@ -259,8 +326,12 @@ impl L {
         self.message.clear();
         let (user, pw, tx) = (self.user.clone(), std::mem::take(&mut self.pw), self.tx.clone());
         self.pending_len = pw.chars().count();
+        let greeter = self.greeter.clone();
         std::thread::spawn(move || {
-            let r = pam::check(&user, &pw);
+            let r = match greeter {
+                Some(g) => greetd::login(&user, &pw, &g.session, &g.env),
+                None => pam::check(&user, &pw),
+            };
             let _ = tx.send(r);
         });
         self.dirty_all();
@@ -339,7 +410,7 @@ impl L {
             self.surfs[i].name = self.outputs.info(&self.surfs[i].output).and_then(|i| i.name.clone()).unwrap_or_default();
         }
         if self.surfs[i].sharp.is_none() {
-            let p = photo(&photo_path(), w, h);
+            let p = photo(&self.wall, w, h);
             self.surfs[i].blurred = Some(frosted(&p));
             self.surfs[i].sharp = Some(p);
         }
@@ -508,12 +579,28 @@ pub fn run(args: &[String]) -> i32 {
     if args.first().map(|a| a == "pam-check").unwrap_or(false) {
         return pam_check();
     }
-    // one locker at a time
-    let dir = format!("{}/mist", std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".into()));
-    let _ = std::fs::create_dir_all(&dir);
-    let lf = std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(format!("{dir}/lock.lock")).expect("lock file");
-    if unsafe { libc::flock(std::os::fd::AsRawFd::as_raw_fd(&lf), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-        return 0; // already locked
+    // `greeter [greeter.json]`: the login screen under greetd (inside `mist-comp --session`)
+    let greeter_cfg: Option<(String, serde_json::Value)> = (args.first().map(|a| a.as_str()) == Some("greeter")).then(|| {
+        let path = args.get(1).cloned().unwrap_or("/usr/share/mist-greeter/greeter.json".into());
+        let v = std::fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        (path, v)
+    });
+    let rel = |path: &str, f: &str| -> String {
+        if f.is_empty() || f.starts_with('/') {
+            f.to_string()
+        } else {
+            std::path::Path::new(path).parent().map(|d| d.join(f).to_string_lossy().into_owned()).unwrap_or_default()
+        }
+    };
+    if greeter_cfg.is_none() {
+        // one locker at a time (the greeter has its own compositor)
+        let dir = format!("{}/mist", std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".into()));
+        let _ = std::fs::create_dir_all(&dir);
+        let lf = std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(format!("{dir}/lock.lock")).expect("lock file");
+        if unsafe { libc::flock(std::os::fd::AsRawFd::as_raw_fd(&lf), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+            return 0; // already locked
+        }
+        std::mem::forget(lf);
     }
     let preview: Option<u64> = if args.first().map(|a| a == "preview").unwrap_or(false) { Some(args.get(1).and_then(|s| s.parse().ok()).unwrap_or(8).clamp(2, 30)) } else { None };
     let conn = Connection::connect_to_env().expect("wayland");
@@ -521,17 +608,19 @@ pub fn run(args: &[String]) -> i32 {
     let qh = queue.handle();
     let shm = Shm::bind(&globals, &qh).expect("wl_shm");
     let pool = SlotPool::new(1920 * 1080 * 4, &shm).expect("pool");
-    let user = std::env::var("USER").unwrap_or_default();
+    let gs = |k: &str| greeter_cfg.as_ref().and_then(|(_, v)| v[k].as_str()).unwrap_or("").to_string();
+    let user = if greeter_cfg.is_some() { gs("user") } else { std::env::var("USER").unwrap_or_default() };
     // full name from GECOS, word case normalised
     let full_name = {
         let u = std::ffi::CString::new(user.clone()).unwrap_or_default();
         let pw = unsafe { libc::getpwnam(u.as_ptr()) };
         let g = if pw.is_null() { String::new() } else { unsafe { std::ffi::CStr::from_ptr((*pw).pw_gecos).to_string_lossy().split(',').next().unwrap_or("").trim().to_string() } };
-        let g = if g.is_empty() { user.clone() } else { g };
+        let g = if !gs("name").is_empty() { gs("name") } else if g.is_empty() { user.clone() } else { g };
         g.split(' ').map(|s| { let mut c = s.chars(); c.next().map(|f| f.to_uppercase().collect::<String>() + &c.as_str().to_lowercase()).unwrap_or_default() }).collect::<Vec<_>>().join(" ")
     };
     // ~/.face when there is one, else the initials
-    let face = [format!("{}/.face", home()), format!("{}/.face.icon", home()), format!("/var/lib/AccountsService/icons/{user}")].into_iter().find(|f| std::fs::metadata(f).map(|m| m.len() > 0).unwrap_or(false)).and_then(|f| {
+    let avatar = greeter_cfg.as_ref().map(|(p, _)| rel(p, &gs("avatar"))).filter(|a| !a.is_empty());
+    let face = avatar.into_iter().chain([format!("{}/.face", home()), format!("{}/.face.icon", home()), format!("/var/lib/AccountsService/icons/{user}")]).find(|f| std::fs::metadata(f).map(|m| m.len() > 0).unwrap_or(false)).and_then(|f| {
         let im = image::ImageReader::open(&f).ok()?.with_guessed_format().ok()?.decode().ok()?.thumbnail(144, 144).to_rgba8();
         let (w, h) = im.dimensions();
         let mut data = im.into_raw();
@@ -580,6 +669,15 @@ pub fn run(args: &[String]) -> i32 {
         exit: false,
         tx,
         pending_len: 0,
+        wall: match &greeter_cfg {
+            Some((p, _)) => rel(p, &gs("wallpaper")),
+            None => photo_path(),
+        },
+        greeter: greeter_cfg.as_ref().map(|(_, v)| {
+            let list = |k: &str| v[k].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+            let session: Vec<String> = list("session");
+            std::sync::Arc::new(Greeter { session: if session.is_empty() { vec!["start-mist".into()] } else { session }, env: list("env") })
+        }),
     };
     match l.lock_state.lock(&qh) {
         Ok(lk) => l.lock = Some(lk),

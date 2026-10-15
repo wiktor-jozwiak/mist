@@ -53,12 +53,6 @@ impl Spring {
             self.moving = true;
         }
     }
-    pub fn jump(&mut self, v: f32) {
-        self.cur = v;
-        self.to = v;
-        self.vel = 0.0;
-        self.moving = false;
-    }
     // Qt steps in 16 ms ticks: v += spring * diff - damping * v; x += v * 16 / 1000
     pub fn step(&mut self) {
         if !self.moving {
@@ -93,7 +87,6 @@ pub enum Act {
     Focus(String),
     Open(String),
     Popup(String),
-    TimerStop,
     Phone(String),
 }
 
@@ -120,6 +113,10 @@ pub struct Ev {
     pub state: String,
     pub act: Act,
     pub phone: Option<(String, String)>, // phone app, raw body
+    pub links: Vec<String>,
+    pub codes: Vec<String>,
+    pub desktop_actions: Vec<(String, String)>,
+    pub note_id: u32,
 }
 fn info(key: &str, prio: i32, dur: u64, icon: &str, color: Rgba, title: &str, sub: &str) -> Ev {
     Ev { view: "info", key: key.into(), prio, dur, icon: icon.into(), color: Some(color), title: title.into(), sub: sub.into(), value: -1, ..Default::default() }
@@ -127,7 +124,6 @@ fn info(key: &str, prio: i32, dur: u64, icon: &str, color: Rgba, title: &str, su
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Hit {
-    Shell,
     Ctl(&'static str),      // shuffle prev play next loop
     Chip,
     Seek,
@@ -141,6 +137,10 @@ pub enum Hit {
     NoteAction(String),
     NoteDismiss,
     ReplySend,
+    CopyCode(String),
+    CopyLink(String),
+    OpenLink(String),
+    DesktopAction(u32, String),
 }
 
 pub struct Island {
@@ -208,7 +208,6 @@ pub struct Island {
     pub w: Spring,
     pub h: Spring,
     pub y: Spring,
-    bump: Vec<(Anim, u32)>,
     bump_at: Option<Instant>,
     panes: HashMap<&'static str, (Anim, Spring, Option<Instant>)>, // opacity, scale, fade-in start (after 110 ms)
     shadow: Anim,
@@ -233,7 +232,7 @@ impl Island {
             bt_on: None, bt_devs: Vec::new(), bt_low: HashMap::new(), profile: String::new(), caps: false, num: true, cam_busy: false, cam_apps: Vec::new(),
             conn: "full".into(), primary: String::new(), last_call: None, keypad: false, call_at: None, last_note: (String::new(), None),
             weather: Value::Null, calendar: Value::Null, reminded: HashMap::new(), rain_at: None, timer_end: 0.0, timer_total: 0.0, timer_label: String::new(),
-            w: Spring::new(120.0, 3.4, 0.3, 0.25), h: Spring::new(30.0, 3.4, 0.3, 0.25), y: Spring::new(5.0, 3.0, 0.32, 0.25), bump: Vec::new(), bump_at: None,
+            w: Spring::new(120.0, 3.4, 0.3, 0.25), h: Spring::new(30.0, 3.4, 0.3, 0.25), y: Spring::new(5.0, 3.0, 0.32, 0.25), bump_at: None,
             panes: HashMap::new(), shadow: Anim::new(0.0), eq: [Anim::new(4.0); 4], eq_at: now, hits: Vec::new(), hover_hit: None, seek_drag: None,
             phone_name: String::new(), track_h: Anim::new(5.0), note_bar: Anim::new(0.0),
         }
@@ -758,16 +757,8 @@ impl Island {
 
     // a notification from the server (Island.notify)
     pub fn on_note(&mut self, n: &crate::notif::Note, apps: &Apps, phone_notes: &[Value]) {
-        let strip = |s: &str| -> String {
-            let mut o = String::new();
-            let mut tag = false;
-            for ch in s.chars() {
-                match ch { '<' => tag = true, '>' if tag => tag = false, c if !tag => o.push(c), _ => {} }
-            }
-            o.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&apos;", "'").replace("&amp;", "&").split_whitespace().collect::<Vec<_>>().join(" ")
-        };
-        let title = strip(&n.summary);
-        let body = strip(&n.body);
+        let title = strip_tags(&n.summary);
+        let body = strip_tags(&n.body);
         if title.is_empty() && body.is_empty() {
             return;
         }
@@ -777,17 +768,17 @@ impl Island {
         if self.call_at.map(|t| t.elapsed().as_secs() < 5).unwrap_or(false) && (kde.contains("kdeconnect") || kde.contains("kde connect")) {
             return;
         }
+        let urgent = n.urgency == 2;
+        let icon = if !n.icon.is_empty() { n.icon.clone() } else { ent.map(|e| e.icon.clone()).unwrap_or("dialog-information".into()) };
+        if kde.contains("kdeconnect") {
+            self.phone_note(&n.summary, &n.body, &icon, urgent, phone_notes);
+            return;
+        }
         let sig = format!("{app}|{title}|{body}");
         if self.last_note.0 == sig && self.last_note.1.map(|t| t.elapsed().as_millis() < 2000).unwrap_or(false) && n.value < 0 {
             return;
         }
         self.last_note = (sig, Some(Instant::now()));
-        let urgent = n.urgency == 2;
-        let icon = if !n.icon.is_empty() { n.icon.clone() } else { ent.map(|e| e.icon.clone()).unwrap_or("dialog-information".into()) };
-        if kde.contains("kdeconnect") {
-            self.phone_note(&title, &body, &icon, urgent, phone_notes);
-            return;
-        }
         let mut key = if !n.sync.is_empty() { format!("s:{app}{}", n.sync) } else if n.value >= 0 { format!("v:{app}{title}") } else { String::new() };
         if key.is_empty() && n.replaced {
             if let Some(e) = &self.ev {
@@ -799,11 +790,17 @@ impl Island {
                 key = format!("r:{app}{}", n.id);
             }
         }
+        let full_text = format!("{title} {body}");
+        let raw_links = extract_links(&full_text);
+        let raw_codes = extract_codes(&full_text, &raw_links);
+        let (links, codes) = if self.sharing { (Vec::new(), Vec::new()) } else { (raw_links, raw_codes) };
+        let has_smart = !links.is_empty() || !codes.is_empty();
+
         let e = Ev {
             view: "notif",
             key,
             prio: if urgent { 3 } else { 2 },
-            dur: if urgent { 9000 } else if n.value >= 0 { 6000 } else { 4500 },
+            dur: if urgent { 9000 } else if has_smart { 7500 } else if n.value >= 0 { 6000 } else { 4500 },
             app: app.clone(),
             icon,
             title: if self.sharing { app.clone() } else if title.is_empty() { body.clone() } else { title.clone() },
@@ -812,6 +809,11 @@ impl Island {
             value: n.value,
             pulse: urgent,
             act: Act::Nid(n.id, vec![n.entry.clone(), n.app.clone(), ent.map(|e| e.id.clone()).unwrap_or_default(), ent.map(|e| e.wm_class.clone()).unwrap_or_default(), app], ent.map(|e| e.id.clone()).unwrap_or_default()),
+            phone: None,
+            links,
+            codes,
+            desktop_actions: n.actions.clone(),
+            note_id: n.id,
             ..Default::default()
         };
         if e.pulse {
@@ -820,32 +822,59 @@ impl Island {
         self.push(e);
     }
     // KDE Connect: summary = phone app, body = "sender: text"; kdeconnectd's own messages: one info line
-    fn phone_note(&mut self, title: &str, body: &str, img: &str, urgent: bool, _notes: &[Value]) {
+    fn phone_note(&mut self, app_name: &str, raw_body: &str, img: &str, urgent: bool, _notes: &[Value]) {
         let dev = self.phone_name.clone();
-        if body.is_empty() || (!dev.is_empty() && title == dev) {
-            let mut e = info("phoneMsg", if urgent { 3 } else { 2 }, 4000, "mobile", if urgent { DANGER } else { ACCENT }, if dev.is_empty() { title } else { &dev }, if body.is_empty() { title } else { body });
+        let clean_app = strip_tags(app_name);
+        if raw_body.is_empty() || (!dev.is_empty() && clean_app == dev) {
+            let body_clean = strip_tags(raw_body);
+            let mut e = info("phoneMsg", if urgent { 3 } else { 2 }, 4000, "mobile", if urgent { DANGER } else { ACCENT }, if dev.is_empty() { &clean_app } else { &dev }, if body_clean.is_empty() { &clean_app } else { &body_clean });
             e.act = Act::Popup("phone".into());
             self.push(e);
             return;
         }
-        let (who, text) = match body.split_once(": ") {
-            Some((w, t)) if !w.is_empty() && w.chars().count() <= 60 && !w.contains(':') => (w.to_string(), t.to_string()),
-            _ => (String::new(), body.to_string()),
+
+        let (title, sender, last_msg) = parse_phone_message(app_name, raw_body);
+        let display_body = if !sender.is_empty() && sender != title {
+            format!("{sender}: {last_msg}")
+        } else {
+            last_msg
         };
+        if title.is_empty() && display_body.is_empty() {
+            return;
+        }
+
+        let sig = format!("{clean_app}|{title}|{display_body}");
+        if self.last_note.0 == sig && self.last_note.1.map(|t| t.elapsed().as_millis() < 2000).unwrap_or(false) {
+            return;
+        }
+        self.last_note = (sig, Some(Instant::now()));
+
+        let stripped_body = strip_tags(&unescape_html(raw_body));
+        let full_text = format!("{title} {display_body} {stripped_body}");
+        let raw_links = extract_links(&full_text);
+        let raw_codes = extract_codes(&full_text, &raw_links);
+        let (links, codes) = if self.sharing { (Vec::new(), Vec::new()) } else { (raw_links, raw_codes) };
+        let has_smart = !links.is_empty() || !codes.is_empty();
+
+        let app_display = if clean_app.is_empty() { "Telefon".to_string() } else { clean_app.clone() };
         let e = Ev {
             view: "notif",
-            key: format!("ph:{title}|{who}"),
+            key: format!("ph:{clean_app}|{title}"),
             prio: if urgent { 3 } else { 2 },
-            dur: if urgent { 9000 } else { 7000 },
-            app: format!("{title}{}", if dev.is_empty() { String::new() } else { format!(" · {dev}") }),
-            phone: Some((title.to_string(), body.to_string())),
-            icon: [title.to_lowercase().replace(' ', "-"), img.to_string(), "smartphone".into()].into_iter().find(|s| !s.is_empty()).unwrap_or_default(),
-            title: if self.sharing { title.into() } else if who.is_empty() { title.into() } else { who.clone() },
-            body: if self.sharing { "treść ukryta · udostępniasz ekran".into() } else if who.is_empty() { body.into() } else { text },
+            dur: if urgent { 9000 } else if has_smart { 8000 } else { 7000 },
+            app: format!("{app_display}{}", if dev.is_empty() { String::new() } else { format!(" · {dev}") }),
+            phone: Some((clean_app.clone(), raw_body.to_string())),
+            icon: [clean_app.to_lowercase().replace(' ', "-"), img.to_string(), "smartphone".into()].into_iter().find(|s| !s.is_empty()).unwrap_or_default(),
+            title: if self.sharing { clean_app.clone() } else { title },
+            body: if self.sharing { "treść ukryta · udostępniasz ekran".into() } else { display_body },
             urgent,
             value: -1,
             pulse: urgent,
             act: Act::Popup("phone".into()),
+            links,
+            codes,
+            desktop_actions: Vec::new(),
+            note_id: 0,
             ..Default::default()
         };
         self.push(e);
@@ -1167,7 +1196,10 @@ impl Island {
                 let mut h = 14.0 + 1.0 + tl * 17.0 + 1.0 + bl * 15.5;
                 if e.value >= 0 { h += 13.0; }
                 let pn = phone_note(e.phone.as_ref(), cx.phone);
-                if open && pn.as_ref().map(|n| n["reply"].as_bool().unwrap_or(false) || n["dismiss"].as_bool().unwrap_or(false) || n["actions"].as_array().map(|a| !a.is_empty()).unwrap_or(false)).unwrap_or(false) {
+                let has_phone = open && pn.as_ref().map(|n| n["reply"].as_bool().unwrap_or(false) || n["dismiss"].as_bool().unwrap_or(false) || n["actions"].as_array().map(|a| !a.is_empty()).unwrap_or(false)).unwrap_or(false);
+                let has_smart = !e.codes.is_empty() || !e.links.is_empty();
+                let has_desktop = open && !e.desktop_actions.is_empty();
+                if self.replying || has_phone || has_smart || has_desktop {
                     h += 9.0 + if self.replying { 32.0 } else { 26.0 };
                 }
                 (452.0, (h + 24.0).max(56.0))
@@ -1707,44 +1739,108 @@ impl Island {
             c.rrect(x, y + 3.5, bw * self.note_bar.value(), 5.0, 2.5, ACCENT);
             y += 13.0;
         }
-        // phone note (hover): reply, its actions, dismiss
-        if open {
-            if let Some(n) = &pn {
-                let acts: Vec<String> = n["actions"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).take(3).collect()).unwrap_or_default();
-                let reply = n["reply"].as_bool().unwrap_or(false);
-                let dismiss = n["dismiss"].as_bool().unwrap_or(false);
-                if reply || dismiss || !acts.is_empty() {
-                    y += 9.0;
-                    if self.replying {
-                        c.rrect(x, y, cw, 32.0, 16.0, FILL);
-                        crate::gfx::stroke_rrect(c, x + 0.5, y + 0.5, cw - 1.0, 31.0, 15.5, Rgba(169.0 / 255.0, 194.0 / 255.0, 238.0 / 255.0, 0.45));
-                        let ts = Style::ui(13.0, 450.0);
-                        if self.reply.is_empty() {
-                            let ph = crate::bar::elide(cx.t, &format!("Odpowiedź do {}", e.title), &Style::ui(12.5, 450.0), cw - 13.0 - 34.0);
-                            c.text(cx.t, x + 13.0, y + 16.0, &ph, &Style::ui(12.5, 450.0), T4);
-                        } else {
-                            // the end of the text stays visible
-                            let mut s = self.reply.clone();
-                            while cx.t.width(&s, &ts) > cw - 13.0 - 40.0 && !s.is_empty() {
-                                s.remove(0);
-                            }
-                            let tw = c.text(cx.t, x + 13.0, y + 16.0, &s, &ts, T1);
-                            c.rrect(x + 13.0 + tw + 1.0, y + 8.0, 1.5, 16.0, 0.0, T1.alpha(0.85));
-                        }
-                        let can = !self.reply.trim().is_empty();
-                        c.rrect(x + cw - 3.0 - 26.0, y + 3.0, 26.0, 26.0, 13.0, if can { ACCENT } else { FILL2 });
-                        c.icon(cx.t, x + cw - 3.0 - 13.0, y + 16.0, "send", 13.0, if can { INK } else { T3 });
-                        self.hit(x + cw - 29.0, y + 3.0, 26.0, 26.0, Hit::ReplySend);
+        let pn_actions = pn.as_ref().and_then(|n| {
+            let acts: Vec<String> = n["actions"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).take(3).collect()).unwrap_or_default();
+            let reply = n["reply"].as_bool().unwrap_or(false);
+            let dismiss = n["dismiss"].as_bool().unwrap_or(false);
+            if reply || dismiss || !acts.is_empty() {
+                Some((reply, acts, dismiss))
+            } else {
+                None
+            }
+        });
+
+        let has_smart = !e.codes.is_empty() || !e.links.is_empty();
+        let has_phone = open && pn_actions.is_some();
+        let has_desktop = open && !e.desktop_actions.is_empty();
+
+        if self.replying || has_smart || has_phone || has_desktop {
+            y += 9.0;
+            if self.replying {
+                c.rrect(x, y, cw, 32.0, 16.0, FILL);
+                crate::gfx::stroke_rrect(c, x + 0.5, y + 0.5, cw - 1.0, 31.0, 15.5, Rgba(169.0 / 255.0, 194.0 / 255.0, 238.0 / 255.0, 0.45));
+                let ts = Style::ui(13.0, 450.0);
+                if self.reply.is_empty() {
+                    let ph = crate::bar::elide(cx.t, &format!("Odpowiedź do {}", e.title), &Style::ui(12.5, 450.0), cw - 13.0 - 34.0);
+                    c.text(cx.t, x + 13.0, y + 16.0, &ph, &Style::ui(12.5, 450.0), T4);
+                } else {
+                    // the end of the text stays visible
+                    let mut s = self.reply.clone();
+                    while cx.t.width(&s, &ts) > cw - 13.0 - 40.0 && !s.is_empty() {
+                        s.remove(0);
+                    }
+                    let tw = c.text(cx.t, x + 13.0, y + 16.0, &s, &ts, T1);
+                    c.rrect(x + 13.0 + tw + 1.0, y + 8.0, 1.5, 16.0, 0.0, T1.alpha(0.85));
+                }
+                let can = !self.reply.trim().is_empty();
+                c.rrect(x + cw - 3.0 - 26.0, y + 3.0, 26.0, 26.0, 13.0, if can { ACCENT } else { FILL2 });
+                c.icon(cx.t, x + cw - 3.0 - 13.0, y + 16.0, "send", 13.0, if can { INK } else { T3 });
+                self.hit(x + cw - 29.0, y + 3.0, 26.0, 26.0, Hit::ReplySend);
+            } else {
+                let mut bx = x;
+                let max_x = x + cw;
+                let st = Style::ui(11.5, 600.0);
+                let btn_w = |t: &mut crate::text::Text, icon: &str, text: &str| -> f32 {
+                    let iw = if icon.is_empty() { 0.0 } else { Canvas::icon_w(t, icon, 12.0) + 5.0 };
+                    iw + t.width(text, &st) + 20.0
+                };
+
+                // 1. Detected codes: prominent copy button
+                for code in &e.codes {
+                    let label = format!("Kopiuj kod: {code}");
+                    let bw = btn_w(cx.t, "clipboard", &label);
+                    if bx + bw <= max_x {
+                        bx += self.act_btn(c, cx, bx, y, "clipboard", &label, true, Hit::CopyCode(code.clone())) + 6.0;
                     } else {
-                        let mut bx = x;
-                        if reply {
-                            bx += self.act_btn(c, cx, bx, y, "message", "Odpowiedz", true, Hit::NoteReply) + 6.0;
+                        let short_label = "Kopiuj kod";
+                        let sbw = btn_w(cx.t, "clipboard", short_label);
+                        if bx + sbw <= max_x {
+                            bx += self.act_btn(c, cx, bx, y, "clipboard", short_label, true, Hit::CopyCode(code.clone())) + 6.0;
                         }
-                        for a in acts {
+                    }
+                }
+
+                // 2. Detected links: copy link and open in browser
+                for link in e.links.iter().take(1) {
+                    let bw_copy = btn_w(cx.t, "copy", "Kopiuj link");
+                    if bx + bw_copy <= max_x {
+                        bx += self.act_btn(c, cx, bx, y, "copy", "Kopiuj link", false, Hit::CopyLink(link.clone())) + 6.0;
+                    }
+                    let bw_open = btn_w(cx.t, "world", "Otwórz");
+                    if bx + bw_open <= max_x {
+                        bx += self.act_btn(c, cx, bx, y, "world", "Otwórz", e.codes.is_empty(), Hit::OpenLink(link.clone())) + 6.0;
+                    }
+                }
+
+                // 3. Phone actions
+                if let Some((reply, acts, dismiss)) = pn_actions {
+                    if reply {
+                        let bw = btn_w(cx.t, "message", "Odpowiedz");
+                        if bx + bw <= max_x {
+                            let is_pri = e.codes.is_empty() && e.links.is_empty();
+                            bx += self.act_btn(c, cx, bx, y, "message", "Odpowiedz", is_pri, Hit::NoteReply) + 6.0;
+                        }
+                    }
+                    for a in acts {
+                        let bw = btn_w(cx.t, "", &a);
+                        if bx + bw <= max_x {
                             bx += self.act_btn(c, cx, bx, y, "", &a, false, Hit::NoteAction(a.clone())) + 6.0;
                         }
-                        if dismiss {
+                    }
+                    if dismiss {
+                        let bw = btn_w(cx.t, "x", "Odrzuć");
+                        if bx + bw <= max_x {
                             self.act_btn(c, cx, bx, y, "x", "Odrzuć", false, Hit::NoteDismiss);
+                        }
+                    }
+                }
+
+                // 4. Desktop actions
+                if open {
+                    for (key, label) in &e.desktop_actions {
+                        let bw = btn_w(cx.t, "", label);
+                        if bx + bw <= max_x {
+                            bx += self.act_btn(c, cx, bx, y, "", label, false, Hit::DesktopAction(e.note_id, key.clone())) + 6.0;
                         }
                     }
                 }
@@ -1846,3 +1942,292 @@ pub fn phone_note(p: Option<&(String, String)>, ph: &crate::phone::State) -> Opt
         raw.contains(&t.chars().take(48).collect::<String>())
     })
 }
+
+fn unescape_html(s: &str) -> String {
+    let once = |t: &str| -> String {
+        t.replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("&apos;", "'")
+            .replace("&nbsp;", " ")
+            .replace("&amp;", "&")
+    };
+    let s1 = once(s);
+    if s1.contains('&') { once(&s1) } else { s1 }
+}
+
+fn strip_tags(s: &str) -> String {
+    let u = unescape_html(s);
+    let mut o = String::new();
+    let mut tag = false;
+    for ch in u.chars() {
+        match ch {
+            '<' => tag = true,
+            '>' if tag => tag = false,
+            c if !tag => o.push(c),
+            _ => {}
+        }
+    }
+    o.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+// Parses a phone notification (e.g. from Messenger via KDE Connect) into:
+// (chat_title, sender, latest_message)
+fn parse_phone_message(raw_summary: &str, raw_body: &str) -> (String, String, String) {
+    let s = unescape_html(raw_body);
+    let (chat_title, rest) = match s.split_once(": ") {
+        Some((w, r)) if !w.is_empty() && w.chars().count() <= 120 && !w.contains('\n') => {
+            (strip_tags(w), r.trim())
+        }
+        _ => (String::new(), s.trim()),
+    };
+
+    // Split messages/lines by <br...>, \r\n, \n, \r
+    let mut lines = Vec::new();
+    let mut cur = String::new();
+    let mut i = 0;
+    let bytes = rest.as_bytes();
+    while i < bytes.len() {
+        if bytes[i] == b'<' && i + 3 < bytes.len() {
+            let rem = &rest[i..];
+            if let Some(close) = rem.find('>') {
+                let tag = &rem[..=close];
+                if tag.len() >= 4 && tag[1..].trim_start().to_ascii_lowercase().starts_with("br") {
+                    let trimmed = cur.trim();
+                    if !trimmed.is_empty() {
+                        lines.push(trimmed.to_string());
+                    }
+                    cur.clear();
+                    i += tag.len();
+                    continue;
+                }
+            }
+        }
+        let ch = rest[i..].chars().next().unwrap();
+        if ch == '\n' || ch == '\r' {
+            let trimmed = cur.trim();
+            if !trimmed.is_empty() {
+                lines.push(trimmed.to_string());
+            }
+            cur.clear();
+        } else {
+            cur.push(ch);
+        }
+        i += ch.len_utf8();
+    }
+    let trimmed = cur.trim();
+    if !trimmed.is_empty() {
+        lines.push(trimmed.to_string());
+    }
+
+    if lines.is_empty() {
+        return (
+            if chat_title.is_empty() { strip_tags(raw_summary) } else { chat_title },
+            String::new(),
+            strip_tags(rest),
+        );
+    }
+
+    let mut messages: Vec<(String, String)> = Vec::new();
+    let mut current_sender = String::new();
+
+    for line in &lines {
+        let line_lower = line.to_ascii_lowercase();
+        if let Some(b_start) = line_lower.find("<b>") {
+            if let Some(b_end) = line_lower[b_start + 3..].find("</b>") {
+                let sender_raw = &line[b_start + 3..b_start + 3 + b_end];
+                current_sender = strip_tags(sender_raw);
+                let after = &line[b_start + 3 + b_end + 4..];
+                let after_clean = strip_tags(after.trim_start_matches(':').trim());
+                if !after_clean.is_empty() {
+                    messages.push((current_sender.clone(), after_clean));
+                }
+                continue;
+            }
+        }
+
+        if current_sender.is_empty() {
+            if let Some((sender_part, msg_part)) = line.split_once(": ") {
+                if !sender_part.is_empty() && sender_part.chars().count() <= 40 && !sender_part.contains('\n') {
+                    messages.push((strip_tags(sender_part), strip_tags(msg_part)));
+                    continue;
+                }
+            }
+        }
+
+        messages.push((current_sender.clone(), strip_tags(line)));
+    }
+
+    let (last_sender, last_msg) = if let Some(last) = messages.last() {
+        last.clone()
+    } else {
+        (String::new(), strip_tags(lines.last().unwrap()))
+    };
+
+    let title = if !chat_title.is_empty() {
+        chat_title
+    } else if !last_sender.is_empty() {
+        last_sender.clone()
+    } else {
+        strip_tags(raw_summary)
+    };
+
+    (title, last_sender, last_msg)
+}
+
+pub fn extract_links(text: &str) -> Vec<String> {
+    let mut links = Vec::new();
+    for token in text.split_whitespace() {
+        let mut t = token.trim_start_matches(|c: char| matches!(c, '(' | '[' | '{' | '<' | '"' | '\'' | '`' | '«' | '“'));
+        let open_parens = t.chars().filter(|&c| c == '(').count();
+        let close_parens = t.chars().filter(|&c| c == ')').count();
+        if close_parens > open_parens {
+            t = t.trim_end_matches(')');
+        }
+        let clean = t.trim_end_matches(|c: char| matches!(c, ']' | '}' | '>' | '"' | '\'' | '`' | ',' | ';' | '.' | '!' | '?' | '»' | '”'));
+        if (clean.starts_with("https://") || clean.starts_with("http://")) && clean.len() > 10 && clean[8..].contains('.') {
+            if !links.contains(&clean.to_string()) {
+                links.push(clean.to_string());
+            }
+        } else if clean.starts_with("www.") && clean.len() > 7 && clean[4..].contains('.') {
+            if !links.contains(&clean.to_string()) {
+                links.push(clean.to_string());
+            }
+        }
+    }
+    links
+}
+
+pub fn extract_codes(text: &str, links: &[String]) -> Vec<String> {
+    let mut clean_text = text.to_string();
+    for l in links {
+        clean_text = clean_text.replace(l, " ");
+    }
+
+    let lower = clean_text.to_lowercase();
+    let keywords = [
+        "kod", "code", "blik", "hasło", "haslo", "otp", "2fa", "pin", "token",
+        "weryfik", "verif", "autoryz", "authoriz", "odbior", "security", "potwierdz", "potwierdź"
+    ];
+    let has_kw = keywords.iter().any(|k| lower.contains(k));
+
+    let mut codes = Vec::new();
+
+    // 1. Prefix codes like G-123456 or AB-123456
+    for word in clean_text.split_whitespace() {
+        let w = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
+        if let Some((prefix, rest)) = w.split_once('-') {
+            if (1..=3).contains(&prefix.len()) && prefix.chars().all(|c| c.is_ascii_alphabetic())
+                && (4..=8).contains(&rest.len()) && rest.chars().all(|c| c.is_ascii_digit())
+            {
+                if !codes.contains(&rest.to_string()) {
+                    codes.push(rest.to_string());
+                }
+            }
+        }
+    }
+
+    // 2. Tokenized words
+    let words: Vec<&str> = clean_text.split_whitespace().collect();
+
+    // Split codes: "123-456" or consecutive "123" "456"
+    for (i, &w) in words.iter().enumerate() {
+        let cw = w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
+        if let Some((a, b)) = cw.split_once('-') {
+            if (3..=4).contains(&a.len()) && a.chars().all(|c| c.is_ascii_digit())
+                && (3..=4).contains(&b.len()) && b.chars().all(|c| c.is_ascii_digit())
+            {
+                let code = format!("{a}{b}");
+                if !codes.contains(&code) {
+                    codes.push(code);
+                }
+            }
+        }
+        if i + 1 < words.len() {
+            let next_w = words[i + 1].trim_matches(|c: char| !c.is_alphanumeric());
+            let a = cw;
+            let b = next_w;
+            if a.len() == 3 && a.chars().all(|c| c.is_ascii_digit())
+                && b.len() == 3 && b.chars().all(|c| c.is_ascii_digit())
+            {
+                let start_idx = i.saturating_sub(3);
+                let end_idx = (i + 4).min(words.len());
+                let local_has_kw = words[start_idx..end_idx].iter().any(|token| {
+                    let tl = token.to_lowercase();
+                    keywords.iter().any(|k| tl.contains(k))
+                });
+                if local_has_kw || has_kw || words.len() <= 4 {
+                    let code = format!("{a}{b}");
+                    if !codes.contains(&code) {
+                        codes.push(code);
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. 4-8 digit numbers or uppercase alphanumeric codes near keyword
+    for (i, &w) in words.iter().enumerate() {
+        let cw = w.trim_matches(|c: char| !c.is_ascii_digit());
+        if (4..=8).contains(&cw.len()) && cw.chars().all(|c| c.is_ascii_digit()) {
+            let is_year = if cw.len() == 4 {
+                if let Ok(y) = cw.parse::<u32>() {
+                    (1990..=2035).contains(&y)
+                } else { false }
+            } else { false };
+
+            let start_idx = i.saturating_sub(4);
+            let end_idx = (i + 5).min(words.len());
+            let local_has_kw = words[start_idx..end_idx].iter().any(|token| {
+                let tl = token.to_lowercase();
+                keywords.iter().any(|k| tl.contains(k))
+            });
+
+            if (local_has_kw && !is_year) || (local_has_kw && is_year && i > 0 && {
+                let prev = words[i - 1].to_lowercase();
+                prev.contains("kod") || prev.contains("code") || prev.contains("pin")
+            }) || (!is_year && words.len() <= 2) {
+                let code = cw.to_string();
+                if !codes.contains(&code) {
+                    codes.push(code);
+                }
+            }
+        }
+
+        // Alphanumeric uppercase codes (e.g. Steam Guard: 8HX92)
+        let cw_upper = w.trim_matches(|c: char| !c.is_alphanumeric());
+        if (4..=8).contains(&cw_upper.len())
+            && cw_upper.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+            && cw_upper.chars().any(|c| c.is_ascii_digit())
+            && cw_upper.chars().any(|c| c.is_ascii_uppercase())
+        {
+            let start_idx = i.saturating_sub(3);
+            let end_idx = (i + 4).min(words.len());
+            let local_has_kw = words[start_idx..end_idx].iter().any(|token| {
+                let tl = token.to_lowercase();
+                keywords.iter().any(|k| tl.contains(k))
+            });
+            if local_has_kw {
+                let code = cw_upper.to_string();
+                if !codes.contains(&code) {
+                    codes.push(code);
+                }
+            }
+        }
+    }
+
+    // 4. Standalone line with 4-8 digits
+    for line in clean_text.lines() {
+        let cl = line.trim().trim_matches(|c: char| !c.is_ascii_digit());
+        if (4..=8).contains(&cl.len()) && cl.chars().all(|c| c.is_ascii_digit()) {
+            let code = cl.to_string();
+            if !codes.contains(&code) {
+                codes.push(code);
+            }
+        }
+    }
+
+    codes
+}
+

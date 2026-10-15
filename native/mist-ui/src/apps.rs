@@ -12,6 +12,11 @@ pub struct Entry {
     pub icon: String,
     pub wm_class: String,
     pub exec: String,
+    pub generic: String,
+    pub comment: String,
+    pub keywords: String,
+    pub no_display: bool,
+    pub terminal: bool,
 }
 
 fn data_dirs() -> Vec<String> {
@@ -45,6 +50,7 @@ impl Apps {
                 }
                 let Ok(t) = std::fs::read_to_string(&p) else { continue };
                 let (mut name, mut name_pl, mut icon, mut wm, mut exec, mut hidden, mut in_main) = (String::new(), String::new(), String::new(), String::new(), String::new(), false, false);
+                let (mut generic, mut generic_pl, mut comment, mut comment_pl, mut kw, mut kw_pl, mut terminal) = (String::new(), String::new(), String::new(), String::new(), String::new(), String::new(), false);
                 for l in t.lines() {
                     let l = l.trim();
                     if l.starts_with('[') {
@@ -62,12 +68,19 @@ impl Apps {
                             "StartupWMClass" => wm = v.into(),
                             "Exec" => exec = v.into(),
                             "NoDisplay" | "Hidden" => hidden |= v.trim() == "true",
+                            "GenericName" => generic = v.into(),
+                            "GenericName[pl]" => generic_pl = v.into(),
+                            "Comment" => comment = v.into(),
+                            "Comment[pl]" => comment_pl = v.into(),
+                            "Keywords" => kw = v.into(),
+                            "Keywords[pl]" => kw_pl = v.into(),
+                            "Terminal" => terminal = v.trim() == "true",
                             _ => {}
                         }
                     }
                 }
-                let _ = hidden;
-                entries.push(Entry { id, name: if name_pl.is_empty() { name } else { name_pl }, icon, wm_class: wm, exec });
+                let pick = |pl: String, en: String| if pl.is_empty() { en } else { pl };
+                entries.push(Entry { id, name: pick(name_pl, name), icon, wm_class: wm, exec, generic: pick(generic_pl, generic), comment: pick(comment_pl, comment), keywords: format!("{kw};{kw_pl}").replace(';', " "), no_display: hidden, terminal });
             }
         }
         Apps { entries }

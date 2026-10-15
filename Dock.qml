@@ -68,7 +68,7 @@ PanelWindow {
     readonly property bool bare: !hmon || !hmon.activeWorkspace || hmon.activeWorkspace.toplevels.values.length === 0
     property bool hovered: false
     property bool menuOpen: false
-    readonly property bool shown: bare || hovered || menuOpen || Ui.dbgDock
+    readonly property bool shown: bare || hovered || menuOpen || Ui.dbgDock || Ui.popup === "start"
 
     // ---------------------------------------------------------------- minimize (Hyprland has none)
     // an app asks to minimize (Zen's yellow dot, xdg set_minimized) -> park it on special:minimized
@@ -237,7 +237,10 @@ PanelWindow {
                 // cycle through the app's windows; the first click focuses the most recent one
                 const ws = it.app.wins
                 const i = ws.findIndex(w => w.activated)
-                ws[(i + 1) % ws.length].activate()
+                const next = ws[(i + 1) % ws.length]
+                next.activate()
+                const h = dock.hyprOf(next)
+                if (h) Quickshell.execDetached(["hyprctl", "eval", "hl.dispatch(hl.dsp.window.bring_to_top())"])
             }
         }
     }

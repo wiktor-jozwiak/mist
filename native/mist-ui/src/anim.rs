@@ -5,7 +5,6 @@ use std::time::Instant;
 pub enum Ease {
     Linear,
     OutCubic,
-    InOutQuad,
 }
 
 #[derive(Clone, Copy)]
@@ -29,7 +28,6 @@ impl Anim {
         let k = match self.ease {
             Ease::Linear => t,
             Ease::OutCubic => 1.0 - (1.0 - t).powi(3),
-            Ease::InOutQuad => if t < 0.5 { 2.0 * t * t } else { 1.0 - (-2.0 * t + 2.0).powi(2) / 2.0 },
         };
         self.from + (self.to - self.from) * k
     }
@@ -49,8 +47,5 @@ impl Anim {
         self.start = Instant::now();
         self.dur = dur;
         self.ease = ease;
-    }
-    pub fn jump(&mut self, v: f32) {
-        *self = Anim::new(v);
     }
 }

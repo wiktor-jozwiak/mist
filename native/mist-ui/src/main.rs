@@ -33,10 +33,18 @@ mod calendar;
 mod notifcenter;
 mod switcher;
 mod clipboard;
+mod control;
+mod phonepanel;
 mod shot;
+mod spotlight;
+mod start;
+mod snap;
+mod wallpapers;
 mod wxcard;
 #[path = "../../common/astro.rs"]
 mod astro;
+#[path = "../../common/presets.rs"]
+mod presets;
 #[path = "../../common/sky.rs"]
 mod sky;
 mod wall;
@@ -54,6 +62,10 @@ fn main() {
     // `lock [preview N]`: the session lock, its own process while locked
     if args.get(1).map(|s| s.as_str()) == Some("lock") {
         std::process::exit(lock::run(&args[2..]));
+    }
+    // `greeter [greeter.json]`: the same screen as the login under greetd
+    if args.get(1).map(|s| s.as_str()) == Some("greeter") {
+        std::process::exit(lock::run(&args[1..]));
     }
     // `--desk-png dir`: the desktop stage and the weather card (cached data), for checks
     if args.get(1).map(|s| s.as_str()) == Some("--desk-png") {
@@ -117,6 +129,38 @@ fn main() {
         c.pm.save_png(&args[2]).unwrap();
         return;
     }
+    if args.get(1).map(|s| s.as_str()) == Some("--pane-png") {
+        // a popup on a transparent w x h canvas, settled: --pane-png <name> <w> <h> <out.png> [query]
+        let (pn, pg) = args[2].split_once(':').unwrap_or((&args[2], ""));
+        let Some(mut p) = pane::make(pn, pg) else { return eprintln!("no native pane {}", args[2]) };
+        if let Some(q) = args.get(6) {
+            p.seed(q);
+        }
+        let (w, h): (u32, u32) = (args[3].parse().unwrap(), args[4].parse().unwrap());
+        let (ap, cal) = (apps::Apps::load(), serde_json::Value::Null);
+        let (mut t, mut ic, mut im, mut hid) = (text::Text::new(), apps::Icons::new(), img::Images::new(), std::collections::HashMap::new());
+        let mut c = gfx::Canvas::new(w, h);
+        let bst = bar::BarState { net: "ethernet".into(), ..Default::default() };
+        loop {
+            let mut cx = pane::Ctx { t: &mut t, cal: &cal, icons: &mut ic, imgs: &mut im, apps: &ap, notif_hidden: &mut hid, ctrl: false, st: &bst, players: &[], phone_name: "", wx: &serde_json::Value::Null };
+            p.paint(&mut c, &mut cx);
+            if !p.animating() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(16));
+        }
+        // MIST_BENCH=n: the settled paint's average time
+        if let Some(n) = std::env::var("MIST_BENCH").ok().and_then(|v| v.parse::<u32>().ok()) {
+            let t0 = std::time::Instant::now();
+            for _ in 0..n {
+                let mut cx = pane::Ctx { t: &mut t, cal: &cal, icons: &mut ic, imgs: &mut im, apps: &ap, notif_hidden: &mut hid, ctrl: false, st: &bst, players: &[], phone_name: "", wx: &serde_json::Value::Null };
+                p.paint(&mut c, &mut cx);
+            }
+            eprintln!("paint {:.2} ms", t0.elapsed().as_secs_f64() * 1000.0 / n.max(1) as f64);
+        }
+        c.pm.save_png(&args[5]).unwrap();
+        return;
+    }
     if args.get(1).map(|s| s.as_str()) == Some("--tray-dump") {
         // list the tray items and their menus (checks the SNI host + dbusmenu parsing without a click)
         let (tx, rx) = channel::channel::<sys::Msg>();
@@ -160,6 +204,11 @@ fn main() {
     let (mdtx, mdrx) = std::sync::mpsc::channel::<media::Cmd>();
     let native_services = std::env::var("MIST_UI_NO_SERVICES").is_err() && !test;
     let phone = if native_services { phone::Phone::start(tx.clone()) } else { phone::Phone::start_idle() };
+    // night light remembered across restarts (Control centre toggles it)
+    if native_services && control::night_on() {
+        let c = control::night_cmd(true);
+        let _ = std::process::Command::new(&c[0]).args(&c[1..]).spawn();
+    }
     if std::env::var("MIST_UI_DEBUG").is_ok() { eprintln!("dbg: before App::new"); }
     let mut app = app::App::new(&globals, &qh, req_tx, test, phone, ntx, mdtx);
     app.tx = Some(tx.clone());
@@ -199,25 +248,28 @@ fn main() {
     idle::logind(tx.clone());
     tray::spawn(tx, req_rx, mtx);
 
-    // animation tick, only while something fades
-    lh.insert_source(Timer::from_duration(app::tick_interval()), |_, _, app: &mut app::App| {
-        if app.animating() {
-            app.tick();
-        }
-        TimeoutAction::ToDuration(app::tick_interval())
-    })
-    .unwrap();
     // seconds: island timers, the clock's minute, call timeouts
     lh.insert_source(Timer::from_duration(std::time::Duration::from_millis(250)), |_, _, app: &mut app::App| {
         app.slow_tick();
         TimeoutAction::ToDuration(std::time::Duration::from_millis(250))
     })
     .unwrap();
+    // wait for events; draw what changed after each batch. The animation tick (16 ms) runs only while something
+    // animates: idle, the loop sleeps until an event (or the 250 ms slow tick)
+    let mut last_tick = std::time::Instant::now();
     loop {
-        // wait for events; draw what changed after each batch
-        ev.dispatch(None, &mut app).expect("dispatch");
+        let timeout = app.animating().then(|| app::tick_interval().saturating_sub(last_tick.elapsed()));
+        ev.dispatch(timeout, &mut app).expect("dispatch");
+        let t0 = std::time::Instant::now();
+        if app.animating() && last_tick.elapsed() >= app::tick_interval() {
+            last_tick = std::time::Instant::now();
+            app.tick();
+        }
+        let t1 = std::time::Instant::now();
         app.draw_all();
         let _ = conn.flush();
+        app::count("tick_us", (t1 - t0).as_micros() as u64);
+        app::count("draw_us", t1.elapsed().as_micros() as u64);
     }
 }
 

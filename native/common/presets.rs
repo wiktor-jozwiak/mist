@@ -58,6 +58,40 @@ pub fn get<'a>(list: &'a [Value], id: &str) -> Option<&'a Value> {
     list.iter().find(|p| p["id"].as_str() == Some(id) && p.get("mode").is_some())
 }
 
+// the wallpaper gallery: photos in ~/Obrazy/Tapety (2 levels), sorted
+pub fn photo_dir() -> String {
+    format!("{}/Obrazy/Tapety", std::env::var("HOME").unwrap_or_default())
+}
+pub fn photos() -> Vec<String> {
+    fn walk(d: &std::path::Path, depth: u32, out: &mut Vec<String>) {
+        let Ok(rd) = std::fs::read_dir(d) else { return };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                if depth > 0 {
+                    walk(&p, depth - 1, out);
+                }
+            } else if p.extension().and_then(|x| x.to_str()).map(|x| matches!(x.to_lowercase().as_str(), "png" | "jpg" | "jpeg" | "webp")).unwrap_or(false) {
+                out.push(p.to_string_lossy().to_string());
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(std::path::Path::new(&photo_dir()), 1, &mut out);
+    out.sort();
+    out
+}
+// the gallery's still thumbnail of "live:<id>" / "photo:<path>" (rendered by mist-wall)
+pub const THUMB_W: i32 = 220;
+pub const THUMB_H: i32 = 124;
+pub fn thumb_dir() -> String {
+    format!("{}/.cache/mist/thumbs", std::env::var("HOME").unwrap_or_default())
+}
+pub fn thumb_path(key: &str) -> String {
+    let k: String = key.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect();
+    format!("{}/{k}.png", thumb_dir())
+}
+
 pub fn tempo(id: &str) -> f32 {
     match id { "calm" => 0.55, "fast" => 2.0, _ => 1.0 }
 }

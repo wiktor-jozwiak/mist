@@ -18,6 +18,12 @@ pub enum Act {
     Toggle(&'static str),
     // the screenshot toolbar: capture now
     Capture,
+    // close, start an app (Apps index)
+    Launch(usize),
+    // a media player command, stay open
+    Media(crate::media::Cmd),
+    // window snapping (snap.rs)
+    Snap(crate::snap::Cmd),
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -38,6 +44,10 @@ pub struct Ctx<'a> {
     pub apps: &'a crate::apps::Apps,
     pub notif_hidden: &'a mut std::collections::HashMap<String, i64>,
     pub ctrl: bool,
+    pub st: &'a crate::bar::BarState,
+    pub players: &'a [crate::media::Player],
+    pub phone_name: &'a str,
+    pub wx: &'a serde_json::Value,
 }
 
 pub trait Pane {
@@ -72,30 +82,70 @@ pub trait Pane {
     fn as_shot(&mut self) -> Option<&mut crate::shot::Toolbar> {
         None
     }
+    // the surface is up on this monitor
+    fn opened(&mut self, _screen: &str) {}
+    // `--pane-png`: type this into the search field
+    fn seed(&mut self, _q: &str) {}
     // what the pointer should look like (Pointer over something clickable)
     fn hand(&self) -> bool {
         false
+    }
+    // `controlOn <page>` while open: switch to it; false = it is already shown (close)
+    fn set_page(&mut self, _p: &str) -> bool {
+        false
+    }
+    // an event of the phone (done / err / shot ...); true = repaint
+    fn phone_ev(&mut self, _e: &serde_json::Value) -> bool {
+        false
+    }
+    // the surface: exclusive keyboard, takes the pointer, covers the monitor (else left, top, w, h)
+    fn keyboard(&self) -> bool {
+        true
+    }
+    fn input(&self) -> bool {
+        true
+    }
+    fn rect(&self) -> Option<(i32, i32, u32, u32)> {
+        None
+    }
+    fn as_drag(&mut self) -> Option<&mut crate::snap::Drag> {
+        None
+    }
+    fn as_assist(&mut self) -> Option<&mut crate::snap::AssistPane> {
+        None
     }
 }
 
 // the popups that are native now (the rest are forwarded to Quickshell)
 pub fn native(name: &str) -> bool {
-    matches!(name, "session" | "calendar" | "notifications" | "clipboard")
+    matches!(name, "session" | "calendar" | "notifications" | "clipboard" | "spotlight" | "emoji" | "wallpaper" | "control" | "phone" | "start")
 }
-pub fn make(name: &str, _page: &str) -> Option<Box<dyn Pane>> {
+pub fn make(name: &str, page: &str) -> Option<Box<dyn Pane>> {
     match name {
         "session" => Some(Box::new(crate::session::Session::new())),
         "calendar" => Some(Box::new(crate::calendar::Calendar::new())),
         "notifications" => Some(Box::new(crate::notifcenter::NotifCenter::new())),
         "clipboard" => Some(Box::new(crate::clipboard::Clipboard::new())),
+        "spotlight" => Some(Box::new(crate::spotlight::Spotlight::new(false))),
+        "emoji" => Some(Box::new(crate::spotlight::Spotlight::new(true))),
+        "wallpaper" => Some(Box::new(crate::wallpapers::Wallpapers::new())),
+        "control" => Some(Box::new(crate::control::Control::new(page))),
+        // app.rs opens it with the running phone (this one only reads the state file: --pane-png)
+        "phone" => {
+            let mut p = crate::phonepanel::PhonePanel::new(crate::phone::Phone::start_idle());
+            p.set_page(page);
+            Some(Box::new(p))
+        }
+        "start" => {
+            let mut p = crate::start::Start::new(crate::phone::Phone::start_idle());
+            p.set_page(page);
+            Some(Box::new(p))
+        }
         _ => None,
     }
 }
 
 // ------------------------------------------------------------------ shared drawing (Txt / Glass / buttons)
-pub fn txt(c: &mut Canvas, t: &mut Text, x: f32, y: f32, s: &str, size: f32, w: f32, col: Rgba) -> f32 {
-    crate::desktop::text(c, t, x, y, s, &Style::ui(size, w), col, false, None)
-}
 pub fn txt_c(c: &mut Canvas, t: &mut Text, cx: f32, y: f32, s: &str, size: f32, w: f32, col: Rgba, max: f32) -> f32 {
     let st = Style::ui(size, w);
     let sw = t.width(s, &st).min(max);

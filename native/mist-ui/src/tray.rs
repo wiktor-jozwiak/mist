@@ -169,7 +169,7 @@ pub fn spawn(tx: Sender<Msg>, reqs: Receiver<Req>, menus: Sender<(String, Vec<Me
             }
             prop(c, WATCHER, WATCHER_PATH, WATCHER, "RegisteredStatusNotifierItems").and_then(|v| <Vec<String>>::try_from(v).ok()).unwrap_or_default()
         };
-        let mut become_watcher = |c: &Connection| -> bool {
+        let become_watcher = |c: &Connection| -> bool {
             if c.object_server().at(WATCHER_PATH, Watcher { items: own_items.clone() }).is_err() {
                 return false;
             }

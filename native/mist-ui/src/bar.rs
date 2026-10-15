@@ -10,7 +10,6 @@ pub const HEIGHT: u32 = 34;
 #[derive(Clone, Default)]
 pub struct TrayItem {
     pub id: String,
-    pub icon: Option<(u32, u32, std::rc::Rc<Vec<u8>>)>, // w, h, premultiplied RGBA
 }
 
 #[derive(Clone, Default)]
@@ -61,7 +60,7 @@ pub struct Item {
     pub w: f32,
 }
 
-fn bytes(b: f64) -> String {
+pub fn bytes(b: f64) -> String {
     if b < 1024.0 {
         format!("{} B", b.round())
     } else if b < 1048576.0 {

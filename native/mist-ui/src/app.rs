@@ -99,6 +99,19 @@ struct Popup {
     canvas: Canvas,
 }
 
+// window snapping (snap.rs): the layout of the next "snapped" event, Snap Assist between picks, the drag's cursor
+// poll, the flyout's hover delay
+#[derive(Default)]
+pub struct SnapSt {
+    layout: i32,
+    assist: Option<crate::snap::Assist>,
+    assist_at: Option<Instant>,
+    poll: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    btn: bool,
+    fly_at: Option<(Instant, String, f32, f32)>,
+    fly_check: Option<Instant>,
+}
+
 pub struct PaneSurf {
     p: Box<dyn crate::pane::Pane>,
     layer: LayerSurface,
@@ -163,6 +176,7 @@ pub struct App {
     clip_watch: Option<std::process::Child>,
     shot_opts: (&'static str, u32, bool),
     thumb: Option<(crate::shot::Thumb, LayerSurface, bool, bool, Canvas, Instant)>,
+    snap: SnapSt,
     clip_retry: Instant,
     desk_serial: u32,
     desk_cursor: &'static str,
@@ -230,6 +244,7 @@ impl App {
             clip_watch: None,
             shot_opts: ("region", 0, true),
             thumb: None,
+            snap: SnapSt::default(),
             clip_retry: Instant::now(),
             desk_serial: 0,
             desk_cursor: "",
@@ -304,7 +319,7 @@ impl App {
         let dock_here = if self.test { name == "HDMI-A-1" } else { name == PRIMARY };
         if dock_here && self.dock_surf.is_none() && std::env::var("MIST_UI_NO_DOCK").is_err() {
             let surface = self.compositor.create_surface(&self.qh);
-            let layer = self.layer_shell.create_layer_surface(&self.qh, surface, if self.test { Layer::Overlay } else { Layer::Top }, Some("mist-dock"), Some(&output));
+            let layer = self.layer_shell.create_layer_surface(&self.qh, surface, Layer::Overlay, Some("mist-dock"), Some(&output));
             layer.set_anchor(Anchor::BOTTOM);
             let w = self.dock.win_w().max(200);
             layer.set_size(w, dock::WIN_H);
@@ -334,7 +349,7 @@ impl App {
             s.phone = None;
         }
         s.control_open = self.popup_name() == "control";
-        s.tray = self.tray_items.iter().map(|t| TrayItem { id: t.key.clone(), icon: None }).collect();
+        s.tray = self.tray_items.iter().map(|t| TrayItem { id: t.key.clone() }).collect();
         s
     }
     fn primary_bare(&self) -> bool {
@@ -352,7 +367,7 @@ impl App {
     }
 
     pub fn animating(&self) -> bool {
-        self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE) || self.dock.animating() || self.dock_hide_at.is_some() || self.dock_show_at.is_some() || self.island.animating() || self.wall.busy() || self.desk.animating() || self.polkit.as_ref().map(|p| p.0.animating()).unwrap_or(false) || self.pane.as_ref().map(|p| p.p.animating()).unwrap_or(false)
+        self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE) || self.dock.animating() || self.dock_hide_at.is_some() || self.dock_show_at.is_some() || self.island.animating() || self.wall.busy() || self.desk.animating() || self.polkit.as_ref().map(|p| p.0.animating()).unwrap_or(false) || self.pane.as_ref().map(|p| p.p.animating()).unwrap_or(false) || self.snap.assist_at.is_some() || self.snap.fly_at.is_some() || self.snap.fly_check.is_some()
     }
 
     // timers (dock hide 400 ms / reveal 80 ms) and animation frames
@@ -420,6 +435,7 @@ impl App {
         }
     }
     pub fn tick(&mut self) {
+        self.snap_timers();
         DRAWS.with(|d| {
             let mut d = d.borrow_mut();
             *d.entry("tick").or_insert(0) += 1;
@@ -455,7 +471,7 @@ impl App {
         }
         if self.dock_hide_at.map(|t| now >= t).unwrap_or(false) {
             self.dock_hide_at = None;
-            if !self.dock.menu_open {
+            if !self.dock.menu_open && !self.dock.start_open {
                 self.dock.hovered = false;
                 self.dock.update_y();
             }
@@ -493,7 +509,9 @@ impl App {
         if self.island_dirty && self.island_surf.as_ref().map(|i| i.configured).unwrap_or(false) {
             self.draw_island();
         }
+        let t0 = Instant::now();
         self.draw_desk();
+        count("wake_us", t0.elapsed().as_micros() as u64);
         self.draw_polkit();
         self.draw_pane();
         self.draw_thumb();
@@ -514,23 +532,34 @@ impl App {
             return;
         }
         if crate::pane::native(name) {
-            if !self.ui_popup.0.is_empty() {
-                ipc(&["close"]);
-            }
             self.pane_open(name, "", &scr);
         } else {
             self.pane_close();
-            ipc(&["toggleOn", name, &scr]);
         }
     }
     pub fn ui_control(&mut self, page: &str, screen: &str) {
         let scr = if screen.is_empty() { self.focused_screen() } else { screen.to_string() };
-        self.pane_close();
-        ipc(&["controlOn", page, &scr]);
+        // open on this monitor: another page switches, the same one (or none) closes
+        if let Some(p) = self.pane.as_mut().filter(|p| p.p.name() == "control" && p.screen == scr) {
+            if !page.is_empty() && p.p.set_page(page) {
+                p.dirty = true;
+            } else {
+                self.pane_close();
+            }
+            return;
+        }
+        self.pane_open("control", page, &scr);
     }
     fn pane_open(&mut self, name: &str, page: &str, scr: &str) {
         self.pane = None;
-        let Some(p) = crate::pane::make(name, page) else { return };
+        let p: Box<dyn crate::pane::Pane> = if name == "phone" {
+            Box::new(crate::phonepanel::PhonePanel::new(self.phone.clone()))
+        } else if name == "start" {
+            Box::new(crate::start::Start::new(self.phone.clone()))
+        } else {
+            let Some(p) = crate::pane::make(name, page) else { return };
+            p
+        };
         self.pane_open_box(p, scr);
     }
     // Cmd+Tab: open on the focused monitor, or step when open
@@ -556,9 +585,6 @@ impl App {
         if apps.is_empty() {
             return;
         }
-        if !self.ui_popup.0.is_empty() {
-            ipc(&["close"]);
-        }
         let scr = self.focused_screen();
         self.pane_open_box(Box::new(crate::switcher::Switcher::new(apps, d)), &scr);
     }
@@ -568,16 +594,55 @@ impl App {
         let Some((o, sname)) = outs.iter().find(|(_, n)| n == scr).or(outs.first()).cloned() else { return };
         let surface = self.compositor.create_surface(&self.qh);
         let layer = self.layer_shell.create_layer_surface(&self.qh, surface, Layer::Overlay, Some(p.namespace()), Some(&o));
-        layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
+        match p.rect() {
+            Some((x, y, w, h)) => {
+                layer.set_anchor(Anchor::TOP | Anchor::LEFT);
+                layer.set_margin(y, 0, 0, x);
+                layer.set_size(w, h);
+            }
+            None => layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT),
+        }
         layer.set_exclusive_zone(-1);
-        layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
+        layer.set_keyboard_interactivity(if p.keyboard() { KeyboardInteractivity::Exclusive } else { KeyboardInteractivity::None });
+        // the snap overlay lets the pointer through
+        if !p.input() {
+            if let Ok(r) = Region::new(&self.compositor) {
+                layer.wl_surface().set_input_region(Some(r.wl_region()));
+            }
+        }
+        // Start stops above the dock (shown while it is open)
+        let start = p.name() == "start";
+        if start && sname == PRIMARY {
+            layer.set_margin(0, 0, 88, 0);
+        }
         layer.commit();
+        let mut p = p;
+        p.opened(&sname);
         self.pane = Some(PaneSurf { p, layer, screen: sname, configured: false, dirty: true, canvas: Canvas::new(1, 1) });
+        self.set_start_open(start);
         self.mark_all();
+        self.dock_rebuild();
+    }
+    fn set_start_open(&mut self, on: bool) {
+        if self.dock.start_open == on {
+            return;
+        }
+        self.dock.start_open = on;
+        if on {
+            self.dock_hide_at = None;
+        }
+        self.dock.update_y();
+        if let Some(d) = &mut self.dock_surf {
+            d.dirty = true;
+        }
     }
     pub fn pane_close(&mut self) {
         if self.pane.take().is_some() {
+            self.set_start_open(false);
             self.mark_all();
+            self.dock_rebuild();
+            // the full-monitor buffers (~8 MB each) and the pane's data go back to the OS, not glibc's arena
+            unsafe { libc::malloc_trim(0) };
         }
     }
     fn pane_act(&mut self, a: crate::pane::Act) {
@@ -602,6 +667,18 @@ impl App {
                     p.dirty = true;
                 }
             }
+            Act::Media(c) => {
+                let _ = self.media_tx.send(c);
+            }
+            Act::Snap(c) => self.snap_cmd(c),
+            Act::Launch(i) => {
+                self.pane_close();
+                if let Some(e) = self.apps.entries.get(i) {
+                    let exec: Vec<&str> = e.exec.split_whitespace().filter(|a| !(a.len() == 2 && a.starts_with('%'))).collect();
+                    let cmd = exec.join(" ");
+                    if e.terminal { sh(&format!("kitty -e {cmd}")) } else { sh(&cmd) }
+                }
+            }
             Act::Capture => {
                 let o = self.pane.as_mut().and_then(|p| p.p.as_shot()).map(|t| (t.o.mode, t.o.delay, t.o.copy));
                 self.pane_close();
@@ -623,8 +700,15 @@ impl App {
         }
         p.dirty = false;
         let mut c = std::mem::replace(&mut p.canvas, Canvas::new(1, 1));
-        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl };
+        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl, st: &self.st, players: &self.island.players, phone_name: &self.island.phone_name, wx: &self.desk.weather };
+        let t0 = Instant::now();
         p.p.paint(&mut c, &mut cx);
+        let ms = t0.elapsed().as_millis() as u64;
+        DRAWS.with(|d| {
+            let mut d = d.borrow_mut();
+            *d.entry("pane").or_insert(0) += 1;
+            *d.entry("pane_ms").or_insert(0) += ms;
+        });
         Self::commit(&mut self.pool, &p.layer, &c);
         p.canvas = c;
     }
@@ -651,11 +735,222 @@ impl App {
             }
         };
         let Some(p) = self.pane.as_mut() else { return };
-        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl };
+        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl, st: &self.st, players: &self.island.players, phone_name: &self.island.phone_name, wx: &self.desk.weather };
         let a = p.p.pointer(ev, x, y, &mut cx);
         let hand = p.p.hand();
         self.desk_cursor(if hand { "hand" } else { "" });
         self.pane_act(a);
+    }
+
+    // ---------------------------------------------------------------- window snapping (snap.rs)
+    fn snap_event(&mut self, n: &str, d: &str) {
+        use crate::snap::*;
+        let p: Vec<&str> = d.split(',').collect();
+        let num = |i: usize| p.get(i).and_then(|v| v.trim().parse::<f32>().ok()).unwrap_or(f32::NAN);
+        let arg = |i: usize| p.get(i).copied().unwrap_or("").to_string();
+        match (n, p.first().copied().unwrap_or("")) {
+            ("mistdrag", "begin") => {
+                self.snap_close_extras();
+                let g = [num(2), num(3), num(4), num(5)];
+                let grab = (!g.iter().any(|v| v.is_nan())).then_some(g);
+                let (x, y) = cursor().unwrap_or((num(2), num(3)));
+                let drag = Drag::new(&arg(1), grab, monitors(), x, y);
+                if drag.mons.is_empty() {
+                    return;
+                }
+                let scr = drag.mon().name.clone();
+                self.pane_close();
+                self.pane_open_box(Box::new(DragPane(drag)), &scr);
+                self.snap_poll(true);
+            }
+            ("mistdrag", "end") => {
+                self.snap_poll(false);
+                let Some(dr) = self.pane.as_mut().and_then(|p| p.p.as_drag()) else { return };
+                if let Some((z, li)) = dr.end(num(1), num(2)) {
+                    self.snap.layout = li;
+                    apply(&dr.addr, &z, dr.grab, "", 0);
+                }
+                self.pane_close();
+            }
+            ("mistsnap", "snapped") => {
+                let li = std::mem::replace(&mut self.snap.layout, -1);
+                let a = norm(&arg(1));
+                // a window picked in Snap Assist
+                if self.snap.assist.as_ref().map(|s| s.group.contains(&a) && s.group[0] != a).unwrap_or(false) {
+                    return;
+                }
+                let z = [num(3), num(4), num(5), num(6)];
+                if z.iter().any(|v| v.is_nan()) {
+                    return;
+                }
+                let rest = remaining(&z, li);
+                if rest.is_empty() {
+                    self.snap_end_assist();
+                    return;
+                }
+                self.snap.assist = Some(Assist { mon: arg(2), zones: rest, group: vec![a] });
+                self.snap.assist_at = Some(Instant::now() + Duration::from_millis(160));
+            }
+            ("mistsnap", "maxhover") => {
+                self.snap.btn = true;
+                let name = self.pane.as_ref().map(|p| p.p.name()).unwrap_or("");
+                match name {
+                    "snapdrag" => {}
+                    "snapfly" => {
+                        self.pane.as_mut().unwrap().p.data("maxhover");
+                    }
+                    _ => self.snap.fly_at = Some((Instant::now() + Duration::from_millis(420), arg(1), num(2), num(3))),
+                }
+            }
+            ("mistsnap", "maxleave") => {
+                self.snap.btn = false;
+                self.snap.fly_at = None;
+                if let Some(p) = self.pane.as_mut().filter(|p| p.p.name() == "snapfly") {
+                    p.p.data("maxleave");
+                    self.snap.fly_check = Some(Instant::now() + Duration::from_millis(330));
+                }
+            }
+            ("mistsnap", "layouts") => self.snap_open_fly(&arg(1), num(2), num(3), true),
+            _ => {}
+        }
+    }
+    fn snap_open_fly(&mut self, addr: &str, x: f32, y: f32, pinned: bool) {
+        if self.pane.as_ref().map(|p| p.p.name() == "snapdrag").unwrap_or(false) || x.is_nan() || y.is_nan() {
+            return;
+        }
+        let f = crate::snap::Fly::new(addr, x, y, pinned, &crate::snap::monitors());
+        let r = f.surface(x, y);
+        let scr = f.screen().to_string();
+        self.pane_close();
+        self.pane_open_box(Box::new(crate::snap::FlyPane(f, r)), &scr);
+    }
+    // the drag overlay follows the cursor (Msg::Cursor from the poll thread)
+    fn snap_cursor(&mut self, x: f32, y: f32) {
+        let Some(p) = self.pane.as_mut() else { return };
+        let Some(d) = p.p.as_drag() else { return };
+        if d.preview {
+            return;
+        }
+        let before = (d.zone(), d.pill, d.mode, d.hot_layout);
+        if d.track(x, y) {
+            // onto another monitor: the overlay moves there
+            d.moved();
+            let scr = d.mon().name.clone();
+            if let Some(ps) = self.pane.take() {
+                self.pane_open_box(ps.p, &scr);
+            }
+            return;
+        }
+        if (d.zone(), d.pill, d.mode, d.hot_layout) != before {
+            p.dirty = true;
+        }
+    }
+    // j/cursorpos every 16 ms, only while a window is dragged
+    fn snap_poll(&mut self, on: bool) {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        if let Some(f) = self.snap.poll.take() {
+            f.store(false, Ordering::Relaxed);
+        }
+        let Some(tx) = self.tx.clone().filter(|_| on) else { return };
+        let flag = std::sync::Arc::new(AtomicBool::new(true));
+        self.snap.poll = Some(flag.clone());
+        let _ = std::thread::Builder::new().name("snap-cursor".into()).stack_size(128 * 1024).spawn(move || {
+            let (t0, mut last) = (Instant::now(), (f32::NAN, f32::NAN));
+            // a drag end that never arrived (plugin unloaded mid-drag...): give up after 2 min
+            while flag.load(Ordering::Relaxed) && t0.elapsed().as_secs() < 120 {
+                if let Some(c) = crate::snap::cursor() {
+                    if c != last {
+                        last = c;
+                        if tx.send(Msg::Cursor(c.0, c.1)).is_err() {
+                            break;
+                        }
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(16));
+            }
+        });
+    }
+    fn snap_cmd(&mut self, c: crate::snap::Cmd) {
+        use crate::snap::*;
+        match c {
+            Cmd::Fly(addr, z, li) => {
+                self.pane_close();
+                self.snap.layout = li as i32;
+                apply(&addr, &z, None, "", 90);
+            }
+            Cmd::AssistPick(addr, ws) => {
+                self.pane_close();
+                let Some(a) = self.snap.assist.as_mut() else { return };
+                if a.zones.is_empty() {
+                    return self.snap_end_assist();
+                }
+                let z = a.zones.remove(0);
+                // minimized (special:minimized): back to this monitor's workspace first
+                let pre = if ws.starts_with("special:") {
+                    monitors().iter().find(|m| m.name == a.mon).map(|m| format!("MistRestore(\"{addr}\", {}); ", m.ws)).unwrap_or_default()
+                } else {
+                    String::new()
+                };
+                a.group.push(addr.clone());
+                let more = !a.zones.is_empty();
+                self.snap.layout = -1;
+                apply(&addr, &z, None, &pre, 90);
+                if more {
+                    self.snap.assist_at = Some(Instant::now() + Duration::from_millis(90 + 200));
+                } else {
+                    self.snap_end_assist();
+                }
+            }
+            Cmd::AssistEnd => {
+                self.snap_end_assist();
+                self.pane_close();
+            }
+        }
+    }
+    fn snap_end_assist(&mut self) {
+        self.snap.assist = None;
+        self.snap.assist_at = None;
+    }
+    // a drag starts: the flyout and Snap Assist go
+    fn snap_close_extras(&mut self) {
+        self.snap_end_assist();
+        self.snap.fly_at = None;
+        if self.pane.as_ref().map(|p| matches!(p.p.name(), "snapfly" | "snapassist")).unwrap_or(false) {
+            self.pane_close();
+        }
+    }
+    fn snap_timers(&mut self) {
+        let now = Instant::now();
+        // the hover flyout: closed unless the pointer went onto it
+        if self.snap.fly_check.map(|t| now >= t).unwrap_or(false) {
+            self.snap.fly_check = None;
+            if let Some(a) = self.pane.as_mut().filter(|p| p.p.name() == "snapfly").map(|p| p.p.timer()) {
+                self.pane_act(a);
+            }
+        }
+        if let Some((t, a, x, y)) = self.snap.fly_at.clone() {
+            if now >= t {
+                self.snap.fly_at = None;
+                if self.snap.btn {
+                    self.snap_open_fly(&a, x, y, false);
+                }
+            }
+        }
+        if self.snap.assist_at.map(|t| now >= t).unwrap_or(false) {
+            self.snap.assist_at = None;
+            // not over a popup the user opened meanwhile
+            if self.pane.as_ref().map(|p| p.p.name() != "snapassist").unwrap_or(false) {
+                return self.snap_end_assist();
+            }
+            let Some(mut a) = self.snap.assist.take() else { return };
+            if let Some((m, wins)) = a.candidates() {
+                let (z, scr) = (a.zones[0], m.name.clone());
+                self.snap.assist = Some(a);
+                self.pane_open_box(Box::new(crate::snap::AssistPane::new(m, z, wins)), &scr);
+            } else {
+                self.pane_close();
+            }
+        }
     }
 
     // ---------------------------------------------------------------- the screenshot thumbnail
@@ -792,10 +1087,13 @@ impl App {
 
     // ---------------------------------------------------------------- desktop
     fn draw_desk(&mut self) {
-        DRAWS.with(|d| *d.borrow_mut().entry("desk").or_insert(0) += 1);
+        DRAWS.with(|d| *d.borrow_mut().entry("wake").or_insert(0) += 1); // every loop wakeup, not a desktop paint (stage/card count those)
         if self.desk.dirty && self.desk.stage_cfg {
             self.desk.dirty = false;
+            let t0 = Instant::now();
             self.desk.paint_stage(&mut self.text);
+            count("stage", 1);
+            count("stage_us", t0.elapsed().as_micros() as u64);
             if let Some(l) = &self.desk.stage {
                 Self::commit(&mut self.pool, l, &self.desk.canvas);
             }
@@ -809,7 +1107,10 @@ impl App {
             }
             let mut c = std::mem::replace(&mut self.desk.card_canvas, crate::gfx::Canvas::new(1, 1));
             let (wx, g) = (self.desk.weather.clone(), self.desk.garmin.clone());
-            self.desk.wx.paint(&mut c, &mut self.text, &wx, &g, &self.desk.cfg);
+            let t0 = Instant::now();
+            self.desk.wx.paint_cached(&mut c, &mut self.text, &wx, &g, &self.desk.cfg);
+            count("card", 1);
+            count("card_us", t0.elapsed().as_micros() as u64);
             self.desk.card_canvas = c;
             if let Some(l) = &self.desk.card {
                 Self::commit(&mut self.pool, l, &self.desk.card_canvas);
@@ -903,7 +1204,10 @@ impl App {
         self.island.phone_name = st.name();
         let Some(isf) = self.island_surf.as_mut() else { return };
         let mut cx = crate::island::Ctx { t: &mut self.text, icons: &mut self.icons, imgs: &mut self.imgs, phone: &st, now: crate::data::now() };
+        let t0 = Instant::now();
         self.island.draw(&mut isf.canvas, &mut cx, ringing, call);
+        let us = t0.elapsed().as_micros() as u64;
+        DRAWS.with(|d| *d.borrow_mut().entry("island_us").or_insert(0) += us);
         drop(cx);
         drop(st);
         // input region: the shape (nothing while it hides under a fullscreen window)
@@ -1032,7 +1336,7 @@ impl App {
                     }
                 }
                 IH::Chip => self.island.next_player(),
-                IH::Seek | IH::Shell => {}
+                IH::Seek => {}
                 IH::CallAnswer => self.phone.answer(),
                 IH::CallHangup => self.phone.hangup(),
                 IH::CallMute => self.phone.tel("mute", None),
@@ -1056,6 +1360,25 @@ impl App {
                     }
                 }
                 IH::ReplySend => self.reply_send(),
+                IH::CopyCode(code) => {
+                    spawn(&["wl-copy", "--", &code]);
+                    self.island_copied(&format!("skopiowano kod · {code}"));
+                }
+                IH::CopyLink(link) => {
+                    spawn(&["wl-copy", "--", &link]);
+                    let preview = if link.len() > 30 { format!("{}…", &link[..28]) } else { link.clone() };
+                    self.island_copied(&format!("skopiowano link · {preview}"));
+                }
+                IH::OpenLink(link) => {
+                    let url = if link.starts_with("www.") { format!("https://{link}") } else { link.clone() };
+                    spawn(&["xdg-open", &url]);
+                    self.island_copied("otwieram link w przeglądarce…");
+                }
+                IH::DesktopAction(id, key) => {
+                    let _ = self.notif_tx.send(crate::notif::Cmd::Invoke(id, key));
+                    self.island.clear_ev();
+                    self.island.next();
+                }
             }
             return;
         }
@@ -1093,7 +1416,6 @@ impl App {
             Act::Focus(a) => focus_win(&format!("0x{}", a.trim_start_matches("0x"))),
             Act::Open(p) => spawn(&["xdg-open", p]),
             Act::Popup(p) => self.ui_toggle(p, PRIMARY),
-            Act::TimerStop => self.island.timer_stop(),
             Act::Phone(f) => self.phone.send(f, None),
         }
     }
@@ -1106,6 +1428,22 @@ impl App {
         self.island.clear_ev();
         let name = { let s = self.phone.st.lock().unwrap(); s.name() };
         self.island.push(crate::island::Ev { view: "info", key: "phoneMsg".into(), prio: 2, dur: 2000, icon: "check".into(), color: Some(crate::theme::GREEN), title: if name.is_empty() { "Telefon".into() } else { name }, sub: msg.into(), value: -1, ..Default::default() });
+    }
+    fn island_copied(&mut self, msg: &str) {
+        self.island.replying = false;
+        self.island.clear_ev();
+        self.island.push(crate::island::Ev {
+            view: "info",
+            key: "clipDone".into(),
+            prio: 3,
+            dur: 2400,
+            icon: "clipOk".into(),
+            color: Some(crate::theme::GREEN),
+            title: "Schowek".into(),
+            sub: msg.into(),
+            value: -1,
+            ..Default::default()
+        });
     }
     fn reply_send(&mut self) {
         let t = self.island.reply.trim().to_string();
@@ -1151,6 +1489,97 @@ impl App {
                 String::new()
             }
             ("ui", "ping") => "pong".into(),
+            // window snapping debug hooks (were Snap.qml's)
+            ("snap", "state") => match self.pane.as_mut().and_then(|p| p.p.as_drag()) {
+                Some(d) => serde_json::json!([d.cx, d.cy, d.addr, d.grab, format!("{:?}", d.mode), d.zone(), true]).to_string(),
+                None => "[null,null,null,null,\"\",null,false]".into(),
+            },
+            ("snap", "assist") => {
+                let titles = self.pane.as_mut().and_then(|p| p.p.as_assist()).map(|a| a.titles()).unwrap_or_default();
+                let s = self.snap.assist.clone().unwrap_or_default();
+                serde_json::json!([s.mon, s.zones, s.group, titles]).to_string()
+            }
+            ("snap", "assistPick") => {
+                let i: usize = a(0).parse().unwrap_or(0);
+                let act = self.pane.as_mut().and_then(|p| p.p.as_assist()).map(|p| p.pick(i));
+                if let Some(act) = act {
+                    self.pane_act(act);
+                }
+                String::new()
+            }
+            // tests: a plugin event / the dragged cursor (`msg snap ev mistdrag begin,0x..,x,y,w,h`, `msg snap cursor x y`)
+            ("snap", "ev") => {
+                self.snap_event(&a(0), &a(1));
+                String::new()
+            }
+            ("snap", "cursor") => {
+                self.snap_cursor(a(0).parse().unwrap_or(0.0), a(1).parse().unwrap_or(0.0));
+                String::new()
+            }
+            ("snap", "fly") => {
+                self.snap_open_fly(&a(0), 900.0, 80.0, true);
+                String::new()
+            }
+            ("snap", "close") => {
+                self.snap_close_extras();
+                String::new()
+            }
+            ("snap", "preview") | ("snap", "edge") => {
+                self.pane_close();
+                if a(0) == "true" {
+                    let mut d = crate::snap::Drag::new("", None, crate::snap::monitors(), 960.0, 540.0);
+                    if let Some(i) = d.mons.iter().position(|m| m.name == PRIMARY) {
+                        d.scr = i;
+                    }
+                    d.set_preview(true, r.func == "edge");
+                    self.pane_open_box(Box::new(crate::snap::DragPane(d)), PRIMARY);
+                }
+                String::new()
+            }
+            // tests: a key into the open popup (`msg ui key Right|Left|Up|Down|Tab|BackTab|Return|Escape|space|<char>`)
+            ("ui", "key") => {
+                let n = a(0);
+                let keysym = match n.as_str() {
+                    "Right" => Keysym::Right,
+                    "Left" => Keysym::Left,
+                    "Up" => Keysym::Up,
+                    "Down" => Keysym::Down,
+                    "Tab" => Keysym::Tab,
+                    "BackTab" => Keysym::ISO_Left_Tab,
+                    "Return" => Keysym::Return,
+                    "Escape" => Keysym::Escape,
+                    "space" => Keysym::space,
+                    _ => Keysym::from_char(n.chars().next().unwrap_or(' ')),
+                };
+                let utf8 = if n.chars().count() == 1 { Some(n.clone()) } else if n == "space" { Some(" ".into()) } else { None };
+                let ev = KeyEvent { time: 0, raw_code: 0, keysym, utf8 };
+                match self.pane.as_mut() {
+                    Some(p) => {
+                        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl, st: &self.st, players: &self.island.players, phone_name: &self.island.phone_name, wx: &self.desk.weather };
+                        let act = p.p.key(&ev, &mut cx);
+                        self.pane_act(act);
+                        String::new()
+                    }
+                    None => "no popup".into(),
+                }
+            }
+            // test hook: a left click (or `wheel <d>`) at x y in the popup's surface coordinates
+            ("ui", "click") | ("ui", "wheel") => {
+                let (x, y) = (a(0).parse::<f32>().unwrap_or(0.0), a(1).parse::<f32>().unwrap_or(0.0));
+                let evs = if r.func == "wheel" { vec![crate::pane::Ptr::Motion, crate::pane::Ptr::Wheel(a(2).parse().unwrap_or(1.0))] } else { vec![crate::pane::Ptr::Motion, crate::pane::Ptr::Press(0x110), crate::pane::Ptr::Release(0x110)] };
+                match self.pane.is_some() {
+                    true => {
+                        for ev in evs {
+                            let Some(p) = self.pane.as_mut() else { break };
+                            let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl, st: &self.st, players: &self.island.players, phone_name: &self.island.phone_name, wx: &self.desk.weather };
+                            let act = p.p.pointer(ev, x, y, &mut cx);
+                            self.pane_act(act);
+                        }
+                        String::new()
+                    }
+                    false => "no popup".into(),
+                }
+            }
             ("mist", "toggle") => {
                 let n = a(0);
                 if n == "control" { self.ui_control("", "") } else { self.ui_toggle(&n, "") }
@@ -1170,7 +1599,13 @@ impl App {
             }
             ("mist", "close") => {
                 self.pane_close();
-                ipc(&["close"]);
+                if self.dock.start_open {
+                    self.dock.start_open = false;
+                    self.dock.update_y();
+                    if let Some(d) = &mut self.dock_surf {
+                        d.dirty = true;
+                    }
+                }
                 String::new()
             }
             ("ui", "popup") => self.popup_name(),
@@ -1222,16 +1657,6 @@ impl App {
                 String::new()
             }
             ("ui", "stats") => DRAWS.with(|d| format!("{:?} fades {} dock {} hide {} show {} island {} wall {} desk {} {}", d.borrow(), self.fades.iter().any(|f| f.4.elapsed().as_secs_f32() * 1000.0 < FADE), self.dock.animating(), self.dock_hide_at.is_some(), self.dock_show_at.is_some(), self.island.animating(), self.wall.busy(), self.desk.fx.running(), self.desk.wx.fx.running())),
-            // not native yet: Quickshell's IPC
-            (t, f) if matches!(t, "mist" | "snap") => {
-                let qs = format!("{}/.local/bin/mist-qs", home());
-                let dir = format!("{}/.config/quickshell/mist", home());
-                let mut v: Vec<String> = vec![qs, "-p".into(), dir, "ipc".into(), "call".into(), t.into(), f.into()];
-                v.extend(r.args.iter().cloned());
-                let v2: Vec<&str> = v.iter().map(|s| s.as_str()).collect();
-                spawn(&v2);
-                String::new()
-            }
             _ => "unknown".into(),
         };
         let _ = r.reply.send(out);
@@ -1241,8 +1666,10 @@ impl App {
 
     fn commit(pool: &mut SlotPool, layer: &LayerSurface, canvas: &Canvas) {
         let (wi, hi) = (canvas.pm.width() as i32, canvas.pm.height() as i32);
+        let t0 = Instant::now();
         let Ok((buffer, data)) = pool.create_buffer(wi, hi, wi * 4, wl_shm::Format::Argb8888) else { return };
         canvas.to_bgra(data);
+        count("commit_us", t0.elapsed().as_micros() as u64);
         let s = layer.wl_surface();
         s.damage_buffer(0, 0, wi, hi);
         let _ = buffer.attach_to(s);
@@ -1318,10 +1745,15 @@ impl App {
 
     fn dock_rebuild(&mut self) {
         self.dock.rebuild(&self.hypr, &self.apps);
-        let bare = self.primary_bare();
+        // the wallpaper gallery covers the main monitor: the dock slides away (it is Overlay, above the preview)
+        let gallery = self.pane.as_ref().map(|p| p.p.name() == "wallpaper" && p.screen == PRIMARY).unwrap_or(false);
+        if gallery {
+            self.dock.hovered = false;
+        }
+        let bare = self.primary_bare() && !gallery;
         if bare != self.dock.bare {
             self.dock.bare = bare;
-            if !bare {
+            if !bare && !self.dock.start_open {
                 self.dock_hide_at = Some(Instant::now() + Duration::from_millis(400));
             }
         }
@@ -1348,7 +1780,9 @@ impl App {
             }
             PointerEventKind::Leave { .. } => {
                 self.dock_show_at = None;
-                self.dock_hide_at = Some(Instant::now() + Duration::from_millis(400));
+                if !self.dock.start_open {
+                    self.dock_hide_at = Some(Instant::now() + Duration::from_millis(400));
+                }
                 self.dock.hover_slot = None;
                 self.dock.pressed_slot = None;
             }
@@ -1635,7 +2069,7 @@ impl App {
         match h {
             Hit::Start => self.ui_toggle("start", &scr),
             Hit::Stats => spawn(&["kitty", "-e", "btop"]),
-            Hit::Phone => if mid { ipc(&["phoneRing"]) } else { self.ui_toggle("phone", &scr) },
+            Hit::Phone => if mid { self.phone.send("ring", None) } else { self.ui_toggle("phone", &scr) },
             Hit::Bluetooth => self.ui_control("bluetooth", &scr),
             Hit::Network => self.ui_control("network", &scr),
             Hit::Volume => if mid { sh("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle") } else { self.ui_control("sound", &scr) },
@@ -1703,7 +2137,9 @@ impl App {
             if matches!(p.owner, Owner::Dock(..)) {
                 self.dock.menu_open = false;
                 self.dock.update_lift();
-                self.dock_hide_at = Some(Instant::now() + Duration::from_millis(400));
+                if !self.dock.start_open {
+                    self.dock_hide_at = Some(Instant::now() + Duration::from_millis(400));
+                }
             }
         }
     }
@@ -1828,18 +2264,12 @@ pub fn spawn(argv: &[&str]) {
 pub fn sh(cmd: &str) {
     spawn(&["sh", "-c", cmd]);
 }
-pub fn ipc(args: &[&str]) {
-    let qs = format!("{}/.local/bin/mist-qs", home());
-    let dir = format!("{}/.config/quickshell/mist", home());
-    let mut v: Vec<&str> = vec![&qs, "-p", &dir, "ipc", "call", "mist"];
-    v.extend_from_slice(args);
-    spawn(&v);
-}
 pub fn hypr(lua: &str) {
     spawn(&["hyprctl", "eval", lua]);
 }
 fn focus_win(addr: &str) {
-    hypr(&format!("hl.dispatch(hl.dsp.focus({{ window = \"address:{addr}\" }}))"));
+    let a = if addr.starts_with("0x") { addr.to_string() } else { format!("0x{addr}") };
+    hypr(&format!("hl.dispatch(hl.dsp.focus({{ window = \"address:{a}\" }})); hl.dispatch(hl.dsp.window.bring_to_top())"));
 }
 // DesktopEntry.execute: the Exec line without the field codes
 pub fn launch(exec: &str) {
@@ -1875,6 +2305,7 @@ impl App {
             Msg::Profile(..) => "Profile",
             Msg::Sys(..) => "Sys",
             Msg::NmLine(..) => "NmLine",
+            Msg::Cursor(..) => "Cursor",
             Msg::Wall(..) => "Wall",
             Msg::Lock => "Lock",
             Msg::IdleCfg => "IdleCfg",
@@ -1906,7 +2337,21 @@ impl App {
                 self.st.rx = rx;
             }
             Msg::Phone(p) => self.st.phone = p,
-            Msg::Ui(p, s) => self.ui_popup = (p, s),
+            Msg::Ui(p, s) => {
+                let was_start = self.dock.start_open;
+                let is_start = p == "start" || self.pane.as_ref().map(|q| q.p.name() == "start").unwrap_or(false);
+                self.dock.start_open = is_start;
+                self.ui_popup = (p, s);
+                if was_start != is_start {
+                    if is_start {
+                        self.dock_hide_at = None;
+                    }
+                    self.dock.update_y();
+                    if let Some(d) = &mut self.dock_surf {
+                        d.dirty = true;
+                    }
+                }
+            }
             Msg::Dnd(d) => {
                 self.st.dnd = d;
                 if let Some(p) = self.pane.as_mut() {
@@ -1943,6 +2388,13 @@ impl App {
                     self.last_call_key = key;
                     self.island.on_call(call.as_ref());
                 }
+                if let Some(p) = self.pane.as_mut() {
+                    let a = p.p.data("phone");
+                    let b = ev.as_ref().map(|e| p.p.phone_ev(e)).unwrap_or(false);
+                    if a || b {
+                        p.dirty = true;
+                    }
+                }
                 if let Some(ev) = ev {
                     self.island.on_phone_event(&ev, bat);
                 }
@@ -1967,6 +2419,8 @@ impl App {
                 "calendar" => self.island.calendar = v,
                 _ => {}
             },
+            Msg::Cursor(x, y) => self.snap_cursor(x, y),
+            Msg::HyprEv(n, d) if n == "mistdrag" || n == "mistsnap" => self.snap_event(&n, &d),
             Msg::HyprEv(n, d) => {
                 let active = self.hypr.clients.iter().find(|c| c.focus == 0).map(|c| c.address.clone()).unwrap_or_default();
                 self.island.on_hypr(&n, &d, &self.apps, &self.hypr.clients, &active);
@@ -2151,7 +2605,7 @@ impl KeyboardHandler for App {
             return;
         }
         if let Some(p) = self.pane.as_mut() {
-            let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl };
+            let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl, st: &self.st, players: &self.island.players, phone_name: &self.island.phone_name, wx: &self.desk.weather };
             let a = p.p.key(&ev, &mut cx);
             self.pane_act(a);
             return;
@@ -2210,6 +2664,9 @@ wayland_client::delegate_noop!(App: ignore wp_cursor_shape_device_v1::WpCursorSh
 wayland_client::delegate_noop!(App: ignore wp_viewporter::WpViewporter);
 wayland_client::delegate_noop!(App: ignore wp_viewport::WpViewport);
 
+pub fn count(k: &'static str, v: u64) {
+    DRAWS.with(|d| *d.borrow_mut().entry(k).or_insert(0) += v);
+}
 thread_local! { static DRAWS: std::cell::RefCell<std::collections::BTreeMap<&'static str, u64>> = Default::default(); }
 
 pub fn tick_interval() -> Duration {

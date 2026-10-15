@@ -105,9 +105,13 @@ pub const ICON_FONT: &str = "/usr/share/noctalia/assets/fonts/noctalia-tabler.tt
 impl Text {
     pub fn new() -> Text {
         let home = std::env::var("HOME").unwrap_or_default();
-        let ui_path = UI_FONT.replace("/home/wiktor", &home);
+        // MIST_FONT_DIR (the greeter: its user cannot read this home) holds SF-Pro.ttf + tabler-icons.ttf
+        let dir = std::env::var("MIST_FONT_DIR").ok();
+        let ui_path = dir.as_ref().map(|d| format!("{d}/SF-Pro.ttf")).unwrap_or_else(|| UI_FONT.replace("/home/wiktor", &home));
         let ui = Mapped::open(&ui_path).expect("SF Pro font");
-        let icons = Mapped::open(ICON_FONT).expect("tabler icon font");
+        // the repo's copy (native/assets), else Noctalia's
+        let icons_path = dir.map(|d| format!("{d}/tabler-icons.ttf")).unwrap_or_else(|| format!("{home}/.config/quickshell/mist/native/assets/tabler-icons.ttf"));
+        let icons = Mapped::open(&icons_path).or_else(|| Mapped::open(ICON_FONT)).expect("tabler icon font");
         let (ui, icons) = (ui.bytes(), icons.bytes());
         Text { ui, icons, fb: vec![None; FALLBACKS.len()], fb_tried: vec![false; FALLBACKS.len()], scale: ScaleContext::new(), shape: ShapeContext::new(), cache: HashMap::new(), shaped: HashMap::new() }
     }
@@ -211,9 +215,6 @@ impl Text {
     }
 
     // the coverage bitmap of one glyph at a quarter-pixel horizontal offset
-    pub fn glyph(&mut self, st: &Style, id: u16, sub: u8) -> &Glyph {
-        self.glyph_in(st.face, st, id, sub)
-    }
     pub fn glyph_in(&mut self, face: Face, st: &Style, id: u16, sub: u8) -> &Glyph {
         let key = (face, id, st.size.to_bits(), st.weight.to_bits(), sub);
         if !self.cache.contains_key(&key) {

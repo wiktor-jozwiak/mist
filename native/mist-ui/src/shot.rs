@@ -80,7 +80,7 @@ impl Pane for Toolbar {
         let mut x = px + 8.0;
         let ty = py + 8.0;
         let ptr = self.ptr;
-        let mut tool = |c: &mut Canvas, t: &mut crate::text::Text, x: f32, icon: &str, on: bool, k: u8, tip: &str, hits: &mut Vec<((f32, f32, f32, f32), u8)>| {
+        let tool = |c: &mut Canvas, t: &mut crate::text::Text, x: f32, icon: &str, on: bool, k: u8, tip: &str, hits: &mut Vec<((f32, f32, f32, f32), u8)>| {
             let hov = inside(ptr, (x, ty, 46.0, 42.0));
             if on {
                 crate::desktop::rect(c, x, ty, 46.0, 42.0, 11.0, Rgba(10.0 / 255.0, 132.0 / 255.0, 1.0, 0.18));

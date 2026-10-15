@@ -41,6 +41,7 @@ pub struct Dock {
     pub slots: Vec<Slot>,
     pub hovered: bool,          // pointer on the dock (or the edge reveal fired)
     pub menu_open: bool,
+    pub start_open: bool,
     pub bare: bool,
     pub y: Anim,                // slab top inside the window
     pub hover_slot: Option<usize>,
@@ -69,7 +70,7 @@ pub fn slot_key(s: &Slot) -> String {
 
 impl Dock {
     pub fn new() -> Dock {
-        let mut d = Dock { pins: Vec::new(), apps: Vec::new(), slots: Vec::new(), hovered: false, menu_open: false, bare: true, y: Anim::new(68.0), hover_slot: None, pressed_slot: None, lift: HashMap::new(), label: HashMap::new(), tiles: HashMap::new(), asked: Default::default(), glass_cache: None };
+        let mut d = Dock { pins: Vec::new(), apps: Vec::new(), slots: Vec::new(), hovered: false, menu_open: false, start_open: false, bare: true, y: Anim::new(68.0), hover_slot: None, pressed_slot: None, lift: HashMap::new(), label: HashMap::new(), tiles: HashMap::new(), asked: Default::default(), glass_cache: None };
         d.load_pins();
         d
     }
@@ -87,7 +88,7 @@ impl Dock {
         let _ = std::fs::write(&p, serde_json::to_string_pretty(&v).unwrap_or_default());
     }
     pub fn shown(&self) -> bool {
-        self.bare || self.hovered || self.menu_open
+        self.bare || self.hovered || self.menu_open || self.start_open
     }
 
     // Dock.items: pinned apps in order (with their windows), then the other running apps

@@ -17,14 +17,14 @@ const H: f32 = 520.0;
 
 // a local day: midnight unix time + its parts (mktime normalises overflowing days / months)
 #[derive(Clone, Copy, PartialEq)]
-struct Day {
-    ts: i64,
-    y: i32,
-    m: i32, // 0..11
-    d: i32,
-    wd: i32, // 0 = Sunday
+pub struct Day {
+    pub ts: i64,
+    pub y: i32,
+    pub m: i32, // 0..11
+    pub d: i32,
+    pub wd: i32, // 0 = Sunday
 }
-fn day(y: i32, m: i32, d: i32) -> Day {
+pub fn day(y: i32, m: i32, d: i32) -> Day {
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     tm.tm_year = y - 1900;
     tm.tm_mon = m;
@@ -41,11 +41,11 @@ fn day(y: i32, m: i32, d: i32) -> Day {
     let _ = t;
     Day { ts: mid as i64, y: tm.tm_year + 1900, m: tm.tm_mon, d: tm.tm_mday, wd: tm.tm_wday }
 }
-fn today() -> Day {
+pub fn today() -> Day {
     let t = crate::data::local(crate::data::now());
     day(t.tm_year + 1900, t.tm_mon, t.tm_mday)
 }
-fn events_on(cal: &Value, d: Day) -> Vec<Value> {
+pub fn events_on(cal: &Value, d: Day) -> Vec<Value> {
     let (s, e) = (d.ts, d.ts + 86400);
     cal["items"].as_array().map(|a| a.iter().filter(|x| x["start"].as_i64().unwrap_or(0) < e && x["end"].as_i64().unwrap_or(0) > s).cloned().collect()).unwrap_or_default()
 }

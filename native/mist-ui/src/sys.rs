@@ -53,6 +53,8 @@ pub enum Msg {
     Players(Vec<crate::media::Player>),
     Data(String, Value),
     HyprEv(String, String),
+    // the cursor while a window is dragged (snap.rs)
+    Cursor(f32, f32),
     Audio(Audio),
     BtDevs(Vec<BtDev>),
     Profile(String),
@@ -161,7 +163,7 @@ pub fn hyprland(tx: Sender<Msg>) {
                 break;
             }
             let ev = line.split(">>").next().unwrap_or("");
-            if matches!(ev, "activelayout" | "screencast" | "fullscreen" | "submap" | "urgent" | "activespecial" | "configreloaded" | "monitoraddedv2" | "monitorremovedv2" | "pin") {
+            if matches!(ev, "activelayout" | "screencast" | "fullscreen" | "submap" | "urgent" | "activespecial" | "configreloaded" | "monitoraddedv2" | "monitorremovedv2" | "pin" | "mistdrag" | "mistsnap") {
                 let data = line.trim_end().splitn(2, ">>").nth(1).unwrap_or("").to_string();
                 let _ = tx.send(Msg::HyprEv(ev.to_string(), data));
             }

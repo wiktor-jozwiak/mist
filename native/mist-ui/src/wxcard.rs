@@ -26,6 +26,10 @@ pub struct Wx {
     pub turned: Instant,
     pub cursor: &'static str,
     last_n: usize,
+    // the insight carousel's fade (only the footer changes, linearly in its opacity): two renders, pixels blended
+    foot_fast: bool,
+    foot_cache: Option<(Pixmap, Pixmap)>,
+    foot_o: Option<f32>,
 }
 
 const DAYS: [&str; 7] = ["niedziela", "poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota"];
@@ -109,7 +113,7 @@ struct Ins {
 
 impl Wx {
     pub fn new() -> Wx {
-        Wx { fx: Fx::new(), hits: Vec::new(), ptr: None, hovered: false, sel_day: 0, pinned: false, pin_hour: -1, ii: 0, editing: false, last_pop: "", away: None, turned: Instant::now(), cursor: "", last_n: 0 }
+        Wx { fx: Fx::new(), hits: Vec::new(), ptr: None, hovered: false, sel_day: 0, pinned: false, pin_hour: -1, ii: 0, editing: false, last_pop: "", away: None, turned: Instant::now(), cursor: "", last_n: 0, foot_fast: false, foot_cache: None, foot_o: None }
     }
 
     fn hours(cfg: &Cfg) -> usize {
@@ -318,6 +322,34 @@ impl Wx {
     }
 
     // the card's window: card at (CARD_PAD, CARD_PAD); returns nothing, fills self.hits (card coords)
+    // the carousel's fade: the footer at .2 and at 1 rendered once, the frames between blended (a full paint costs
+    // ~13 ms, a blend < 1 ms); the last frame is a full paint again
+    pub fn paint_cached(&mut self, c: &mut Canvas, t: &mut Text, wx: &Value, garmin: &Value, cfg: &Cfg) {
+        if !self.foot_fast {
+            self.foot_cache = None;
+            return self.paint(c, t, wx, garmin, cfg);
+        }
+        let k = self.turned.elapsed().as_secs_f32() * 1000.0 / 220.0;
+        if k >= 1.0 {
+            self.foot_fast = false;
+            self.foot_cache = None;
+            return self.paint(c, t, wx, garmin, cfg);
+        }
+        if self.foot_cache.as_ref().map(|f| f.0.width() != c.pm.width() || f.0.height() != c.pm.height()).unwrap_or(true) {
+            self.foot_o = Some(0.2);
+            self.paint(c, t, wx, garmin, cfg);
+            let f0 = c.pm.clone();
+            self.foot_o = Some(1.0);
+            self.paint(c, t, wx, garmin, cfg);
+            self.foot_o = None;
+            self.foot_cache = Some((f0, c.pm.clone()));
+        }
+        let (f0, f1) = self.foot_cache.as_ref().unwrap();
+        let kk = (k.max(0.0) * 256.0) as u32;
+        for (d, (a, b)) in c.pm.data_mut().iter_mut().zip(f0.data().iter().zip(f1.data())) {
+            *d = ((*a as u32 * (256 - kk) + *b as u32 * kk) >> 8) as u8;
+        }
+    }
     pub fn paint(&mut self, c: &mut Canvas, t: &mut Text, wx: &Value, garmin: &Value, cfg: &Cfg) {
         c.clear();
         self.hits.clear();
@@ -417,7 +449,7 @@ impl Wx {
         if !summary.2.is_empty() {
             let (fx_, fy, fw) = (PAD, PAD + FOOT_Y, w - 2.0 * PAD);
             let dots_w = if stack { ins.len() as f32 * 5.0 + (ins.len() as f32 - 1.0) * 5.0 } else { 0.0 };
-            let o = self.fx.v("wx.foot", 1.0, 220.0, Ease::Linear);
+            let o = self.foot_o.unwrap_or_else(|| self.fx.v("wx.foot", 1.0, 220.0, Ease::Linear));
             let sty = st(13.0, 600.0);
             let flh = line_h(t, &sty);
             let iw = Canvas::icon_w(t, &summary.0, 14.0).max(if summary.0.is_empty() { 0.0 } else { 14.0 });
@@ -889,6 +921,7 @@ impl Wx {
             self.ii = (self.ii + 1) % n_ins;
             self.fx.from("wx.foot", 0.2, 1.0, 220.0);
             self.turned = Instant::now();
+            self.foot_fast = true;
             ch = true;
         }
         ch

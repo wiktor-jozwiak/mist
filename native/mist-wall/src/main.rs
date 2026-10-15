@@ -46,6 +46,7 @@ static SHOWN: AtomicBool = AtomicBool::new(true);
 enum Kind {
     Wall,
     Sky,
+    Preview,
 }
 
 struct Surf {
@@ -114,6 +115,23 @@ struct Photo {
     asked: Vec<(String, i32, i32)>,
 }
 
+// the wallpaper gallery's full-screen preview (mist-ui writes $XDG_RUNTIME_DIR/mist/preview.json
+// {"screen", "key": "live:<id>" | "photo:<path>"}): a Top-layer surface under mist-ui's gallery pane; the scene
+// renders into fbo[cur], cross-faded 420 ms from the frozen fbo[1 - cur]
+struct Prev {
+    screen: String,
+    key: String,
+    shown: String,
+    fbo: [Option<(glow::Framebuffer, glow::Texture)>; 2],
+    size: (i32, i32),
+    cur: usize,
+    fade: Option<Instant>,
+    photo: Option<(String, glow::Texture)>,
+    asked: String,
+    t: f64,
+}
+const PREV_FADE_MS: f32 = 420.0;
+
 struct SkyState {
     rect: Option<(i32, i32, i32, i32)>, // on the primary monitor
     model: sky::Model,
@@ -157,6 +175,9 @@ struct App {
     energy: f32,
     energy_to: f32,
     gallery: (bool, String), // the wallpaper gallery is open on that monitor
+    prev: Prev,
+    prev_tx: std::sync::mpsc::Sender<(String, i32, i32, Vec<u8>)>,
+    prev_rx: std::sync::mpsc::Receiver<(String, i32, i32, Vec<u8>)>,
     hidden: HashMap<String, bool>,
     fs: HashMap<String, bool>,
     mons: Vec<Mon>,
@@ -185,6 +206,9 @@ fn shader_src(name: &str) -> Option<String> {
     if name == "photo" {
         return Some(PHOTO.to_string());
     }
+    if name == "scrim" {
+        return Some(SCRIM.to_string());
+    }
     let qsb = format!("{}/.config/quickshell/mist/shaders/{name}.frag.qsb", home());
     let m = std::fs::metadata(&qsb).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
     let dir = format!("{}/shaders", run_dir());
@@ -200,6 +224,10 @@ fn shader_src(name: &str) -> Option<String> {
 const VERT: &str = "#version 150\nin vec2 pos;\nout vec2 qt_TexCoord0;\nuniform float mist_flip;\nvoid main() { qt_TexCoord0 = vec2(pos.x * 0.5 + 0.5, mix(0.5 - pos.y * 0.5, 0.5 + pos.y * 0.5, mist_flip)); gl_Position = vec4(pos, 0.0, 1.0); }\n";
 // the photo (already cropped to the monitor), cross-fading from the previous one
 const PHOTO: &str = "#version 150\nin vec2 qt_TexCoord0;\nout vec4 fragColor;\nuniform sampler2D a;\nuniform sampler2D b;\nuniform float mixk;\nvoid main() { fragColor = vec4(mix(texture(a, qt_TexCoord0).rgb, texture(b, qt_TexCoord0).rgb, mixk), 1.0); }\n";
+
+// the gallery's scrim under the shelf and the title (Wallpapers.qml): bottom 55 %, black 0 -> .35 at 55 % -> .62,
+// premultiplied (drawn here, not in mist-ui's pane, so Hyprland's blur behind the pane skips it)
+const SCRIM: &str = "#version 150\nin vec2 qt_TexCoord0;\nout vec4 fragColor;\nvoid main() { float s = clamp((qt_TexCoord0.y - 0.45) / 0.55, 0.0, 1.0); float a = s < 0.55 ? 0.35 * s / 0.55 : 0.35 + 0.27 * (s - 0.55) / 0.45; fragColor = vec4(0.0, 0.0, 0.0, a); }\n";
 
 // the photo cropped to w x h (PreserveAspectCrop) as RGBA, rows top first
 fn decode_photo(path: &str, w: i32, h: i32) -> Vec<u8> {
@@ -391,7 +419,10 @@ impl App {
 
     // uniforms of LiveWall.qml for the current preset, time, weather and sun
     fn uniforms(&self, w: f32, h: f32) -> (String, Vec<(&'static str, Vec<f32>)>, f32) {
-        let p = self.preset();
+        self.uniforms_of(&self.preset(), w, h, self.t)
+    }
+    fn uniforms_of(&self, p: &Value, w: f32, h: f32, t: f64) -> (String, Vec<(&'static str, Vec<f32>)>, f32) {
+        let p = p.clone();
         let wx = &self.weather;
         let lat = wx["lat"].as_f64().unwrap_or(52.2297);
         let lon = wx["lon"].as_f64().unwrap_or(21.0122);
@@ -437,7 +468,7 @@ impl App {
         let wind_k = if auto { (0.8 + wx["wind"].as_f64().unwrap_or(0.0) / 25.0).min(2.2) as f32 } else { 1.0 };
         let c = |i: usize| vec![cols[i][0], cols[i][1], cols[i][2], 1.0];
         let u = vec![
-            ("time", vec![self.t as f32]),
+            ("time", vec![t as f32]),
             ("mode", vec![mode as f32]),
             ("size", vec![w, h]),
             ("c0", c(0)),
@@ -475,6 +506,7 @@ impl App {
                 self.wall_scene(w, h, primary);
             }
             Kind::Sky => self.sky_scene(w, h),
+            Kind::Preview => self.preview_scene(w, h),
         }
         let es = self.surfs[i].egl_surf.unwrap();
         let _ = self.egl.swap_buffers(self.display, es);
@@ -737,6 +769,53 @@ impl App {
                 }
             }
         }
+        // the gallery's preview: a live scene at 30 fps, a photo when it arrives, both while fading
+        while let Ok((path, w, h, px)) = self.prev_rx.try_recv() {
+            if self.gl.is_none() || self.prev.asked != path {
+                continue;
+            }
+            unsafe {
+                let gl = self.gl.as_ref().unwrap();
+                let tex = gl.create_texture().unwrap();
+                gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+                gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGBA8 as i32, w, h, 0, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(&px)));
+                gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::LINEAR as i32);
+                gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
+                if let Some((_, old)) = self.prev.photo.replace((path, tex)) {
+                    gl.delete_texture(old);
+                }
+            }
+            // fade in from what was shown (black meanwhile would flash)
+            self.prev.fade = Some(Instant::now());
+            for s in &mut self.surfs {
+                if s.kind == Kind::Preview {
+                    s.dirty = true;
+                }
+            }
+        }
+        if let Some(i) = self.surfs.iter().position(|s| s.kind == Kind::Preview && s.egl_surf.is_some()) {
+            let live = self.prev.key.strip_prefix("live:").and_then(|id| presets::get(&self.presets, id)).cloned();
+            if let Some(p) = &live {
+                let (_, _, wind_k) = self.uniforms_of(p, 1.0, 1.0, 0.0);
+                self.prev.t += (p["speed"].as_f64().unwrap_or(1.0) as f32 * presets::tempo(&self.tempo) * wind_k) as f64 * dt;
+            }
+            let fading = self.prev_fading();
+            if !fading && self.prev.fade.is_some() {
+                self.prev.fade = None;
+            }
+            // the gallery is open: see the next pick within a frame (preview.json comes between ticks)
+            next = next.min(1.0 / 30.0);
+            if live.is_some() || fading || self.surfs[i].dirty || self.prev.key != self.prev.shown {
+                let due = if fading { 1.0 / 60.0 } else { 1.0 / 30.0 };
+                let left = due - self.surfs[i].last.elapsed().as_secs_f32();
+                if left <= 0.002 || self.surfs[i].dirty {
+                    self.draw(i);
+                    next = next.min(due);
+                } else {
+                    next = next.min(left);
+                }
+            }
+        }
         // the weather sky: 30 fps, 5 behind windows, stopped under a fullscreen window
         if let Some(i) = self.surfs.iter().position(|s| s.kind == Kind::Sky && s.egl_surf.is_some()) {
             if (now_ms() / 60000.0) as i64 != self.sky.model_at {
@@ -780,6 +859,236 @@ impl App {
         self.live = live;
         self.presets = presets::load();
         self.want_photo();
+    }
+
+    // preview.json changed: the gallery opened / closed / shows another wallpaper
+    fn load_preview(&mut self) {
+        let v = read_json(&format!("{}/preview.json", run_dir()));
+        let (screen, key) = (v["screen"].as_str().unwrap_or("").to_string(), v["key"].as_str().unwrap_or("").to_string());
+        let opened = !screen.is_empty() && self.prev.screen.is_empty();
+        if screen != self.prev.screen {
+            self.drop_preview();
+            self.prev.screen = screen.clone();
+        }
+        self.gallery = (!screen.is_empty(), screen.clone());
+        self.prev.key = key;
+        if screen.is_empty() {
+            return;
+        }
+        if opened {
+            self.presets = presets::load();
+            self.thumbs();
+        }
+        if !self.surfs.iter().any(|s| s.kind == Kind::Preview) {
+            let Some(o) = self.outputs.outputs().find(|o| self.outputs.info(o).and_then(|i| i.name.clone()).as_deref() == Some(screen.as_str())) else { return };
+            let surface = self.compositor.create_surface(&self.qh);
+            let layer = self.layer_shell.create_layer_surface(&self.qh, surface, Layer::Top, Some("mist-wallpreview"), Some(&o));
+            layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
+            layer.set_exclusive_zone(-1);
+            layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+            if let Ok(r) = Region::new(&self.compositor) {
+                layer.wl_surface().set_input_region(Some(r.wl_region()));
+            }
+            layer.commit();
+            self.surfs.push(Surf { kind: Kind::Preview, output: o, name: screen, layer, w: 0, h: 0, egl_win: None, egl_surf: None, last: Instant::now(), dirty: true });
+        }
+        for s in &mut self.surfs {
+            if s.kind == Kind::Preview {
+                s.dirty = true;
+            }
+        }
+    }
+    fn drop_preview(&mut self) {
+        if let Some(i) = self.surfs.iter().position(|s| s.kind == Kind::Preview) {
+            self.drop_surf(i);
+        }
+        if self.gl.is_some() {
+            let _ = self.egl.make_current(self.display, None, None, Some(self.ctx));
+            let fbs: Vec<(glow::Framebuffer, glow::Texture)> = self.prev.fbo.iter_mut().filter_map(|f| f.take()).collect();
+            unsafe {
+                for (fb, tex) in fbs {
+                    self.gl().delete_framebuffer(fb);
+                    self.gl().delete_texture(tex);
+                }
+                if let Some((_, t)) = self.prev.photo.take() {
+                    self.gl().delete_texture(t);
+                }
+            }
+        }
+        self.prev.shown.clear();
+        self.prev.asked.clear();
+        self.prev.fade = None;
+        self.prev.size = (0, 0);
+        // the decoded 4K photos (33 MB each, in the decode threads' arenas) back to the OS
+        unsafe { libc::malloc_trim(0) };
+    }
+    fn prev_fading(&self) -> bool {
+        self.prev.fade.map(|f| f.elapsed().as_secs_f32() * 1000.0 < PREV_FADE_MS + 40.0).unwrap_or(false)
+    }
+    fn preview_scene(&mut self, w: i32, h: i32) {
+        let gl = self.gl.as_ref().unwrap();
+        unsafe {
+            if self.prev.size != (w, h) {
+                for f in self.prev.fbo.iter_mut() {
+                    if let Some((fb, tex)) = f.take() {
+                        gl.delete_framebuffer(fb);
+                        gl.delete_texture(tex);
+                    }
+                    let tex = gl.create_texture().unwrap();
+                    gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+                    gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGBA8 as i32, w, h, 0, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(None));
+                    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::LINEAR as i32);
+                    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
+                    let fb = gl.create_framebuffer().unwrap();
+                    gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fb));
+                    gl.framebuffer_texture_2d(glow::FRAMEBUFFER, glow::COLOR_ATTACHMENT0, glow::TEXTURE_2D, Some(tex), 0);
+                    gl.clear_color(0.0, 0.0, 0.0, 1.0);
+                    gl.clear(glow::COLOR_BUFFER_BIT);
+                    *f = Some((fb, tex));
+                }
+                self.prev.size = (w, h);
+                self.prev.shown.clear();
+            }
+        }
+        // another wallpaper: freeze the one shown, fade to the new one
+        if self.prev.key != self.prev.shown {
+            if !self.prev.shown.is_empty() {
+                self.prev.cur = 1 - self.prev.cur;
+                self.prev.fade = Some(Instant::now());
+            }
+            self.prev.shown = self.prev.key.clone();
+        }
+        let key = self.prev.shown.clone();
+        let (cur_fb, cur_tex) = self.prev.fbo[self.prev.cur].unwrap();
+        let old_tex = self.prev.fbo[1 - self.prev.cur].unwrap().1;
+        unsafe {
+            self.gl().bind_framebuffer(glow::FRAMEBUFFER, Some(cur_fb));
+            self.gl().viewport(0, 0, w, h);
+        }
+        if let Some(id) = key.strip_prefix("live:") {
+            let p = presets::get(&self.presets, id).cloned().unwrap_or(Value::Null);
+            let (shader, u, _) = self.uniforms_of(&p, w as f32, h as f32, self.prev.t);
+            self.run(&shader, &u, &[], true);
+        } else if let Some(path) = key.strip_prefix("photo:") {
+            match self.prev.photo.as_ref().filter(|p| p.0 == path).map(|p| p.1) {
+                Some(t) => self.run("photo", &[("mixk", vec![1.0])], &[("a", t), ("b", t)], true),
+                None => {
+                    if self.prev.asked != path {
+                        self.prev.asked = path.to_string();
+                        let (tx, path) = (self.prev_tx.clone(), path.to_string());
+                        let _ = std::thread::Builder::new().name("prevphoto".into()).spawn(move || {
+                            let px = decode_photo(&path, w, h);
+                            let _ = tx.send((path, w, h, px));
+                        });
+                    }
+                    unsafe {
+                        self.gl().clear_color(0.0, 0.0, 0.0, 1.0);
+                        self.gl().clear(glow::COLOR_BUFFER_BIT);
+                    }
+                }
+            }
+        }
+        let k = self.prev.fade.map(|f| (f.elapsed().as_secs_f32() * 1000.0 / PREV_FADE_MS).min(1.0)).unwrap_or(1.0);
+        let e = if k < 0.5 { 2.0 * k * k } else { 1.0 - (-2.0 * k + 2.0).powi(2) / 2.0 }; // InOutQuad
+        unsafe {
+            self.gl().bind_framebuffer(glow::FRAMEBUFFER, self.target_fb);
+            self.gl().viewport(0, 0, w, h);
+        }
+        self.run("photo", &[("mixk", vec![e])], &[("a", old_tex), ("b", cur_tex)], false);
+        unsafe {
+            self.gl().enable(glow::BLEND);
+            self.gl().blend_func(glow::ONE, glow::ONE_MINUS_SRC_ALPHA);
+        }
+        self.run("scrim", &[], &[], false);
+        unsafe { self.gl().disable(glow::BLEND) };
+    }
+
+    // the gallery's still thumbnails (presets::thumb_path): live scenes rendered here, photos decoded in a
+    // thread; only the missing / outdated ones (scenes that follow the sun: older than 10 min)
+    fn thumbs(&mut self) {
+        let dir = presets::thumb_dir();
+        let _ = std::fs::create_dir_all(&dir);
+        let mtime = |p: &str| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+        let src_m = mtime(&presets::path());
+        let (tw, th) = (presets::THUMB_W, presets::THUMB_H);
+        let fresh = |thumb: &str, src: Option<std::time::SystemTime>, max_age: Option<u64>| -> bool {
+            let Some(t) = mtime(thumb) else { return false };
+            if src.map(|s| s > t).unwrap_or(false) {
+                return false;
+            }
+            max_age.map(|a| t.elapsed().map(|e| e.as_secs() < a).unwrap_or(false)).unwrap_or(true)
+        };
+        // one worker, one job at a time (a thread per thumbnail left ~130 MB in glibc arenas): rendered
+        // scenes to encode, photos to decode (4K RGBA = 33 MB each) + encode
+        enum Job {
+            Save(String, Vec<u8>),
+            Photo(String, String),
+        }
+        let mut jobs: Vec<Job> = Vec::new();
+        let mut save = |path: String, px: Vec<u8>| jobs.push(Job::Save(path, px));
+        let live: Vec<Value> = self.presets.iter().filter(|p| p.get("mode").is_some()).filter(|p| {
+            let path = presets::thumb_path(&format!("live:{}", p["id"].as_str().unwrap_or("")));
+            !fresh(&path, src_m, if p["auto"].as_bool().unwrap_or(false) || p["weather"].as_bool().unwrap_or(false) { Some(600) } else { None })
+        }).cloned().collect();
+        if !live.is_empty() && self.gl.is_some() && self.egl.make_current(self.display, None, None, Some(self.ctx)).is_ok() {
+            unsafe {
+                let gl = self.gl.as_ref().unwrap();
+                let fb = gl.create_framebuffer().unwrap();
+                let rb = gl.create_renderbuffer().unwrap();
+                gl.bind_renderbuffer(glow::RENDERBUFFER, Some(rb));
+                gl.renderbuffer_storage(glow::RENDERBUFFER, glow::RGBA8, tw, th);
+                gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fb));
+                gl.framebuffer_renderbuffer(glow::FRAMEBUFFER, glow::COLOR_ATTACHMENT0, glow::RENDERBUFFER, Some(rb));
+                let vao = self.vao;
+                for p in &live {
+                    let gl = self.gl.as_ref().unwrap();
+                    gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fb));
+                    gl.viewport(0, 0, tw, th);
+                    gl.bind_vertex_array(vao);
+                    gl.disable(glow::BLEND);
+                    // a moment into the scene (t = 0 is often still empty)
+                    let (shader, u, _) = self.uniforms_of(p, tw as f32, th as f32, 40.0);
+                    self.run(&shader, &u, &[], false);
+                    let mut px = vec![0u8; (tw * th * 4) as usize];
+                    self.gl().read_pixels(0, 0, tw, th, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelPackData::Slice(Some(&mut px)));
+                    // GL rows go bottom-up; opaque
+                    let mut out = Vec::with_capacity(px.len());
+                    for y in (0..th).rev() {
+                        for q in px[(y * tw * 4) as usize..((y + 1) * tw * 4) as usize].chunks_exact(4) {
+                            out.extend_from_slice(&[q[0], q[1], q[2], 255]);
+                        }
+                    }
+                    save(presets::thumb_path(&format!("live:{}", p["id"].as_str().unwrap_or(""))), out);
+                }
+                let gl = self.gl.as_ref().unwrap();
+                gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+                gl.delete_framebuffer(fb);
+                gl.delete_renderbuffer(rb);
+            }
+        }
+        for f in presets::photos() {
+            let path = presets::thumb_path(&format!("photo:{f}"));
+            if fresh(&path, mtime(&f), None) {
+                continue;
+            }
+            jobs.push(Job::Photo(f, path));
+        }
+        if jobs.is_empty() {
+            return;
+        }
+        let _ = std::thread::Builder::new().name("thumbs".into()).spawn(move || {
+            for j in jobs {
+                let (path, px) = match j {
+                    Job::Save(path, px) => (path, px),
+                    Job::Photo(src, path) => (path, decode_photo(&src, tw, th)),
+                };
+                let tmp = format!("{path}.tmp");
+                if image::save_buffer_with_format(&tmp, &px, tw as u32, th as u32, image::ExtendedColorType::Rgba8, image::ImageFormat::Png).is_ok() {
+                    let _ = std::fs::rename(&tmp, &path);
+                }
+            }
+            unsafe { libc::malloc_trim(0) };
+        });
     }
 
     // decode the photo for every monitor size that lacks it (threads)
@@ -860,7 +1169,7 @@ fn coverage() -> Vec<Mon> {
 enum Ev {
     Config,
     Weather,
-    Ui,
+    Preview,
     Sky,
     Cover(Vec<Mon>),
     Level(f32),
@@ -875,6 +1184,9 @@ fn read_sky() -> Option<(i32, i32, i32, i32)> {
 }
 
 fn main() {
+    // decoded photos (4K RGBA = 33 MB) always mmapped and returned on free: glibc's dynamic threshold would
+    // rise to them and keep them on the heap (+46 MB per photo previewed in the gallery)
+    unsafe { libc::mallopt(libc::M_MMAP_THRESHOLD, 1 << 20) };
     let conn = Connection::connect_to_env().expect("wayland");
     let (globals, queue) = registry_queue_init::<App>(&conn).expect("registry");
     let qh = queue.handle();
@@ -888,6 +1200,7 @@ fn main() {
     let cattrs = [khronos_egl::CONTEXT_MAJOR_VERSION, 3, khronos_egl::CONTEXT_MINOR_VERSION, 3, khronos_egl::CONTEXT_OPENGL_PROFILE_MASK, khronos_egl::CONTEXT_OPENGL_CORE_PROFILE_BIT, khronos_egl::NONE];
     let ctx = egl.create_context(display, config, None, &cattrs).expect("egl context");
     let (photo_tx, photo_rx) = std::sync::mpsc::channel();
+    let (prev_tx, prev_rx) = std::sync::mpsc::channel();
     let sm = |d: f32, s: bool| Smooth::new(0.0, d, s);
     let mut app = App {
         registry: RegistryState::new(&globals),
@@ -914,6 +1227,9 @@ fn main() {
         energy: 0.0,
         energy_to: 0.0,
         gallery: (false, String::new()),
+        prev: Prev { screen: String::new(), key: String::new(), shown: String::new(), fbo: [None, None], size: (0, 0), cur: 0, fade: None, photo: None, asked: String::new(), t: 0.0 },
+        prev_tx,
+        prev_rx,
         hidden: HashMap::new(),
         fs: HashMap::new(),
         mons: Vec::new(),
@@ -966,7 +1282,18 @@ fn main() {
                 app.gl().bind_framebuffer(glow::FRAMEBUFFER, Some(fb));
                 app.gl().viewport(0, 0, w, h);
             };
-            if what == "sky" {
+            if what == "thumbs" {
+                // the gallery's thumbnails into ~/.cache/mist/thumbs (the threads save them)
+                app.thumbs();
+                std::thread::sleep(Duration::from_millis(1500));
+                return;
+            }
+            if let Some(k) = what.strip_prefix("preview:") {
+                // the gallery's preview of a live scene (FBO, cross-fade, scrim)
+                app.prev.key = k.to_string();
+                bind(&app);
+                app.preview_scene(w, h);
+            } else if what == "sky" {
                 bind(&app);
                 app.sky_scene(w, h);
             } else {
@@ -1029,7 +1356,7 @@ fn main() {
                 while i < n as usize {
                     let e = &*(buf.as_ptr().add(i) as *const libc::inotify_event);
                     let name = std::ffi::CStr::from_ptr(buf.as_ptr().add(i + std::mem::size_of::<libc::inotify_event>()) as *const libc::c_char).to_string_lossy().to_string();
-                    let m = match name.as_str() { "wallpaper.json" => Some(Ev::Config), "weather.json" => Some(Ev::Weather), "ui.json" => Some(Ev::Ui), "sky.json" => Some(Ev::Sky), _ => None };
+                    let m = match name.as_str() { "wallpaper.json" => Some(Ev::Config), "weather.json" => Some(Ev::Weather), "preview.json" => Some(Ev::Preview), "sky.json" => Some(Ev::Sky), _ => None };
                     if let Some(m) = m {
                         let _ = tx.send(m);
                     }
@@ -1076,10 +1403,7 @@ fn main() {
                 app.weather = read_json(&format!("{}/.cache/mist/weather.json", home()));
                 app.sky_model();
             }
-            Ev::Ui => {
-                let u = read_json(&format!("{}/ui.json", run_dir()));
-                app.gallery = (u["popup"].as_str() == Some("wallpaper"), u["screen"].as_str().unwrap_or("").to_string());
-            }
+            Ev::Preview => app.load_preview(),
             Ev::Sky => {
                 let r = read_sky();
                 if r != app.sky.rect {

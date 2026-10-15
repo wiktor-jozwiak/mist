@@ -23,7 +23,6 @@ pub struct Note {
     pub entry: String,
     pub value: i32,       // progress 0..100, -1 none
     pub sync: String,
-    pub category: String,
     pub actions: Vec<(String, String)>,
     pub replaced: bool,
     pub inline_reply: bool,
@@ -31,8 +30,6 @@ pub struct Note {
 
 pub enum Cmd {
     Invoke(u32, String),
-    Reply(u32, String),
-    Dismiss(u32),
     Dnd(bool),
     Clear,
 }
@@ -145,7 +142,6 @@ impl Server {
             entry: hint_str(&hints, "desktop-entry"),
             value: hint_int(&hints, "value").map(|v| v as i32).unwrap_or(-1),
             sync: [hint_str(&hints, "x-canonical-private-synchronous"), hint_str(&hints, "x-dunst-stack-tag"), hint_str(&hints, "synchronous")].into_iter().find(|s| !s.is_empty()).unwrap_or_default(),
-            category: hint_str(&hints, "category"),
             actions: actions.chunks(2).filter(|c| c.len() == 2).map(|c| (c[0].clone(), c[1].clone())).collect(),
             replaced,
             ..Default::default()
@@ -197,7 +193,14 @@ impl Server {
         }
         if !dnd || urgent {
             if !replaced && !hint_bool(&hints, "suppress-sound") && n.urgency > 0 {
-                crate::app::spawn(&["pw-play", "--volume=0.6", &format!("/usr/share/sounds/freedesktop/stereo/{}.oga", if urgent { "dialog-warning" } else { "message" })]);
+                let home = std::env::var("HOME").unwrap_or_default();
+                let custom = format!("{home}/.config/quickshell/mist/sounds/{}.wav", if urgent { "urgent" } else { "message" });
+                let snd = if std::path::Path::new(&custom).exists() {
+                    custom
+                } else {
+                    format!("/usr/share/sounds/freedesktop/stereo/{}.oga", if urgent { "dialog-warning" } else { "message" })
+                };
+                crate::app::spawn(&["pw-play", "--volume=0.7", &snd]);
             }
             let _ = self.tx.send(Msg::Note(n));
         }
@@ -252,18 +255,6 @@ pub fn spawn(tx: Sender<Msg>, cmds: std::sync::mpsc::Receiver<Cmd>) {
                                 sh.lock().unwrap().live.remove(&id);
                                 let _ = zbus::block_on(Server::notification_closed(i.signal_emitter(), id, 2));
                             }
-                        }
-                    }
-                }
-                Ok(Cmd::Reply(id, text)) => {
-                    if let Some(i) = iface() {
-                        let _ = zbus::block_on(Server::notification_replied(i.signal_emitter(), id, &text));
-                    }
-                }
-                Ok(Cmd::Dismiss(id)) => {
-                    if sh.lock().unwrap().live.remove(&id).is_some() {
-                        if let Some(i) = iface() {
-                            let _ = zbus::block_on(Server::notification_closed(i.signal_emitter(), id, 2));
                         }
                     }
                 }

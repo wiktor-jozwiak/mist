@@ -43,9 +43,10 @@ pub struct NotifCenter {
 }
 
 fn clean(s: &str) -> String {
+    let u = s.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&apos;", "'").replace("&nbsp;", " ").replace("&amp;", "&");
     let mut out = String::new();
     let mut tag = false;
-    for ch in s.chars() {
+    for ch in u.chars() {
         match ch {
             '<' => tag = true,
             '>' if tag => tag = false,
@@ -53,7 +54,7 @@ fn clean(s: &str) -> String {
             _ => {}
         }
     }
-    out.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").trim().to_string()
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 fn is_phone(n: &Value) -> bool {
     n["app_name"].as_str() == Some("KDE Connect") && !n["summary"].as_str().unwrap_or("").is_empty() && n["desktop_entry"].as_str() == Some("org.kde.kdeconnect.daemon")

@@ -12,7 +12,6 @@ use crate::text::{Style, Text};
 use serde_json::{json, Value};
 use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
 use std::collections::HashMap;
-use std::time::Instant;
 use tiny_skia::{FillRule, GradientStop, LinearGradient, Paint, PathBuilder, Pixmap, PixmapPaint, Point, RadialGradient, SpreadMode, Transform};
 
 pub const STAGE_TOP: i32 = 118;

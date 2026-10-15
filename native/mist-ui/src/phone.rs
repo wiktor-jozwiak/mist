@@ -18,6 +18,7 @@ pub struct State {
     pub kc_at: Option<Instant>,
 }
 
+#[derive(Clone)]
 pub struct Phone {
     pub st: Arc<Mutex<State>>,
     phone_in: Arc<Mutex<Option<ChildStdin>>>,
