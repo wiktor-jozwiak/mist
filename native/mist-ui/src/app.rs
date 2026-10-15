@@ -1498,6 +1498,11 @@ impl App {
         let out: String = match (r.target.as_str(), r.func.as_str()) {
             ("island", "show") => { self.island.push(crate::island::Ev { view: "info", prio: 2, dur: 3500, icon: a(0), color: Some(crate::theme::ACCENT), title: a(1), sub: a(2), value: -1, ..Default::default() }); String::new() }
             ("island", "demo") => { self.island.demo(&a(0)); String::new() }
+            // tests: a left click on the dock icon of app <key> (desktop id or class)
+            ("dock", "click") => match self.dock.slots.iter().position(|s| matches!(s, Slot::App(k) if *k == a(0))) {
+                Some(i) => { self.dock_click(i, BTN_LEFT); "ok".into() }
+                None => format!("no dock slot {}", a(0)),
+            },
             ("island", "timer") => { self.island.timer_start(a(0).parse().unwrap_or(0.0), &a(1)); String::new() }
             ("island", "timerStop") => { self.island.timer_stop(); String::new() }
             ("island", "dismiss") => { self.island.clear_all(); String::new() }
@@ -1876,6 +1881,15 @@ impl App {
                 if !mins.is_empty() {
                     for w in mins {
                         hypr(&format!("MistRestore('{}', {})", w.address, self.hypr.focused_ws));
+                    }
+                    return;
+                }
+                // the app is the active one: a click hides it (all its windows, back with the next click).
+                // Asked now: the cached state can trail a restore's focus changes
+                let active = crate::sys::hypr_request("j/activewindow").and_then(|a| a["address"].as_str().map(String::from)).unwrap_or_default();
+                if !active.is_empty() && app.wins.iter().any(|w| w.address == active) {
+                    for w in &app.wins {
+                        hypr(&format!("MistMinimize('{}')", w.address));
                     }
                     return;
                 }
