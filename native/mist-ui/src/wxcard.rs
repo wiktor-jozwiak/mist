@@ -381,7 +381,7 @@ impl Wx {
         let (ox, oy) = (CARD_PAD, CARD_PAD);
         let (w, h) = (WX_W, BENTO_H);
         // glass: shadow + body, then the sky's place cut out (mist-wall's sky shows through), rim on top
-        crate::glass::Glass { radius: 26.0, tint: 0.34, rims: false, shadow_opacity: 0.34, ..Default::default() }.paint(c, ox, oy, w, h);
+        crate::glass::Glass { radius: 26.0, tint: glass_tint(cfg), rims: false, shadow_opacity: 0.34, ..Default::default() }.paint(c, ox, oy, w, h);
         if let Some(p) = crate::gfx::rrect_path(ox + 1.0, oy + 1.0, w - 2.0, h - 2.0, 25.0) {
             let paint = tiny_skia::Paint { blend_mode: tiny_skia::BlendMode::Clear, anti_alias: true, ..Default::default() };
             c.pm.fill_path(&p, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
@@ -409,6 +409,8 @@ impl Wx {
         let cur = if ins.is_empty() { None } else { Some(&ins[self.ii % ins.len()]) };
         let hl = if live && self.sel_day == 0 { cur.filter(|c| c.i0 >= 0).map(|c| (c.i0, c.i1)).unwrap_or((-1, -1)) } else { (-1, -1) };
         let now = crate::data::now();
+        let hero = cfg.s("weather", "hero");
+        let now_h = Self::next24(wx).into_iter().next();
         let label = if let Some(h) = &hh {
             let ts = f(h, "t") as i64;
             if self.sel_day == 0 && hover_hour == 0 {
@@ -422,7 +424,7 @@ impl Wx {
             let ts = date_ts(d["date"].as_str().unwrap_or(""), 12);
             format!("{}, {}", DAYS[tm(ts).tm_wday as usize], day_mon(ts))
         } else {
-            String::new()
+            match hero.as_str() { "feels" => "odczuwalna".into(), "rain" => "szansa opadu".into(), "wind" => "wiatr, km/h".into(), _ => String::new() }
         };
         // the footer: an hour, a day, or the insight carousel
         let summary: (String, Rgba, String) = if let Some(h) = &hh {
@@ -455,7 +457,20 @@ impl Wx {
         let mut lh: Hits = Vec::new();
         edit_btn(&mut l, t, &mut self.fx, &mut lh, "weather", PAD + cw_ + 8.0, PAD + clh / 2.0 - 13.0, hov && !self.editing, inr(PAD + cw_ + 8.0, PAD + clh / 2.0 - 13.0, 26.0, 26.0), "weather");
         let hs = hero_style();
-        let big = if let Some(h) = &hh { format!("{}°", f(h, "temp").round()) } else if let Some(d) = &sd { format!("{}°", ns(&d["max"])) } else if wx["temp"].is_number() { format!("{}°", ns(&wx["temp"])) } else { "–".into() };
+        let big = if let Some(h) = &hh {
+            format!("{}°", f(h, "temp").round())
+        } else if let Some(d) = &sd {
+            format!("{}°", ns(&d["max"]))
+        } else {
+            // the number the card leads with (Pogoda: Główna liczba); rain and wind from the current hour
+            match (hero.as_str(), &now_h) {
+                ("feels", _) if wx["feels"].is_number() => format!("{}°", ns(&wx["feels"])),
+                ("rain", Some(h)) => format!("{}%", f(h, "pop") as i64),
+                ("wind", Some(h)) => ns(&h["wind"]),
+                _ if wx["temp"].is_number() => format!("{}°", ns(&wx["temp"])),
+                _ => "–".into(),
+            }
+        };
         let bw = text(&mut l, t, PAD, PAD + HERO_Y, &big, &hs, FG, true, None);
         let base = PAD + HERO_Y + ascent(t, &hs);
         let mut cy = base - 20.0;
@@ -469,7 +484,9 @@ impl Wx {
         let desc = if live { wx["desc"].as_str().unwrap_or("łączenie…").to_string() } else { wmo(code).to_string() };
         text(&mut l, t, colx, cy, &desc, &ds, FG, true, Some((w - bw - 300.0).max(10.0)));
         cy += line_h(t, &ds) + 2.0;
-        let feels = if let Some(h) = &hh { format!("odczuwalna {}°", ns(&h["feels"])) } else if let Some(d) = &sd { format!("{}° / {}°", ns(&d["max"]), ns(&d["min"])) } else if wx["feels"].is_number() { format!("odczuwalna {}°", ns(&wx["feels"])) } else { String::new() };
+        let feels = if let Some(h) = &hh { format!("odczuwalna {}°", ns(&h["feels"])) } else if let Some(d) = &sd { format!("{}° / {}°", ns(&d["max"]), ns(&d["min"])) } else if hero != "temp" && wx["temp"].is_number() {
+            if hero == "feels" { format!("temperatura {}°", ns(&wx["temp"])) } else { format!("{}° · odczuwalna {}°", ns(&wx["temp"]), ns(&wx["feels"])) }
+        } else if wx["feels"].is_number() { format!("odczuwalna {}°", ns(&wx["feels"])) } else { String::new() };
         text(&mut l, t, colx, cy, &feels, &st(11.0, 500.0), FG2, true, None);
 
         // footer: the one thing worth knowing; click for the next one (dots = how many)

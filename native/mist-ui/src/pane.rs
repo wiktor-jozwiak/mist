@@ -24,6 +24,8 @@ pub enum Act {
     Media(crate::media::Cmd),
     // window snapping (snap.rs)
     Snap(crate::snap::Cmd),
+    // widgets.json changed (DeskSettings): the desktop reloads it
+    DeskCfg,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -121,10 +123,11 @@ pub trait Pane {
 
 // the popups that are native now (the rest are forwarded to Quickshell)
 pub fn native(name: &str) -> bool {
-    matches!(name, "session" | "calendar" | "notifications" | "clipboard" | "spotlight" | "emoji" | "wallpaper" | "control" | "phone" | "start")
+    matches!(name, "desk" | "session" | "calendar" | "notifications" | "clipboard" | "spotlight" | "emoji" | "wallpaper" | "control" | "phone" | "start")
 }
 pub fn make(name: &str, page: &str) -> Option<Box<dyn Pane>> {
     match name {
+        "desk" => Some(Box::new(crate::desksettings::DeskSettings::new(page))),
         "session" => Some(Box::new(crate::session::Session::new())),
         "calendar" => Some(Box::new(crate::calendar::Calendar::new())),
         "notifications" => Some(Box::new(crate::notifcenter::NotifCenter::new())),

@@ -43,6 +43,7 @@ mod wallpapers;
 mod wxcard;
 mod wincap;
 mod winpick;
+mod desksettings;
 #[path = "../../common/astro.rs"]
 mod astro;
 #[path = "../../common/presets.rs"]

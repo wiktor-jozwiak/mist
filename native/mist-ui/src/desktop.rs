@@ -263,7 +263,16 @@ fn g(label: &'static str, key: &'static str, multi: bool, max: usize, min: usize
 pub fn groups(card: &str) -> Vec<Group> {
     let s = |x: &str| Value::String(x.into());
     match card {
+        // the desktop as a whole (DeskSettings, tab Układ); the cards in their places are picked there too
+        "desk" => vec![
+            g("Liczba kart", "cards", false, 0, 0, &[(json!(3), "Trzy"), (json!(2), "Dwie"), (json!(1), "Jedna"), (json!(0), "Bez kart")]),
+            g("Zegar", "clock", false, 0, 0, &[(s("big"), "Duży"), (s("small"), "Mały"), (s("hide"), "Ukryty")]),
+            g("Data", "date", false, 0, 0, &[(s("show"), "Pokaż"), (s("hide"), "Ukryj")]),
+            g("Wschód i zachód słońca", "sun", false, 0, 0, &[(s("show"), "Pokaż"), (s("hide"), "Ukryj")]),
+            g("Tło kart", "glass", false, 0, 0, &[(s("light"), "Jaśniejsze"), (s("normal"), "Standard"), (s("dark"), "Ciemniejsze")]),
+        ],
         "weather" => vec![
+            g("Główna liczba", "hero", false, 0, 0, &[(s("temp"), "Temperatura"), (s("feels"), "Odczuwalna"), (s("rain"), "Szansa opadu"), (s("wind"), "Wiatr")]),
             g("Wykres", "metric", false, 0, 0, &[(s("temp"), "Temperatura"), (s("rain"), "Opady"), (s("wind"), "Wiatr")]),
             g("Oś czasu", "hours", false, 0, 0, &[(json!(12), "12 h"), (json!(24), "24 h"), (json!(48), "48 h")]),
             g("Prognoza dni", "days", false, 0, 0, &[(s("show"), "Pokaż"), (s("hide"), "Ukryj")]),
@@ -284,8 +293,9 @@ pub fn groups(card: &str) -> Vec<Group> {
 fn defaults() -> Value {
     json!({
         "order": ["garmin", "weather", "running"],
+        "desk": { "cards": 3, "clock": "big", "date": "show", "sun": "show", "glass": "normal" },
         "garmin": { "hero": "ready", "vitals": ["sleep", "hrv", "rhr", "stress"], "foot": "insight" },
-        "weather": { "metric": "temp", "hours": 24, "days": "show", "insights": ["rain", "run", "wear", "wind", "light", "tomorrow"] },
+        "weather": { "hero": "temp", "metric": "temp", "hours": 24, "days": "show", "insights": ["rain", "run", "wear", "wind", "light", "tomorrow"] },
         "running": { "hero": "race", "show": ["strip", "workout", "p5"], "foot": "last" }
     })
 }
@@ -332,6 +342,22 @@ impl Cfg {
         }
         let _ = std::fs::write(Self::path(), serde_json::to_string_pretty(&self.v).unwrap_or_default());
     }
+    // how many places the bento row shows (the first n of the order)
+    pub fn cards(&self) -> usize {
+        (self.opt("desk", "cards").as_u64().unwrap_or(3) as usize).min(3)
+    }
+    pub fn shown(&self) -> Vec<String> {
+        self.order().into_iter().take(self.cards()).collect()
+    }
+    // the widget `k` into place i: it swaps with what was there (the order stays a permutation)
+    pub fn put_slot(&mut self, i: usize, k: &str) {
+        let mut o = self.order();
+        let Some(j) = o.iter().position(|x| x == k) else { return };
+        if i < o.len() && i != j {
+            o.swap(i, j);
+            self.set("order", "", json!(o));
+        }
+    }
     pub fn mv(&mut self, card: &str, d: i32) {
         let mut o = self.order();
         let Some(i) = o.iter().position(|x| x == card) else { return };
@@ -361,6 +387,15 @@ impl Cfg {
         if !a.is_empty() || gr.min == 0 {
             self.set(card, gr.key, Value::Array(a));
         }
+    }
+}
+
+// the cards' glass tint (DeskSettings: Tło kart)
+pub fn glass_tint(cfg: &Cfg) -> f32 {
+    match cfg.s("desk", "glass").as_str() {
+        "light" => 0.2,
+        "dark" => 0.52,
+        _ => 0.34,
     }
 }
 
@@ -486,8 +521,8 @@ pub fn edit_sheet(c: &mut Canvas, t: &mut Text, fx: &mut Fx, hits: &mut Hits, cf
     rect(&mut l, 0.0, 0.0, w, h, 26.0, Rgba(9.0 / 255.0, 13.0 / 255.0, 24.0 / 255.0, 0.95));
     border(&mut l, 0.0, 0.0, w, h, 26.0, 1.0, WHITE.alpha(0.1));
     lh.push((0.0, 0.0, w, h, Hit::Sheet));
-    // header: title · ‹ › · Gotowe
-    let order = cfg.order();
+    // header: title · ‹ › · Gotowe (moves among the shown cards)
+    let order = cfg.shown();
     let i = order.iter().position(|k| k == card).unwrap_or(0);
     let done_w = chip_w(t, "Gotowe", true);
     let mut rx = w - 20.0 - done_w;
@@ -577,7 +612,7 @@ pub struct Desk {
     pub editing: HashMap<&'static str, bool>,
     pub dirty: bool,
     pub card_dirty: bool,
-    top: Option<(i64, Pixmap)>,
+    top: Option<(String, Pixmap)>,
     pub wx: crate::wxcard::Wx,
     pub canvas: Canvas,
     pub card_canvas: Canvas,
@@ -630,15 +665,28 @@ impl Desk {
         self.fx.running() || self.wx.fx.running()
     }
 
-    // x of each card in the bento row
+    // x of each shown card in the bento row (fewer cards: the row stays centred)
     pub fn slots(&self) -> Vec<(String, f32, f32)> {
-        let mut x = 0.0;
-        self.cfg.order().into_iter().map(|k| {
+        let shown = self.cfg.shown();
+        let row: f32 = shown.iter().map(|k| if k == "weather" { WX_W } else { COL_W }).sum::<f32>() + BENTO_GAP * (shown.len() as f32 - 1.0).max(0.0);
+        let mut x = ((BENTO_W - row) / 2.0).round();
+        shown.into_iter().map(|k| {
             let w = if k == "weather" { WX_W } else { COL_W };
             let r = (k, x, w);
             x += w + BENTO_GAP;
             r
         }).collect()
+    }
+    pub fn weather_on(&self) -> bool {
+        self.slots().iter().any(|s| s.0 == "weather")
+    }
+    // the bento row's extent in the stage (x, w), for its input region
+    pub fn row(&self) -> (f32, f32) {
+        let s = self.slots();
+        match (s.first(), s.last()) {
+            (Some(a), Some(b)) => (40.0 + a.1, b.1 + b.2 - a.1),
+            _ => (0.0, 0.0),
+        }
     }
     // the weather card on the monitor (top-left), from the stage layout
     pub fn card_at(&self, t: &mut Text) -> (i32, i32) {
@@ -650,7 +698,7 @@ impl Desk {
     // tell mist-wall where the sky goes (only when it changed)
     pub fn write_sky(&mut self, t: &mut Text) {
         let (x, y) = self.card_at(t);
-        let s = json!({ "show": true, "x": x + 1, "y": y + 1, "w": WX_W as i32 - 2, "h": BENTO_H as i32 - 2 }).to_string();
+        let s = json!({ "show": self.weather_on(), "x": x + 1, "y": y + 1, "w": WX_W as i32 - 2, "h": BENTO_H as i32 - 2 }).to_string();
         if s != self.sky_written {
             let dir = format!("{}/mist", std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".into()));
             let tmp = format!("{dir}/.sky.json");
@@ -672,7 +720,7 @@ impl Desk {
         let col_x = 40.0;
         // date, clock, sun path (cached per minute: their shadows are blurred)
         let minute = crate::data::now() / 60;
-        let key = minute * 100000 + self.weather["sunrise"].as_str().map(|s| s.len() as i64).unwrap_or(0);
+        let key = format!("{minute}|{}|{}|{}|{}", self.weather["sunrise"].as_str().unwrap_or(""), self.cfg.s("desk", "clock"), self.cfg.s("desk", "date"), self.cfg.s("desk", "sun"));
         if self.top.as_ref().map(|t| t.0 != key).unwrap_or(true) {
             self.top = Some((key, self.paint_top(t)));
         }
@@ -703,25 +751,32 @@ impl Desk {
         let date = format!("{}, {} {}", DAYS[tm.tm_wday as usize], tm.tm_mday, crate::data::MONTHS_GEN[tm.tm_mon as usize]);
         let ds = st(22.0, 600.0);
         let dh = line_h(t, &ds);
+        // DeskSettings: the clock big / small / hidden, the date and the sun path shown or not. What is hidden
+        // leaves its room at the top (the cards stay where they are): the rest moves down by `dy`
+        let clock = self.cfg.s("desk", "clock");
+        let (csz, pad_t, pad_b, sp) = match clock.as_str() { "small" => (96.0, 9.0, 13.0, -2.6), "hide" => (0.0, 0.0, 0.0, 0.0), _ => (150.0, 14.0, 20.0, -4.0) };
+        let clock_h = if csz > 0.0 { line_h(t, &st(csz, 620.0)) - pad_t - pad_b } else { 0.0 };
+        let date_h = if self.cfg.s("desk", "date") != "hide" { dh } else { 0.0 };
+        let dy = top_h(t) - date_h - clock_h;
         // date: shadow black .25, blur .5 (of 32), 1 px down
-        {
+        if date_h > 0.0 {
             let mut l = Canvas::new(STAGE_W, (dh + 40.0) as u32);
             let dw = width(t, &date, &ds);
             text(&mut l, t, ((w - dw) / 2.0).round(), 20.0, &date, &ds, WHITE.alpha(0.82), false, None);
-            put_with_shadow(&mut out, &l.pm, 0, -20, 6.4, Rgba(0.0, 0.0, 0.0, 1.0), 0.25, 1);
+            put_with_shadow(&mut out, &l.pm, 0, (dy - 20.0) as i32, 6.4, Rgba(0.0, 0.0, 0.0, 1.0), 0.25, 1);
         }
         // clock: shadow rgb(2, 6, 16) .22, blur 1 (of 48), 6 px down
-        {
-            let cs = st(150.0, 620.0).spaced(-4.0).tnum();
+        if csz > 0.0 {
+            let cs = st(csz, 620.0).spaced(sp).tnum();
             let s = crate::data::hm(now);
             let cw = width(t, &s, &cs);
             let mut l = Canvas::new(STAGE_W, (line_h(t, &cs) + 120.0) as u32);
             text(&mut l, t, ((w - cw) / 2.0).round(), 60.0, &s, &cs, WHITE.alpha(0.86), false, None);
-            put_with_shadow(&mut out, &l.pm, 0, (dh - 14.0 - 60.0) as i32, 19.2, Rgba(2.0 / 255.0, 6.0 / 255.0, 16.0 / 255.0, 1.0), 0.22, 6);
+            put_with_shadow(&mut out, &l.pm, 0, (dy + date_h - pad_t - 60.0) as i32, 19.2 * csz / 150.0, Rgba(2.0 / 255.0, 6.0 / 255.0, 16.0 / 255.0, 1.0), 0.22, 6);
         }
         // the sun's path: rise · line with a dot for now · set (at night: set -> next rise)
         let (rise, set) = (self.weather["sunrise"].as_str().unwrap_or(""), self.weather["sunset"].as_str().unwrap_or(""));
-        if !rise.is_empty() {
+        if !rise.is_empty() && self.cfg.s("desk", "sun") != "hide" {
             let mins = |s: &str| -> i32 {
                 let mut p = s.split(':');
                 p.next().and_then(|x| x.parse::<i32>().ok()).unwrap_or(0) * 60 + p.next().and_then(|x| x.parse::<i32>().ok()).unwrap_or(0)
@@ -751,8 +806,8 @@ impl Desk {
     }
 
     // CardGlass: glass, inner glow, (content), rim
-    pub fn card_glass(c: &mut Canvas, x: f32, y: f32, w: f32, h: f32, glow: Option<(Rgba, f32, f32, f32)>) {
-        Glass { radius: 26.0, tint: 0.34, rims: false, shadow_opacity: 0.34, ..Default::default() }.paint(c, x, y, w, h);
+    pub fn card_glass(c: &mut Canvas, x: f32, y: f32, w: f32, h: f32, tint: f32, glow: Option<(Rgba, f32, f32, f32)>) {
+        Glass { radius: 26.0, tint, rims: false, shadow_opacity: 0.34, ..Default::default() }.paint(c, x, y, w, h);
         if let Some((gc, gx, gy, gs)) = glow {
             if let Some(p) = crate::gfx::rrect_path(x + 1.0, y + 1.0, w - 2.0, h - 2.0, 25.0) {
                 let (cx, cy, r) = (x + w * gx, y + h * gy, w.max(h) * gs);
@@ -836,7 +891,7 @@ impl Desk {
             _ if ready.unwrap_or(0.0) >= 70.0 => ("check", ACC, "Gotowy na mocny trening".into()),
             _ => ("leaf", ACC, "Dzień na spokojne tempo".into()),
         };
-        Self::card_glass(c, x, y, w, BENTO_H, Some((hero.4.alpha(0.20), 0.18, 0.22, 0.7)));
+        Self::card_glass(c, x, y, w, BENTO_H, glass_tint(&self.cfg), Some((hero.4.alpha(0.20), 0.18, 0.22, 0.7)));
         // header: caps title · steps (fades out while hovered: the adjust button sits there)
         caps(c, t, cx, cy, &hero.0, FAINT, None);
         let ro = self.fx.v("garmin.hdr", if hov && !editing { 0.0 } else { 1.0 }, 160.0, Ease::Linear);
@@ -959,7 +1014,7 @@ impl Desk {
                 Some(l) => ("run", MUTED, format!("Ostatni bieg {} km · {}", km1(l.get("km").and_then(|v| v.as_f64()).unwrap_or(0.0)), l.get("ago").and_then(|v| v.as_str()).unwrap_or(""))),
             },
         };
-        Self::card_glass(c, x, y, w, BENTO_H, Some((Rgba(157.0 / 255.0, 189.0 / 255.0, 240.0 / 255.0, 0.16), 0.15, 0.2, 0.75)));
+        Self::card_glass(c, x, y, w, BENTO_H, glass_tint(&self.cfg), Some((Rgba(157.0 / 255.0, 189.0 / 255.0, 240.0 / 255.0, 0.16), 0.15, 0.2, 0.75)));
         caps(c, t, cx, cy, &hero.0, FAINT, None);
         if r["yearKm"].as_f64().is_some() {
             let ro = self.fx.v("running.hdr", if hov && !editing { 0.0 } else { 1.0 }, 160.0, Ease::Linear);
@@ -1087,7 +1142,7 @@ impl Desk {
         true
     }
     // the card under the pointer ("" = none), for the hover intent
-    fn zone(&self) -> String {
+    pub fn zone(&self) -> String {
         let Some(p) = self.ptr else { return String::new() };
         let by = self.bento_y;
         self.slots().into_iter().find(|(_, x, w)| p.0 >= 40.0 + x && p.0 < 40.0 + x + w && p.1 >= by && p.1 < by + BENTO_H).map(|s| s.0).unwrap_or_default()

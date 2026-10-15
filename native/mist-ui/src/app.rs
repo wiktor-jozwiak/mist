@@ -316,7 +316,7 @@ impl App {
             }
             layer.commit();
             self.desk.card = Some(layer);
-            self.desk.write_sky(&mut self.text);
+            self.desk_relayout();
         }
         let dock_here = if self.test { name == "HDMI-A-1" } else { name == PRIMARY };
         if dock_here && self.dock_surf.is_none() && std::env::var("MIST_UI_NO_DOCK").is_err() {
@@ -720,6 +720,12 @@ impl App {
                 let _ = self.media_tx.send(c);
             }
             Act::Snap(c) => self.snap_cmd(c),
+            Act::DeskCfg => {
+                self.desk.cfg = crate::desktop::Cfg::load();
+                self.desk_relayout();
+                self.desk.dirty = true;
+                self.desk.card_dirty = true;
+            }
             Act::Launch(i) => {
                 self.pane_close();
                 if let Some(e) = self.apps.entries.get(i) {
@@ -1157,7 +1163,13 @@ impl App {
             let mut c = std::mem::replace(&mut self.desk.card_canvas, crate::gfx::Canvas::new(1, 1));
             let t0 = Instant::now();
             let d = &mut self.desk;
-            let rows = d.wx.paint_cached(&mut c, &mut self.text, &d.weather, &d.garmin, &d.cfg);
+            // not among the shown cards: an empty window (its sky is off too)
+            let rows = if d.weather_on() {
+                d.wx.paint_cached(&mut c, &mut self.text, &d.weather, &d.garmin, &d.cfg)
+            } else {
+                c.clear();
+                None
+            };
             count("card", 1);
             count("card_us", t0.elapsed().as_micros() as u64);
             self.desk.card_canvas = c;
@@ -1203,6 +1215,11 @@ impl App {
                 // the order may have changed: the weather card and its sky move
                 self.desk_relayout();
             }
+            // right click on a card or the clock: Dostosuj pulpit, on that card's tab
+            PointerEventKind::Release { button, .. } if button == BTN_RIGHT => {
+                let k = if card { "weather".to_string() } else { self.desk.zone() };
+                self.pane_open_box(Box::new(crate::desksettings::DeskSettings::new(&k)), PRIMARY);
+            }
             PointerEventKind::Axis { vertical, .. } if card => {
                 let dy = if vertical.discrete != 0 { vertical.discrete as f64 } else { vertical.absolute };
                 if dy != 0.0 {
@@ -1237,11 +1254,29 @@ impl App {
         }
     }
     // the weather card follows its slot in the bento row
+    // (and the input regions: the shown cards + the clock; the weather card takes no input while it is hidden)
     fn desk_relayout(&mut self) {
+        let h = crate::desktop::stage_h(&mut self.text) + 60.0;
+        if let (Some(l), Ok(r)) = (&self.desk.stage, Region::new(&self.compositor)) {
+            let (rx, rw) = self.desk.row();
+            if rw > 0.0 {
+                r.add(rx as i32, (h - 60.0 - crate::desktop::BENTO_H) as i32, rw as i32, crate::desktop::BENTO_H as i32);
+            }
+            // the clock: right click there opens the settings (with no cards shown too)
+            r.add(crate::desktop::STAGE_W as i32 / 2 - 320, 0, 640, (h - 60.0 - crate::desktop::BENTO_H - 40.0) as i32);
+            l.wl_surface().set_input_region(Some(r.wl_region()));
+            l.commit();
+        }
         let Some(l) = &self.desk.card else { return };
         let (x, y) = self.desk.card_at(&mut self.text);
         let p = crate::desktop::CARD_PAD as i32;
         l.set_margin(y - p, 0, 0, x - p);
+        if let Ok(r) = Region::new(&self.compositor) {
+            if self.desk.weather_on() {
+                r.add(p, p, crate::desktop::WX_W as i32, crate::desktop::BENTO_H as i32);
+            }
+            l.wl_surface().set_input_region(Some(r.wl_region()));
+        }
         l.commit();
         self.desk.write_sky(&mut self.text);
     }
