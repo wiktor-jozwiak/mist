@@ -41,6 +41,8 @@ mod start;
 mod snap;
 mod wallpapers;
 mod wxcard;
+mod wincap;
+mod winpick;
 #[path = "../../common/astro.rs"]
 mod astro;
 #[path = "../../common/presets.rs"]
@@ -340,7 +342,9 @@ fn main() {
     loop {
         let slow_left = app.slow_period().saturating_sub(last_slow.elapsed());
         let timeout = if app.animating() { slow_left.min(app::tick_interval().saturating_sub(last_tick.elapsed())) } else { slow_left };
+        let timeout = app.intent_due().map(|d| timeout.min(d.saturating_duration_since(std::time::Instant::now()))).unwrap_or(timeout);
         ev.dispatch(Some(timeout), &mut app).expect("dispatch");
+        app.intent_tick();
         if last_slow.elapsed() >= app.slow_period() {
             last_slow = std::time::Instant::now();
             app.slow_tick();

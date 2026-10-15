@@ -1264,8 +1264,10 @@ dependencies = [
  "smithay-client-toolkit 0.20.0",
  "swash",
  "tiny-skia",
+ "wayland-backend",
  "wayland-client",
  "wayland-protocols",
+ "wayland-scanner",
  "zbus",
 ]
 

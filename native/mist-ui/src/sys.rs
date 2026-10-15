@@ -65,6 +65,8 @@ pub enum Msg {
     IdleCfg,
     Polkit(crate::polkit::Ev),
     Shot(String),
+    // a window thumbnail for the dock's window picker (wincap.rs): address, image
+    WinThumb(String, tiny_skia::Pixmap),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

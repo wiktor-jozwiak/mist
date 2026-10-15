@@ -114,6 +114,9 @@ pub trait Pane {
     fn as_assist(&mut self) -> Option<&mut crate::snap::AssistPane> {
         None
     }
+    fn as_winpick(&mut self) -> Option<&mut crate::winpick::WinPick> {
+        None
+    }
 }
 
 // the popups that are native now (the rest are forwarded to Quickshell)

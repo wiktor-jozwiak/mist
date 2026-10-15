@@ -12,6 +12,7 @@ use crate::text::{Style, Text};
 use serde_json::{json, Value};
 use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
 use std::collections::HashMap;
+use std::time::Instant;
 use tiny_skia::{FillRule, GradientStop, LinearGradient, Paint, PathBuilder, Pixmap, PixmapPaint, Point, RadialGradient, SpreadMode, Transform};
 
 pub const STAGE_TOP: i32 = 118;
@@ -387,6 +388,55 @@ impl Fx {
     }
 }
 
+// hover intent: what changes a card's content under the pointer (a day's preview, the timeline's hour, a part
+// explained in the footer, the sun's popover, the adjust button) waits until the pointer rested on the card: still
+// (within REST_PX) for REST_MS. Passing over a card on the way elsewhere changes nothing; once engaged the pointer
+// is followed live until it leaves that card. Button highlights and the cursor shape still follow it at once.
+pub const REST_MS: u64 = 160;
+const REST_PX: f32 = 6.0;
+pub struct Intent {
+    zone: String,
+    anchor: Option<(f32, f32)>,
+    since: Instant,
+    pub engaged: bool,
+}
+impl Intent {
+    pub fn new() -> Intent {
+        Intent { zone: String::new(), anchor: None, since: Instant::now(), engaged: false }
+    }
+    // the pointer at p over `zone` (a card; "" = none): true when `engaged` changed
+    pub fn feed(&mut self, p: Option<(f32, f32)>, zone: &str) -> bool {
+        let was = self.engaged;
+        if zone != self.zone || p.is_none() {
+            self.zone = zone.to_string();
+            self.engaged = false;
+            self.anchor = p;
+            self.since = Instant::now();
+        } else if let (Some(p), Some(a)) = (p, self.anchor) {
+            if !self.engaged && ((p.0 - a.0).powi(2) + (p.1 - a.1).powi(2)).sqrt() > REST_PX {
+                self.anchor = Some(p);
+                self.since = Instant::now();
+            }
+        }
+        was != self.engaged
+    }
+    // when the pointer will have rested long enough
+    pub fn due(&self) -> Option<Instant> {
+        if self.engaged || self.zone.is_empty() || self.anchor.is_none() {
+            return None;
+        }
+        Some(self.since + std::time::Duration::from_millis(REST_MS))
+    }
+    // true when it just engaged
+    pub fn settle(&mut self) -> bool {
+        if self.due().map(|d| Instant::now() >= d).unwrap_or(false) {
+            self.engaged = true;
+            return true;
+        }
+        false
+    }
+}
+
 // round adjust button (shown while the card is hovered)
 pub fn edit_btn(c: &mut Canvas, t: &mut Text, fx: &mut Fx, hits: &mut Hits, key: &str, x: f32, y: f32, shown: bool, hovered: bool, card: &'static str) {
     let o = fx.v(&format!("{key}.eb"), if shown { 1.0 } else { 0.0 }, 160.0, Ease::Linear);
@@ -534,6 +584,7 @@ pub struct Desk {
     pub sky_written: String,
     pub cursor_hand: bool,
     bento_y: f32,
+    pub intent: Intent,
 }
 
 pub fn stage_h(t: &mut Text) -> f32 {
@@ -569,6 +620,7 @@ impl Desk {
             sky_written: String::new(),
             cursor_hand: false,
             bento_y: 0.0,
+            intent: Intent::new(),
         }
     }
     pub fn editing(&self, card: &str) -> bool {
@@ -712,8 +764,9 @@ impl Desk {
         Glass { radius: 26.0, rim_only: true, corners: true, ..Default::default() }.paint(c, x, y, w, h);
     }
 
+    // the pointer once it rested on a card (hover intent): what changes the content follows this one
     fn inside(&self, x: f32, y: f32, w: f32, h: f32) -> bool {
-        self.ptr.map(|p| p.0 >= x && p.0 < x + w && p.1 >= y && p.1 < y + h).unwrap_or(false)
+        self.ptr.filter(|_| self.intent.engaged).map(|p| p.0 >= x && p.0 < x + w && p.1 >= y && p.1 < y + h).unwrap_or(false)
     }
 
     // ---------------- body (Garmin): how ready am I today? One number, the day's energy curve, four vitals
@@ -997,6 +1050,9 @@ impl Desk {
     pub fn sig(&self) -> String {
         let Some(p) = self.ptr else { return String::new() };
         let mut s = format!("{:?}", hit_at(&self.hits, p.0, p.1));
+        if !self.intent.engaged {
+            return s;
+        }
         let by = self.bento_y;
         for (k, x, w) in self.slots() {
             let cx = 40.0 + x;
@@ -1026,7 +1082,15 @@ impl Desk {
         self.ptr = p;
         let hand = p.and_then(|p| hit_at(&self.hits, p.0, p.1)).map(|h| !matches!(h, Hit::Sheet)).unwrap_or(false);
         self.cursor_hand = hand;
+        let zone = self.zone();
+        self.intent.feed(p, &zone);
         true
+    }
+    // the card under the pointer ("" = none), for the hover intent
+    fn zone(&self) -> String {
+        let Some(p) = self.ptr else { return String::new() };
+        let by = self.bento_y;
+        self.slots().into_iter().find(|(_, x, w)| p.0 >= 40.0 + x && p.0 < 40.0 + x + w && p.1 >= by && p.1 < by + BENTO_H).map(|s| s.0).unwrap_or_default()
     }
     pub fn stage_click(&mut self) -> bool {
         let Some(p) = self.ptr else { return false };
@@ -1047,5 +1111,48 @@ impl Desk {
         }
         self.card_dirty = true;
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    // the rest is backdated instead of slept
+    fn age(i: &mut Intent, ms: u64) {
+        i.since -= Duration::from_millis(ms);
+    }
+
+    #[test]
+    fn intent_passing_over_never_engages() {
+        let mut i = Intent::new();
+        i.feed(Some((0.0, 50.0)), "garmin");
+        for k in 1..40 {
+            age(&mut i, 15); // 15 ms between motion events, 8 px apart: a pass, not a rest
+            i.feed(Some((k as f32 * 8.0, 50.0)), "garmin");
+            assert!(!i.settle(), "engaged while moving at step {k}");
+        }
+    }
+
+    #[test]
+    fn intent_rest_engages_and_leaving_drops_it() {
+        let mut i = Intent::new();
+        i.feed(Some((10.0, 10.0)), "wx");
+        i.feed(Some((13.0, 12.0)), "wx"); // jitter within REST_PX keeps the rest
+        assert!(!i.settle());
+        age(&mut i, REST_MS);
+        assert!(i.settle() && i.engaged);
+        assert!(i.due().is_none());
+        // engaged: followed live while on the card
+        i.feed(Some((200.0, 80.0)), "wx");
+        assert!(i.engaged);
+        // another card or away: content back at once
+        assert!(i.feed(Some((400.0, 80.0)), "running"));
+        assert!(!i.engaged);
+        age(&mut i, REST_MS);
+        assert!(i.settle());
+        assert!(i.feed(None, ""));
+        assert!(i.due().is_none());
     }
 }

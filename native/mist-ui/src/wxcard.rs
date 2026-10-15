@@ -30,6 +30,7 @@ pub struct Wx {
     foot_fast: bool,
     foot_cache: Option<(Pixmap, Pixmap, usize, usize)>, // + the rows that differ (start, end)
     foot_o: Option<f32>,
+    pub intent: Intent,
 }
 
 const DAYS: [&str; 7] = ["niedziela", "poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota"];
@@ -113,7 +114,7 @@ struct Ins {
 
 impl Wx {
     pub fn new() -> Wx {
-        Wx { fx: Fx::new(), hits: Vec::new(), ptr: None, hovered: false, sel_day: 0, pinned: false, pin_hour: -1, ii: 0, editing: false, last_pop: "", away: None, turned: Instant::now(), cursor: "", last_n: 0, foot_fast: false, foot_cache: None, foot_o: None }
+        Wx { fx: Fx::new(), hits: Vec::new(), ptr: None, hovered: false, sel_day: 0, pinned: false, pin_hour: -1, ii: 0, editing: false, last_pop: "", away: None, turned: Instant::now(), cursor: "", last_n: 0, foot_fast: false, foot_cache: None, foot_o: None, intent: Intent::new() }
     }
 
     fn hours(cfg: &Cfg) -> usize {
@@ -310,10 +311,17 @@ impl Wx {
             None => self.pin_hour,
         }
     }
-    // the hour under the pointer on the timeline
+    // the pointer once it rested on the card (hover intent), for what changes the content
+    fn iptr(&self) -> Option<(f32, f32)> {
+        if self.intent.engaged { self.ptr } else { None }
+    }
+    // the hour under the (resting) pointer on the timeline
     fn tl_idx(&self, n: usize) -> Option<usize> {
+        self.tl_at(n, self.iptr())
+    }
+    fn tl_at(&self, n: usize, p: Option<(f32, f32)>) -> Option<usize> {
         let (tx, ty, tw, th) = (PAD, PAD + BAND_Y + 28.0, WX_W - 2.0 * PAD, 78.0);
-        let p = self.ptr?;
+        let p = p?;
         if self.editing || n == 0 || p.0 < tx || p.0 >= tx + tw || p.1 < ty || p.1 >= ty + th {
             return None;
         }
@@ -433,9 +441,12 @@ impl Wx {
 
         // ---- the content layer (MultiEffect shadow: rgb(4, 8, 18) .6, blur .6, 1 px down)
         let mut l = Canvas::new(w as u32, h as u32);
-        let hov = self.hovered;
+        // chips, the adjust button and the popovers wait for the pointer to rest (hover intent); highlights do not
+        let hov = self.hovered && self.intent.engaged;
         let ptr = self.ptr;
+        let iptr = self.iptr();
         let inr = |x: f32, y: f32, ww: f32, hh: f32| ptr.map(|p| p.0 >= x && p.0 < x + ww && p.1 >= y && p.1 < y + hh).unwrap_or(false);
+        let inr_i = |x: f32, y: f32, ww: f32, hh: f32| iptr.map(|p| p.0 >= x && p.0 < x + ww && p.1 >= y && p.1 < y + hh).unwrap_or(false);
         // headline
         let city = format!("{}{}", wx["city"].as_str().unwrap_or("Warszawa"), if wx["stale"].as_bool().unwrap_or(false) { format!(" · dane z {}", crate::data::hm(wx["at"].as_i64().unwrap_or(0))) } else { String::new() });
         let cw_ = caps(&mut l, t, PAD, PAD, &city, FG2, None);
@@ -614,8 +625,8 @@ impl Wx {
         let ok = |p: (f32, f32)| p.0 > 6.0 && p.0 < w - 6.0 && p.1 > 6.0 && p.1 < 140.0;
         let sun_vis = m.sun.alt > -1.5 && ok(sun_c);
         let moon_vis = m.moon.alt > -1.0 && ok(moon_c);
-        let sun_hov = sun_vis && inr(sun_c.0 - 20.0, sun_c.1 - 20.0, 40.0, 40.0) && !self.editing;
-        let moon_hov = moon_vis && inr(moon_c.0 - 18.0, moon_c.1 - 18.0, 36.0, 36.0) && !self.editing;
+        let sun_hov = sun_vis && inr_i(sun_c.0 - 20.0, sun_c.1 - 20.0, 40.0, 40.0) && !self.editing;
+        let moon_hov = moon_vis && inr_i(moon_c.0 - 18.0, moon_c.1 - 18.0, 36.0, 36.0) && !self.editing;
         let so = self.fx.v("wx.sunring", if sun_hov { 1.0 } else { 0.0 }, 150.0, Ease::Linear);
         if so > 0.0 && sun_vis {
             border(c, ox + sun_c.0 - 17.0, oy + sun_c.1 - 17.0, 34.0, 34.0, 17.0, 1.0, WHITE.alpha(0.55 * so));
@@ -632,7 +643,7 @@ impl Wx {
         }
         // popover: sun or moon details next to the body (stays while the pointer is on it)
         let pop_rect = self.hits_pop_rect();
-        let on_pop = pop_rect.map(|r| inr(r.0, r.1, r.2, r.3)).unwrap_or(false);
+        let on_pop = pop_rect.map(|r| inr_i(r.0, r.1, r.2, r.3)).unwrap_or(false);
         let kind: &'static str = if sun_hov { "sun" } else if moon_hov { "moon" } else if on_pop { self.last_pop } else { "" };
         if !kind.is_empty() {
             self.last_pop = kind;
@@ -851,7 +862,7 @@ impl Wx {
     // what the pointer is over (a change = repaint)
     pub fn sig(&self) -> String {
         let h = self.ptr.and_then(|p| hit_at(&self.hits, p.0, p.1));
-        format!("{:?}{}{:?}{}", h, self.hovered, self.tl_idx(self.last_n), self.sel_day)
+        format!("{:?}{}{}{:?}{}", h, self.hovered, self.intent.engaged, self.tl_idx(self.last_n), self.sel_day)
     }
 
     // ---------------------------------------------------------------- input (card coords)
@@ -867,13 +878,32 @@ impl Wx {
             Some(Hit::Sheet) | Some(Hit::Sun) | Some(Hit::Moon) | Some(Hit::Pop) | None => "",
             _ => "hand",
         };
-        // hovering a day previews it (unless one is pinned)
-        if let Some(Hit::Day(d)) = p.and_then(|p| hit_at(&self.hits, p.0, p.1)) {
-            if !self.pinned && self.sel_day != d {
-                self.sel_day = d;
-                self.pin_hour = -1;
-            }
+        self.intent.feed(p, if inside { "wx" } else { "" });
+        self.preview();
+    }
+    // resting on a day previews it (its hours stay while scrubbing the timeline); anywhere else shows today again
+    // at once, unless a day is pinned
+    fn preview(&mut self) {
+        if self.pinned {
+            return;
         }
+        let d = match self.iptr().and_then(|p| hit_at(&self.hits, p.0, p.1)) {
+            Some(Hit::Day(d)) => d,
+            Some(Hit::Timeline) => self.sel_day,
+            _ => 0,
+        };
+        if self.sel_day != d {
+            self.sel_day = d;
+            self.pin_hour = -1;
+        }
+    }
+    // the pointer rested (hover intent): true = repaint
+    pub fn settle(&mut self) -> bool {
+        if self.intent.settle() {
+            self.preview();
+            return true;
+        }
+        false
     }
     pub fn click(&mut self, cfg: &mut Cfg, wx: &Value) -> bool {
         let Some(p) = self.ptr else { return false };
@@ -894,7 +924,7 @@ impl Wx {
             }
             Some(Hit::Timeline) => {
                 let n = self.range(wx, cfg).len();
-                if let Some(i) = self.tl_idx(n) {
+                if let Some(i) = self.tl_at(n, self.ptr) {
                     self.pin_hour = if self.pin_hour == i as i32 { -1 } else { i as i32 };
                     self.pinned = self.pin_hour >= 0;
                 }

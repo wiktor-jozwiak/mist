@@ -378,6 +378,19 @@ impl App {
         self.outputs.outputs().filter_map(|o| self.outputs.info(&o).and_then(|i| i.name.clone()).map(|n| (o, n))).collect()
     }
 
+    // when a desktop card's hover intent settles (the loop wakes then, no polling)
+    pub fn intent_due(&self) -> Option<Instant> {
+        [self.desk.intent.due(), self.desk.wx.intent.due()].into_iter().flatten().min()
+    }
+    pub fn intent_tick(&mut self) {
+        if self.desk.intent.settle() {
+            self.desk.dirty = true;
+        }
+        if self.desk.wx.settle() {
+            self.desk.card_dirty = true;
+        }
+    }
+
     // the slow tick's period: 250 ms while something it times is pending, else 1 s (minute, watchers, carousel)
     pub fn slow_period(&self) -> Duration {
         let ringing = { let s = self.phone.st.lock().unwrap(); s.ringing() || s.call().is_some() };
@@ -612,6 +625,11 @@ impl App {
         self.pane_open_box(Box::new(crate::switcher::Switcher::new(apps, d)), &scr);
     }
     fn pane_open_box(&mut self, p: Box<dyn crate::pane::Pane>, scr: &str) {
+        // replacing the window picker: the dock is not held up by it any more
+        if self.pane.as_ref().map(|p| p.p.name() == "winpick").unwrap_or(false) {
+            self.dock.menu_open = false;
+            self.dock.update_lift();
+        }
         self.pane = None;
         let outs = self.outs();
         let Some((o, sname)) = outs.iter().find(|(_, n)| n == scr).or(outs.first()).cloned() else { return };
@@ -660,7 +678,15 @@ impl App {
         }
     }
     pub fn pane_close(&mut self) {
-        if self.pane.take().is_some() {
+        if let Some(p) = self.pane.take() {
+            // the window picker held the dock up like its menu does
+            if p.p.name() == "winpick" {
+                self.dock.menu_open = false;
+                self.dock.update_lift();
+                if !self.dock.start_open {
+                    self.dock_hide_at = Some(Instant::now() + Duration::from_millis(400));
+                }
+            }
             self.set_start_open(false);
             self.mark_all();
             self.dock_rebuild();
@@ -1876,6 +1902,11 @@ impl App {
                     launch(&app.exec);
                     return;
                 }
+                // more than one window: pick one (Windows taskbar thumbnails)
+                if app.wins.len() > 1 {
+                    self.open_winpick(i, &app);
+                    return;
+                }
                 // minimized windows come back first (all of them, like Windows)
                 let mins: Vec<_> = app.wins.iter().filter(|w| w.ws_name == "special:minimized").collect();
                 if !mins.is_empty() {
@@ -1901,6 +1932,30 @@ impl App {
                 };
                 focus_win(&app.wins[next].address);
             }
+        }
+    }
+
+    // the window picker above the dock icon (winpick.rs), thumbnails captured once on a thread (wincap.rs)
+    fn open_winpick(&mut self, i: usize, app: &dock::App) {
+        // the dock stays up while it is open (its target position, also when opened by `msg dock click`)
+        self.dock.menu_open = true;
+        self.dock.update_y();
+        self.dock.update_lift();
+        let Some(d) = self.dock_surf.as_ref() else { return };
+        let anchor_x = (d.out_w - d.w as i32) as f32 / 2.0 + self.dock.slot_x(d.w as f32)[i] + dock::SIZE / 2.0;
+        let bottom = (d.out_h - dock::WIN_H as i32) as f32 + self.dock.y.target() - 6.0;
+        let output = d.output.clone();
+        let Some(scr) = self.outs().into_iter().find(|(o, _)| *o == output).map(|o| o.1) else { return };
+        let wins: Vec<crate::winpick::Win> = app.wins.iter().map(|w| crate::winpick::Win { address: w.address.clone(), title: w.title.clone(), minimized: w.ws_name == "special:minimized" }).collect();
+        let p = crate::winpick::WinPick::new(app.icon.clone(), wins, anchor_x, bottom, self.hypr.focused_ws);
+        let addrs = p.addresses();
+        self.pane_open_box(Box::new(p), &scr);
+        self.dock.menu_open = true;
+        if let Some(d) = &mut self.dock_surf {
+            d.dirty = true;
+        }
+        if let Some(tx) = self.tx.clone() {
+            crate::wincap::capture(addrs, crate::winpick::THUMB_W, crate::winpick::THUMB_H, tx);
         }
     }
 
@@ -2369,6 +2424,7 @@ impl App {
             Msg::IdleCfg => "IdleCfg",
             Msg::Polkit(..) => "Polkit",
             Msg::Shot(..) => "Shot",
+            Msg::WinThumb(..) => "WinThumb",
         };
         DRAWS.with(|d| *d.borrow_mut().entry(k).or_insert(0) += 1);
         match m {
@@ -2421,6 +2477,13 @@ impl App {
             Msg::Lock => self.idle.lock(None),
             Msg::Polkit(ev) => self.on_polkit(ev),
             Msg::Shot(f) => self.thumb_show(f),
+            Msg::WinThumb(a, pm) => {
+                if let Some(p) = self.pane.as_mut() {
+                    if p.p.as_winpick().map(|w| w.thumb(a, pm)).unwrap_or(false) {
+                        p.dirty = true;
+                    }
+                }
+            }
             Msg::IdleCfg => {
                 if self.idle.changed() {
                     if let Some(s) = self.seat.clone() {
