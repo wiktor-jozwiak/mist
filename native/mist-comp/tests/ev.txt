@@ -1,0 +1,16 @@
+mistsnap>>snapped,0x5a0010,HDMI-A-1,0,0,0.5,1
+mistsnap>>snapped,0x5a0010,HDMI-A-1,0,0,0.5,0.5
+mistsnap>>snapped,0x5a0010,HDMI-A-1,0,0,0.5,1
+mistsnap>>maxhover,0x5a0010,303,118
+activewindow>>kitty,zsh
+activewindowv2>>5a0010
+windowtitlev2>>5a0010,…/native/mist-comp/tests
+mistsnap>>maxleave,0x5a0010
+activewindow>>kitty,…/native/mist-comp/tests
+activewindowv2>>5a0010
+mistdrag>>begin,0x5a0010,244,38,793,576
+mistdrag>>end,650,60
+windowtitlev2>>5a0010,wiktor@cachyos-x8664:~/.config/quickshell/mist/native/mist-comp/tests
+activewindow>>kitty,wiktor@cachyos-x8664:~/.config/quickshell/mist/native/mist-comp/tests
+activewindowv2>>5a0010
+mistsnap>>snapped,0x5a0010,HDMI-A-1,0.5,0,0.5,0.5

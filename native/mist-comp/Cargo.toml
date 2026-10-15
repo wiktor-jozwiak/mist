@@ -1,0 +1,21 @@
+[package]
+name = "mist-comp"
+version = "0.1.0"
+edition = "2021"
+description = "Mist Wayland compositor (Smithay), replacing Hyprland; started from Smithay's smallvil (MIT)"
+
+[dependencies]
+tracing = "0.1"
+tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
+bitflags = "2.2.1"
+xcursor = "0.3"
+serde_json = "1"
+# title bars: mist-ui's text.rs (SF Pro via swash) on a tiny-skia pixmap
+swash = "0.2"
+tiny-skia = { version = "0.11", default-features = false, features = ["std", "simd"] }
+libc = "0.2"
+
+[dependencies.smithay]
+version = "0.7.0"
+default-features = false
+features = ["xwayland", "backend_winit", "backend_drm", "backend_gbm", "backend_udev", "backend_libinput", "backend_session_libseat", "renderer_gl", "wayland_frontend", "desktop"]

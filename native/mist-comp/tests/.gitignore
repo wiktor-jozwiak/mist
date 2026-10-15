@@ -1,0 +1,13 @@
+# runtime state of the nested test runs
+*.log
+*.pid
+*.png
+*.ppm
+sock
+sig
+blk
+*.out
+child.pid
+*.ppm
+fake.pid
+fonts/

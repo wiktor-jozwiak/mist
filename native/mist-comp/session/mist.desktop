@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Mist
+Comment=Mist shell on its own compositor (mist-comp)
+Exec=/home/wiktor/.config/quickshell/mist/native/mist-comp/session/start-mist
+Type=Application
+DesktopNames=mist

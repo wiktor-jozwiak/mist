@@ -1,0 +1,10 @@
+#!/bin/sh
+# Mist session (TTY / display manager): mist-comp on DRM with XWayland, the shell autostarts from comp.conf.
+# Log: ~/.cache/mist/comp.log. Escape hatch: Ctrl+Alt+BackSpace quits, Ctrl+Alt+F<n> switches VT.
+mkdir -p "$HOME/.cache/mist"
+export XDG_CURRENT_DESKTOP=mist XDG_SESSION_DESKTOP=mist XDG_SESSION_TYPE=wayland
+unset WAYLAND_DISPLAY DISPLAY HYPRLAND_INSTANCE_SIGNATURE
+# the Quickshell shim (mist-shell.service, ~210 MB RSS) has nothing left to do: everything is mist-ui now
+systemctl --user stop mist-shell.service 2>/dev/null
+[ -f "$HOME/.cache/mist/comp.log" ] && mv -f "$HOME/.cache/mist/comp.log" "$HOME/.cache/mist/comp.log.old"
+RUST_LOG=${RUST_LOG:-warn,mist_comp=info} exec "$HOME/.local/bin/mist-comp" --tty >"$HOME/.cache/mist/comp.log" 2>&1
