@@ -39,7 +39,7 @@ use wayland_client::{globals::registry_queue_init, protocol::{wl_output, wl_surf
 
 type Egl = khronos_egl::Instance<khronos_egl::Static>;
 
-const PRIMARY: &str = "DP-3";
+use paths::primary_monitor;
 const FADE_MS: f32 = 600.0;
 // the main monitor's scene is visible: only then is the music measured
 static SHOWN: AtomicBool = AtomicBool::new(true);
@@ -372,7 +372,7 @@ impl App {
         layer.commit();
         self.surfs.push(Surf { kind: Kind::Wall, output: o, name: name.clone(), layer, w: 0, h: 0, egl_win: None, egl_surf: None, last: Instant::now(), dirty: true });
         // the sky must stay above this monitor's wallpaper: surfaces stack in creation order
-        if name == PRIMARY {
+        if name == primary_monitor() {
             self.place_sky(true);
         }
     }
@@ -396,7 +396,7 @@ impl App {
             }
             self.drop_surf(i);
         }
-        let Some(o) = self.outputs.outputs().find(|o| self.outputs.info(o).and_then(|i| i.name.clone()).as_deref() == Some(PRIMARY)) else { return };
+        let Some(o) = self.outputs.outputs().find(|o| self.outputs.info(o).and_then(|i| i.name.clone()).as_deref() == Some(primary_monitor())) else { return };
         let surface = self.compositor.create_surface(&self.qh);
         let layer = self.layer_shell.create_layer_surface(&self.qh, surface, Layer::Background, Some("mist-sky"), Some(&o));
         layer.set_anchor(Anchor::TOP | Anchor::LEFT);
@@ -408,7 +408,7 @@ impl App {
             layer.wl_surface().set_input_region(Some(r.wl_region()));
         }
         layer.commit();
-        self.surfs.push(Surf { kind: Kind::Sky, output: o, name: PRIMARY.into(), layer, w: 0, h: 0, egl_win: None, egl_surf: None, last: Instant::now(), dirty: true });
+        self.surfs.push(Surf { kind: Kind::Sky, output: o, name: primary_monitor().into(), layer, w: 0, h: 0, egl_win: None, egl_surf: None, last: Instant::now(), dirty: true });
     }
 
     fn drop_surf(&mut self, i: usize) {
@@ -508,7 +508,7 @@ impl App {
         }
         match kind {
             Kind::Wall => {
-                let primary = self.surfs[i].name == PRIMARY;
+                let primary = self.surfs[i].name == primary_monitor();
                 self.wall_scene(w, h, primary);
             }
             Kind::Sky => self.sky_scene(w, h),
@@ -683,11 +683,11 @@ impl App {
             self.hidden.insert(m.name.clone(), self.covered(&m.name, m.x + r[0], m.y + r[1], m.w - r[0] - r[2], m.h - r[1] - r[3]));
             self.fs.insert(m.name.clone(), m.fs);
         }
-        self.sky.hidden = match (self.sky.rect, self.mons.iter().find(|m| m.name == PRIMARY)) {
-            (Some((x, y, w, h)), Some(m)) => self.covered(PRIMARY, m.x + x as f64, m.y + y as f64, w as f64, h as f64),
+        self.sky.hidden = match (self.sky.rect, self.mons.iter().find(|m| m.name == primary_monitor())) {
+            (Some((x, y, w, h)), Some(m)) => self.covered(primary_monitor(), m.x + x as f64, m.y + y as f64, w as f64, h as f64),
             _ => false,
         };
-        SHOWN.store(self.animate(PRIMARY) && !*self.hidden.get(PRIMARY).unwrap_or(&false), Ordering::Relaxed);
+        SHOWN.store(self.animate(primary_monitor()) && !*self.hidden.get(primary_monitor()).unwrap_or(&false), Ordering::Relaxed);
     }
 
     // one tick: advance the clocks, draw what is due; returns how long to sleep
@@ -754,7 +754,7 @@ impl App {
             let p = self.preset();
             let (_, _, wind_k) = self.uniforms(1.0, 1.0);
             let speed = p["speed"].as_f64().unwrap_or(1.0) as f32 * presets::tempo(&self.tempo) * wind_k * (1.0 + 0.4 * self.energy);
-            if self.animate(PRIMARY) {
+            if self.animate(primary_monitor()) {
                 self.t += speed as f64 * dt;
             }
             for i in 0..self.surfs.len() {
@@ -827,7 +827,7 @@ impl App {
             if (now_ms() / 60000.0) as i64 != self.sky.model_at {
                 self.sky_model();
             }
-            let fs = *self.fs.get(PRIMARY).unwrap_or(&false);
+            let fs = *self.fs.get(primary_monitor()).unwrap_or(&false);
             let sdt = self.sky.last.elapsed().as_secs_f64().min(0.25);
             if !fs || self.surfs[i].dirty {
                 let due = if self.sky.hidden { 0.2 } else { 1.0 / 30.0 };

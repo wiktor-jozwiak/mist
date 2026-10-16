@@ -51,3 +51,27 @@ pub fn wallpaper_dir() -> String {
         format!("{}/{sub}", pictures_dir())
     })
 }
+
+// the main monitor (dock, island, desktop, the weather sky): $MIST_PRIMARY, else "primary" in
+// ~/.config/mist/settings.json, else Hyprland's first monitor. Asked once per process.
+#[allow(dead_code)]
+pub fn primary_monitor() -> &'static str {
+    static P: OnceLock<String> = OnceLock::new();
+    P.get_or_init(|| {
+        // the string value of the first "key" in a JSON text (no serde here: mist-comp shares this file)
+        let field = |s: &str, key: &str| -> Option<String> {
+            let r = &s[s.find(&format!("\"{key}\""))? + key.len() + 2..];
+            let r = &r[r.find('"')? + 1..];
+            Some(r[..r.find('"')?].to_string())
+        };
+        if let Some(p) = std::env::var("MIST_PRIMARY").ok().filter(|p| !p.is_empty()) {
+            return p;
+        }
+        let home = std::env::var("HOME").unwrap_or_default();
+        let cfg = std::env::var("XDG_CONFIG_HOME").ok().filter(|d| !d.is_empty()).unwrap_or_else(|| format!("{home}/.config"));
+        if let Some(p) = std::fs::read_to_string(format!("{cfg}/mist/settings.json")).ok().and_then(|s| field(&s, "primary")).filter(|p| !p.is_empty()) {
+            return p;
+        }
+        std::process::Command::new("hyprctl").args(["monitors", "-j"]).output().ok().and_then(|o| field(&String::from_utf8_lossy(&o.stdout), "name")).unwrap_or_default()
+    })
+}

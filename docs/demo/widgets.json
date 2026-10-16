@@ -1,4 +1,12 @@
 {
+  "order": [
+    "garmin",
+    "weather",
+    "running"
+  ],
+  "desk": {
+    "cards": 3
+  },
   "garmin": {
     "vitals": [
       "sleep",

@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 use tiny_skia::{Pixmap, PixmapPaint, Transform};
 use wayland_client::{globals::registry_queue_init, protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_shm, wl_surface}, Connection, QueueHandle};
 
-const PRIMARY: &str = "DP-3";
+use crate::paths::primary_monitor;
 
 // ------------------------------------------------------------------ PAM
 mod pam {
@@ -434,7 +434,7 @@ impl L {
         if let Some((_, pm)) = &s.clock {
             c.pm.draw_pixmap(0, (h as f32 * 0.075).round() as i32 - 60, pm.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
         }
-        if s.name == PRIMARY || self.surfs.len() == 1 {
+        if s.name == primary_monitor() || self.surfs.len() == 1 {
             self.who(&mut c, w as f32, h as f32);
         }
         let Ok((buf, data)) = self.pool.create_buffer(w as i32, h as i32, w as i32 * 4, wl_shm::Format::Argb8888) else { return };
@@ -724,7 +724,7 @@ pub fn run(args: &[String]) -> i32 {
         if anim || blink_due || l.surfs.iter().any(|s| s.clock.as_ref().map(|c| c.0 != crate::data::now() / 60).unwrap_or(false)) {
             let one = l.surfs_len_one();
             for s in &mut l.surfs {
-                if anim || s.name == PRIMARY || one {
+                if anim || s.name == primary_monitor() || one {
                     s.dirty = true;
                 }
             }

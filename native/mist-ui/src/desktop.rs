@@ -292,8 +292,9 @@ pub fn groups(card: &str) -> Vec<Group> {
 }
 fn defaults() -> Value {
     json!({
-        "order": ["garmin", "weather", "running"],
-        "desk": { "cards": 3, "clock": "big", "date": "show", "sun": "show", "glass": "normal" },
+        // a new install shows only the weather: Garmin and running need their integrations (docs/guides)
+        "order": ["weather", "garmin", "running"],
+        "desk": { "cards": 1, "clock": "big", "date": "show", "sun": "show", "glass": "normal" },
         "garmin": { "hero": "ready", "vitals": ["sleep", "hrv", "rhr", "stress"], "foot": "insight" },
         "weather": { "hero": "temp", "metric": "temp", "hours": 24, "days": "show", "insights": ["rain", "run", "wear", "wind", "light", "tomorrow"] },
         "running": { "hero": "race", "show": ["strip", "workout", "p5"], "foot": "last" }

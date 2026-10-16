@@ -171,7 +171,7 @@ impl Wall {
                 continue;
             }
             s.drawn = self.image.clone();
-            let (tx, path, name, w, h, vig) = (self.tx.clone(), self.image.clone(), s.name.clone(), s.w, s.h, s.name == crate::app::PRIMARY);
+            let (tx, path, name, w, h, vig) = (self.tx.clone(), self.image.clone(), s.name.clone(), s.w, s.h, s.name == crate::paths::primary_monitor());
             self.pending += 1;
             let _ = std::thread::Builder::new().name("wall".into()).spawn(move || {
                 let px = render(&path, w, h, vig);

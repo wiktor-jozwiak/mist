@@ -36,7 +36,7 @@ use wayland_protocols::wp::cursor_shape::v1::client::{wp_cursor_shape_device_v1,
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 
 const FADE: f32 = 120.0; // ms, BarItem opacity Behaviors
-pub const PRIMARY: &str = "DP-3";
+pub use crate::paths::primary_monitor;
 
 pub struct BarSurf {
     output: wl_output::WlOutput,
@@ -272,7 +272,7 @@ impl App {
             layer.commit();
             self.bars.push(BarSurf { output: output.clone(), name: name.clone(), layer, w: 0, configured: false, dirty: true, items: Vec::new(), hover: None, pressed: None, stats_open: false, left_end: 0.0, canvas: Canvas::new(1, 1) });
         }
-        let island_here = if self.test { name == "HDMI-A-1" } else { name == PRIMARY };
+        let island_here = if self.test { name == "HDMI-A-1" } else { name == primary_monitor() };
         if island_here && self.island_surf.is_none() && std::env::var("MIST_UI_NO_ISLAND").is_err() {
             let surface = self.compositor.create_surface(&self.qh);
             let layer = self.layer_shell.create_layer_surface(&self.qh, surface, Layer::Overlay, Some("mist-island"), Some(&output));
@@ -283,7 +283,7 @@ impl App {
             layer.commit();
             self.island_surf = Some(IslandSurf { layer, configured: false, input: None, focus_kbd: false, canvas: Canvas::new(crate::island::WIN_W, crate::island::WIN_H) });
         }
-        if name == PRIMARY && !self.test && self.desk.stage.is_none() && std::env::var("MIST_UI_NO_DESK").is_err() {
+        if name == primary_monitor() && !self.test && self.desk.stage.is_none() && std::env::var("MIST_UI_NO_DESK").is_err() {
             self.desk.out_w = ow;
             let h = crate::desktop::stage_h(&mut self.text) + 60.0;
             let surface = self.compositor.create_surface(&self.qh);
@@ -318,7 +318,7 @@ impl App {
             self.desk.card = Some(layer);
             self.desk_relayout();
         }
-        let dock_here = if self.test { name == "HDMI-A-1" } else { name == PRIMARY };
+        let dock_here = if self.test { name == "HDMI-A-1" } else { name == primary_monitor() };
         if dock_here && self.dock_surf.is_none() && std::env::var("MIST_UI_NO_DOCK").is_err() {
             let surface = self.compositor.create_surface(&self.qh);
             let layer = self.layer_shell.create_layer_surface(&self.qh, surface, Layer::Overlay, Some("mist-dock"), Some(&output));
@@ -335,7 +335,7 @@ impl App {
     // the per-monitor view of the shared bar state
     fn bar_state(&self, b: &BarSurf) -> BarState {
         let mut s = self.st.clone();
-        s.primary = b.name == PRIMARY;
+        s.primary = b.name == primary_monitor();
         let mon = self.hypr.monitors.iter().find(|m| m.1 == b.name);
         let bare = mon.map(|m| self.hypr.ws_windows.iter().find(|w| w.0 == m.2).map(|w| w.1 == 0).unwrap_or(true)).unwrap_or(true);
         let focused_here = match (&self.hypr.active, mon) {
@@ -355,7 +355,7 @@ impl App {
         s
     }
     fn primary_bare(&self) -> bool {
-        let mon = self.hypr.monitors.iter().find(|m| m.1 == PRIMARY);
+        let mon = self.hypr.monitors.iter().find(|m| m.1 == primary_monitor());
         mon.map(|m| self.hypr.ws_windows.iter().find(|w| w.0 == m.2).map(|w| w.1 == 0).unwrap_or(true)).unwrap_or(true)
     }
 
@@ -555,7 +555,7 @@ impl App {
 
     // ---------------------------------------------------------------- popups (Ui.qml)
     fn focused_screen(&self) -> String {
-        self.hypr.monitors.iter().find(|m| m.2 == self.hypr.focused_ws).map(|m| m.1.clone()).unwrap_or(PRIMARY.into())
+        self.hypr.monitors.iter().find(|m| m.2 == self.hypr.focused_ws).map(|m| m.1.clone()).unwrap_or(primary_monitor().into())
     }
     // which popup is open (native first, else Quickshell's)
     pub fn popup_name(&self) -> String {
@@ -653,7 +653,7 @@ impl App {
         }
         // Start stops above the dock (shown while it is open)
         let start = p.name() == "start";
-        if start && sname == PRIMARY {
+        if start && sname == primary_monitor() {
             layer.set_margin(0, 0, 88, 0);
         }
         layer.commit();
@@ -1086,7 +1086,7 @@ impl App {
     fn polkit_open(&mut self, b: crate::polkit::Begin) {
         let Some(tx) = self.tx.clone() else { return };
         // the focused monitor
-        let name = self.hypr.monitors.iter().find(|m| m.2 == self.hypr.focused_ws).map(|m| m.1.clone()).unwrap_or(PRIMARY.into());
+        let name = self.hypr.monitors.iter().find(|m| m.2 == self.hypr.focused_ws).map(|m| m.1.clone()).unwrap_or(primary_monitor().into());
         let outs = self.outs();
         let Some((o, _)) = outs.iter().find(|(_, n)| *n == name).or(outs.first()) else { return };
         let surface = self.compositor.create_surface(&self.qh);
@@ -1218,7 +1218,7 @@ impl App {
             // right click on a card or the clock: Dostosuj pulpit, on that card's tab
             PointerEventKind::Release { button, .. } if button == BTN_RIGHT => {
                 let k = if card { "weather".to_string() } else { self.desk.zone() };
-                self.pane_open_box(Box::new(crate::desksettings::DeskSettings::new(&k)), PRIMARY);
+                self.pane_open_box(Box::new(crate::desksettings::DeskSettings::new(&k)), primary_monitor());
             }
             PointerEventKind::Axis { vertical, .. } if card => {
                 let dy = if vertical.discrete != 0 { vertical.discrete as f64 } else { vertical.absolute };
@@ -1485,7 +1485,7 @@ impl App {
             return;
         }
         if mode == "idle" || mode == "glance" {
-            self.ui_toggle("calendar", PRIMARY);
+            self.ui_toggle("calendar", primary_monitor());
         } else if mode != "player" && mode != "call" {
             if let Some(e) = self.island.ev.clone() {
                 self.island_act(&e);
@@ -1514,7 +1514,7 @@ impl App {
             }
             Act::Focus(a) => focus_win(&format!("0x{}", a.trim_start_matches("0x"))),
             Act::Open(p) => spawn(&["xdg-open", p]),
-            Act::Popup(p) => self.ui_toggle(p, PRIMARY),
+            Act::Popup(p) => self.ui_toggle(p, primary_monitor()),
             Act::Phone(f) => self.phone.send(f, None),
         }
     }
@@ -1632,11 +1632,11 @@ impl App {
                 self.pane_close();
                 if a(0) == "true" {
                     let mut d = crate::snap::Drag::new("", None, crate::snap::monitors(), 960.0, 540.0);
-                    if let Some(i) = d.mons.iter().position(|m| m.name == PRIMARY) {
+                    if let Some(i) = d.mons.iter().position(|m| m.name == primary_monitor()) {
                         d.scr = i;
                     }
                     d.set_preview(true, r.func == "edge");
-                    self.pane_open_box(Box::new(crate::snap::DragPane(d)), PRIMARY);
+                    self.pane_open_box(Box::new(crate::snap::DragPane(d)), primary_monitor());
                 }
                 String::new()
             }
@@ -1856,7 +1856,7 @@ impl App {
     fn dock_rebuild(&mut self) {
         self.dock.rebuild(&self.hypr, &self.apps);
         // the wallpaper gallery covers the main monitor: the dock slides away (it is Overlay, above the preview)
-        let gallery = self.pane.as_ref().map(|p| p.p.name() == "wallpaper" && p.screen == PRIMARY).unwrap_or(false);
+        let gallery = self.pane.as_ref().map(|p| p.p.name() == "wallpaper" && p.screen == primary_monitor()).unwrap_or(false);
         if gallery {
             self.dock.hovered = false;
         }
@@ -1924,7 +1924,7 @@ impl App {
     fn dock_click(&mut self, i: usize, button: u32) {
         let slot = self.dock.slots[i].clone();
         match slot {
-            Slot::Start => self.ui_toggle("start", PRIMARY),
+            Slot::Start => self.ui_toggle("start", primary_monitor()),
             Slot::Trash => spawn(&[&format!("{}/.local/bin/mist-files", home()), "trash:///"]),
             Slot::Sep => {}
             Slot::App(key) => {
@@ -2467,7 +2467,7 @@ impl App {
                 self.hypr = h;
                 self.dock_rebuild();
                 // only real fullscreen (mode 2) on the island's monitor hides the idle pill
-                let mon = self.hypr.monitors.iter().find(|m| m.1 == PRIMARY).map(|m| m.2);
+                let mon = self.hypr.monitors.iter().find(|m| m.1 == primary_monitor()).map(|m| m.2);
                 self.island.fullscreen = self.hypr.clients.iter().any(|c| Some(c.ws_id) == mon && c.fullscreen == 2);
             }
             Msg::Net(n) => self.st.net = n,
