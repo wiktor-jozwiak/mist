@@ -111,21 +111,25 @@ DDC/CI), `kdeconnect` / `android-tools` (Telefon), `wf-recorder` (Bildschirmaufn
 `~/.local/share/fonts/SF-Pro/`). Apple lizenziert sie nur für eigene Plattformen, Mist liefert sie nicht mit.
 Ohne sie nutzt Mist Inter Variable, dann Noto Sans.
 
+**Arch (Paket im AUR-Stil):** [packaging/arch/PKGBUILD](../../packaging/arch/PKGBUILD) baut `mist-shell-git`
+(Programme in `/usr/bin`, Dateien in `/usr/share/mist`).
+
 ```bash
-git clone <dieses Repo> ~/.config/quickshell/mist
+git clone https://github.com/wiktor-jozwiak/mist && cd mist/packaging/arch && makepkg -si
+```
+
+**Aus einem Klon** (beliebiger Ort; `native/install.sh` verlinkt `~/.local/share/mist/shell` dorthin):
+
+```bash
+git clone https://github.com/wiktor-jozwiak/mist ~/src/mist
 ```
 
 ```bash
-~/.config/quickshell/mist/scripts/mistd/install.sh
+~/src/mist/scripts/mistd/install.sh && ~/src/mist/native/install.sh
 ```
 
-```bash
-~/.config/quickshell/mist/native/install.sh
-```
-
-Der Klon muss in `~/.config/quickshell/mist` liegen (Pfade sind noch fest, siehe
-[docs/PUBLISHING.md](../PUBLISHING.md)). `native/install.sh` installiert `mist-ui-bin`, `mist-wall-bin`,
-`mist-comp` und beim ersten Mal den Wächter `~/.local/bin/mist-ui` nach `~/.local/bin`.
+`native/install.sh` installiert `mist-ui-bin`, `mist-wall-bin`, `mist-comp` und beim ersten Mal den Wächter
+`mist-ui` nach `~/.local/bin`. Releases mit Tag enthalten fertige Programme.
 
 Danach [examples/hyprland/mist.lua](../../examples/hyprland/mist.lua) in die Hyprland-Konfiguration
 aufnehmen (Autostart, Tastenkürzel, Blur-Regeln) und andere Leisten, Benachrichtigungsdienste und

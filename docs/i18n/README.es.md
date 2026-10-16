@@ -111,21 +111,25 @@ solo fondos en vivo), `noto-fonts`, `noto-fonts-emoji`. Opcional: `ddcutil` (bri
 que Apple licencia solo para sus plataformas y Mist no incluye. Sin ella Mist usa Inter Variable y luego
 Noto Sans.
 
+**Arch (paquete estilo AUR):** [packaging/arch/PKGBUILD](../../packaging/arch/PKGBUILD) construye `mist-shell-git`
+(binarios en `/usr/bin`, archivos en `/usr/share/mist`).
+
 ```bash
-git clone <este repositorio> ~/.config/quickshell/mist
+git clone https://github.com/wiktor-jozwiak/mist && cd mist/packaging/arch && makepkg -si
+```
+
+**Desde un clon** (en cualquier lugar; `native/install.sh` enlaza `~/.local/share/mist/shell` a él):
+
+```bash
+git clone https://github.com/wiktor-jozwiak/mist ~/src/mist
 ```
 
 ```bash
-~/.config/quickshell/mist/scripts/mistd/install.sh
+~/src/mist/scripts/mistd/install.sh && ~/src/mist/native/install.sh
 ```
 
-```bash
-~/.config/quickshell/mist/native/install.sh
-```
-
-El clon debe estar en `~/.config/quickshell/mist` (las rutas aún son fijas, ver
-[docs/PUBLISHING.md](../PUBLISHING.md)). `native/install.sh` instala en `~/.local/bin` `mist-ui-bin`,
-`mist-wall-bin`, `mist-comp` y, la primera vez, el guardián `~/.local/bin/mist-ui`.
+`native/install.sh` instala en `~/.local/bin` `mist-ui-bin`, `mist-wall-bin`, `mist-comp` y, la primera vez,
+el guardián `mist-ui`. Las versiones etiquetadas traen binarios compilados.
 
 Después añade [examples/hyprland/mist.lua](../../examples/hyprland/mist.lua) a la configuración de Hyprland
 (arranque, atajos, reglas de desenfoque) y quita otras barras, demonios de notificaciones y agentes polkit.

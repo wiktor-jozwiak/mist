@@ -1,0 +1,60 @@
+name: Release
+
+# git tag v0.1.0 && git push origin v0.1.0: builds for any x86-64 on Arch and attaches a tarball laid out like
+# the package (bin/ + share/mist/), with install instructions in the release notes
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: System packages
+        run: |
+          pacman -Syu --noconfirm --needed base-devel git rust pkgconf libxkbcommon pam wayland mesa \
+            libinput seatd libdrm systemd-libs github-cli
+      - uses: actions/checkout@v4
+      - name: Build
+        env:
+          RUSTFLAGS: ""
+          CARGO_BUILD_RUSTFLAGS: ""
+        run: |
+          (cd native && cargo build --release --locked)
+          (cd scripts/mistd && cargo build --release --locked)
+      - name: Tarball
+        run: |
+          d=mist-${GITHUB_REF_NAME}-x86_64
+          mkdir -p $d/bin $d/share/mist/native $d/share/mist/scripts $d/share/mist/shaders $d/share/mist/examples
+          install -m755 native/target/release/mist-ui $d/bin/mist-ui-bin
+          install -m755 native/target/release/mist-wall $d/bin/mist-wall-bin
+          install -m755 native/target/release/mist-comp $d/bin/mist-comp
+          install -m755 scripts/mistd/target/release/mistd $d/bin/mistd
+          install -m755 native/dist/mist-ui $d/bin/mist-ui
+          cp -r native/assets $d/share/mist/native/
+          install -m755 scripts/*.sh $d/share/mist/scripts/
+          cp shaders/*.glsl $d/share/mist/shaders/ && cp -r shaders/glsl $d/share/mist/shaders/
+          cp -r examples/hyprland $d/share/mist/examples/
+          cp LICENSE NOTICE.md README.md $d/
+          tar czf $d.tar.gz $d
+          sha256sum $d.tar.gz > $d.tar.gz.sha256
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          d=mist-${GITHUB_REF_NAME}-x86_64
+          cat > notes.md <<EOF
+          Binaries for any x86-64 (Arch, Hyprland 0.55+). Unpack, then:
+
+              cp $d/bin/* ~/.local/bin/
+              mkdir -p ~/.local/share/mist && cp -r $d/share/mist ~/.local/share/mist/shell
+
+          and load \`~/.local/share/mist/shell/examples/hyprland/mist.lua\` from your Hyprland config.
+          Changes: see CHANGELOG.md.
+          EOF
+          gh release create "$GITHUB_REF_NAME" $d.tar.gz $d.tar.gz.sha256 --title "Mist $GITHUB_REF_NAME" --notes-file notes.md

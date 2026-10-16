@@ -110,21 +110,25 @@ Mesa の GPU。コードを読む前提でお使いください。
 デザインされています。Apple は自社プラットフォームでの使用のみを許諾しており、Mist には含まれません。
 ない場合は Inter Variable、次に Noto Sans を使います。
 
+**Arch（AUR 形式のパッケージ）：**[packaging/arch/PKGBUILD](../../packaging/arch/PKGBUILD) で `mist-shell-git` をビルド
+（プログラムは `/usr/bin`、ファイルは `/usr/share/mist`）。
+
 ```bash
-git clone <このリポジトリ> ~/.config/quickshell/mist
+git clone https://github.com/wiktor-jozwiak/mist && cd mist/packaging/arch && makepkg -si
+```
+
+**クローンから**（場所は自由。`native/install.sh` が `~/.local/share/mist/shell` をリンクします）：
+
+```bash
+git clone https://github.com/wiktor-jozwiak/mist ~/src/mist
 ```
 
 ```bash
-~/.config/quickshell/mist/scripts/mistd/install.sh
+~/src/mist/scripts/mistd/install.sh && ~/src/mist/native/install.sh
 ```
 
-```bash
-~/.config/quickshell/mist/native/install.sh
-```
-
-クローン先は `~/.config/quickshell/mist` である必要があります（パスはまだ固定です。
-[docs/PUBLISHING.md](../PUBLISHING.md) を参照）。`native/install.sh` は `mist-ui-bin`、`mist-wall-bin`、
-`mist-comp` を `~/.local/bin` に、初回はガードスクリプト `~/.local/bin/mist-ui` もインストールします。
+`native/install.sh` は `mist-ui-bin`、`mist-wall-bin`、`mist-comp` と、初回はガードスクリプト `mist-ui` を
+`~/.local/bin` にインストールします。タグ付きリリースにはビルド済みのプログラムがあります。
 
 次に [examples/hyprland/mist.lua](../../examples/hyprland/mist.lua) を Hyprland の設定に追加し（自動起動、
 キー割り当て、ぼかしルール）、他のバー、通知デーモン、polkit エージェントを外してください。

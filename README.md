@@ -108,29 +108,32 @@ NVIDIA or Mesa GPU. Expect to read code.
 for `mist-comp` also `libinput`, `libseat`, `libdrm`, `mesa` (gbm), `systemd-libs` (udev).
 
 **Runtime:** `hyprland`, `pipewire` + `pipewire-pulse` (`pactl`, `pw-play`, `parec`), `wireplumber` (`wpctl`),
-`networkmanager` (`nmcli`), `wl-clipboard`, `grim`, `slurp`, `polkit`, `qt6-shadertools` (`qsb`, live
-wallpapers only), `noto-fonts`, `noto-fonts-emoji`. Optional: `ddcutil` (brightness over DDC/CI),
+`networkmanager` (`nmcli`), `wl-clipboard`, `grim`, `slurp`, `polkit`, `noto-fonts`, `noto-fonts-emoji`. Optional: `ddcutil` (brightness over DDC/CI),
 `kdeconnect` / `android-tools` (phone), `wf-recorder` (screen recording).
 
 **Font:** the UI is designed for SF Pro (variable `SF-Pro.ttf` in `~/.local/share/fonts/SF-Pro/`), which
 Apple licenses for its platforms only and Mist does not ship. Without it Mist uses Inter Variable, then
 Noto Sans.
 
+**Arch (AUR-style package):** [packaging/arch/PKGBUILD](packaging/arch/PKGBUILD) builds `mist-shell-git`
+(binaries in `/usr/bin`, files in `/usr/share/mist`).
+
 ```bash
-git clone <this repo> ~/.config/quickshell/mist
+git clone https://github.com/wiktor-jozwiak/mist && cd mist/packaging/arch && makepkg -si
+```
+
+**From a checkout** (anywhere; `native/install.sh` links `~/.local/share/mist/shell` to it):
+
+```bash
+git clone https://github.com/wiktor-jozwiak/mist ~/src/mist
 ```
 
 ```bash
-~/.config/quickshell/mist/scripts/mistd/install.sh
+~/src/mist/scripts/mistd/install.sh && ~/src/mist/native/install.sh
 ```
 
-```bash
-~/.config/quickshell/mist/native/install.sh
-```
-
-The clone must live in `~/.config/quickshell/mist` (paths are still fixed there, see
-[docs/PUBLISHING.md](docs/PUBLISHING.md)). `native/install.sh` installs `mist-ui-bin`, `mist-wall-bin`,
-`mist-comp` and, on the first run, the guard `~/.local/bin/mist-ui` into `~/.local/bin`.
+`native/install.sh` installs `mist-ui-bin`, `mist-wall-bin`, `mist-comp` and, on the first run, the guard
+`mist-ui` into `~/.local/bin`. Tagged releases also carry prebuilt binaries.
 
 Then add [examples/hyprland/mist.lua](examples/hyprland/mist.lua) to your Hyprland config (autostart,
 key bindings, blur rules) and remove other bars, notification daemons and polkit agents.

@@ -107,21 +107,25 @@ Mist 是作者个人的日常桌面：Arch / CachyOS，Hyprland 0.55+（Lua 配�
 **字体：** 界面按 SF Pro 设计（可变字体 `SF-Pro.ttf`，放在 `~/.local/share/fonts/SF-Pro/`）。Apple
 仅授权在其自家平台使用，Mist 不附带。没有它时 Mist 使用 Inter Variable，其次 Noto Sans。
 
+**Arch（AUR 风格软件包）：**[packaging/arch/PKGBUILD](../../packaging/arch/PKGBUILD) 构建 `mist-shell-git`
+（程序在 `/usr/bin`，文件在 `/usr/share/mist`）。
+
 ```bash
-git clone <本仓库> ~/.config/quickshell/mist
+git clone https://github.com/wiktor-jozwiak/mist && cd mist/packaging/arch && makepkg -si
+```
+
+**从克隆目录安装**（位置任意；`native/install.sh` 会把 `~/.local/share/mist/shell` 链接到它）：
+
+```bash
+git clone https://github.com/wiktor-jozwiak/mist ~/src/mist
 ```
 
 ```bash
-~/.config/quickshell/mist/scripts/mistd/install.sh
+~/src/mist/scripts/mistd/install.sh && ~/src/mist/native/install.sh
 ```
 
-```bash
-~/.config/quickshell/mist/native/install.sh
-```
-
-克隆目录必须是 `~/.config/quickshell/mist`（路径目前仍是固定的，见
-[docs/PUBLISHING.md](../PUBLISHING.md)）。`native/install.sh` 会把 `mist-ui-bin`、`mist-wall-bin`、
-`mist-comp` 安装到 `~/.local/bin`，首次运行时还会安装守护脚本 `~/.local/bin/mist-ui`。
+`native/install.sh` 会把 `mist-ui-bin`、`mist-wall-bin`、`mist-comp` 以及（首次运行时）守护脚本 `mist-ui`
+安装到 `~/.local/bin`。带标签的发布附带预编译程序。
 
 然后把 [examples/hyprland/mist.lua](../../examples/hyprland/mist.lua) 加入 Hyprland 配置（自启动、
 快捷键、模糊规则），并移除其他状态栏、通知守护进程和 polkit 代理。
