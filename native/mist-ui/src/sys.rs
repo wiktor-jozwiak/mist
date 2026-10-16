@@ -150,9 +150,46 @@ fn hypr_state() -> Hypr {
     }
     h
 }
+// windowtitlev2 data "ADDR,TITLE": the new title into the state; false when it changed nothing we know
+fn patch_title(h: &mut Hypr, data: &str) -> bool {
+    let (addr, title) = data.split_once(',').unwrap_or((data, ""));
+    let addr = format!("0x{}", addr.trim_start_matches("0x"));
+    let Some(c) = h.clients.iter_mut().find(|c| c.address == addr) else { return false };
+    if c.title == title {
+        return false;
+    }
+    c.title = title.into();
+    if c.focus == 0 {
+        if let Some(a) = &mut h.active {
+            a.title = title.into();
+        }
+    }
+    true
+}
+
+#[cfg(test)]
+mod title_tests {
+    use super::*;
+    #[test]
+    fn a_title_change_patches_the_client_and_the_active_window() {
+        let mut h = Hypr::default();
+        h.clients.push(Client { address: "0x55aa".into(), title: "old".into(), focus: 0, ..Default::default() });
+        h.clients.push(Client { address: "0x66bb".into(), title: "other".into(), focus: 1, ..Default::default() });
+        h.active = Some(Win { title: "old".into(), ..Default::default() });
+        assert!(patch_title(&mut h, "55aa,new, with a comma"));
+        assert_eq!(h.clients[0].title, "new, with a comma");
+        assert_eq!(h.active.as_ref().unwrap().title, "new, with a comma");
+        assert!(!patch_title(&mut h, "55aa,new, with a comma"), "same title again: nothing to send");
+        assert!(patch_title(&mut h, "66bb,x"));
+        assert_eq!(h.active.as_ref().unwrap().title, "new, with a comma", "not the active window");
+        assert!(!patch_title(&mut h, "77cc,unknown"));
+    }
+}
+
 pub fn hyprland(tx: Sender<Msg>) {
     spawn("hypr", move || loop {
-        let _ = tx.send(Msg::Hypr(hypr_state()));
+        let mut last = hypr_state();
+        let _ = tx.send(Msg::Hypr(last.clone()));
         let Ok(s) = UnixStream::connect(format!("{}/.socket2.sock", hypr_dir())) else {
             std::thread::sleep(Duration::from_secs(2));
             continue;
@@ -179,12 +216,20 @@ pub fn hyprland(tx: Sender<Msg>) {
                     }
                 }
             }
-            if matches!(ev, "activewindow" | "windowtitlev2" | "minimized" | "changefloatingmode" | "urgent" | "fullscreen" | "workspacev2" | "focusedmonv2" | "openwindow" | "closewindow" | "movewindowv2"
+            // a title changed (browsers and terminals do it often): patch the last state instead of 5 requests
+            if ev == "windowtitlev2" {
+                if patch_title(&mut last, line.trim_end().splitn(2, ">>").nth(1).unwrap_or("")) {
+                    let _ = tx.send(Msg::Hypr(last.clone()));
+                }
+                continue;
+            }
+            if matches!(ev, "activewindow" | "minimized" | "changefloatingmode" | "urgent" | "fullscreen" | "workspacev2" | "focusedmonv2" | "openwindow" | "closewindow" | "movewindowv2"
                 | "createworkspacev2" | "destroyworkspacev2" | "moveworkspacev2" | "monitoraddedv2" | "monitorremovedv2" | "activespecialv2")
             {
                 // coalesce bursts (a workspace switch sends several events)
                 std::thread::sleep(Duration::from_millis(15));
-                let _ = tx.send(Msg::Hypr(hypr_state()));
+                last = hypr_state();
+                let _ = tx.send(Msg::Hypr(last.clone()));
             }
         }
     });
