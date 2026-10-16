@@ -124,6 +124,12 @@ caveats: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 - **Garmin readiness** and **running**: your own Garmin Connect data through a local InfluxDB. Optional:
   without `influx.json` these cards are not shown. Setup: [docs/guides/garmin.md](docs/guides/garmin.md) ([Polski](docs/guides/garmin.pl.md)).
 
+### Zen Browser theme
+
+`integrations/zen/` restyles [Zen Browser](https://zen-browser.app) as a Mist window: glass sidebar over the
+blurred wallpaper, Mist menus, popups and panels, a Spotlight-style address bar, SF Pro / Inter fonts. Setup:
+[docs/guides/zen.md](docs/guides/zen.md) ([Polski](docs/guides/zen.pl.md)).
+
 ### Languages and monitors
 
 The interface speaks **Polski, English, Deutsch and Español**. Pick one in *Customise desktop* (right click on

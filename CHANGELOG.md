@@ -14,6 +14,9 @@ nothing is released yet.
   Chosen in *Dostosuj pulpit* → Wygląd → Język, saved in `~/.config/mist/settings.json`, `MIST_LANG`
   overrides; *auto* follows `$LANG`, English fallback. Applied when text is shaped, so cached strings cost
   nothing; Polish renders are pixel-identical to before.
+- Zen Browser theme (`integrations/zen/`): Mist glass sidebar, menus, popups, panels, dialogs, urlbar and
+  about: pages, SF Pro / Inter fonts, prefs in `user.js`, `install.sh` per profile; guide in
+  `docs/guides/zen.md` (Polish version).
 - Garmin setup guide (`docs/guides/garmin.md`, Polish version) and a compose file for garmin-grafana
   (`integrations/garmin/`).
 - Benchmarks table in the README; demo data (`docs/demo`) and `docs/img/hero.sh` for the README

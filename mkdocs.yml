@@ -19,6 +19,7 @@ markdown_extensions: [tables, admonition, toc]
 nav:
   - Home: index.md
   - Garmin cards: guides/garmin.md
+  - Zen Browser theme: guides/zen.md
   - Configuration: CONFIG.md
   - Benchmarks: BENCHMARKS.md
   - Publishing checklist: PUBLISHING.md
@@ -29,3 +30,4 @@ nav:
       - 简体中文: i18n/README.zh-CN.md
       - 日本語: i18n/README.ja.md
       - Garmin (Polski): guides/garmin.pl.md
+      - Zen Browser (Polski): guides/zen.pl.md
