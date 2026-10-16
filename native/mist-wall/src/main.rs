@@ -43,6 +43,14 @@ use paths::primary_monitor;
 const FADE_MS: f32 = 600.0;
 // the main monitor's scene is visible: only then is the music measured
 static SHOWN: AtomicBool = AtomicBool::new(true);
+// a shader compiled: malloc_trim at this time (ms since the epoch, 0 = none)
+static TRIM_AT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+// a shader compiled without the driver's cache at this time (0 = all cached)
+static COLD_AT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+// software GL (llvmpipe: NVIDIA's kernel module older than its libraries until a reboot, no GPU): the live
+// scene at half size and fewer frames (llvmpipe, 30 fps at full size: 457 % CPU); MIST_WALL_SOFT=1 forces it
+static SOFT: AtomicBool = AtomicBool::new(false);
+
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 enum Kind {
@@ -190,6 +198,7 @@ struct App {
     photo_rx: std::sync::mpsc::Receiver<(String, i32, i32, Vec<u8>)>,
     sky: SkyState,
     target_fb: Option<glow::Framebuffer>, // None = the window; an FBO for --png
+    low: HashMap<(i32, i32), (glow::Framebuffer, glow::Texture)>, // software GL: the live scene at half size
 }
 
 fn home() -> String {
@@ -280,11 +289,22 @@ impl App {
     }
     fn prog(&mut self, name: &str) -> Option<&Prog> {
         if !self.progs.contains_key(name) {
+            let t0 = Instant::now();
             let p = self.compile(name);
             if p.is_none() {
                 eprintln!("mist-wall: shader {name} failed");
             }
             self.progs.insert(name.to_string(), p);
+            // what the driver's compiler leaves on the heap back to the OS once it is done (it may compile while
+            // drawing): ~5 MB of it
+            TRIM_AT.store(now_ms() as u64 + 2000, Ordering::Relaxed);
+            // not from the driver's shader cache (after a driver update, a changed shader): the driver keeps the
+            // compiler's work as long as the process lives (NVIDIA: 88 MB PSS, 35 MB from the cache), so a
+            // restart from the cache follows when nobody sees it (tick)
+            if t0.elapsed() > Duration::from_millis(25) && COLD_AT.load(Ordering::Relaxed) == 0 && !SOFT.load(Ordering::Relaxed) {
+                eprintln!("mist-wall: shader {name} compiled in {} ms (not cached)", t0.elapsed().as_millis());
+                COLD_AT.store(now_ms() as u64, Ordering::Relaxed);
+            }
         }
         self.progs.get(name).and_then(|p| p.as_ref())
     }
@@ -332,6 +352,9 @@ impl App {
                 eprintln!("{}", gl.get_program_info_log(p));
                 return None;
             }
+            // detached first: an attached shader (its source and the compiler's IR) lives as long as the program
+            gl.detach_shader(p, vs);
+            gl.detach_shader(p, fs);
             gl.delete_shader(vs);
             gl.delete_shader(fs);
             let mut loc = HashMap::new();
@@ -541,7 +564,7 @@ impl App {
         match kind {
             Kind::Wall => {
                 let primary = self.surfs[i].name == primary_monitor();
-                self.wall_scene(w, h, primary);
+                self.wall_frame(w, h, primary);
             }
             Kind::Sky => self.sky_scene(w, h),
             Kind::Preview => self.preview_scene(w, h),
@@ -554,6 +577,41 @@ impl App {
         self.surfs[i].last = Instant::now();
         self.surfs[i].dirty = false;
         fps_note(&self.surfs[i].name, kind);
+    }
+
+    fn wall_frame(&mut self, w: i32, h: i32, primary: bool) {
+        if SOFT.load(Ordering::Relaxed) && !self.live.is_empty() {
+            self.wall_scene_low(w, h, primary);
+        } else {
+            self.wall_scene(w, h, primary);
+        }
+    }
+    // software GL: the scene into a half-size texture, stretched (linear) over the window
+    fn wall_scene_low(&mut self, w: i32, h: i32, primary: bool) {
+        let (lw, lh) = ((w + 1) / 2, (h + 1) / 2);
+        let gl = self.gl.as_ref().unwrap();
+        let (fb, _) = *self.low.entry((w, h)).or_insert_with(|| unsafe {
+            let tex = gl.create_texture().unwrap();
+            gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+            gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGBA8 as i32, lw, lh, 0, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(None));
+            let fb = gl.create_framebuffer().unwrap();
+            gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fb));
+            gl.framebuffer_texture_2d(glow::FRAMEBUFFER, glow::COLOR_ATTACHMENT0, glow::TEXTURE_2D, Some(tex), 0);
+            (fb, tex)
+        });
+        unsafe {
+            self.gl().bind_framebuffer(glow::FRAMEBUFFER, Some(fb));
+            self.gl().viewport(0, 0, lw, lh);
+        }
+        self.wall_scene(lw, lh, primary);
+        unsafe {
+            let gl = self.gl();
+            gl.bind_framebuffer(glow::READ_FRAMEBUFFER, Some(fb));
+            gl.bind_framebuffer(glow::DRAW_FRAMEBUFFER, self.target_fb);
+            gl.blit_framebuffer(0, 0, lw, lh, 0, 0, w, h, glow::COLOR_BUFFER_BIT, glow::LINEAR);
+            gl.bind_framebuffer(glow::FRAMEBUFFER, self.target_fb);
+            gl.viewport(0, 0, w, h);
+        }
     }
 
     fn wall_scene(&mut self, w: i32, h: i32, primary: bool) {
@@ -690,7 +748,8 @@ impl App {
 
     fn cur_fps(&self, name: &str) -> f32 {
         // the other monitors at half rate: the eye is on the main one, half the GPU work there
-        if *self.hidden.get(name).unwrap_or(&false) { 5.0 } else if name != primary_monitor() { 15.0 } else { 30.0 }
+        let soft = SOFT.load(Ordering::Relaxed);
+        if *self.hidden.get(name).unwrap_or(&false) { if soft { 1.0 } else { 5.0 } } else if name != primary_monitor() { if soft { 5.0 } else { 15.0 } } else if soft { 10.0 } else { 30.0 }
     }
     fn animate(&self, name: &str) -> bool {
         !self.asleep && !*self.fs.get(name).unwrap_or(&false) && !(self.gallery.0 && self.gallery.1 == name)
@@ -728,10 +787,39 @@ impl App {
     }
 
     // one tick: advance the clocks, draw what is due; returns how long to sleep
+    // shaders compiled without the cache (COLD_AT): the same binary again (same pid, the cache now warm), once
+    // 10 s on and while nobody sees the wallpaper (monitors off, locked, every monitor covered or fullscreen,
+    // the gallery closed), so the surfaces coming back do not flash; once per process chain (MIST_WALL_REEXEC)
+    fn restart_if_cold(&mut self) {
+        let cold = COLD_AT.load(Ordering::Relaxed);
+        if cold == 0 || (now_ms() as u64) < cold + 10_000 || std::env::var_os("MIST_WALL_REEXEC").is_some() || self.gallery.0 {
+            return;
+        }
+        let unseen = |n: &str| *self.hidden.get(n).unwrap_or(&false) || *self.fs.get(n).unwrap_or(&false);
+        let sky_unseen = self.sky.hidden || *self.fs.get(primary_monitor()).unwrap_or(&false) || !self.surfs.iter().any(|s| s.kind == Kind::Sky);
+        if !self.asleep && !(sky_unseen && self.surfs.iter().filter(|s| s.kind == Kind::Wall).all(|s| unseen(&s.name))) {
+            return;
+        }
+        use std::os::unix::process::CommandExt;
+        eprintln!("mist-wall: restarting with the shader cache warm");
+        // its own path (the process keeps its name for pgrep -x), /proc/self/exe if an install replaced the file
+        // meanwhile; the lock file and the Wayland connection are close-on-exec
+        let exe = std::env::current_exe().ok().filter(|p| p.exists()).unwrap_or_else(|| "/proc/self/exe".into());
+        let e = std::process::Command::new(exe).args(std::env::args_os().skip(1)).env("MIST_WALL_REEXEC", "1").exec();
+        eprintln!("mist-wall: restart failed: {e}");
+        COLD_AT.store(0, Ordering::Relaxed);
+    }
+
     fn tick(&mut self) -> Duration {
         let dt = self.t_last.elapsed().as_secs_f64().min(0.25);
         self.t_last = Instant::now();
         let mut next = 1.0f32;
+        let trim = TRIM_AT.load(Ordering::Relaxed);
+        if trim > 0 && now_ms() as u64 >= trim {
+            TRIM_AT.store(0, Ordering::Relaxed);
+            unsafe { libc::malloc_trim(0) };
+        }
+        self.restart_if_cold();
         // photos decoded meanwhile
         while let Ok((path, w, h, px)) = self.photo_rx.try_recv() {
             self.photo.asked.retain(|a| !(a.0 == path && a.1 == w && a.2 == h));
@@ -867,7 +955,7 @@ impl App {
             let fs = *self.fs.get(primary_monitor()).unwrap_or(&false) || self.asleep;
             let sdt = self.sky.last.elapsed().as_secs_f64().min(0.25);
             if !fs || self.surfs[i].dirty {
-                let due = if self.sky.hidden { 0.2 } else { 1.0 / 30.0 };
+                let due = if self.sky.hidden { 0.2 } else if SOFT.load(Ordering::Relaxed) { 1.0 / 10.0 } else { 1.0 / 30.0 };
                 let left = due - self.surfs[i].last.elapsed().as_secs_f32();
                 if left <= 0.002 || self.surfs[i].dirty {
                     self.sky.last = Instant::now();
@@ -1232,6 +1320,11 @@ fn main() {
     // decoded photos (4K RGBA = 33 MB) always mmapped and returned on free: glibc's dynamic threshold would
     // rise to them and keep them on the heap (+46 MB per photo previewed in the gallery)
     unsafe { libc::mallopt(libc::M_MMAP_THRESHOLD, 1 << 20) };
+    // llvmpipe (SOFT) with a thread per core spends more on handing work out than on drawing: 4 threads draw the
+    // live scene for 10.6 ms CPU a frame, 16 for 18.4 (only Mesa reads it; set before any thread starts)
+    if std::env::var_os("LP_NUM_THREADS").is_none() {
+        unsafe { std::env::set_var("LP_NUM_THREADS", "4") };
+    }
     let conn = Connection::connect_to_env().expect("wayland");
     let (globals, queue) = registry_queue_init::<App>(&conn).expect("registry");
     let qh = queue.handle();
@@ -1300,6 +1393,7 @@ fn main() {
             hidden: false,
         },
         target_fb: None,
+        low: HashMap::new(),
     };
     app.load_cfg();
     app.sky_model();
@@ -1356,7 +1450,23 @@ fn main() {
                     app.live = what.clone();
                 }
                 bind(&app);
-                app.wall_scene(w, h, true);
+                app.wall_frame(w, h, true);
+            }
+            // MIST_WALL_BENCH=N: N more frames of the same scene, the GPU time per frame to stderr
+            if let Some(n) = std::env::var("MIST_WALL_BENCH").ok().and_then(|n| n.parse::<u32>().ok()) {
+                app.gl().finish();
+                let t0 = Instant::now();
+                for _ in 0..n {
+                    app.t += 1.0 / 30.0;
+                    bind(&app);
+                    match what.as_str() {
+                        "sky" => app.sky_scene(w, h),
+                        k if k.starts_with("preview:") => app.preview_scene(w, h),
+                        _ => app.wall_frame(w, h, true),
+                    }
+                }
+                app.gl().finish();
+                eprintln!("bench {what} {w}x{h}: {:.3} ms/frame", t0.elapsed().as_secs_f64() * 1000.0 / n.max(1) as f64);
             }
             app.gl().read_pixels(0, 0, w, h, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelPackData::Slice(Some(&mut px)));
         }
@@ -1491,6 +1601,13 @@ fn init_gl(app: &mut App) {
         gl.pixel_store_i32(glow::PACK_ALIGNMENT, 1);
         app.vao = vao;
     }
+    // llvmpipe / softpipe: the software path (SOFT)
+    let r = unsafe { gl.get_parameter_string(glow::RENDERER) };
+    let soft = std::env::var_os("MIST_WALL_SOFT").is_some() || ["llvmpipe", "softpipe", "SWR"].iter().any(|k| r.contains(k));
+    if soft {
+        eprintln!("mist-wall: software GL ({r}): the live scene at half size, 10 fps");
+    }
+    SOFT.store(soft, Ordering::Relaxed);
     app.gl = Some(gl);
 }
 
