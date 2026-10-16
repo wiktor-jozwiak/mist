@@ -70,7 +70,7 @@ superficie a superficie:
 <p align="center"><img src="../img/memory.svg" alt="Memoria en reposo: mist-ui solo 36 a 50 MB, Mist con mist-wall 87 a 106 MB, Noctalia v5 122 MB, Quickshell vacío 124 MB, Mist sobre Quickshell 428 MB" width="100%"></p>
 
 En reposo, shell completo, PSS (páginas compartidas repartidas entre procesos), Ryzen 7 5700X + RTX 4060
-(driver 615.71), Hyprland 0.56.2, 2560x1440 + 1920x1080. Medido con [bench/measure.sh](../../bench/measure.sh).
+(driver 615.71), Hyprland 0.56.2, 2 × 1920x1080 (165 + 75 Hz). Medido con [bench/measure.sh](../../bench/measure.sh).
 
 | Shell | Toolkit | PSS | CPU en reposo | Contexto GL |
 |---|---|---|---|---|

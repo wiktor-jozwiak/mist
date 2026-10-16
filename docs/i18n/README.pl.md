@@ -70,7 +70,7 @@ przepisany powierzchnia po powierzchni:
 <p align="center"><img src="../img/memory.svg" alt="Pamięć w spoczynku: samo mist-ui 36–50 MB, Mist z mist-wall 87–106 MB, Noctalia v5 122 MB, pusty Quickshell 124 MB, Mist na Quickshellu 428 MB" width="100%"></p>
 
 Spoczynek, cała powłoka, PSS (strony współdzielone dzielone między procesy), Ryzen 7 5700X + RTX 4060
-(sterownik 615.71), Hyprland 0.56.2, 2560x1440 + 1920x1080. Zmierzone przez [bench/measure.sh](../../bench/measure.sh).
+(sterownik 615.71), Hyprland 0.56.2, 2 × 1920x1080 (165 + 75 Hz). Zmierzone przez [bench/measure.sh](../../bench/measure.sh).
 
 | Powłoka | Toolkit | PSS | CPU w spoczynku | Kontekst GL |
 |---|---|---|---|---|

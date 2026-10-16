@@ -70,7 +70,7 @@ Hyprland 用シェルの多くは Qt Quick（Quickshell）、GTK + GJS（AGS）�
 <p align="center"><img src="../img/memory.svg" alt="アイドル時のメモリ: mist-ui 単体 36〜50 MB、mist-wall 込みの Mist 87〜106 MB、Noctalia v5 122 MB、空の Quickshell 124 MB、Quickshell 上の Mist 428 MB" width="100%"></p>
 
 アイドル、シェル全体、PSS（共有ページはプロセス間で按分）、Ryzen 7 5700X + RTX 4060（ドライバ 615.71）、
-Hyprland 0.56.2、2560x1440 + 1920x1080。[bench/measure.sh](../../bench/measure.sh) で計測。
+Hyprland 0.56.2、2 × 1920x1080 (165 + 75 Hz)。[bench/measure.sh](../../bench/measure.sh) で計測。
 
 | シェル | ツールキット | PSS | アイドル CPU | GL コンテキスト |
 |---|---|---|---|---|

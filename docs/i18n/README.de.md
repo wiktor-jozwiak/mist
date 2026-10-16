@@ -70,7 +70,7 @@ wurde Oberfläche für Oberfläche neu geschrieben:
 <p align="center"><img src="../img/memory.svg" alt="Speicher im Leerlauf: mist-ui allein 36 bis 50 MB, Mist mit mist-wall 87 bis 106 MB, Noctalia v5 122 MB, leeres Quickshell 124 MB, Mist auf Quickshell 428 MB" width="100%"></p>
 
 Leerlauf, ganze Shell, PSS (geteilte Seiten auf die Prozesse aufgeteilt), Ryzen 7 5700X + RTX 4060
-(Treiber 615.71), Hyprland 0.56.2, 2560x1440 + 1920x1080. Gemessen mit [bench/measure.sh](../../bench/measure.sh).
+(Treiber 615.71), Hyprland 0.56.2, 2 × 1920x1080 (165 + 75 Hz). Gemessen mit [bench/measure.sh](../../bench/measure.sh).
 
 | Shell | Toolkit | PSS | CPU im Leerlauf | GL-Kontext |
 |---|---|---|---|---|

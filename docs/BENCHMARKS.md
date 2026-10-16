@@ -57,9 +57,10 @@ Other machines, other configs, mostly RSS; useful for the order of magnitude, no
 | Caelestia (Quickshell) | ~650 MB after a restart; a launcher bug grew it to 900 MB RSS in 20 min at ~6 % CPU | [caelestia-dots/shell#1927](https://github.com/caelestia-dots/shell/issues/1927) |
 | Noctalia v4.6 (Quickshell) | release notes: system stats polled at 1 Hz, animations off when idle, "0 % CPU on idle" | [v4.6.0 release](https://newreleases.io/project/github/noctalia-dev/noctalia-shell/release/v4.6.0) |
 
-Not measured yet: HyprPanel (AGS / GJS), DankMaterialShell, end-4 illogical-impulse, Ironbar. To add one,
-install it, run it alone for 3 minutes and append the `TOTAL` line of `bench/measure.sh` with the date and the
-machine to this file.
+Not measured yet: Waybar, HyprPanel (AGS / GJS), DankMaterialShell, end-4 illogical-impulse, Ironbar (none of
+them is installed on this machine). [`bench/others.sh`](../bench/others.sh) measures every one that is: each is
+started alone next to the running Mist, settles for 3 minutes, is measured for 30 s and stopped; add its
+`TOTAL` line with the date to the table above.
 
 ## Mist internals
 

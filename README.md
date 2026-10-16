@@ -70,7 +70,7 @@ first pixel. Mist started as a Quickshell config (428 MB, 9.5 % CPU) and was rew
 <p align="center"><img src="docs/img/memory.svg" alt="Idle memory: mist-ui alone 36 to 50 MB, Mist with mist-wall 87 to 106 MB, Noctalia v5 122 MB, empty Quickshell 124 MB, Mist on Quickshell 428 MB" width="100%"></p>
 
 Idle, whole shell, proportional set size (shared pages split between processes), Ryzen 7 5700X + RTX 4060
-(driver 615.71), Hyprland 0.56.2, 2560x1440 + 1920x1080. Measured with [bench/measure.sh](bench/measure.sh).
+(driver 615.71), Hyprland 0.56.2, 2 × 1920x1080 (165 + 75 Hz). Measured with [bench/measure.sh](bench/measure.sh).
 
 | Shell | Toolkit | PSS | CPU idle | GL context |
 |---|---|---|---|---|

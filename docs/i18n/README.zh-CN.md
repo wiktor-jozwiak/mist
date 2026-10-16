@@ -68,7 +68,7 @@ Mist 最初是一套 Quickshell 配置（428 MB，9.5 % CPU），之后被逐个
 <p align="center"><img src="../img/memory.svg" alt="空闲内存：仅 mist-ui 36 到 50 MB，Mist 加 mist-wall 87 到 106 MB，Noctalia v5 122 MB，空 Quickshell 124 MB，Quickshell 上的 Mist 428 MB" width="100%"></p>
 
 空闲状态，整个外壳，PSS（共享页面在进程间分摊），Ryzen 7 5700X + RTX 4060（驱动 615.71），
-Hyprland 0.56.2，2560x1440 + 1920x1080。使用 [bench/measure.sh](../../bench/measure.sh) 测量。
+Hyprland 0.56.2，2 × 1920x1080 (165 + 75 Hz)。使用 [bench/measure.sh](../../bench/measure.sh) 测量。
 
 | 外壳 | 工具包 | PSS | 空闲 CPU | GL 上下文 |
 |---|---|---|---|---|
