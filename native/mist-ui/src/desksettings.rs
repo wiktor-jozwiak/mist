@@ -180,7 +180,7 @@ impl DeskSettings {
             let order = cfg.order();
             let mut cards = vec![Self::row("Liczba kart", "desk", "cards", cfg)];
             for i in 0..cfg.cards() {
-                let items = WIDGETS.iter().map(|(k, lab)| (lab.to_string(), order.get(i).map(|o| o == k).unwrap_or(false), H::Slot(i, k))).collect();
+                let items = WIDGETS.iter().filter(|(k, _)| crate::data::available(k)).map(|(k, lab)| (lab.to_string(), order.get(i).map(|o| o == k).unwrap_or(false), H::Slot(i, k))).collect();
                 cards.push(Row { label: format!("Miejsce {}", i + 1), items, field: false });
             }
             return vec![

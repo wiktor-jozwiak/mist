@@ -721,6 +721,10 @@ impl App {
             }
             Act::Snap(c) => self.snap_cmd(c),
             Act::DeskCfg => {
+                // the language changed: app names and descriptions in the new one
+                if self.apps.lang != crate::i18n::lang() {
+                    self.apps = Apps::load();
+                }
                 self.desk.cfg = crate::desktop::Cfg::load();
                 self.desk_relayout();
                 self.desk.dirty = true;

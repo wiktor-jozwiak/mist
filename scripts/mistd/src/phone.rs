@@ -1267,17 +1267,23 @@ mod tests {
 
     #[test]
     fn runcommand_is_stable() {
-        // the config the Python version wrote must read back as "nothing to change"
-        let did = "00000000_mist_demo_device_0000000";
-        let f = format!("{}/.config/kdeconnect/{}/kdeconnect_runcommand/config", home(), did);
-        let Ok(t) = std::fs::read_to_string(&f) else { return };
-        let l = t.lines().find(|l| l.starts_with("commands=\"@ByteArray(")).unwrap();
-        let inner = l.trim_end().strip_prefix("commands=\"@ByteArray(").unwrap().strip_suffix(")\"").unwrap();
-        let cur: Map<String, J> = serde_json::from_str(&inner.replace("\\\"", "\"").replace("\\\\", "\\")).unwrap();
-        let mut merged: Map<String, J> = cur.iter().filter(|(k, _)| !k.starts_with("mist-")).map(|(k, v)| (k.clone(), v.clone())).collect();
-        for (k, n, c) in pc_commands(did) {
-            merged.insert(k.into(), json!({"name": n, "command": c}));
+        // the config written for each paired device must read back as "nothing to change"
+        // (no paired device with Mist's commands: nothing to check)
+        let Ok(rd) = std::fs::read_dir(format!("{}/.config/kdeconnect", home())) else { return };
+        for e in rd.flatten() {
+            let did = e.file_name().to_string_lossy().into_owned();
+            let Ok(t) = std::fs::read_to_string(e.path().join("kdeconnect_runcommand/config")) else { continue };
+            let Some(l) = t.lines().find(|l| l.starts_with("commands=\"@ByteArray(")) else { continue };
+            let inner = l.trim_end().strip_prefix("commands=\"@ByteArray(").unwrap().strip_suffix(")\"").unwrap();
+            let cur: Map<String, J> = serde_json::from_str(&inner.replace("\\\"", "\"").replace("\\\\", "\\")).unwrap();
+            if !cur.keys().any(|k| k.starts_with("mist-")) {
+                continue;
+            }
+            let mut merged: Map<String, J> = cur.iter().filter(|(k, _)| !k.starts_with("mist-")).map(|(k, v)| (k.clone(), v.clone())).collect();
+            for (k, n, c) in pc_commands(&did) {
+                merged.insert(k.into(), json!({"name": n, "command": c}));
+            }
+            assert_eq!(merged, cur, "{did}");
         }
-        assert_eq!(merged, cur);
     }
 }

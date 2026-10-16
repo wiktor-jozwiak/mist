@@ -153,7 +153,7 @@ flowchart LR
 | `native/common` | code shared by mist-ui and mist-wall (astronomy, presets) |
 | `scripts/mistd` | backends: system stats, phone (KDE Connect, ADB), calls, clipboard store, file manager D-Bus |
 | `shaders/` | wallpaper and sky shaders (`.frag` sources, GLSL 150 in `shaders/glsl` read by mist-wall) |
-| `*.qml`, `components/` | the original Quickshell version, kept as reference; no longer started |
+| tag `legacy-qml` | the original Quickshell (QML) version, kept for reference |
 
 ## Install
 

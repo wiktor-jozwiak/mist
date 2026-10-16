@@ -32,6 +32,7 @@ fn data_dirs() -> Vec<String> {
 
 pub struct Apps {
     pub entries: Vec<Entry>,
+    pub lang: &'static str, // the UI language the names were read in
 }
 
 impl Apps {
@@ -89,7 +90,7 @@ impl Apps {
                 entries.push(Entry { id, name: pick(name_pl, name), icon, wm_class: wm, exec, generic: pick(generic_pl, generic), comment: pick(comment_pl, comment), keywords: format!("{kw};{kw_pl}").replace(';', " "), no_display: hidden, terminal });
             }
         }
-        Apps { entries }
+        Apps { entries, lang }
     }
 
     // DesktopEntries.byId(appId) || heuristicLookup(appId)

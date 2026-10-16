@@ -863,3 +863,154 @@ Wybierz miejsce pogody	Choose the weather place	Wetterort wählen	Elige el lugar
 # the island demo notification (docs/img/gifs.sh)
 Nowa wiadomość od Kasi	New message from Kasia	Neue Nachricht von Kasia	Nuevo mensaje de Kasia
 Hej! Widzimy się dziś o 18 na bieganiu? Weź bidon, bo ma być ciepło.	Hi! See you at 6 pm for the run? Bring a bottle, it will be warm.	Hi! Sehen wir uns um 18 Uhr zum Laufen? Nimm eine Flasche mit, es wird warm.	¡Hola! ¿Nos vemos a las 18 para correr? Trae una botella, hará calor.
+# live wallpaper presets (native/assets/live-presets.js: name, desc)
+Kolory nieba o tej porze: noc, niebieska godzina, złota godzina, dzień. Szarzeje, gdy pada.	The sky's colours at this hour: night, blue hour, golden hour, day. Turns grey when it rains.	Die Farben des Himmels zu dieser Stunde: Nacht, blaue Stunde, goldene Stunde, Tag. Grau, wenn es regnet.	Los colores del cielo a esta hora: noche, hora azul, hora dorada, día. Se vuelve gris cuando llueve.
+Pora dnia	Time of day	Tageszeit	Hora del día
+Morze i niebo. Słońce albo księżyc stoją tam, gdzie naprawdę są.	Sea and sky. The sun or the moon stand where they really are.	Meer und Himmel. Sonne oder Mond stehen dort, wo sie wirklich sind.	Mar y cielo. El sol o la luna están donde de verdad están.
+Horyzont	Horizon	Horizont	Horizonte
+Warstwy gór, mgła w dolinach, prawdziwe słońce i księżyc.	Layers of mountains, mist in the valleys, the real sun and moon.	Bergketten, Nebel in den Tälern, echte Sonne und echter Mond.	Capas de montañas, niebla en los valles, el sol y la luna reales.
+Góry	Mountains	Berge	Montañas
+To, co za oknem: deszcz na szybie, śnieg, mgła, gwiazdy albo góry.	What is outside: rain on the glass, snow, fog, stars or mountains.	Was draußen ist: Regen an der Scheibe, Schnee, Nebel, Sterne oder Berge.	Lo que hay fuera: lluvia en el cristal, nieve, niebla, estrellas o montañas.
+Za oknem	Out the window	Vor dem Fenster	Por la ventana
+Czarny kot na kalenicy, księżyc, dym z komina i światła miasta.	A black cat on the roof ridge, the moon, chimney smoke and city lights.	Eine schwarze Katze auf dem First, der Mond, Rauch aus dem Schornstein und Stadtlichter.	Un gato negro en el tejado, la luna, humo de chimenea y luces de la ciudad.
+Kot na dachu	Cat on the roof	Katze auf dem Dach	Gato en el tejado
+Wieloryby płyną powoli przez smugi światła w głębinie.	Whales swim slowly through shafts of light in the deep.	Wale schwimmen langsam durch Lichtstreifen in der Tiefe.	Ballenas nadan despacio entre rayos de luz en lo profundo.
+Wieloryby	Whales	Wale	Ballenas
+Świecące meduzy unoszą się w rytmie oddechu.	Glowing jellyfish drift to the rhythm of a breath.	Leuchtende Quallen schweben im Rhythmus des Atems.	Medusas brillantes flotan al ritmo de la respiración.
+Meduzy	Jellyfish	Quallen	Medusas
+Karpie krążą w stawie pod liśćmi lilii.	Carp circle in a pond under lily pads.	Karpfen kreisen im Teich unter Seerosenblättern.	Carpas dan vueltas en un estanque bajo nenúfares.
+Karpie koi	Koi carp	Koi-Karpfen	Carpas koi
+Mały astronauta macha zza planety z pierścieniem.	A little astronaut waves from behind a ringed planet.	Ein kleiner Astronaut winkt hinter einem Ringplaneten hervor.	Un pequeño astronauta saluda tras un planeta con anillos.
+Astronauta	Astronaut	Astronaut	Astronauta
+Latarnia morska omiata noc snopem światła.	A lighthouse sweeps the night with its beam.	Ein Leuchtturm streift mit seinem Strahl durch die Nacht.	Un faro barre la noche con su haz de luz.
+Latarnia	Lighthouse	Leuchtturm	Faro
+Lis siedzi na śniegu i patrzy na zorzę.	A fox sits in the snow, watching the aurora.	Ein Fuchs sitzt im Schnee und schaut zum Polarlicht.	Un zorro sentado en la nieve mira la aurora.
+Lis i zorza	Fox and aurora	Fuchs und Polarlicht	Zorro y aurora
+Balony dryfują nad morzem chmur o zachodzie.	Balloons drift over a sea of clouds at sunset.	Ballons treiben bei Sonnenuntergang über einem Wolkenmeer.	Globos flotan sobre un mar de nubes al atardecer.
+Balony	Balloons	Ballons	Globos
+Halloween: duszki, dynie z mrugającymi buziami i nietoperze.	Halloween: little ghosts, pumpkins with winking faces and bats.	Halloween: Gespenster, Kürbisse mit zwinkernden Gesichtern und Fledermäuse.	Halloween: fantasmitas, calabazas que guiñan y murciélagos.
+Duszki	Ghosts	Gespenster	Fantasmas
+Pingwiny na krze, jeden ciągle gdzieś drepcze.	Penguins on an ice floe, one always waddling somewhere.	Pinguine auf einer Eisscholle, einer watschelt immer irgendwohin.	Pingüinos en un témpano, uno siempre anda de un lado a otro.
+Pingwiny	Penguins	Pinguine	Pingüinos
+Rakieta pędzi w górę między planetami.	A rocket races upwards between the planets.	Eine Rakete rast zwischen den Planeten nach oben.	Un cohete sube a toda velocidad entre planetas.
+Rakieta	Rocket	Rakete	Cohete
+Sowa na gałęzi przed księżycem, rozgląda się i mruga.	An owl on a branch before the moon, looking around and blinking.	Eine Eule auf einem Ast vor dem Mond, schaut sich um und blinzelt.	Un búho en una rama ante la luna mira a su alrededor y parpadea.
+Sowa	Owl	Eule	Búho
+Pikselowe miasto nocą i przejeżdżający pociąg.	A pixel city at night and a passing train.	Eine Pixelstadt bei Nacht und ein vorbeifahrender Zug.	Una ciudad de píxeles de noche y un tren que pasa.
+Miasto 8-bit	8-bit city	8-Bit-Stadt	Ciudad 8 bits
+Papierowe łódki i lampiony unoszące się nad wodą.	Paper boats and lanterns floating over the water.	Papierboote und Laternen, die über dem Wasser schweben.	Barquitos de papel y farolillos flotando sobre el agua.
+Lampiony	Lanterns	Laternen	Farolillos
+Ławica kolorowych rybek, wodorosty i bąbelki.	A shoal of colourful fish, seaweed and bubbles.	Ein Schwarm bunter Fische, Seetang und Blasen.	Un banco de peces de colores, algas y burbujas.
+Akwarium	Aquarium	Aquarium	Acuario
+Królik na chmurce łowi gwiazdkę na wędkę.	A rabbit on a cloud fishes for a star.	Ein Hase auf einer Wolke angelt nach einem Stern.	Un conejo en una nube pesca una estrella.
+Królik i gwiazdka	Rabbit and star	Hase und Stern	Conejo y estrella
+Miękkie plamy koloru, które powoli się mieszają.	Soft patches of colour that slowly blend.	Weiche Farbflecken, die sich langsam mischen.	Manchas suaves de color que se mezclan despacio.
+Róż i bursztyn zachodu, płynnie przechodzące w granat.	The pink and amber of sunset, fading into navy.	Rosa und Bernstein des Sonnenuntergangs, fließend in Marineblau.	El rosa y ámbar del ocaso, fundiéndose en azul marino.
+Zmierzch	Dusk	Dämmerung	Crepúsculo
+Fiolet i błękit, bardzo spokojny gradient.	Violet and blue, a very calm gradient.	Violett und Blau, ein sehr ruhiger Verlauf.	Violeta y azul, un degradado muy tranquilo.
+Lawenda	Lavender	Lavendel	Lavanda
+Wstęga zorzy z falującymi kurtynami światła.	A ribbon of aurora with waving curtains of light.	Ein Polarlichtband mit wogenden Lichtvorhängen.	Una cinta de aurora con cortinas de luz ondulantes.
+Zorza	Aurora	Polarlicht	Aurora
+Turkusowe światło płynące przez ciemną wodę.	Turquoise light flowing through dark water.	Türkisfarbenes Licht, das durch dunkles Wasser fließt.	Luz turquesa que fluye por el agua oscura.
+Głębia	Deep sea	Tiefsee	Profundidad
+Fioletowa mgławica i migające gwiazdy.	A violet nebula and twinkling stars.	Ein violetter Nebel und funkelnde Sterne.	Una nebulosa violeta y estrellas titilantes.
+Mgławica	Nebula	Nebel	Nebulosa
+Fałdy światła jak przesuwająca się tkanina.	Folds of light like drifting fabric.	Lichtfalten wie gleitender Stoff.	Pliegues de luz como una tela que se desliza.
+Jedwab	Silk	Seide	Seda
+Poziomice mapy, które powoli płyną i zmieniają kształt.	Map contour lines that slowly flow and change shape.	Höhenlinien einer Karte, die langsam fließen und ihre Form ändern.	Curvas de nivel que fluyen despacio y cambian de forma.
+Topografia	Topography	Topografie	Topografía
+Poziomice w ciepłym bursztynie, jak stara mapa.	Contour lines in warm amber, like an old map.	Höhenlinien in warmem Bernstein, wie eine alte Karte.	Curvas de nivel en ámbar cálido, como un mapa antiguo.
+Mapa	Map	Karte	Mapa
+Kryształowe komórki ze świecącymi krawędziami.	Crystal cells with glowing edges.	Kristallzellen mit leuchtenden Kanten.	Celdas de cristal con bordes brillantes.
+Kryształy	Crystals	Kristalle	Cristales
+Siatka kropek, przez którą przechodzi fala światła.	A grid of dots crossed by a wave of light.	Ein Punktraster, durch das eine Lichtwelle läuft.	Una cuadrícula de puntos que cruza una ola de luz.
+Kropki	Dots	Punkte	Puntos
+Smugi dymu unoszące się w ciemności.	Wisps of smoke rising in the dark.	Rauchschwaden, die im Dunkeln aufsteigen.	Volutas de humo que se elevan en la oscuridad.
+Dym	Smoke	Rauch	Humo
+Krople spadają na taflę i rozchodzą się kręgami.	Drops fall on still water and spread in rings.	Tropfen fallen auf die Wasserfläche und breiten sich in Ringen aus.	Gotas caen sobre el agua y se expanden en círculos.
+Staw	Pond	Teich	Estanque
+Wydmy o zmierzchu, piasek wiejący z grzbietów.	Dunes at dusk, sand blowing off the crests.	Dünen in der Dämmerung, Sand weht von den Kämmen.	Dunas al anochecer, arena que vuela de las crestas.
+Wydmy	Dunes	Dünen	Dunas
+Padający śnieg w kilku warstwach głębi.	Falling snow in several layers of depth.	Fallender Schnee in mehreren Tiefenebenen.	Nieve que cae en varias capas de profundidad.
+Ciemny, ciepły żar.	Dark, warm embers.	Dunkle, warme Glut.	Brasas oscuras y cálidas.
+Żar	Embers	Glut	Brasas
+Prawie czarna, ledwo się porusza.	Almost black, barely moving.	Fast schwarz, bewegt sich kaum.	Casi negro, apenas se mueve.
+Otchłań	Abyss	Abgrund	Abismo
+Gwiazdy rozciągają się w smugi, lecisz w nadświetlnej.	Stars stretch into streaks: you are flying faster than light.	Sterne ziehen sich zu Streifen: Du fliegst mit Überlichtgeschwindigkeit.	Las estrellas se estiran en estelas: vuelas más rápido que la luz.
+Hiperprzestrzeń	Hyperspace	Hyperraum	Hiperespacio
+Skok w nadprzestrzeń w fiolecie i różu.	A jump to hyperspace in violet and pink.	Ein Sprung in den Hyperraum in Violett und Rosa.	Un salto al hiperespacio en violeta y rosa.
+Warp fiolet	Violet warp	Warp violett	Warp violeta
+Pędzisz przez tunel z neonowych pierścieni.	You race through a tunnel of neon rings.	Du rast durch einen Tunnel aus Neonringen.	Corres por un túnel de anillos de neón.
+Neonowy tunel	Neon tunnel	Neontunnel	Túnel de neón
+Ciepły, złoty tunel bez końca.	A warm, golden, endless tunnel.	Ein warmer, goldener Tunnel ohne Ende.	Un túnel dorado y cálido sin fin.
+Złoty tunel	Golden tunnel	Goldener Tunnel	Túnel dorado
+Spadające kolumny znaków jak w terminalu hakera.	Falling columns of characters, like a hacker's terminal.	Fallende Zeichenkolonnen wie im Terminal eines Hackers.	Columnas de caracteres que caen, como en la terminal de un hacker.
+Kod	Code	Code	Código
+Deszcz znaków w turkusie pod kolor widżetów.	A rain of characters in turquoise, matching the widgets.	Ein Zeichenregen in Türkis, passend zu den Widgets.	Una lluvia de caracteres en turquesa, a juego con los widgets.
+Kod turkus	Turquoise code	Code türkis	Código turquesa
+Płynąca, kolorowa plazma.	Flowing, colourful plasma.	Fließendes, buntes Plasma.	Plasma de colores que fluye.
+Plazma	Plasma	Plasma	Plasma
+Kłębiące się chmury, deszcz i rzadkie, łagodne błyski.	Billowing clouds, rain and rare, soft flashes.	Wogende Wolken, Regen und seltene, sanfte Blitze.	Nubes ondulantes, lluvia y relámpagos suaves y escasos.
+Trzaskające ognisko w lesie, iskry lecą w górę.	A crackling campfire in the forest, sparks flying up.	Ein knisterndes Lagerfeuer im Wald, Funken fliegen hoch.	Una hoguera crepitante en el bosque, chispas que suben.
+Ognisko	Campfire	Lagerfeuer	Hoguera
+Wybuchające fajerwerki nad miastem.	Fireworks bursting over the city.	Feuerwerk über der Stadt.	Fuegos artificiales sobre la ciudad.
+Fajerwerki	Fireworks	Feuerwerk	Fuegos artificiales
+Złote i błękitne fajerwerki.	Gold and blue fireworks.	Goldenes und blaues Feuerwerk.	Fuegos artificiales dorados y azules.
+Sylwester	New Year's Eve	Silvester	Nochevieja
+Obracająca się galaktyka spiralna.	A rotating spiral galaxy.	Eine sich drehende Spiralgalaxie.	Una galaxia espiral que gira.
+Galaktyka	Galaxy	Galaxie	Galaxia
+Wirujący dysk wokół czarnej dziury, zakrzywione światło gwiazd.	A swirling disc around a black hole, bent starlight.	Eine wirbelnde Scheibe um ein Schwarzes Loch, gekrümmtes Sternenlicht.	Un disco girando alrededor de un agujero negro, luz estelar curvada.
+Czarna dziura	Black hole	Schwarzes Loch	Agujero negro
+Toczące się fale z pianą pod księżycem.	Rolling, foaming waves under the moon.	Rollende Wellen mit Schaum unter dem Mond.	Olas que ruedan con espuma bajo la luna.
+Fale oceanu	Ocean waves	Meereswellen	Olas del océano
+Hipnotyczny, obracający się kalejdoskop.	A hypnotic, turning kaleidoscope.	Ein hypnotisches, sich drehendes Kaleidoskop.	Un caleidoscopio hipnótico que gira.
+Kalejdoskop	Kaleidoscope	Kaleidoskop	Caleidoscopio
+Punkty dryfują i łączą się liniami.	Points drift and join up with lines.	Punkte treiben und verbinden sich mit Linien.	Puntos que flotan y se unen con líneas.
+Sieć świecących punktów w lawendzie.	A web of glowing points in lavender.	Ein Netz leuchtender Punkte in Lavendel.	Una red de puntos brillantes en lavanda.
+Konstelacje	Constellations	Sternbilder	Constelaciones
+Słupki equalizera, z muzyką rosną.	Equalizer bars that grow with the music.	Equalizer-Balken, die mit der Musik wachsen.	Barras de ecualizador que crecen con la música.
+Equalizer w barwach starego wzmacniacza.	An equalizer in the colours of an old amplifier.	Ein Equalizer in den Farben eines alten Verstärkers.	Un ecualizador con los colores de un amplificador antiguo.
+Equalizer retro	Retro equalizer	Retro-Equalizer	Ecualizador retro
+Planety krążą po orbitach wokół słońca.	Planets circle the sun in their orbits.	Planeten kreisen auf ihren Bahnen um die Sonne.	Planetas orbitando alrededor del sol.
+Układ planet	Planets	Planetensystem	Sistema planetario
+Mieniące się bańki mydlane unoszą się w górę.	Shimmering soap bubbles float upwards.	Schillernde Seifenblasen steigen auf.	Pompas de jabón irisadas que suben.
+Bańki	Bubbles	Seifenblasen	Pompas
+Spadające gwiazdy co chwilę przecinają niebo.	Shooting stars cross the sky every few moments.	Sternschnuppen ziehen immer wieder über den Himmel.	Estrellas fugaces cruzan el cielo a cada momento.
+Deszcz meteorów	Meteor shower	Meteorschauer	Lluvia de meteoros
+Trawa faluje na wietrze o zachodzie, lecą ptaki.	Grass sways in the wind at sunset, birds fly by.	Gras wiegt sich im Wind bei Sonnenuntergang, Vögel fliegen vorbei.	La hierba se mece al viento al atardecer, pasan pájaros.
+Łąka	Meadow	Wiese	Pradera
+Smugi świateł aut na nocnej autostradzie.	Light trails of cars on a motorway at night.	Lichtspuren von Autos auf der nächtlichen Autobahn.	Estelas de luces de coches en una autopista de noche.
+Autostrada	Motorway	Autobahn	Autopista
+Kolory wciągane w wirujący lej.	Colours drawn into a spinning funnel.	Farben, die in einen wirbelnden Trichter gezogen werden.	Colores absorbidos por un embudo giratorio.
+Wir	Vortex	Wirbel	Remolino
+Skręcające się neonowe wstęgi.	Twisting neon ribbons.	Sich windende Neonbänder.	Cintas de neón que se retuercen.
+Neonowe wstęgi	Neon ribbons	Neonbänder	Cintas de neón
+Wstęgi w złocie i pomarańczu.	Ribbons in gold and orange.	Bänder in Gold und Orange.	Cintas en oro y naranja.
+Złote wstęgi	Golden ribbons	Goldene Bänder	Cintas doradas
+Obracający się holograficzny glob.	A rotating holographic globe.	Ein sich drehender holografischer Globus.	Un globo holográfico que gira.
+Hologram	Hologram	Hologramm	Holograma
+Podwójna helisa obraca się w przestrzeni.	A double helix turning in space.	Eine Doppelhelix dreht sich im Raum.	Una doble hélice que gira en el espacio.
+Krople spływają po szybie, za nią rozmyte światła miasta.	Drops run down the glass, blurred city lights behind it.	Tropfen laufen die Scheibe hinab, dahinter verschwommene Stadtlichter.	Gotas resbalan por el cristal, detrás las luces borrosas de la ciudad.
+Deszcz na szybie	Rain on the glass	Regen an der Scheibe	Lluvia en el cristal
+Deszcz na szybie i neony w tle.	Rain on the glass and neon behind it.	Regen an der Scheibe und Neonlicht dahinter.	Lluvia en el cristal y neones al fondo.
+Neonowy deszcz	Neon rain	Neonregen	Lluvia de neón
+Dryfujące gwiazdy, co jakiś czas spadająca gwiazda.	Drifting stars, now and then a shooting star.	Treibende Sterne, ab und zu eine Sternschnuppe.	Estrellas a la deriva, de vez en cuando una fugaz.
+Gwiazdy	Stars	Sterne	Estrellas
+Świetliki nad łąką pod nocnym niebem.	Fireflies over a meadow under the night sky.	Glühwürmchen über einer Wiese unter dem Nachthimmel.	Luciérnagas sobre una pradera bajo el cielo nocturno.
+Świetliki	Fireflies	Glühwürmchen	Luciérnagas
+Świetliste fale. Z muzyką delikatnie rosną.	Luminous waves. They grow gently with the music.	Leuchtende Wellen. Mit Musik wachsen sie sanft.	Ondas luminosas. Crecen suavemente con la música.
+Fale światła	Waves of light	Lichtwellen	Ondas de luz
+Paskowane słońce nad neonową siatką, lata 80.	A striped sun over a neon grid, the 80s.	Eine gestreifte Sonne über einem Neongitter, die 80er.	Un sol a rayas sobre una cuadrícula de neón, los 80.
+Kule wosku unoszą się i łączą jak w lampie.	Blobs of wax rise and merge like in a lava lamp.	Wachskugeln steigen auf und verschmelzen wie in einer Lavalampe.	Bolas de cera que suben y se unen como en una lámpara de lava.
+Lawa	Lava	Lava	Lava
+Refleksy światła na dnie basenu.	Light ripples on the bottom of a pool.	Lichtreflexe auf dem Grund eines Pools.	Reflejos de luz en el fondo de una piscina.
+Basen	Pool	Pool	Piscina
+Rozmyte światełka pływające w ciemności.	Blurred lights floating in the dark.	Verschwommene Lichter, die im Dunkeln schweben.	Luces borrosas que flotan en la oscuridad.
+Światła	Lights	Lichter	Luces
+Księżyc nad falami i jego srebrna droga na wodzie.	The moon over the waves and its silver path on the water.	Der Mond über den Wellen und sein silberner Pfad auf dem Wasser.	La luna sobre las olas y su camino plateado en el agua.
+Morze nocą	Sea at night	Meer bei Nacht	Mar de noche
+Szybki fiolet z różem.	Fast violet with pink.	Schnelles Violett mit Rosa.	Violeta rápido con rosa.
+# Start: the footer hints (= > ?)
+licz	calc	rechnen	calc
+# the island timer demo
+Herbata	Tea	Tee	Té

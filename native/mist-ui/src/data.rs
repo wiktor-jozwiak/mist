@@ -28,8 +28,32 @@ fn sleep_or_wake(name: &str, d: Duration) {
     }
 }
 
+// Garmin and running are optional (docs/guides/garmin.md): on with ~/.config/mist/influx.json, or with only a
+// cached answer (the demo data of the README renders); else their cards are not shown. Read once per process.
+fn influx_set() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::path::Path::new(&format!("{}/.config/mist/influx.json", std::env::var("HOME").unwrap_or_default())).exists())
+}
+pub fn available(card: &str) -> bool {
+    static CACHED: std::sync::OnceLock<[bool; 2]> = std::sync::OnceLock::new();
+    let c = CACHED.get_or_init(|| {
+        let f = |n: &str| std::path::Path::new(&format!("{}/.cache/mist/{n}.json", std::env::var("HOME").unwrap_or_default())).exists();
+        [f("garmin"), f("running")]
+    });
+    match card {
+        "garmin" => influx_set() || c[0],
+        "running" => influx_set() || c[1],
+        _ => true,
+    }
+}
+
 pub fn spawn(tx: Sender<Msg>) {
     for (name, every) in [("weather", 600u64), ("garmin", 300), ("running", 600), ("calendar", 900)] {
+        if !available(name) {
+            continue;
+        }
+        // a cache without the connection: read once (mistd answers it as stale), nothing to retry
+        let once = matches!(name, "garmin" | "running") && !influx_set();
         let tx = tx.clone();
         let _ = std::thread::Builder::new().name(format!("data-{name}")).stack_size(128 * 1024).spawn(move || loop {
             let bin = crate::paths::mistd();
@@ -40,6 +64,9 @@ pub fn spawn(tx: Sender<Msg>) {
             let retry = !unset && v.as_ref().map(|v| v.get("stale").and_then(|x| x.as_bool()).unwrap_or(false) || v.get("error").is_some()).unwrap_or(true);
             if let Some(v) = v {
                 let _ = tx.send(Msg::Data(name.to_string(), v));
+            }
+            if once {
+                return;
             }
             sleep_or_wake(name, Duration::from_secs(if retry { 60 } else { every }));
         });

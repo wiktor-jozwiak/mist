@@ -1,6 +1,6 @@
 # Mist
 
-macOS-style Hyprland shell. Quickshell QML (root `*.qml`, `components/`) being replaced stage by stage by native Rust (`native/`). Details per area live in auto-memory; read the matching memory before digging through code.
+macOS-style Hyprland shell in native Rust (`native/`). The old Quickshell QML version lives under the git tag `legacy-qml` (working copy in `~/.local/share/mist-legacy-qml`). Details per area live in auto-memory; read the matching memory before digging through code.
 
 ## Layout
 - `native/` cargo workspace: `mist-ui` (CPU-drawn surfaces: bar, dock, island, desktop, panes), `mist-wall` (GL wallpaper), `common/`. See `native/README.md`.
@@ -11,7 +11,6 @@ macOS-style Hyprland shell. Quickshell QML (root `*.qml`, `components/`) being r
 - mist-ui + mist-wall: `native/install.sh` -> `~/.local/bin/mist-ui-bin`, `mist-wall-bin` (guard `~/.local/bin/mist-ui` restarts it). Log `~/.cache/mist/ui.log`.
 - mistd: `scripts/mistd/install.sh` -> `scripts/bin/mistd`. Tests: `cargo test --release` in `scripts/mistd`.
 - Keep `lto = false` (rustc + system LLVM segfaults with LTO).
-- QML: Quickshell reloads on save; IPC via `mist-qs ipc call mist ...`.
 
 ## Checks (prefer these over screenshots)
 - `mist-ui --test` (overlay bar on HDMI-A-1), `mist-ui --png out.png '{json}'`, `mist-ui --desk-png dir`, `mist-ui --tray-dump`

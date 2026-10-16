@@ -323,11 +323,14 @@ impl Cfg {
     }
     pub fn order(&self) -> Vec<String> {
         let o: Vec<String> = self.v["order"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
-        if o.len() == 3 && ["garmin", "weather", "running"].iter().all(|k| o.iter().any(|x| x == k)) {
+        let mut o = if o.len() == 3 && ["garmin", "weather", "running"].iter().all(|k| o.iter().any(|x| x == k)) {
             o
         } else {
             vec!["garmin".into(), "weather".into(), "running".into()]
-        }
+        };
+        // cards without a data source go last (in memory only), so the first `cards()` places are real ones
+        o.sort_by_key(|k| !crate::data::available(k));
+        o
     }
     pub fn set(&mut self, card: &str, key: &str, v: Value) {
         if !self.v.is_object() {
@@ -344,8 +347,10 @@ impl Cfg {
         let _ = std::fs::write(Self::path(), serde_json::to_string_pretty(&self.v).unwrap_or_default());
     }
     // how many places the bento row shows (the first n of the order)
+    // (only cards with a data source: Garmin and running are optional, crate::data::available)
     pub fn cards(&self) -> usize {
-        (self.opt("desk", "cards").as_u64().unwrap_or(3) as usize).min(3)
+        let have = ["garmin", "weather", "running"].iter().filter(|k| crate::data::available(k)).count();
+        (self.opt("desk", "cards").as_u64().unwrap_or(3) as usize).min(have)
     }
     pub fn shown(&self) -> Vec<String> {
         self.order().into_iter().take(self.cards()).collect()
@@ -1064,9 +1069,10 @@ impl Desk {
                 let km = if wi >= 0 && wi < 7 && off <= 0 { week.get(wi as usize).copied().unwrap_or(0.0) } else { 0.0 };
                 let ccx = cx + i as f32 * cwid + cwid / 2.0;
                 let ls = st(11.0, if today { 700.0 } else { 550.0 });
-                let l = ["N", "P", "W", "Ś", "C", "P", "S"][wd];
-                let lw = width(t, l, &ls);
-                text(c, t, (ccx - lw / 2.0).round(), sy, l, &ls, if today { ACC } else if is_race { WARN } else { MUTED }, true, None);
+                // the weekday's initial in the UI language (N P W Ś C P S, S M T W T F S ...)
+                let l: String = crate::i18n::tr(crate::data::DAYS_SHORT[wd]).chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+                let lw = width(t, &l, &ls);
+                text(c, t, (ccx - lw / 2.0).round(), sy, &l, &ls, if today { ACC } else if is_race { WARN } else { MUTED }, true, None);
                 let (rx, ry) = (ccx - 10.0, sy + 18.0);
                 let fillc = if km > 0.0 { Some(ACC.alpha(0.7)) } else if is_race { Some(WARN.alpha(0.18)) } else { None };
                 if let Some(f) = fillc {

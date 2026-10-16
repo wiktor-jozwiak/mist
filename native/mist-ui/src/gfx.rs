@@ -176,6 +176,8 @@ pub fn blend_alpha(pm: &mut Pixmap, ox: i32, oy: i32, w: u32, h: u32, mask: &[u8
 
 // word wrap (Text.Wrap + maximumLineCount + elide on the last line)
 pub fn wrap(t: &mut Text, s: &str, st: &Style, max_w: f32, max_lines: usize) -> Vec<String> {
+    // the whole text translated first: its lines alone match no row of the table
+    let s = crate::i18n::tr(s);
     let mut lines: Vec<String> = Vec::new();
     for para in s.split('\n') {
         let mut cur = String::new();

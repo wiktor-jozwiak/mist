@@ -2309,7 +2309,7 @@ mod special_tests {
     // minimizing parks windows on special:minimized: no "special workspace" event for it, others still shown
     #[test]
     fn minimized_is_quiet() {
-        let apps = Apps { entries: Vec::new() };
+        let apps = Apps { entries: Vec::new(), lang: "pl" };
         let mut isl = Island::new();
         isl.armed = true;
         isl.on_hypr("activespecial", "special:minimized,DP-3", &apps, &[], "");

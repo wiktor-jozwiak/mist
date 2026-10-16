@@ -6,7 +6,7 @@
 // follows $LANG and falls back to English.
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{OnceLock, RwLock};
+use std::sync::{Mutex, OnceLock, RwLock};
 
 pub const LANGS: [(&str, &str); 4] = [("pl", "Polski"), ("en", "English"), ("de", "Deutsch"), ("es", "Español")];
 const TSV: &str = include_str!("../../assets/i18n.tsv");
@@ -162,7 +162,7 @@ fn one(t: &Table, s: &str) -> Option<String> {
         let low = s.to_lowercase();
         let mut cs = low.chars();
         let cap: String = cs.next().map(|f| f.to_uppercase().chain(cs).collect()).unwrap_or_default();
-        if let Some(v) = t.exact.get(cap.as_str()) {
+        if let Some(v) = t.exact.get(cap.as_str()).or_else(|| t.exact.get(low.as_str())) {
             return Some(v.to_uppercase());
         }
     }
@@ -232,7 +232,21 @@ pub fn tr(s: &str) -> std::borrow::Cow<'_, str> {
     if let Some(v) = date(t, lang, s) {
         return v.into();
     }
+    miss(s);
     s.into()
+}
+
+// MIST_I18N_MISS=file: every string drawn without a translation is appended there (finding Polish left over)
+fn miss(s: &str) {
+    static OUT: std::sync::OnceLock<Option<Mutex<std::fs::File>>> = std::sync::OnceLock::new();
+    let out = OUT.get_or_init(|| {
+        let p = std::env::var("MIST_I18N_MISS").ok().filter(|p| !p.is_empty())?;
+        std::fs::OpenOptions::new().create(true).append(true).open(p).ok().map(Mutex::new)
+    });
+    if let Some(f) = out {
+        use std::io::Write;
+        let _ = writeln!(f.lock().unwrap(), "{s}");
+    }
 }
 
 #[cfg(test)]
@@ -252,6 +266,8 @@ mod tests {
         assert_eq!(with("de", "Piątek, 16 października"), "Freitag, 16. Oktober");
         assert_eq!(with("es", "Piątek, 16 października"), "Viernes, 16 de octubre");
         assert_eq!(with("en", "Firefox"), "Firefox");
+        assert_eq!(with("en", "PON"), "MON");
+        assert_eq!(with("de", "Wydmy"), "Dünen");
         assert_eq!(with("pl", "Nie przeszkadzać"), "Nie przeszkadzać");
     }
     #[test]
