@@ -428,7 +428,10 @@ pub struct Files {
     pub icons: crate::apps::Icons,
     icon_cache: HashMap<(String, u32), Option<Rc<Pixmap>>>,
     mime_icon: HashMap<String, String>,
-    pub thumbs: HashMap<(String, u32), Option<Rc<Pixmap>>>,
+    // thumbnails with the tick they were last asked for; at most THUMB_BYTES of pixels, least recent go first
+    pub thumbs: HashMap<(String, u32), (Option<Rc<Pixmap>>, u64)>,
+    thumb_bytes: usize,
+    thumb_tick: u64,
     thumb_tx: std::sync::mpsc::Sender<(String, i64, u32, String)>,
     pub drives: Vec<fs::Drive>,
     drives_at: Instant,
@@ -483,6 +486,8 @@ impl Watch {
 
 pub const W0: u32 = 1180;
 pub const H0: u32 = 740;
+// thumbnail pixels kept in memory (~190 at 256 px, ~760 at 128 px)
+const THUMB_BYTES: usize = 48 << 20;
 
 impl Files {
     pub fn new() -> Files {
@@ -500,6 +505,8 @@ impl Files {
             icon_cache: HashMap::new(),
             mime_icon: HashMap::new(),
             thumbs: HashMap::new(),
+            thumb_bytes: 0,
+            thumb_tick: 0,
             thumb_tx,
             drives: fs::drives(),
             drives_at: Instant::now(),
@@ -1697,16 +1704,26 @@ impl Files {
     pub fn has_thumb(&self, e: &Entry) -> bool {
         !e.dir && ((e.mime.starts_with("image/") && e.size < 40_000_000) || e.mime.starts_with("video/") || e.mime == "application/pdf")
     }
+    // drop the least recently asked thumbnails over THUMB_BYTES (was: all 600 at once, up to ~150 MB at 256 px)
+    fn trim_thumbs(&mut self) {
+        while self.thumb_bytes > THUMB_BYTES || self.thumbs.len() > 1500 {
+            let Some(k) = self.thumbs.iter().min_by_key(|(_, t)| t.1).map(|(k, _)| k.clone()) else { break };
+            if let Some((Some(p), _)) = self.thumbs.remove(&k) {
+                self.thumb_bytes -= p.data().len();
+            }
+        }
+    }
     // the thumbnail when ready; asks the worker for it the first time
     pub fn thumb(&mut self, e: &Entry, size: u32) -> Option<Rc<Pixmap>> {
         let key = (e.path.clone(), size);
-        if let Some(t) = self.thumbs.get(&key) {
-            return t.clone();
+        self.thumb_tick += 1;
+        let tick = self.thumb_tick;
+        if let Some(t) = self.thumbs.get_mut(&key) {
+            t.1 = tick;
+            return t.0.clone();
         }
-        if self.thumbs.len() > 600 {
-            self.thumbs.clear();
-        }
-        self.thumbs.insert(key, None);
+        self.thumbs.insert(key, (None, tick));
+        self.trim_thumbs();
         let _ = self.thumb_tx.send((e.path.clone(), e.mtime, size, e.mime.clone()));
         None
     }
@@ -2750,7 +2767,12 @@ impl Logic for Files {
                 }
             }
             Bg::Thumb { key, pm } => {
-                self.thumbs.insert(key, pm.map(Rc::new));
+                self.thumb_bytes += pm.as_ref().map(|p| p.data().len()).unwrap_or(0);
+                let tick = self.thumbs.get(&key).map(|t| t.1).unwrap_or(self.thumb_tick);
+                if let Some((Some(old), _)) = self.thumbs.insert(key, (pm.map(Rc::new), tick)) {
+                    self.thumb_bytes -= old.data().len();
+                }
+                self.trim_thumbs();
                 for w in &self.wins {
                     cx.redraw(w.id);
                 }
@@ -2874,6 +2896,8 @@ impl Files {
                     "addr": w.addr.as_ref().map(|r| r.text.clone()), "icons": self.icons_view, "preview": self.preview,
                     "clip": self.clip.len(), "undo": self.undo.len(), "job": self.job.as_ref().map(|j| j.title.clone()),
                     "pick": w.pick.as_ref().map(|p| p.title.clone()), "name": w.name.text,
+                    "thumbs": self.thumbs.len(), "thumb_bytes": self.thumb_bytes,
+                    "thumb_px": self.thumbs.values().filter_map(|t| t.0.as_ref().map(|p| p.data().len())).sum::<usize>(),
                 });
                 let dir = format!("{}/mist", std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".into()));
                 let _ = std::fs::write(format!("{dir}/files-state.json"), v.to_string());
