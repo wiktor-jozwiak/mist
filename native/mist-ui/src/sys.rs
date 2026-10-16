@@ -354,7 +354,7 @@ pub fn audio(tx: Sender<Msg>) {
 // ------------------------------------------------------------------ mistd stats
 pub fn stats(tx: Sender<Msg>) {
     spawn("stats", move || loop {
-        let bin = format!("{}/.config/quickshell/mist/scripts/bin/mistd", std::env::var("HOME").unwrap_or_default());
+        let bin = crate::paths::mistd();
         let Ok(mut ch) = Command::new(bin).arg("stats").stdout(Stdio::piped()).stderr(Stdio::null()).spawn() else { return };
         for l in BufReader::new(ch.stdout.take().unwrap()).lines() {
             let Ok(l) = l else { break };
@@ -461,7 +461,7 @@ pub fn power_profile(tx: Sender<Msg>) {
 pub fn island_events(tx: Sender<Msg>) {
     spawn("mistd-island", move || loop {
         use std::os::unix::process::CommandExt;
-        let bin = format!("{}/.config/quickshell/mist/scripts/bin/mistd", std::env::var("HOME").unwrap_or_default());
+        let bin = crate::paths::mistd();
         let mut c = Command::new(bin);
         c.arg("island").stdout(Stdio::piped()).stderr(Stdio::null());
         unsafe {

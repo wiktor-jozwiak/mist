@@ -193,8 +193,7 @@ impl Server {
         }
         if !dnd || urgent {
             if !replaced && !hint_bool(&hints, "suppress-sound") && n.urgency > 0 {
-                let home = std::env::var("HOME").unwrap_or_default();
-                let custom = format!("{home}/.config/quickshell/mist/sounds/{}.wav", if urgent { "urgent" } else { "message" });
+                let custom = crate::paths::mist_path(&format!("sounds/{}.wav", if urgent { "urgent" } else { "message" }));
                 let snd = if std::path::Path::new(&custom).exists() {
                     custom
                 } else {
