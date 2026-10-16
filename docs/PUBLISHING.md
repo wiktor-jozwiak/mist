@@ -58,6 +58,6 @@ would have been to skip a point; the open points are still to do.
 1. Blockers done, CI green on `main`.
 2. `CHANGELOG.md`: move "Unreleased" to `0.1.0` with the date; `git tag -a v0.1.0`.
 3. GitHub: description, topics (`hyprland`, `wayland`, `rust`, `desktop-shell`, `macos`), social preview
-   image (`docs/img/social-preview.png`, 1280×640, uploaded by hand), enable Issues and Discussions, disable Wiki.
+   image (`docs/img/social-preview.png`, 1280×640, uploaded by hand), enable Issues, Discussions and the Wiki (pages kept outside this repo, in `mist.wiki.git`).
 4. Settings → General → Danger zone → Change visibility → Public.
 5. Announce: r/hyprland, Hyprland Discord `#showcase`, r/unixporn (screenshot + numbers).
