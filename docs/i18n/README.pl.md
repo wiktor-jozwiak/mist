@@ -68,6 +68,9 @@ zegarze pulpitu) → Wygląd → Język, albo `MIST_LANG=en`. *Automatycznie* bi
 Tłumaczenia: jedna tabela [native/assets/i18n.tsv](../../native/assets/i18n.tsv), wiersz na napis, kolumna na
 język. Nowy język to jedna kolumna więcej.
 
+Dock, wyspa, pulpit i niebo pogody są na pierwszym monitorze Hyprlanda. Inny: `"primary": "DP-3"` w
+`~/.config/mist/settings.json` albo `MIST_PRIMARY=DP-3`. Miejsce pogody: *Dostosuj pulpit* → Ogólne.
+
 ### Karty pulpitu
 
 - **Pogoda**: [Open-Meteo](https://open-meteo.com), bez konta. Krzywa godzinowa, 4 dni, nowcast opadów, okno na

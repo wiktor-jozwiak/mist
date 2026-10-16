@@ -73,6 +73,9 @@ the desktop clock) → Appearance → Language, or set `MIST_LANG=en`. *Automati
 to English. Translations live in one table, [native/assets/i18n.tsv](native/assets/i18n.tsv): one row per
 string, one column per language. A new language is one more column.
 
+The dock, island, desktop and weather sky go on Hyprland's first monitor. Another one: `"primary": "DP-3"` in
+`~/.config/mist/settings.json`, or `MIST_PRIMARY=DP-3`. The weather place is set in *Customise desktop* → General.
+
 ### Desktop cards
 
 - **Weather**: [Open-Meteo](https://open-meteo.com), no account. Hourly curve, 4 days, rain nowcast, running
