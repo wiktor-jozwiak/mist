@@ -330,7 +330,7 @@ impl MistComp {
         self.stash.retain(|(x, _)| x != w);
         self.focus_history.retain(|x| *x != a);
         self.hypr_event("closewindow", &format!("{a:x}"));
-        let next = self.space.elements().filter(|w| w.alive()).last().cloned();
+        let next = self.space.elements().filter(|w| w.alive()).next_back().cloned();
         self.focus_window(next.as_ref());
         self.unswallow(w);
     }

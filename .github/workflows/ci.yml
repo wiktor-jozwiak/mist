@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# clippy: bugs, suspicious code and slow patterns fail the build; style lints stay warnings
+env:
+  CLIPPY: -D clippy::correctness -D clippy::suspicious -D clippy::perf
+
 jobs:
   build:
     # Arch, like the machines Mist runs on (system libraries match)
@@ -13,7 +17,7 @@ jobs:
     steps:
       - name: System packages
         run: |
-          pacman -Syu --noconfirm --needed base-devel git rust pkgconf libxkbcommon tzdata pam wayland mesa \
+          pacman -Syu --noconfirm --needed base-devel git rust cargo-deny pkgconf libxkbcommon tzdata pam wayland mesa \
             libinput seatd libdrm systemd-libs noto-fonts adwaita-cursors
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -34,6 +38,7 @@ jobs:
         run: |
           cargo build --release --locked
           cargo test --release --locked
+          cargo clippy --release --locked --workspace --all-targets -- $CLIPPY
       - name: mistd
         working-directory: scripts/mistd
         env:
@@ -41,5 +46,16 @@ jobs:
         run: |
           cargo build --release --locked
           cargo test --release --locked
+          cargo clippy --release --locked --all-targets -- $CLIPPY
+      # licences compatible with GPL-3.0-only, crates.io only (deny.toml)
+      - name: cargo deny
+        run: |
+          cargo deny --manifest-path native/Cargo.toml --config deny.toml check licenses bans sources
+          cargo deny --manifest-path scripts/mistd/Cargo.toml --config deny.toml check licenses bans sources
+      - name: cargo deny advisories (not blocking)
+        continue-on-error: true
+        run: |
+          cargo deny --manifest-path native/Cargo.toml --config deny.toml check advisories
+          cargo deny --manifest-path scripts/mistd/Cargo.toml --config deny.toml check advisories
       - name: Shell scripts
         run: for f in native/install.sh native/dist/mist-ui scripts/*.sh scripts/mistd/install.sh bench/measure.sh; do sh -n "$f"; done

@@ -172,7 +172,7 @@ pub struct Sheet {
 impl Sheet {
     pub fn new(req: Begin, tx: Sender<Msg>) -> Sheet {
         let me = std::env::var("USER").unwrap_or_default();
-        let user = if req.users.iter().any(|u| *u == me) || req.users.is_empty() { me } else { req.users[0].clone() };
+        let user = if req.users.contains(&me) || req.users.is_empty() { me } else { req.users[0].clone() };
         let mut s = Sheet { req, user, pw: String::new(), prompt: String::new(), echo: false, info: String::new(), info_err: false, busy: false, pw_tx: None, shake: None, hover: None, hits: Vec::new(), blink: Instant::now() };
         s.start(tx);
         s

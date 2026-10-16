@@ -80,6 +80,7 @@ pub struct Rounded {
 
 impl Rounded {
     /// Wrap a window's main surface element (None: no shader, draw it as is).
+    #[allow(clippy::result_large_err)] // the surface element comes back unchanged when it cannot be wrapped
     pub fn new(r: &mut GlesRenderer, inner: WaylandSurfaceRenderElement<GlesRenderer>, scale: f64) -> Result<Self, WaylandSurfaceRenderElement<GlesRenderer>> {
         match program(r) {
             Some(program) => Ok(Rounded { inner, program, radius: RADIUS * scale }),

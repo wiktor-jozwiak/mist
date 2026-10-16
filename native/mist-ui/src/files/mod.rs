@@ -1588,7 +1588,6 @@ impl Files {
 }
 
 thread_local! {
-    static MIME_TL: () = ();
     static THUMB_TX: std::cell::RefCell<Option<std::sync::Arc<std::sync::Mutex<Option<calloop::channel::Sender<Box<dyn Any + Send>>>>>>> = const { std::cell::RefCell::new(None) };
     static UNDO_PENDING: std::cell::RefCell<Option<(String, Undo)>> = const { std::cell::RefCell::new(None) };
     // per listing thread: its own MIME database (globs parse once per thread, ~1 ms)

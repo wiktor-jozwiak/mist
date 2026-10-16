@@ -194,8 +194,8 @@ for `mist-comp` also `libinput`, `libseat`, `libdrm`, `mesa` (gbm), `systemd-lib
 
 **Runtime:** `hyprland`, `pipewire` + `pipewire-pulse` (`pactl`, `pw-play`, `parec`), `wireplumber` (`wpctl`),
 `networkmanager` (`nmcli`), `wl-clipboard`, `grim`, `slurp`, `polkit`, `noto-fonts`, `noto-fonts-emoji`.
-Optional: `ddcutil` (brightness over DDC/CI), `kdeconnect` / `android-tools` (phone), `wf-recorder` (screen
-recording).
+Optional: `ddcutil` (brightness over DDC/CI), `kdeconnect` / `android-tools` (phone), `wf-recorder` (only
+`scripts/demo-reel.sh`). What each one turns on: [docs/CONFIG.md](docs/CONFIG.md#optional-integrations).
 
 **Font:** the UI is designed for SF Pro (variable `SF-Pro.ttf` in `~/.local/share/fonts/SF-Pro/`), which
 Apple licenses for its platforms only and Mist does not ship. Without it Mist uses Inter Variable, then
@@ -214,7 +214,8 @@ Noto Sans.
 | `Print`, `Super + Shift + S` | screenshot (region) | | | |
 
 Everything is scriptable: `mist-ui-bin msg mist toggle spotlight`, `mist-ui-bin msg ui stats`,
-`mist-ui-bin msg dock click firefox`. Log: `~/.cache/mist/ui.log`. Settings: `~/.config/mist/`.
+`mist-ui-bin msg dock click firefox`. Log: `~/.cache/mist/ui.log`. Settings: `~/.config/mist/`, every file and
+variable in [docs/CONFIG.md](docs/CONFIG.md).
 
 ## Develop
 

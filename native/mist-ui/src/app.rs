@@ -1298,7 +1298,6 @@ impl App {
         self.island.draw(&mut isf.canvas, &mut cx, ringing, call);
         let us = t0.elapsed().as_micros() as u64;
         DRAWS.with(|d| *d.borrow_mut().entry("island_us").or_insert(0) += us);
-        drop(cx);
         drop(st);
         // input region: the shape (nothing while it hides under a fullscreen window)
         let mode = self.island.mode(ringing, call);

@@ -1304,7 +1304,7 @@ impl Island {
             return format!("{} · {}", s["title"].as_str().unwrap_or(""), soon_text(s["start"].as_i64().unwrap_or(0)));
         }
         let tm = data::local(data::now());
-        format!("{} {} {}", data::DAYS_SHORT[tm.tm_wday as usize], tm.tm_mday, &data::MONTHS_GEN[tm.tm_mon as usize].chars().take(3).collect::<String>())
+        format!("{} {} {}", data::DAYS_SHORT[tm.tm_wday as usize], tm.tm_mday, data::MONTHS_GEN[tm.tm_mon as usize].chars().take(3).collect::<String>())
     }
     fn call_status(&self, c: &Value, ph: &crate::phone::State) -> String {
         match c["state"].as_str().unwrap_or("") {

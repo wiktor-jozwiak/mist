@@ -2,6 +2,8 @@
 name = "mist-ui"
 version = "0.1.0"
 edition = "2024"
+license = "GPL-3.0-only"
+publish = false
 description = "Mist shell surfaces drawn on the CPU (no GPU context): bar, dock, island, desktop, panels"
 
 [dependencies]

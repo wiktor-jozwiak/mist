@@ -1,0 +1,36 @@
+# cargo deny (CI, .github/workflows/ci.yml) for both workspaces:
+#   cargo deny --manifest-path native/Cargo.toml --config deny.toml check licenses bans sources
+# Mist is GPL-3.0-only; every dependency must be under a licence compatible with it.
+[graph]
+all-features = false
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "Unlicense",
+    "Unicode-3.0",
+    "CDLA-Permissive-2.0",
+    "LGPL-2.1-or-later",
+    "GPL-3.0-only",
+]
+confidence-threshold = 0.9
+
+[licenses.private]
+# the Mist crates themselves (publish = false)
+ignore = true
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

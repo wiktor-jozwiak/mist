@@ -367,6 +367,7 @@ pub struct Glass {
 }
 
 impl Glass {
+    #[allow(clippy::result_large_err)] // the surface element comes back unchanged when it cannot be wrapped
     pub fn new(r: &mut GlesRenderer, inner: WaylandSurfaceRenderElement<GlesRenderer>, output: &str, ignore: f32) -> Result<Self, WaylandSurfaceRenderElement<GlesRenderer>> {
         match mask_program(r) {
             Some(mask) => {

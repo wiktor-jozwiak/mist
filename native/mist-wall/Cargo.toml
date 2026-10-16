@@ -2,6 +2,8 @@
 name = "mist-wall"
 version = "0.1.0"
 edition = "2024"
+license = "GPL-3.0-only"
+publish = false
 description = "Mist live wallpaper on the GPU (the only Mist process with a GL context; runs only while a live scene is chosen)"
 
 [dependencies]
