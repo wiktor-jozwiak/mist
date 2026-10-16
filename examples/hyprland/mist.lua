@@ -1,10 +1,14 @@
 -- Mist on Hyprland (Lua config, Hyprland >= 0.55). Load it from hyprland.lua:
---   dofile(os.getenv("HOME") .. "/.config/quickshell/mist/examples/hyprland/mist.lua")
+--   dofile(os.getenv("HOME") .. "/.local/share/mist/shell/examples/hyprland/mist.lua")
 -- or copy the parts you want. Everything goes through `mist-ui-bin msg <target> <function> [args]`.
 
 local home = os.getenv("HOME")
 local mist = home .. "/.local/bin/mist-ui-bin msg "
-local scripts = home .. "/.config/quickshell/mist/scripts/"
+-- the checkout (native/install.sh links ~/.local/share/mist/shell to it), else the old fixed place
+local function exists(p) local f = io.open(p, "r"); if f then f:close() end; return f ~= nil end
+local root = home .. "/.local/share/mist/shell"
+if not exists(root .. "/scripts/shot.sh") then root = home .. "/.config/quickshell/mist" end
+local scripts = root .. "/scripts/"
 local mainMod = "SUPER"
 
 -- autostart: the guard restarts mist-ui after a crash (gives up after 5 crashes in 2 min); mist-ui starts

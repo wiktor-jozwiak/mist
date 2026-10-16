@@ -26,7 +26,7 @@ pub struct Phone {
 }
 
 fn mistd() -> String {
-    format!("{}/.config/quickshell/mist/scripts/bin/mistd", std::env::var("HOME").unwrap_or_default())
+    crate::paths::mistd()
 }
 fn spawn_mode(mode: &str) -> Option<Child> {
     use std::os::unix::process::CommandExt;

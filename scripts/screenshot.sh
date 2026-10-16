@@ -2,7 +2,10 @@
 # Screenshots: region | full
 # Zamraża ekran, wycina czysty obszar bez ramek, zapisuje na dysk i natychmiast kopiuje do schowka Wayland
 
-dir="$HOME/Obrazy/Zrzuty ekranu"
+# $MIST_SHOT_DIR, else Pictures/Screenshots (XDG, "Zrzuty ekranu" in Polish)
+pics=$(xdg-user-dir PICTURES 2>/dev/null); [ -n "$pics" ] && [ "$pics" != "$HOME" ] || pics="$HOME/Pictures"
+case "${LANG:-}" in pl*) sub="Zrzuty ekranu" ;; *) sub="Screenshots" ;; esac
+dir="${MIST_SHOT_DIR:-$pics/$sub}"
 mkdir -p "$dir"
 ts=$(date +'%Y-%m-%d_%H:%M:%S')
 out_file="$dir/Zrzut ekranu ${ts//_/\ o\ }.png"

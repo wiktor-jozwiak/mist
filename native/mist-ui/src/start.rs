@@ -441,7 +441,7 @@ impl Start {
                 out.push(Res { kind: Kind::File(p.clone()), cat: "Pliki", title: base(p).into(), sub: format!("{dir} · {}", ago(*t)), icon: file_icon(p).into(), act: "Otwórz" });
             }
         }
-        let bin = format!("{}/.local/bin/mist-ui-bin", home());
+        let bin = crate::paths::self_bin();
         let sid = std::env::var("XDG_SESSION_ID").unwrap_or("self".into());
         let cmds: [(&str, &str, Vec<String>, &str, bool); 7] = [
             ("zablokuj lock", "Zablokuj ekran", vec![bin.clone(), "lock".into()], "lock", false),
@@ -1641,7 +1641,7 @@ impl Pane for Start {
                     Hit::Power(i) => {
                         let sid = std::env::var("XDG_SESSION_ID").unwrap_or("self".into());
                         let (arm, cmd): (&str, Vec<String>) = match i {
-                            0 => ("", vec![format!("{}/.local/bin/mist-ui-bin", home()), "lock".into()]),
+                            0 => ("", vec![crate::paths::self_bin(), "lock".into()]),
                             1 => ("Wyloguj", vec!["loginctl".into(), "terminate-session".into(), sid]),
                             2 => ("Uruchom ponownie", vec!["systemctl".into(), "reboot".into()]),
                             _ => ("Wyłącz", vec!["systemctl".into(), "poweroff".into()]),

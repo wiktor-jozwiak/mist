@@ -90,10 +90,6 @@ fn current() -> (&'static str, &'static Table) {
     c
 }
 
-pub fn lang() -> &'static str {
-    current().0
-}
-
 // bumped on a language change: Text drops its shaped cache
 pub fn generation() -> u32 {
     GEN.load(Ordering::Relaxed)

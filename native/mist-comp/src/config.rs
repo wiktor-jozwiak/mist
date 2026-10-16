@@ -360,8 +360,8 @@ bind  SUPER+T            exec gnome-text-editor --new-window
 bind  SUPER+C            exec gnome-calculator
 bind  XF86Calculator     exec gnome-calculator
 bind  SUPER+P            exec hyprpicker -a -n
-bindl XF86MonBrightnessUp   exec ~/.config/quickshell/mist/scripts/bright.sh up
-bindl XF86MonBrightnessDown exec ~/.config/quickshell/mist/scripts/bright.sh down
+bindl XF86MonBrightnessUp   exec ~/.local/share/mist/shell/scripts/bright.sh up
+bindl XF86MonBrightnessDown exec ~/.local/share/mist/shell/scripts/bright.sh down
 bind  SUPER+D            workspace empty
 bind  SUPER+CTRL+Down    workspace empty
 bind  SUPER+ALT+Up       focus up
@@ -390,9 +390,9 @@ bind  SUPER+grave        togglespecial
 bind  SUPER+SHIFT+grave  movetoworkspacesilent special
 bind  SUPER+W            exec zen-browser
 bind  CTRL+SHIFT+Escape  exec kitty -e btop
-bind  Print              exec ~/.config/quickshell/mist/scripts/screenshot.sh region
-bind  SUPER+SHIFT+S      exec ~/.config/quickshell/mist/scripts/screenshot.sh region
-bind  SUPER+Print        exec ~/.config/quickshell/mist/scripts/screenshot.sh full
+bind  Print              exec ~/.local/share/mist/shell/scripts/screenshot.sh region
+bind  SUPER+SHIFT+S      exec ~/.local/share/mist/shell/scripts/screenshot.sh region
+bind  SUPER+Print        exec ~/.local/share/mist/shell/scripts/screenshot.sh full
 bindl XF86AudioRaiseVolume exec wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+
 bindl XF86AudioLowerVolume exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-
 bindl XF86AudioMute      exec wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle

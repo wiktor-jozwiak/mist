@@ -4,6 +4,10 @@
 # ~/.local/bin/mist-comp (the compositor; session/start-mist runs it, a running one is not touched).
 set -e
 cd "$(dirname "$0")"
+# Mist finds its scripts, shaders and assets through ~/.local/share/mist/shell (common/paths.rs): point it at
+# this checkout, wherever it lives (an existing link or directory is left alone)
+data=${XDG_DATA_HOME:-$HOME/.local/share}
+[ -e "$data/mist/shell" ] || { mkdir -p "$data/mist"; ln -s "$(cd .. && pwd)" "$data/mist/shell"; }
 cargo build --release
 for b in mist-ui mist-wall; do
     cp target/release/$b "$HOME/.local/bin/.$b-bin.new"

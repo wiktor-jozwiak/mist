@@ -13,7 +13,7 @@ const INSET: Rgba = Rgba(4.0 / 255.0, 7.0 / 255.0, 14.0 / 255.0, 0.26);
 const SOFT: Rgba = Rgba(10.0 / 255.0, 132.0 / 255.0, 1.0, 0.18);
 
 fn mistd() -> String {
-    format!("{}/.config/quickshell/mist/scripts/bin/mistd", std::env::var("HOME").unwrap_or_default())
+    crate::paths::mistd()
 }
 fn dir() -> String {
     format!("{}/.cache/mist/clip", std::env::var("HOME").unwrap_or_default())

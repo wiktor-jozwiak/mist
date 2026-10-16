@@ -24,7 +24,7 @@ const ACTIONS: [Action; 5] = [
 ];
 
 fn cmd(id: &str) -> Vec<String> {
-    let bin = format!("{}/.local/bin/mist-ui-bin", std::env::var("HOME").unwrap_or_default());
+    let bin = crate::paths::self_bin();
     let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
     match id {
         "lock" => vec![bin, "lock".into()],

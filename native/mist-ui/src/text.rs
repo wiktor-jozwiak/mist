@@ -118,7 +118,7 @@ impl Text {
         let ui_path = dir.as_ref().map(|d| format!("{d}/SF-Pro.ttf")).unwrap_or_else(|| format!("{home}/{UI_FONT}"));
         let ui = Mapped::open(&ui_path).or_else(|| UI_FALLBACKS.iter().find_map(|p| Mapped::open(p))).expect("UI font (SF Pro, Inter or Noto Sans)");
         // the repo's copy (native/assets), else Noctalia's
-        let icons_path = dir.map(|d| format!("{d}/tabler-icons.ttf")).unwrap_or_else(|| format!("{home}/.config/quickshell/mist/native/assets/tabler-icons.ttf"));
+        let icons_path = dir.map(|d| format!("{d}/tabler-icons.ttf")).unwrap_or_else(|| crate::paths::mist_path("native/assets/tabler-icons.ttf"));
         let icons = Mapped::open(&icons_path).or_else(|| Mapped::open(ICON_FONT)).expect("tabler icon font");
         let (ui, icons) = (ui.bytes(), icons.bytes());
         Text { ui, icons, fb: vec![None; FALLBACKS.len()], fb_tried: vec![false; FALLBACKS.len()], scale: ScaleContext::new(), shape: ShapeContext::new(), cache: HashMap::new(), shaped: HashMap::new(), lang_gen: crate::i18n::generation() }

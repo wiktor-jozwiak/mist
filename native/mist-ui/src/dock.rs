@@ -200,7 +200,7 @@ impl Dock {
         let img = tiny_skia::Pixmap::load_png(&path).ok().map(|p| scale_to(&p, 92)).or_else(|| {
             // no tile yet: ask mistd once, show the theme icon meanwhile (IconImage, margins 2)
             if !name.starts_with('@') && self.asked.insert(name.to_string()) {
-                let bin = format!("{}/.config/quickshell/mist/scripts/bin/mistd", std::env::var("HOME").unwrap_or_default());
+                let bin = crate::paths::mistd();
                 let _ = std::process::Command::new(bin).args(["tiles", name]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
             }
             let im = icons.image(if name.starts_with('@') { "application-x-executable" } else { name }, 84).or_else(|| icons.image("application-x-executable", 84))?;

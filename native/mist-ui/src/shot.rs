@@ -21,7 +21,7 @@ impl Default for Opts {
 
 // run shot.sh in a thread; the saved file comes back as Msg::Shot
 pub fn capture(o: &Opts, tx: Option<calloop::channel::Sender<crate::sys::Msg>>) {
-    let sh = format!("{}/.config/quickshell/mist/scripts/shot.sh", std::env::var("HOME").unwrap_or_default());
+    let sh = crate::paths::mist_path("scripts/shot.sh");
     let args = vec![o.mode.to_string(), o.delay.to_string(), if o.copy { "1".into() } else { "0".into() }];
     std::thread::spawn(move || {
         // the toolbar must be gone from the screen first

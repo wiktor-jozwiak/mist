@@ -450,11 +450,11 @@ impl Pane for NotifCenter {
                 None if self.pressed_outside => Act::Close,
                 Some(Hit::Dnd) => {
                     self.dnd = !self.dnd;
-                    Act::Exec(vec![format!("{}/.local/bin/mist-ui-bin", std::env::var("HOME").unwrap_or_default()), "msg".into(), "notif".into(), "dnd".into(), self.dnd.to_string()])
+                    Act::Exec(vec![crate::paths::self_bin(), "msg".into(), "notif".into(), "dnd".into(), self.dnd.to_string()])
                 }
                 Some(Hit::Clear) => {
                     self.entries.clear();
-                    Act::Exec(vec![format!("{}/.local/bin/mist-ui-bin", std::env::var("HOME").unwrap_or_default()), "msg".into(), "notif".into(), "clear".into()])
+                    Act::Exec(vec![crate::paths::self_bin(), "msg".into(), "notif".into(), "clear".into()])
                 }
                 Some(Hit::Agenda) => Act::Toggle("calendar"),
                 Some(Hit::Hide(app)) => {

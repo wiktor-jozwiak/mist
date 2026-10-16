@@ -3,7 +3,10 @@
 mode=${1:-screen}; delay=${2:-0}; copy=${3:-1}
 exec 2>>"${XDG_CACHE_HOME:-$HOME/.cache}/mist/shot.log"
 echo "$(date +%T) $mode delay=$delay copy=$copy" >&2
-dir="$HOME/Obrazy/Zrzuty ekranu"
+# $MIST_SHOT_DIR, else Pictures/Screenshots (XDG, "Zrzuty ekranu" in Polish)
+pics=$(xdg-user-dir PICTURES 2>/dev/null); [ -n "$pics" ] && [ "$pics" != "$HOME" ] || pics="$HOME/Pictures"
+case "${LANG:-}" in pl*) sub="Zrzuty ekranu" ;; *) sub="Screenshots" ;; esac
+dir="${MIST_SHOT_DIR:-$pics/$sub}"
 mkdir -p "$dir"
 
 sel() { slurp -d -b '#0b0f1860' -c '#a9c2eeff' -s '#a9c2ee22' -w 1 -B '#a9c2ee18' "$@"; }

@@ -88,7 +88,7 @@ pub fn calc(src: &str) -> Option<String> {
 }
 
 fn bin() -> String {
-    format!("{}/.local/bin/mist-ui-bin", std::env::var("HOME").unwrap_or_default())
+    crate::paths::self_bin()
 }
 fn commands() -> Vec<(&'static str, &'static str, &'static str, Vec<String>)> {
     let m = |a: &[&str]| -> Vec<String> { let mut v = vec![bin(), "msg".into()]; v.extend(a.iter().map(|s| s.to_string())); v };
@@ -141,7 +141,7 @@ fn usage_path() -> String {
 impl Spotlight {
     pub fn new(emoji_mode: bool) -> Spotlight {
         let usage = std::fs::read_to_string(usage_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
-        let emoji = std::fs::read_to_string(format!("{}/.config/quickshell/mist/native/assets/emoji.json", std::env::var("HOME").unwrap_or_default())).or_else(|_| std::fs::read_to_string("/usr/share/noctalia/assets/emoji.json")).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).and_then(|v| v.as_array().cloned()).unwrap_or_default();
+        let emoji = std::fs::read_to_string(crate::paths::mist_path("native/assets/emoji.json")).or_else(|_| std::fs::read_to_string("/usr/share/noctalia/assets/emoji.json")).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).and_then(|v| v.as_array().cloned()).unwrap_or_default();
         Spotlight { field: Field { text: if emoji_mode { ":".into() } else { String::new() } }, sel: 0, cat_sel: 0, cat_rows: Vec::new(), usage, emoji, h: Anim::new(60.0), ptr: (-1.0, -1.0), rows: Vec::new(), card: (0.0, 0.0, 0.0, 0.0), pressed_outside: false, etop: 0, as_emoji: emoji_mode }
     }
     fn emoji_mode(&self) -> bool {

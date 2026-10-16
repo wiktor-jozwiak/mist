@@ -9,7 +9,7 @@ pub fn spawn(tx: Sender<Msg>) {
     for (name, every) in [("weather", 600u64), ("garmin", 300), ("running", 600), ("calendar", 900)] {
         let tx = tx.clone();
         let _ = std::thread::Builder::new().name(format!("data-{name}")).stack_size(128 * 1024).spawn(move || loop {
-            let bin = format!("{}/.config/quickshell/mist/scripts/bin/mistd", std::env::var("HOME").unwrap_or_default());
+            let bin = crate::paths::mistd();
             let out = std::process::Command::new(bin).args(["data", name]).stderr(std::process::Stdio::null()).output();
             let v: Option<Value> = out.ok().and_then(|o| serde_json::from_slice(&o.stdout).ok());
             let retry = v.as_ref().map(|v| v.get("stale").and_then(|x| x.as_bool()).unwrap_or(false) || v.get("error").is_some()).unwrap_or(true);

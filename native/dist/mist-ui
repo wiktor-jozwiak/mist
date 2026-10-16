@@ -1,13 +1,15 @@
 #!/bin/sh
-# Guard for the native Mist shell (installed as ~/.local/bin/mist-ui, started from the compositor's autostart):
+# Guard for the native Mist shell (installed as ~/.local/bin/mist-ui or /usr/bin/mist-ui, started from the compositor's autostart):
 # restarts mist-ui-bin after a crash, gives up after 5 crashes in 2 min. Log: ~/.cache/mist/ui.log.
 # Stop: pkill -x mist-ui; pkill -x mist-ui-bin. MIST_FALLBACK: a command to start when it gives up.
 mkdir -p "$HOME/.cache/mist"; LOG="$HOME/.cache/mist/ui.log"
 [ -f "$LOG" ] && [ $(stat -c %s "$LOG") -gt 1000000 ] && mv -f "$LOG" "$LOG.1"
 pgrep -x mist-ui-bin >/dev/null && exit 0
+# next to the guard (~/.local/bin, /usr/bin), else on $PATH
+bin="$(dirname "$0")/mist-ui-bin"; [ -x "$bin" ] || bin=mist-ui-bin
 fails=""
 while :; do
-    "$HOME/.local/bin/mist-ui-bin" >>"$LOG" 2>&1
+    "$bin" >>"$LOG" 2>&1
     code=$?
     [ $code -eq 0 ] && exit 0
     now=$(date +%s); echo "$(date '+%F %T') mist-ui exited with $code" >>"$LOG"

@@ -387,7 +387,7 @@ pub fn night_on() -> bool {
 }
 // Hyprland screen shader shaders/nightlight.glsl (~4000 K)
 pub fn night_cmd(on: bool) -> Vec<String> {
-    let sh = if on { format!("{}/.config/quickshell/mist/shaders/nightlight.glsl", std::env::var("HOME").unwrap_or_default()) } else { String::new() };
+    let sh = if on { crate::paths::mist_path("shaders/nightlight.glsl") } else { String::new() };
     vec!["hyprctl".into(), "eval".into(), format!("hl.config({{ decoration = {{ screen_shader = \"{sh}\" }} }})")]
 }
 fn sink_icon(d: &Dev) -> &'static str {
@@ -1094,7 +1094,7 @@ impl Pane for Control {
                 Act::None
             }
             Ptr::Release(_) => {
-                let bin = format!("{}/.local/bin/mist-ui-bin", std::env::var("HOME").unwrap_or_default());
+                let bin = crate::paths::self_bin();
                 match hit {
                     None if self.pressed_outside => Act::Close,
                     Some(Hit::Link(0)) | Some(Hit::Orb(0)) => { self.go("network", true); Act::Redraw }

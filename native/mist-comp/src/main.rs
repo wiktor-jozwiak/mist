@@ -29,6 +29,9 @@ mod xwayland;
 #[allow(dead_code)]
 mod text;
 // text.rs translates what it draws (the greeter, titles stay as they are)
+#[path = "../../common/paths.rs"]
+#[allow(dead_code)]
+mod paths;
 #[path = "../../mist-ui/src/i18n.rs"]
 #[allow(dead_code)]
 mod i18n;
