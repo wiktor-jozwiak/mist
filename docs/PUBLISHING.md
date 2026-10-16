@@ -5,23 +5,14 @@ would be to skip it.
 
 ## Blockers
 
-- [ ] **Old InfluxDB credentials in git history.** `scripts/mistd/src/data.rs` held the InfluxDB user and
-      password from the first commit (`443fbc8`) until they moved to `~/.config/mist/influx.json`. Change the
-      password of the local InfluxDB (garmin-grafana) **and** rewrite history before publishing (below).
-- [ ] **Apple sounds.** `sounds/*.wav` are macOS system sounds and may not be redistributed. Remove them from
-      the tree and from history; `notif.rs` already falls back to `/usr/share/sounds/freedesktop`. Replace with
-      own or CC0 sounds (e.g. freesound.org CC0) if a custom sound is wanted.
-- [ ] **History rewrite** (removes both from every commit; all hashes change, so do it once, right before
-      the first public push, from a fresh clone):
-
-      ```bash
-      git clone --mirror git@github.com:<user>/mist.git mist-mirror && cd mist-mirror
-      git filter-repo --invert-paths --path-glob 'sounds/*.wav' \
-          --replace-text <(printf '%s==>REMOVED\n' '<old influx password>')
-      git push --force --mirror
-      ```
-
-      Alternative: publish a fresh repository with one squashed commit and keep this one private.
+- [x] **Old InfluxDB credentials in git history.** They were constants in `scripts/mistd/src/data.rs`;
+      the connection now lives in `~/.config/mist/influx.json`, and history was rewritten (2026-10-16)
+      before the first push, so no commit on GitHub contains them.
+- [x] **Apple sounds.** `sounds/*.wav` (macOS system sounds) were removed from every commit in the same
+      rewrite and are gitignored; `notif.rs` falls back to `/usr/share/sounds/freedesktop`. Add own or CC0
+      sounds (e.g. freesound.org CC0) if a custom sound is wanted.
+- [ ] Before going public, check again that nothing personal was committed since:
+      `git log -p | grep -iE 'password|token|secret|api[_-]?key'`.
 
 ## Should fix
 

@@ -23,3 +23,6 @@ scripts/old-python/
 components/assign.kat
 components/license.txt
 components/preferences.xml
+
+# macOS system sounds (not redistributable): local only; notif.rs falls back to the freedesktop theme
+sounds/*.wav
