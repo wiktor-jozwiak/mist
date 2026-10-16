@@ -1,8 +1,8 @@
 // mist-wall: everything Mist draws on the GPU, in one process (the only one with a GL context: ~160 MB on
 // NVIDIA). Started (and restarted) by mist-ui, one instance (flock).
 //  - the wallpaper of every monitor (was LiveWallpaper.qml + LiveWall.qml): ~/.config/mist/wallpaper.json
-//    {"live": id | "", "image", "tempo", "music"}. A live scene: shaders/live|fx|toon.frag (GLSL 150 taken
-//    from the .qsb Qt used), presets from components/LivePresets.js; 30 fps, 5 behind windows (only their
+//    {"live": id | "", "image", "tempo", "music"}. A live scene: shaders/live|fx|toon.frag (GLSL 150 in
+//    shaders/glsl, made from the .qsb Qt used), presets from native/assets/live-presets.js; 30 fps, 5 behind windows (only their
 //    blur shows it), paused under a fullscreen window or while the wallpaper gallery covers the monitor; the
 //    music level lifts it gently. A photo: one texture per monitor size, cross-faded 600 ms, drawn only when
 //    it changes. The desktop vignette (shaders/vignette.frag) over both on the main monitor.
@@ -12,6 +12,8 @@
 //    text above it on the Bottom layer).
 #[path = "../../common/astro.rs"]
 mod astro;
+#[path = "../../common/paths.rs"]
+mod paths;
 #[path = "../../common/presets.rs"]
 mod presets;
 #[path = "../../common/sky.rs"]
@@ -201,7 +203,8 @@ fn now_ms() -> f64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as f64).unwrap_or(0.0)
 }
 
-// GLSL 150 of a Qt .qsb (cached by mtime in $XDG_RUNTIME_DIR/mist/shaders)
+// GLSL 150: shaders/glsl (generated once from the .qsb, see shaders/glsl/regen.sh), else taken from the Qt
+// .qsb with qsb (cached by mtime in $XDG_RUNTIME_DIR/mist/shaders)
 fn shader_src(name: &str) -> Option<String> {
     if name == "photo" {
         return Some(PHOTO.to_string());
@@ -209,7 +212,10 @@ fn shader_src(name: &str) -> Option<String> {
     if name == "scrim" {
         return Some(SCRIM.to_string());
     }
-    let qsb = format!("{}/.config/quickshell/mist/shaders/{name}.frag.qsb", home());
+    if let Ok(src) = std::fs::read_to_string(paths::mist_path(&format!("shaders/glsl/{name}.frag"))) {
+        return Some(src);
+    }
+    let qsb = paths::mist_path(&format!("shaders/{name}.frag.qsb"));
     let m = std::fs::metadata(&qsb).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
     let dir = format!("{}/shaders", run_dir());
     let _ = std::fs::create_dir_all(&dir);
@@ -847,8 +853,9 @@ impl App {
     // wallpaper.json changed
     fn load_cfg(&mut self) {
         let c = read_json(&format!("{}/.config/mist/wallpaper.json", home()));
-        let live = c["live"].as_str().unwrap_or("").to_string();
-        let def = format!("{}/Obrazy/Tapety/glow-ember.png", home());
+        // no wallpaper.json yet (a new install): a live scene, nothing to look for on disk
+        let live = if c.is_null() { "dunes".to_string() } else { c["live"].as_str().unwrap_or("").to_string() };
+        let def = format!("{}/glow-ember.png", paths::wallpaper_dir());
         self.image = c["image"].as_str().filter(|s| !s.is_empty()).unwrap_or(&def).to_string();
         self.tempo = c["tempo"].as_str().unwrap_or("normal").to_string();
         if live != self.live {

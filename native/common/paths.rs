@@ -32,3 +32,22 @@ pub fn self_bin() -> String {
         if std::path::Path::new(&local).exists() { local } else { "mist-ui-bin".into() }
     })
 }
+
+// XDG Pictures (~/.config/user-dirs.dirs), else ~/Pictures
+#[allow(dead_code)]
+pub fn pictures_dir() -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let cfg = std::env::var("XDG_CONFIG_HOME").ok().filter(|d| !d.is_empty()).unwrap_or_else(|| format!("{home}/.config"));
+    std::fs::read_to_string(format!("{cfg}/user-dirs.dirs")).ok().and_then(|s| {
+        s.lines().find_map(|l| l.trim().strip_prefix("XDG_PICTURES_DIR=").map(|v| v.trim_matches('"').replace("$HOME", &home)))
+    }).filter(|d| !d.is_empty() && *d != home).unwrap_or_else(|| format!("{home}/Pictures"))
+}
+
+// the photo wallpapers: $MIST_WALLPAPERS, else Pictures/Wallpapers ("Tapety" in Polish)
+#[allow(dead_code)]
+pub fn wallpaper_dir() -> String {
+    std::env::var("MIST_WALLPAPERS").ok().filter(|d| !d.is_empty()).unwrap_or_else(|| {
+        let sub = if std::env::var("LANG").unwrap_or_default().starts_with("pl") { "Tapety" } else { "Wallpapers" };
+        format!("{}/{sub}", pictures_dir())
+    })
+}

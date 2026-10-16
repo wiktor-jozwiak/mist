@@ -116,7 +116,7 @@ impl Wall {
 
     pub fn read_cfg() -> (String, String) {
         let c: serde_json::Value = std::fs::read_to_string(format!("{}/.config/mist/wallpaper.json", std::env::var("HOME").unwrap_or_default())).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
-        let def = format!("{}/Obrazy/Tapety/glow-ember.png", std::env::var("HOME").unwrap_or_default());
+        let def = format!("{}/glow-ember.png", crate::paths::wallpaper_dir());
         (c["live"].as_str().unwrap_or("").to_string(), c["image"].as_str().filter(|s| !s.is_empty()).unwrap_or(&def).to_string())
     }
 

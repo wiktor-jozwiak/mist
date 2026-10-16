@@ -176,7 +176,7 @@ fn home() -> String {
 }
 fn photo_path() -> String {
     let c: serde_json::Value = std::fs::read_to_string(format!("{}/.config/mist/wallpaper.json", home())).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
-    c["image"].as_str().filter(|s| !s.is_empty()).map(String::from).unwrap_or(format!("{}/Obrazy/Tapety/glow-ember.png", home()))
+    c["image"].as_str().filter(|s| !s.is_empty()).map(String::from).unwrap_or(format!("{}/glow-ember.png", crate::paths::wallpaper_dir()))
 }
 // the photo cropped to w x h, premultiplied RGBA (opaque)
 fn photo(path: &str, w: u32, h: u32) -> Pixmap {

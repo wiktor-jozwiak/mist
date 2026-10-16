@@ -3,7 +3,7 @@
 // mist-wall on a Top-layer surface under this pane ($XDG_RUNTIME_DIR/mist/preview.json, with the scrim);
 // this pane is transparent above the glass shelf: filters, tempo / music, a carousel of still thumbnails
 // (mist-wall renders them into ~/.cache/mist/thumbs when the gallery opens) of the scenes and the photos
-// in ~/Obrazy/Tapety. Click sets, Enter sets and closes, ← → browse, Tab next filter, Space sets, Esc closes.
+// in Pictures/Wallpapers (~/Obrazy/Tapety in Polish). Click sets, Enter sets and closes, ← → browse, Tab next filter, Space sets, Esc closes.
 use crate::anim::{Anim, Ease};
 use crate::gfx::{Canvas, Rgba};
 use crate::pane::*;
@@ -164,7 +164,7 @@ impl Wallpapers {
         }
         if f == "photos" || f == "all" {
             for ph in &self.photos {
-                self.items.push(Item { key: format!("photo:{ph}"), name: nice(ph), desc: "Zdjęcie z ~/Obrazy/Tapety".into(), cat: "photos".into(), auto: false });
+                self.items.push(Item { key: format!("photo:{ph}"), name: nice(ph), desc: "Zdjęcie z folderu tapet".into(), cat: "photos".into(), auto: false });
             }
         }
         let ap = self.applied();

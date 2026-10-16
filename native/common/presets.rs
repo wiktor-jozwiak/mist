@@ -4,7 +4,7 @@
 use serde_json::Value;
 
 pub fn path() -> String {
-    format!("{}/.config/quickshell/mist/components/LivePresets.js", std::env::var("HOME").unwrap_or_default())
+    crate::paths::mist_path("native/assets/live-presets.js")
 }
 
 // JS literal -> JSON: quote bare keys, drop comments and trailing commas
@@ -58,9 +58,9 @@ pub fn get<'a>(list: &'a [Value], id: &str) -> Option<&'a Value> {
     list.iter().find(|p| p["id"].as_str() == Some(id) && p.get("mode").is_some())
 }
 
-// the wallpaper gallery: photos in ~/Obrazy/Tapety (2 levels), sorted
+// the wallpaper gallery: photos in Pictures/Wallpapers (paths.rs, 2 levels), sorted
 pub fn photo_dir() -> String {
-    format!("{}/Obrazy/Tapety", std::env::var("HOME").unwrap_or_default())
+    crate::paths::wallpaper_dir()
 }
 pub fn photos() -> Vec<String> {
     fn walk(d: &std::path::Path, depth: u32, out: &mut Vec<String>) {
