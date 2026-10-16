@@ -17,7 +17,10 @@ lock screen and polkit agent in one ~50 MB process, without a GPU context.
 
 ![Mist desktop](docs/img/desktop-en.webp)
 
-<sub>Offscreen render (`mist-ui --desk-png`, `--dock-png`, `--png`, `mist-wall-bin --png`) with the demo data in `docs/demo`, rebuilt by [docs/img/hero.sh](docs/img/hero.sh).
+<img src="docs/img/island.gif" width="49%" alt="Dynamic Island: a notification, the volume, rain soon, the next event"> <img src="docs/img/weather.gif" width="49%" alt="The weather card in the rain">
+<img src="docs/img/wallpaper.gif" width="98.5%" alt="A live wallpaper (dunes)">
+
+<sub>Offscreen render (`mist-ui --desk-png`, `--dock-png`, `--png`, `mist-wall-bin --png`) with the demo data in `docs/demo`, rebuilt by [docs/img/hero.sh](docs/img/hero.sh) and [docs/img/gifs.sh](docs/img/gifs.sh).
 On a real session Hyprland blurs under the glass.</sub>
 
 </div>

@@ -1468,6 +1468,34 @@ fn main() {
                 app.gl().finish();
                 eprintln!("bench {what} {w}x{h}: {:.3} ms/frame", t0.elapsed().as_secs_f64() * 1000.0 / n.max(1) as f64);
             }
+            // MIST_WALL_FRAMES=N [MIST_WALL_FPS=15]: N frames as <out>.000.ppm.. (the README's gifs), the scene's
+            // clock moving as in the shell; the sky in real time (its particles follow the wall clock)
+            if let Some(n) = std::env::var("MIST_WALL_FRAMES").ok().and_then(|n| n.parse::<u32>().ok()) {
+                let dt = 1.0 / std::env::var("MIST_WALL_FPS").ok().and_then(|f| f.parse::<f64>().ok()).unwrap_or(15.0);
+                for i in 0..n {
+                    if what == "sky" {
+                        std::thread::sleep(Duration::from_secs_f64(dt));
+                        app.sky.off_x += app.sky.model.cloud_speed * dt;
+                        app.sky.evo += (0.03 + app.sky.model.wind * 0.001) * dt;
+                    } else {
+                        let (_, _, wind_k) = app.uniforms(1.0, 1.0);
+                        app.t += app.preset()["speed"].as_f64().unwrap_or(1.0) * presets::tempo(&app.tempo) as f64 * wind_k as f64 * dt;
+                    }
+                    bind(&app);
+                    match what.as_str() {
+                        "sky" => app.sky_scene(w, h),
+                        _ => app.wall_frame(w, h, true),
+                    }
+                    app.gl().read_pixels(0, 0, w, h, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelPackData::Slice(Some(&mut px)));
+                    let mut out = format!("P6\n{w} {h}\n255\n").into_bytes();
+                    for y in (0..h).rev() {
+                        for p in px[(y * w * 4) as usize..((y + 1) * w * 4) as usize].chunks_exact(4) {
+                            out.extend_from_slice(&p[..3]);
+                        }
+                    }
+                    std::fs::write(format!("{}.{i:03}.ppm", args[2]), out).unwrap();
+                }
+            }
             app.gl().read_pixels(0, 0, w, h, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelPackData::Slice(Some(&mut px)));
         }
         // GL rows go bottom-up; un-premultiply nothing (alpha shown over black)

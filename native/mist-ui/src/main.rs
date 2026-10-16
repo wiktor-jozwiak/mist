@@ -116,6 +116,14 @@ fn main() {
         d.wx.paint(&mut c, &mut t, &wx, &g, &d.cfg);
         eprintln!("card {:?}", t0.elapsed());
         c.pm.save_png(format!("{}/card.png", args[2])).unwrap();
+        // where the shell puts them on a 1920 px monitor (stage, card window, the sky under it), for docs/img
+        let (cx, cy) = d.card_at(&mut t);
+        let layout = serde_json::json!({
+            "stage": [(d.out_w - desktop::STAGE_W as i32) / 2, desktop::STAGE_TOP],
+            "card": [cx - p as i32, cy - p as i32],
+            "sky": [cx + 1, cy + 1, desktop::WX_W as i32 - 2, desktop::BENTO_H as i32 - 2],
+        });
+        std::fs::write(format!("{}/layout.json", args[2]), layout.to_string()).unwrap();
         return;
     }
     // `--wall-ppm out.ppm`: the main monitor's photo wallpaper (with the vignette), for checks
@@ -134,7 +142,7 @@ fn main() {
     }
     // `--island-bench <demo> [out.png]`: an island demo drawn every 16 ms for 1.5 s (frame cost, to_bgra cost),
     // the last frame into a PNG
-    if args.get(1).map(|s| s.as_str()) == Some("--island-bench") {
+    if matches!(args.get(1).map(|s| s.as_str()), Some("--island-bench" | "--island-frames")) {
         let (mut t, mut ic, mut im, ph) = (text::Text::new(), apps::Icons::new(), img::Images::new(), phone::State::default());
         let mut isl = island::Island::new();
         let mut c = gfx::Canvas::new(island::WIN_W, island::WIN_H);
@@ -185,6 +193,20 @@ fn main() {
             return;
         }
         isl.demo(kind);
+        // `--island-frames <demo> <out> [n] [fps]`: the demo drawn in real time into <out>.000.png.. (README gifs)
+        if args[1] == "--island-frames" {
+            // the volume demo at 64 % (no audio state here: 0 %, muted)
+            isl.audio = sys::Audio { vol: 0.64, sink_desc: "Speakers".into(), ..isl.audio.clone() };
+            let n: u32 = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(60);
+            let fps: f64 = args.get(5).and_then(|s| s.parse().ok()).unwrap_or(30.0);
+            for i in 0..n {
+                isl.tick(false, false);
+                frame(&mut isl, &mut c);
+                c.pm.save_png(format!("{}.{i:03}.png", args[3])).unwrap();
+                std::thread::sleep(std::time::Duration::from_secs_f64(1.0 / fps));
+            }
+            return;
+        }
         let (start, mut n, mut us) = (std::time::Instant::now(), 0u64, 0u64);
         while start.elapsed().as_millis() < 1500 {
             us += frame(&mut isl, &mut c);

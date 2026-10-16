@@ -22,14 +22,16 @@ HOME=$w/home mist-ui-bin --desk-png "$w/desk" >/dev/null 2>&1
 mist-ui-bin --dock-png "$w/dock.png" >/dev/null 2>&1
 mist-ui-bin --png "$w/bar.png" '{"app":"Firefox","title":"Mist README"}' >/dev/null 2>&1
 
-# the weather card sits on the bottom edge of the stage; the sky window under it has rounded corners
-h=$(magick identify -format %h "$w/desk/stage.png")
-y=$((118 + h - 312))
+# stage, weather card and the sky under it where the shell puts them (--desk-png writes layout.json);
+# the sky window has rounded corners
+read -r gx gy cx cy sx sy <<EOF
+$(sed -E 's/.*"card":\[([0-9-]+),([0-9-]+)\].*"sky":\[([0-9-]+),([0-9-]+),[0-9]+,[0-9]+\].*"stage":\[([0-9-]+),([0-9-]+)\].*/\5 \6 \1 \2 \3 \4/' "$w/desk/layout.json")
+EOF
 magick "$w/sky.ppm" \( -size 546x310 xc:black -fill white -draw "roundrectangle 0,0 545,309 25,25" \) \
     -alpha off -compose CopyOpacity -composite "$w/sky.png"
-magick "$w/wall.ppm" "$w/desk/stage.png" -geometry +322+118 -composite \
-    "$w/sky.png" -geometry +687+$((y + 1)) -composite \
-    "$w/desk/card.png" -geometry +646+$((y - 40)) -composite \
+magick "$w/wall.ppm" "$w/desk/stage.png" -geometry +$gx+$gy -composite \
+    "$w/sky.png" -geometry +$sx+$sy -composite \
+    "$w/desk/card.png" -geometry +$cx+$cy -composite \
     "$w/dock.png" -gravity south -geometry +0+8 -composite \
     "$w/bar.png" -gravity north -geometry +0+0 -composite \
     -resize 1600x -strip -quality 92 "$out"

@@ -584,7 +584,8 @@ impl Island {
                     return;
                 }
                 let ws = d.split(',').next().unwrap_or("");
-                if !ws.is_empty() {
+                // special:minimized is where minimizing parks windows, not a place the user goes to
+                if !ws.is_empty() && ws != "special:minimized" {
                     let t = ws.trim_start_matches("special").trim_start_matches(':');
                     self.push(info("special", 1, 1500, "layers", PURPLE, if t.is_empty() { "Brudnopis" } else { t }, "obszar specjalny"));
                 }
@@ -1056,7 +1057,7 @@ impl Island {
         let e = match kind {
             "volume" => Ev { view: "osd", key: "vol".into(), prio: 3, dur: 2500, value: -1, ..Default::default() },
             "mic-volume" => Ev { view: "osd", key: "vol".into(), prio: 3, dur: 2500, mic: true, value: -1, ..Default::default() },
-            "notif" => Ev { view: "notif", prio: 2, dur: 5000, app: "Zen Browser".into(), icon: "zen-browser".into(), title: "Nowa wiadomość od Kasi".into(), body: "Hej! Widzimy się dziś o 18 na bieganiu? Weź bidon, bo ma być ciepło.".into(), value: -1, ..Default::default() },
+            "notif" => Ev { view: "notif", prio: 2, dur: 5000, app: "Zen Browser".into(), icon: "zen-browser".into(), title: crate::i18n::tr("Nowa wiadomość od Kasi").into_owned(), body: crate::i18n::tr("Hej! Widzimy się dziś o 18 na bieganiu? Weź bidon, bo ma być ciepło.").into_owned(), value: -1, ..Default::default() },
             "notif-long" => Ev { view: "notif", prio: 2, dur: 8000, app: "Thunderbird".into(), icon: "thunderbird".into(), title: "Plan treningowy na październik".into(), body: "Cześć! W załączniku plan na najbliższe cztery tygodnie: dwa akcenty w tygodniu (interwały i tempo), jedno długie wybieganie w niedzielę, reszta spokojnie w drugiej strefie. Daj znać, jak się czujesz po sobotnim starcie.".into(), value: -1, ..Default::default() },
             "progress" => Ev { view: "notif", key: "v:demo".into(), prio: 2, dur: 6000, app: "Pobieranie".into(), icon: "folder-download".into(), title: "archlinux-2026.10.01-x86_64.iso".into(), body: "1,1 GB z 1,4 GB · 12 s".into(), value: 78, ..Default::default() },
             "urgent" => Ev { view: "notif", prio: 3, dur: 9000, app: "System".into(), icon: "dialog-warning".into(), title: "Mało miejsca na dysku".into(), body: "Na partycji / zostało 2,1 GB.".into(), urgent: true, value: -1, pulse: true, ..Default::default() },
@@ -2302,3 +2303,18 @@ pub fn extract_codes(text: &str, links: &[String]) -> Vec<String> {
     codes
 }
 
+#[cfg(test)]
+mod special_tests {
+    use super::*;
+    // minimizing parks windows on special:minimized: no "special workspace" event for it, others still shown
+    #[test]
+    fn minimized_is_quiet() {
+        let apps = Apps { entries: Vec::new() };
+        let mut isl = Island::new();
+        isl.armed = true;
+        isl.on_hypr("activespecial", "special:minimized,DP-3", &apps, &[], "");
+        assert!(isl.ev.is_none() && isl.queue.is_empty());
+        isl.on_hypr("activespecial", "special:scratch,DP-3", &apps, &[], "");
+        assert_eq!(isl.ev.as_ref().map(|e| e.key.as_str()), Some("special"));
+    }
+}
