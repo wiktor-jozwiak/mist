@@ -37,6 +37,7 @@ pointer movement during the window, note whether media is playing (the Dynamic I
 | **Mist native** (2026-10-16, live wallpaper "dunes") | | same | 87 to 103 MB | 0.6 % mist-ui, 0.8 % mist-wall | mist-wall only |
 | Mist native, `mist-ui` alone | | 1 | 36 to 50 MB | 0.6 % | no |
 | Noctalia v5 | C++, cairo + EGL | 1 | 122 MB | 0.07 % | yes |
+| Noctalia v5 (2026-10-16, `bench/others.sh`: 3 min settle, 30 s) | | 1 | 105 MB (RSS 182 MB) | 0.11 % | yes |
 | Empty Quickshell (`shell.qml` with one `PanelWindow`) | Qt Quick | 1 | 124 MB | ~0 % | yes |
 | Mist on Quickshell (old QML version) | Qt Quick + QML | 1 + helpers | 428 MB | 9.5 % | yes |
 
