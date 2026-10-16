@@ -14,7 +14,7 @@ jobs:
       - name: System packages
         run: |
           pacman -Syu --noconfirm --needed base-devel git rust pkgconf libxkbcommon pam wayland mesa \
-            libinput seatd libdrm systemd-libs noto-fonts
+            libinput seatd libdrm systemd-libs noto-fonts adwaita-cursors
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
         with:
@@ -30,6 +30,7 @@ jobs:
         env:
           RUSTFLAGS: ""
           CARGO_BUILD_RUSTFLAGS: ""
+          XCURSOR_THEME: Adwaita # mist-comp's cursor test needs a real theme
         run: |
           cargo build --release --locked
           cargo test --release --locked

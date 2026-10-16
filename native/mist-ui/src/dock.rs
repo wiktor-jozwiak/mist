@@ -58,6 +58,9 @@ pub struct Dock {
 pub struct Tile {
     img: tiny_skia::Pixmap,    // 92 px (sourceSize 2x)
     shadow: tiny_skia::Pixmap, // blurred alpha, same size + margin
+    // both scaled to SIZE once: a tile at rest is a plain blit, only a hovered / pressed one is resampled
+    rest: tiny_skia::Pixmap,
+    rest_shadow: tiny_skia::Pixmap,
 }
 const SH_M: i32 = 12;
 
@@ -208,7 +211,10 @@ impl Dock {
         });
         let t = img.map(|img| {
             let shadow = drop_shadow(&img);
-            Rc::new(Tile { img, shadow })
+            let k = SIZE / 92.0;
+            let rest = scaled(&img, k, tiny_skia::FilterQuality::Bicubic);
+            let rest_shadow = scaled(&shadow, k, tiny_skia::FilterQuality::Bilinear);
+            Rc::new(Tile { img, shadow, rest, rest_shadow })
         });
         // a missing tile is looked up again next time (mistd may have made it)
         if t.as_ref().map(|_| true).unwrap_or(false) && std::path::Path::new(&path).exists() || name.starts_with('@') {
@@ -257,10 +263,17 @@ impl Dock {
                 let cy = iy + SIZE / 2.0 + ty;
                 let ox = cx - 46.0 * k2;
                 let oy = cy - 46.0 * k2;
-                let sp = tiny_skia::PixmapPaint { quality: tiny_skia::FilterQuality::Bilinear, ..Default::default() };
-                c.pm.draw_pixmap(0, 0, tile.shadow.as_ref(), &sp, tiny_skia::Transform::from_row(k2, 0.0, 0.0, k2, ox - SH_M as f32 * k2, oy - SH_M as f32 * k2 + 3.0), None);
-                let ip = tiny_skia::PixmapPaint { quality: tiny_skia::FilterQuality::Bicubic, ..Default::default() };
-                c.pm.draw_pixmap(0, 0, tile.img.as_ref(), &ip, tiny_skia::Transform::from_row(k2, 0.0, 0.0, k2, ox, oy), None);
+                if (sc - 1.0).abs() < 1e-3 {
+                    let (bx, by) = (ox.round() as i32, oy.round() as i32);
+                    let m = (SH_M as f32 * k2).round() as i32;
+                    c.pm.draw_pixmap(bx - m, by - m + 3, tile.rest_shadow.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), None);
+                    c.pm.draw_pixmap(bx, by, tile.rest.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), None);
+                } else {
+                    let sp = tiny_skia::PixmapPaint { quality: tiny_skia::FilterQuality::Bilinear, ..Default::default() };
+                    c.pm.draw_pixmap(0, 0, tile.shadow.as_ref(), &sp, tiny_skia::Transform::from_row(k2, 0.0, 0.0, k2, ox - SH_M as f32 * k2, oy - SH_M as f32 * k2 + 3.0), None);
+                    let ip = tiny_skia::PixmapPaint { quality: tiny_skia::FilterQuality::Bicubic, ..Default::default() };
+                    c.pm.draw_pixmap(0, 0, tile.img.as_ref(), &ip, tiny_skia::Transform::from_row(k2, 0.0, 0.0, k2, ox, oy), None);
+                }
             }
             if let Slot::App(key) = s {
                 if let Some(a) = self.app(key) {
@@ -321,6 +334,13 @@ impl Dock {
         let xs = self.slot_x(ww);
         self.slots.iter().enumerate().position(|(i, s)| *s != Slot::Sep && x >= xs[i] && x < xs[i] + SIZE)
     }
+}
+
+fn scaled(p: &tiny_skia::Pixmap, k: f32, quality: tiny_skia::FilterQuality) -> tiny_skia::Pixmap {
+    let (w, h) = (((p.width() as f32) * k).ceil() as u32, ((p.height() as f32) * k).ceil() as u32);
+    let mut o = tiny_skia::Pixmap::new(w.max(1), h.max(1)).unwrap();
+    o.draw_pixmap(0, 0, p.as_ref(), &tiny_skia::PixmapPaint { quality, ..Default::default() }, tiny_skia::Transform::from_scale(k, k), None);
+    o
 }
 
 fn scale_to(p: &tiny_skia::Pixmap, size: u32) -> tiny_skia::Pixmap {
