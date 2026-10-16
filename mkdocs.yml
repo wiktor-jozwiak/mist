@@ -1,0 +1,30 @@
+# Documentation site (GitHub Pages): .github/workflows/docs.yml builds it with mkdocs-material.
+# Local preview: pip install mkdocs-material && mkdocs serve
+site_name: Mist
+site_description: macOS-inspired desktop shell for Hyprland, written in Rust and drawn on the CPU
+repo_url: https://github.com/wiktor-jozwiak/mist
+edit_uri: edit/main/docs/
+docs_dir: docs
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: { icon: material/weather-night, name: Dark }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: { icon: material/weather-sunny, name: Light }
+  features: [navigation.sections, content.code.copy]
+markdown_extensions: [tables, admonition, toc]
+nav:
+  - Home: index.md
+  - Garmin cards: guides/garmin.md
+  - Benchmarks: BENCHMARKS.md
+  - Publishing checklist: PUBLISHING.md
+  - Other languages:
+      - Polski: i18n/README.pl.md
+      - Deutsch: i18n/README.de.md
+      - Español: i18n/README.es.md
+      - 简体中文: i18n/README.zh-CN.md
+      - 日本語: i18n/README.ja.md
+      - Garmin (Polski): guides/garmin.pl.md

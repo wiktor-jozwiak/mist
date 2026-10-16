@@ -30,3 +30,9 @@ sounds/*.wav
 # Garmin integration: local secrets and login tokens
 integrations/garmin/.env
 integrations/garmin/garminconnect-tokens/
+
+# docs site: generated from the README in CI
+docs/index.md
+site/
+# launch drafts (not part of the repo)
+launch-posts.md

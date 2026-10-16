@@ -1,0 +1,44 @@
+name: Docs
+
+# GitHub Pages needs a public repository (or a paid plan for private ones): run it by hand once Mist is public,
+# then switch Settings -> Pages -> Source to "GitHub Actions"
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install mkdocs-material
+      # the README is the home page; its links point into docs/, which is the site root
+      - name: Home page from the README
+        shell: python
+        run: |
+          import re
+          s = open("README.md").read()
+          def fix(m):
+              t = m.group(2)
+              if t.startswith(("http", "#", "mailto:")):
+                  return m.group(0)
+              if t.startswith("docs/"):
+                  return f"{m.group(1)}({t[5:]})"
+              return f"{m.group(1)}(https://github.com/wiktor-jozwiak/mist/blob/main/{t})"
+          open("docs/index.md", "w").write(re.sub(r"(\]|\[[^\]]*\])\(([^)\s]+)\)", fix, s))
+      - run: mkdocs build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: pages
+        uses: actions/deploy-pages@v4
