@@ -1,7 +1,7 @@
 # Before going public
 
-The repository is private. This is what has to change before it can be made public, ordered by how bad it
-would be to skip it.
+The repository went public on 2026-10-16. This is the checklist it went through, ordered by how bad it
+would have been to skip a point; the open points are still to do.
 
 ## Blockers
 
@@ -23,7 +23,7 @@ would be to skip it.
       Greenwich, the rain demo says Kraków. Left: the old home town and its coordinates are still in git
       history (`scripts/mistd/src/data.rs` before 66a342f, legacy `Island.qml`, `Desktop.qml`, `wxcard.rs`) and
       the phone's KDE Connect id (`phone.rs` before 2839b54). A rewritten copy (`git filter-branch`: Warszawa,
-      its coordinates, a dummy id; the tree of `main` unchanged) is ready; force-pushing it is the last step.
+      its coordinates, a dummy id; the tree of `main` unchanged) was force-pushed on 2026-10-16.
 - [x] **Fixed install path.** Done: `native/common/paths.rs` (`$MIST_DIR`, `~/.local/share/mist/shell`
       linked by `native/install.sh`, `/usr/share/mist`, then the old `~/.config/quickshell/mist`); scripts
       use XDG Pictures. Left: the checkout itself still lives in `~/.config/quickshell` until QML is gone.
