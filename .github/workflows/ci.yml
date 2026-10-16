@@ -13,7 +13,7 @@ jobs:
     steps:
       - name: System packages
         run: |
-          pacman -Syu --noconfirm --needed base-devel git rust pkgconf libxkbcommon pam wayland mesa \
+          pacman -Syu --noconfirm --needed base-devel git rust pkgconf libxkbcommon tzdata pam wayland mesa \
             libinput seatd libdrm systemd-libs noto-fonts adwaita-cursors
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -36,6 +36,8 @@ jobs:
           cargo test --release --locked
       - name: mistd
         working-directory: scripts/mistd
+        env:
+          TZ: Europe/Warsaw # the calendar tests expect the author's wall clock
         run: |
           cargo build --release --locked
           cargo test --release --locked
