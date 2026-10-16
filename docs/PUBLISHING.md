@@ -38,7 +38,8 @@ would have been to skip a point; the open points are still to do.
       `shaders/glsl` (`regen.sh`), `.qsb` only as a fallback, so `qsb` is no longer a runtime dependency.
 - [x] **Screenshots.** `docs/img/hero.sh` and `panels.sh` render offscreen from a throwaway HOME (demo data,
       no windows, notifications or accounts of the running session) with Hyprland's blur emulated under the
-      glass. Left: real grabs of a nested session need the monitors on.
+      glass. Real grabs: `docs/img/session.sh` (nested Hyprland, throwaway HOME, a bus without D-Bus
+      activation, an `adb` that sees no device) made `session-desktop.webp` and `session-control.webp`.
 
 ## Nice to have
 
