@@ -76,3 +76,40 @@ pub fn primary_monitor() -> &'static str {
         std::process::Command::new("hyprctl").args(["monitors", "-j"]).output().ok().and_then(|o| field(&String::from_utf8_lossy(&o.stdout), "name")).unwrap_or_default()
     })
 }
+
+// $XDG_RUNTIME_DIR/mist/screen.json {"off": bool, "locked": bool}: idle writes "off" as the monitors go off and
+// on, the locker "locked" as it locks and unlocks (None keeps a value); mist-wall (inotify) pauses meanwhile
+#[allow(dead_code)]
+pub fn screen_note(off: Option<bool>, locked: Option<bool>) {
+    let dir = format!("{}/mist", std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".into()));
+    let p = format!("{dir}/screen.json");
+    let old = std::fs::read_to_string(&p).unwrap_or_default();
+    let was = |k: &str| old.contains(&format!("\"{k}\": true"));
+    let (off, locked) = (off.unwrap_or_else(|| was("off")), locked.unwrap_or_else(|| was("locked")));
+    let _ = std::fs::create_dir_all(&dir);
+    let tmp = format!("{p}.tmp");
+    if std::fs::write(&tmp, format!("{{\"off\": {off}, \"locked\": {locked}}}")).is_ok() {
+        let _ = std::fs::rename(&tmp, &p);
+    }
+}
+
+// nobody sees the desktop: the monitors are off, or the session is locked ("locked" and the locker still holds
+// lock.lock, so a crashed locker does not keep the wallpaper paused)
+#[allow(dead_code)]
+pub fn screen_asleep() -> bool {
+    let dir = format!("{}/mist", std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".into()));
+    let s = std::fs::read_to_string(format!("{dir}/screen.json")).unwrap_or_default();
+    if s.contains("\"off\": true") {
+        return true;
+    }
+    if !s.contains("\"locked\": true") {
+        return false;
+    }
+    let Ok(f) = std::fs::OpenOptions::new().read(true).open(format!("{dir}/lock.lock")) else { return false };
+    let fd = std::os::fd::AsRawFd::as_raw_fd(&f);
+    if unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+        unsafe { libc::flock(fd, libc::LOCK_UN) };
+        return false;
+    }
+    true
+}

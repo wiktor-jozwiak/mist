@@ -601,6 +601,8 @@ pub fn run(args: &[String]) -> i32 {
             return 0; // already locked
         }
         std::mem::forget(lf);
+        // mist-wall pauses while locked (no one sees it under the lock surface)
+        crate::paths::screen_note(None, Some(true));
     }
     let preview: Option<u64> = if args.first().map(|a| a == "preview").unwrap_or(false) { Some(args.get(1).and_then(|s| s.parse().ok()).unwrap_or(8).clamp(2, 30)) } else { None };
     let conn = Connection::connect_to_env().expect("wayland");
@@ -683,6 +685,7 @@ pub fn run(args: &[String]) -> i32 {
         Ok(lk) => l.lock = Some(lk),
         Err(_) => {
             eprintln!("lock: ext-session-lock is not available");
+            crate::paths::screen_note(None, Some(false));
             return 1;
         }
     }
@@ -744,6 +747,7 @@ pub fn run(args: &[String]) -> i32 {
         let _ = conn.flush();
     }
     let _ = conn.roundtrip();
+    crate::paths::screen_note(None, Some(false));
     0
 }
 

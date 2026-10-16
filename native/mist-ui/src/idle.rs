@@ -22,6 +22,7 @@ fn cfg() -> (u32, u32) {
 }
 
 pub fn dpms(on: bool) {
+    crate::paths::screen_note(Some(!on), None);
     let _ = std::process::Command::new("hyprctl").args(["eval", &format!("hl.dispatch(hl.dsp.dpms({{ action = \"{}\" }}))", if on { "on" } else { "off" })]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().map(|mut c| std::thread::spawn(move || c.wait()));
 }
 

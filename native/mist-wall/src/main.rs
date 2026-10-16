@@ -177,6 +177,7 @@ struct App {
     energy: f32,
     energy_to: f32,
     gallery: (bool, String), // the wallpaper gallery is open on that monitor
+    asleep: bool,            // nobody sees it: the monitors are off or the session is locked (screen.json)
     prev: Prev,
     prev_tx: std::sync::mpsc::Sender<(String, i32, i32, Vec<u8>)>,
     prev_rx: std::sync::mpsc::Receiver<(String, i32, i32, Vec<u8>)>,
@@ -656,7 +657,7 @@ impl App {
         if *self.hidden.get(name).unwrap_or(&false) { 5.0 } else { 30.0 }
     }
     fn animate(&self, name: &str) -> bool {
-        !*self.fs.get(name).unwrap_or(&false) && !(self.gallery.0 && self.gallery.1 == name)
+        !self.asleep && !*self.fs.get(name).unwrap_or(&false) && !(self.gallery.0 && self.gallery.1 == name)
     }
 
     // windows over a rect (global coords): 85 % covered = hidden (Cover.qml)
@@ -827,7 +828,7 @@ impl App {
             if (now_ms() / 60000.0) as i64 != self.sky.model_at {
                 self.sky_model();
             }
-            let fs = *self.fs.get(primary_monitor()).unwrap_or(&false);
+            let fs = *self.fs.get(primary_monitor()).unwrap_or(&false) || self.asleep;
             let sdt = self.sky.last.elapsed().as_secs_f64().min(0.25);
             if !fs || self.surfs[i].dirty {
                 let due = if self.sky.hidden { 0.2 } else { 1.0 / 30.0 };
@@ -1179,6 +1180,7 @@ enum Ev {
     Preview,
     Sky,
     Cover(Vec<Mon>),
+    Screen,
     Level(f32),
 }
 
@@ -1234,6 +1236,7 @@ fn main() {
         energy: 0.0,
         energy_to: 0.0,
         gallery: (false, String::new()),
+        asleep: paths::screen_asleep(),
         prev: Prev { screen: String::new(), key: String::new(), shown: String::new(), fbo: [None, None], size: (0, 0), cur: 0, fade: None, photo: None, asked: String::new(), t: 0.0 },
         prev_tx,
         prev_rx,
@@ -1363,7 +1366,7 @@ fn main() {
                 while i < n as usize {
                     let e = &*(buf.as_ptr().add(i) as *const libc::inotify_event);
                     let name = std::ffi::CStr::from_ptr(buf.as_ptr().add(i + std::mem::size_of::<libc::inotify_event>()) as *const libc::c_char).to_string_lossy().to_string();
-                    let m = match name.as_str() { "wallpaper.json" => Some(Ev::Config), "weather.json" => Some(Ev::Weather), "preview.json" => Some(Ev::Preview), "sky.json" => Some(Ev::Sky), _ => None };
+                    let m = match name.as_str() { "wallpaper.json" => Some(Ev::Config), "weather.json" => Some(Ev::Weather), "preview.json" => Some(Ev::Preview), "sky.json" => Some(Ev::Sky), "screen.json" => Some(Ev::Screen), _ => None };
                     if let Some(m) = m {
                         let _ = tx.send(m);
                     }
@@ -1411,6 +1414,7 @@ fn main() {
                 app.sky_model();
             }
             Ev::Preview => app.load_preview(),
+            Ev::Screen => app.asleep = paths::screen_asleep(),
             Ev::Sky => {
                 let r = read_sky();
                 if r != app.sky.rect {
