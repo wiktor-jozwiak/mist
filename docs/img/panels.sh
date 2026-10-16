@@ -29,7 +29,11 @@ shot() {
     cw=$(($2 + 96)); ch=$(($3 + 96))
     [ $((x + cw)) -gt 1920 ] && cw=$((1920 - x))
     [ $((y + ch)) -gt 1080 ] && ch=$((1080 - y))
-    magick "$w/bg.ppm" "$w/$1.png" -composite -crop "${cw}x${ch}+${x}+${y}" +repage \
+    # Hyprland's blur under the glass (layer rule ignore_alpha 0.25; blur size 5, 3 passes ~ a 18 px gaussian,
+    # its default brightness 0.82 / contrast 0.89), then the panel over it
+    magick "$w/bg.ppm" \( +clone -blur 0x18 -brightness-contrast -8x-6 \) \
+        \( "$w/$1.png" -alpha extract -threshold 25% \) -composite "$w/$1.bg.png"
+    magick "$w/$1.bg.png" "$w/$1.png" -composite -crop "${cw}x${ch}+${x}+${y}" +repage \
         \( +clone -alpha extract -fill black -colorize 100 -fill white -draw "roundrectangle 0,0 $((cw - 1)),$((ch - 1)) 18,18" \) \
         -alpha off -compose CopyOpacity -composite -strip -quality 92 "$out/$1.webp"
     echo "$out/$1.webp"
