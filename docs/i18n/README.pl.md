@@ -38,6 +38,16 @@ przepisany powierzchnia po powierzchni:
 Wynik na maszynie autora: **~87–106 MB PSS za całą powłokę**, 0,6 % jednego rdzenia przy grającej muzyce.
 Szczegóły: [docs/BENCHMARKS.md](../BENCHMARKS.md).
 
+Ryzen 7 5700X + RTX 4060, Hyprland 0.56.2, cała powłoka w spoczynku, [bench/measure.sh](../../bench/measure.sh).
+
+| Powłoka | Technologia | PSS | CPU w spoczynku | Kontekst GL |
+|---|---|---|---|---|
+| **Mist native** | Rust, CPU, `wl_shm` | **87–106 MB** | 0,6 % | `mist-wall` |
+| Mist native, `mist-ui` sam | | 36–50 MB | 0,6 % | – |
+| Noctalia v5 | C++, cairo + EGL | 122 MB | 0,07 % | ✓ |
+| Pusty Quickshell (jeden `PanelWindow`) | Qt Quick | 124 MB | ~0 % | ✓ |
+| Mist na Quickshell (stara wersja QML) | Qt Quick + QML | 428 MB | 9,5 % | ✓ |
+
 ## Funkcje
 
 | | |
@@ -50,6 +60,20 @@ Szczegóły: [docs/BENCHMARKS.md](../BENCHMARKS.md).
 | **System** | serwer powiadomień, agent polkit, blokada ekranu (`ext-session-lock-v1` + PAM), bezczynność (`ext-idle-notify-v1`, logind), przyciąganie okien jak w Windows 11 |
 | **Tapety** | zdjęcia (CPU) albo sceny GLSL na żywo i niebo pogodowe w czasie rzeczywistym (`mist-wall`) |
 | **mist-comp** *(eksperymentalny)* | własny kompozytor na Smithay + greeter, do uruchamiania Mist bez Hyprlanda |
+
+### Języki
+
+Interfejs mówi **po polsku, angielsku, niemiecku i hiszpańsku**. Wybór: *Dostosuj pulpit* (prawy klik na
+zegarze pulpitu) → Wygląd → Język, albo `MIST_LANG=en`. *Automatycznie* bierze `$LANG`, w razie braku angielski.
+Tłumaczenia: jedna tabela [native/assets/i18n.tsv](../../native/assets/i18n.tsv), wiersz na napis, kolumna na
+język. Nowy język to jedna kolumna więcej.
+
+### Karty pulpitu
+
+- **Pogoda**: [Open-Meteo](https://open-meteo.com), bez konta. Krzywa godzinowa, 4 dni, nowcast opadów, okno na
+  bieg, podpowiedź ubioru, słońce i księżyc; niebo za kartą odwzorowuje aktualną pogodę.
+- **Gotowość Garmin** i **bieganie**: Twoje dane z Garmin Connect przez lokalne InfluxDB. Konfiguracja:
+  [docs/guides/garmin.pl.md](../guides/garmin.pl.md).
 
 ## Architektura
 
@@ -146,8 +170,8 @@ Zostaw `lto = false` (rustc z Archa z systemowym LLVM wywala się przy LTO). Zob
 ## Stan
 
 Codzienne środowisko jednej osoby, dwa monitory, NVIDIA. Wszystko z tabeli funkcji jest natywne i używane
-na co dzień; `mist-comp` jest eksperymentalny. Napisy w interfejsie są na razie po polsku (czego brakuje
-przed publicznym wydaniem: [docs/PUBLISHING.md](../PUBLISHING.md)).
+na co dzień; `mist-comp` jest eksperymentalny. Czego brakuje przed publicznym
+wydaniem (konfigurowalne ścieżki, bez zasobów Apple): [docs/PUBLISHING.md](../PUBLISHING.md).
 
 ## Podziękowania
 

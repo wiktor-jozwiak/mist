@@ -15,9 +15,9 @@ lock screen and polkit agent in one ~50 MB process, without a GPU context.
 ![Wayland](https://img.shields.io/badge/wayland-Hyprland-58e1ff)
 ![Status](https://img.shields.io/badge/status-personal%20daily%20driver-lightgrey)
 
-![Mist desktop](docs/img/desktop.webp)
+![Mist desktop](docs/img/desktop-en.webp)
 
-<sub>Offscreen render (`mist-ui --desk-png`, `--dock-png`, `--png`, `mist-wall-bin --png`) with demo data.
+<sub>Offscreen render (`mist-ui --desk-png`, `--dock-png`, `--png`, `mist-wall-bin --png`) with the demo data in `docs/demo`, rebuilt by [docs/img/hero.sh](docs/img/hero.sh).
 On a real session Hyprland blurs under the glass.</sub>
 
 </div>
@@ -35,8 +35,23 @@ first pixel. Mist started as a Quickshell config (428 MB, 9.5 % CPU) and was rew
 - **One GPU process, only when needed.** `mist-wall` (EGL, GLSL 150) draws animated wallpapers and the
   weather sky. With a photo wallpaper it exits and `mist-ui` draws the photo itself.
 
-Result on the author's machine: **~87 to 106 MB PSS for the whole shell**, 0.6 % of one core while music plays.
-See [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+## Benchmarks
+
+Idle, whole shell, proportional set size (shared pages split between processes), Ryzen 7 5700X + RTX 4060
+(driver 615.71), Hyprland 0.56.2, 2560x1440 + 1920x1080. Measured with [bench/measure.sh](bench/measure.sh).
+
+| Shell | Toolkit | PSS | CPU idle | GL context |
+|---|---|---|---|---|
+| **Mist native** | Rust, CPU, `wl_shm` | **87 to 106 MB** | 0.6 % (music on) | `mist-wall` only |
+| Mist native, `mist-ui` alone | | 36 to 50 MB | 0.6 % | no |
+| Noctalia v5 | C++, cairo + EGL | 122 MB | 0.07 % | yes |
+| Empty Quickshell (one `PanelWindow`) | Qt Quick | 124 MB | ~0 % | yes |
+| Mist on Quickshell (old QML version) | Qt Quick + QML | 428 MB | 9.5 % | yes |
+
+Numbers reported by others (RSS, different machines, not comparable 1:1): Waybar 50 to 66 MB
+([Waybar#5186](https://github.com/Alexays/waybar/issues/5186)), Caelestia ~650 MB after a restart
+([caelestia-dots/shell#1927](https://github.com/caelestia-dots/shell/issues/1927)). Method, raw output and
+caveats: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## Features
 
@@ -50,6 +65,20 @@ See [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 | **System** | notification server, polkit agent, lock screen (`ext-session-lock-v1` + PAM), idle (`ext-idle-notify-v1`, logind), Windows 11-style snap assist |
 | **Wallpapers** | photos (CPU) or live GLSL scenes and a real-time weather sky (`mist-wall`) |
 | **mist-comp** *(experimental)* | own Smithay compositor + greeter, for running Mist without Hyprland |
+
+### Languages
+
+The interface speaks **Polski, English, Deutsch and Español**. Pick one in *Customise desktop* (right click on
+the desktop clock) → Appearance → Language, or set `MIST_LANG=en`. *Automatic* follows `$LANG` and falls back
+to English. Translations live in one table, [native/assets/i18n.tsv](native/assets/i18n.tsv): one row per
+string, one column per language. A new language is one more column.
+
+### Desktop cards
+
+- **Weather**: [Open-Meteo](https://open-meteo.com), no account. Hourly curve, 4 days, rain nowcast, running
+  window, clothing tip, sun and moon; the live sky behind the card follows the current conditions.
+- **Garmin readiness** and **running**: your own Garmin Connect data through a local InfluxDB.
+  Setup: [docs/guides/garmin.md](docs/guides/garmin.md) ([Polski](docs/guides/garmin.pl.md)).
 
 ## Architecture
 
@@ -145,8 +174,8 @@ Keep `lto = false` (Arch rustc with system LLVM crashes with LTO). See [CONTRIBU
 ## Status
 
 Daily driver of one person, two monitors, NVIDIA. Everything in the table above is native and used every
-day; `mist-comp` is experimental. UI strings are Polish for now (see [docs/PUBLISHING.md](docs/PUBLISHING.md)
-for what is missing before a public release: i18n, configurable paths, no Apple assets).
+day; `mist-comp` is experimental. See [docs/PUBLISHING.md](docs/PUBLISHING.md) for what is missing before a
+public release (configurable paths, no Apple assets).
 
 ## Credits
 

@@ -97,6 +97,7 @@ pub struct Text {
     shape: ShapeContext,
     cache: HashMap<(Face, u16, u32, u32, u8), Glyph>,
     shaped: HashMap<(String, Face, u32, u32, bool), std::rc::Rc<Shaped>>,
+    lang_gen: u32,
 }
 
 // SF Pro (variable, wght + opsz) is not shipped: without it the UI falls back to Inter, then Noto Sans
@@ -120,7 +121,7 @@ impl Text {
         let icons_path = dir.map(|d| format!("{d}/tabler-icons.ttf")).unwrap_or_else(|| format!("{home}/.config/quickshell/mist/native/assets/tabler-icons.ttf"));
         let icons = Mapped::open(&icons_path).or_else(|| Mapped::open(ICON_FONT)).expect("tabler icon font");
         let (ui, icons) = (ui.bytes(), icons.bytes());
-        Text { ui, icons, fb: vec![None; FALLBACKS.len()], fb_tried: vec![false; FALLBACKS.len()], scale: ScaleContext::new(), shape: ShapeContext::new(), cache: HashMap::new(), shaped: HashMap::new() }
+        Text { ui, icons, fb: vec![None; FALLBACKS.len()], fb_tried: vec![false; FALLBACKS.len()], scale: ScaleContext::new(), shape: ShapeContext::new(), cache: HashMap::new(), shaped: HashMap::new(), lang_gen: crate::i18n::generation() }
     }
     fn font(&self, f: Face) -> FontRef<'static> {
         match f {
@@ -164,12 +165,20 @@ impl Text {
 
     pub fn shape(&mut self, s: &str, st: &Style) -> std::rc::Rc<Shaped> {
         let key = (s.to_string(), st.face, st.size.to_bits(), st.weight.to_bits() ^ st.spacing.to_bits().rotate_left(7), st.tnum);
+        // a new UI language: every cached string is in the old one
+        if self.lang_gen != crate::i18n::generation() {
+            self.shaped.clear();
+            self.lang_gen = crate::i18n::generation();
+        }
         if let Some(r) = self.shaped.get(&key) {
             return r.clone();
         }
         if self.shaped.len() > 2000 {
             self.shaped.clear();
         }
+        // the UI language (i18n.rs): only on a miss, so a cached string costs nothing
+        let tr = if st.face == Face::Icons { std::borrow::Cow::Borrowed(s) } else { crate::i18n::tr(s) };
+        let s: &str = &tr;
         let vars = Self::vars(st);
         // runs of one face each
         let mut runs: Vec<(Face, String)> = Vec::new();

@@ -1,0 +1,18 @@
+{
+  "garmin": {
+    "vitals": [
+      "sleep",
+      "rhr",
+      "stress",
+      "hrv"
+    ]
+  },
+  "running": {
+    "foot": "last",
+    "hero": "race"
+  },
+  "weather": {
+    "hero": "temp",
+    "metric": "temp"
+  }
+}

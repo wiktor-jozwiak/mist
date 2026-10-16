@@ -14,7 +14,7 @@ Sperrbildschirm und Polkit-Agent in einem Prozess von ~50 MB, ohne GPU-Kontext.
 ![Rust](https://img.shields.io/badge/rust-2024-orange)
 ![Wayland](https://img.shields.io/badge/wayland-Hyprland-58e1ff)
 
-![Mist-Desktop](../img/desktop.webp)
+![Mist-Desktop](../img/desktop-en.webp)
 
 <sub>Offscreen-Render (`mist-ui --desk-png`, `--dock-png`, `--png`, `mist-wall-bin --png`) mit Demodaten.
 In einer echten Sitzung macht Hyprland den Hintergrund unter dem Glas unscharf.</sub>
@@ -39,6 +39,16 @@ wurde Oberfläche für Oberfläche neu geschrieben:
 Ergebnis auf dem Rechner des Autors: **~87 bis 106 MB PSS für die ganze Shell**, 0,6 % eines Kerns bei
 laufender Musik. Siehe [docs/BENCHMARKS.md](../BENCHMARKS.md) (Englisch).
 
+Ryzen 7 5700X + RTX 4060, Hyprland 0.56.2, ganze Shell im Leerlauf, [bench/measure.sh](../../bench/measure.sh).
+
+| Shell | Technik | PSS | CPU im Leerlauf | GL-Kontext |
+|---|---|---|---|---|
+| **Mist native** | Rust, CPU, `wl_shm` | **87–106 MB** | 0,6 % | `mist-wall` |
+| Mist native, `mist-ui` allein | | 36–50 MB | 0,6 % | – |
+| Noctalia v5 | C++, cairo + EGL | 122 MB | 0,07 % | ✓ |
+| Leeres Quickshell (ein `PanelWindow`) | Qt Quick | 124 MB | ~0 % | ✓ |
+| Mist auf Quickshell (alte QML-Version) | Qt Quick + QML | 428 MB | 9,5 % | ✓ |
+
 ## Funktionen
 
 | | |
@@ -51,6 +61,19 @@ laufender Musik. Siehe [docs/BENCHMARKS.md](../BENCHMARKS.md) (Englisch).
 | **System** | Benachrichtigungsserver, Polkit-Agent, Sperrbildschirm (`ext-session-lock-v1` + PAM), Leerlauf (`ext-idle-notify-v1`, logind), Fenster-Einrasten wie in Windows 11 |
 | **Hintergründe** | Fotos (CPU) oder Live-GLSL-Szenen und ein Echtzeit-Wetterhimmel (`mist-wall`) |
 | **mist-comp** *(experimentell)* | eigener Smithay-Compositor + Greeter, um Mist ohne Hyprland zu starten |
+
+### Sprachen
+
+Die Oberfläche spricht **Polnisch, Englisch, Deutsch und Spanisch**. Auswahl: *Schreibtisch anpassen*
+(Rechtsklick auf die Schreibtischuhr) → Darstellung → Sprache, oder `MIST_LANG=de`. *Automatisch* folgt `$LANG`,
+sonst Englisch. Übersetzungen: eine Tabelle [native/assets/i18n.tsv](../../native/assets/i18n.tsv), eine Zeile
+pro Text, eine Spalte pro Sprache.
+
+### Schreibtischkarten
+
+- **Wetter**: [Open-Meteo](https://open-meteo.com), ohne Konto; der Live-Himmel hinter der Karte folgt dem Wetter.
+- **Garmin-Bereitschaft** und **Laufen**: eigene Garmin-Connect-Daten über eine lokale InfluxDB. Einrichtung:
+  [docs/guides/garmin.md](../guides/garmin.md) (Englisch).
 
 ## Architektur
 
@@ -148,8 +171,8 @@ Prüfungen, ohne die laufende Sitzung anzufassen:
 ## Stand
 
 Alltags-Desktop einer Person, zwei Monitore, NVIDIA. Alles aus der Funktionstabelle ist nativ und täglich
-in Gebrauch; `mist-comp` ist experimentell. Die Texte der Oberfläche sind vorerst polnisch (was vor einer
-öffentlichen Veröffentlichung fehlt: [docs/PUBLISHING.md](../PUBLISHING.md)).
+in Gebrauch; `mist-comp` ist experimentell. Was vor einer öffentlichen
+Veröffentlichung fehlt (konfigurierbare Pfade, keine Apple-Assets): [docs/PUBLISHING.md](../PUBLISHING.md).
 
 ## Dank
 

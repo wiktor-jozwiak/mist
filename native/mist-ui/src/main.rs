@@ -21,6 +21,7 @@ mod gfx;
 mod icons;
 mod sys;
 mod text;
+mod i18n;
 mod theme;
 mod tray;
 mod desktop;

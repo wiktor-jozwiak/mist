@@ -14,7 +14,7 @@
 ![Rust](https://img.shields.io/badge/rust-2024-orange)
 ![Wayland](https://img.shields.io/badge/wayland-Hyprland-58e1ff)
 
-![Mist 桌面](../img/desktop.webp)
+![Mist 桌面](../img/desktop-en.webp)
 
 <sub>离屏渲染（`mist-ui --desk-png`、`--dock-png`、`--png`、`mist-wall-bin --png`），使用演示数据。
 在真实会话中，Hyprland 会对玻璃下方的背景做模糊。</sub>
@@ -37,6 +37,16 @@ Mist 最初是一个 Quickshell 配置（428 MB，9.5 % CPU），之后被逐个
 在作者的机器上：**整个外壳约 87–106 MB PSS**，播放音乐时占用单核 0.6 %。
 详见 [docs/BENCHMARKS.md](../BENCHMARKS.md)（英文）。
 
+Ryzen 7 5700X + RTX 4060，Hyprland 0.56.2，整个外壳空闲，[bench/measure.sh](../../bench/measure.sh)。
+
+| 外壳 | 技术 | PSS | 空闲 CPU | GL 上下文 |
+|---|---|---|---|---|
+| **Mist native** | Rust, CPU, `wl_shm` | **87–106 MB** | 0.6 % | `mist-wall` |
+| Mist native, `mist-ui` 单独 | | 36–50 MB | 0.6 % | – |
+| Noctalia v5 | C++, cairo + EGL | 122 MB | 0.07 % | ✓ |
+| 空 Quickshell（一个 `PanelWindow`） | Qt Quick | 124 MB | ~0 % | ✓ |
+| Quickshell 上的 Mist（旧 QML 版） | Qt Quick + QML | 428 MB | 9.5 % | ✓ |
+
 ## 功能
 
 | | |
@@ -49,6 +59,18 @@ Mist 最初是一个 Quickshell 配置（428 MB，9.5 % CPU），之后被逐个
 | **系统** | 通知服务、polkit 代理、锁屏（`ext-session-lock-v1` + PAM）、空闲（`ext-idle-notify-v1`、logind）、类似 Windows 11 的窗口贴靠 |
 | **壁纸** | 照片（CPU）或实时 GLSL 场景和实时天气天空（`mist-wall`） |
 | **mist-comp** *（实验性）* | 基于 Smithay 的自有合成器 + 登录界面，可脱离 Hyprland 运行 Mist |
+
+### 语言
+
+界面支持**波兰语、英语、德语和西班牙语**。在「自定义桌面」（右键点击桌面时钟）→ 外观 → 语言中选择，或设置
+`MIST_LANG=en`。「自动」跟随 `$LANG`，否则使用英语。翻译表：[native/assets/i18n.tsv](../../native/assets/i18n.tsv)，
+每行一个字符串，每列一种语言，欢迎添加中文列。
+
+### 桌面卡片
+
+- **天气**：[Open-Meteo](https://open-meteo.com)，无需账号；卡片后的实时天空随天气变化。
+- **Garmin 准备度**和**跑步**：通过本地 InfluxDB 读取你自己的 Garmin Connect 数据。设置见
+  [docs/guides/garmin.md](../guides/garmin.md)（英文）。
 
 ## 架构
 
@@ -144,7 +166,7 @@ cd native && cargo build --release && cargo test --release
 ## 状态
 
 一个人的日常桌面，双显示器，NVIDIA。功能表中的所有内容都是原生实现并每天使用；`mist-comp` 仍为实验性。
-界面文字目前是波兰语（公开发布前缺少的内容见 [docs/PUBLISHING.md](../PUBLISHING.md)）。
+公开发布前缺少的内容（可配置路径、去除 Apple 资源）见 [docs/PUBLISHING.md](../PUBLISHING.md)。
 
 ## 致谢
 

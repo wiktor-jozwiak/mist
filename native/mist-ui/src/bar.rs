@@ -237,7 +237,9 @@ pub fn elide(t: &mut Text, s: &str, st: &Style, max: f32) -> String {
     if t.width(s, st) <= max {
         return s.to_string();
     }
-    let chars: Vec<char> = s.chars().collect();
+    // cut the text as drawn (i18n.rs): a cut source string no longer matches its translation
+    let tr = crate::i18n::tr(s);
+    let chars: Vec<char> = tr.chars().collect();
     let (mut lo, mut hi) = (0, chars.len());
     while lo < hi {
         let mid = (lo + hi + 1) / 2;

@@ -26,6 +26,7 @@ enum H {
     Opt(&'static str, &'static str, Value),
     Slot(usize, &'static str),
     Show(&'static str),
+    Lang(&'static str),
     Done,
     Sheet,
 }
@@ -68,6 +69,13 @@ impl DeskSettings {
         }).collect()).unwrap_or_default();
         Row { label: label.to_string(), items }
     }
+    // the UI language (i18n.rs); language names stay in their own language
+    fn lang_row() -> Row {
+        let cur = crate::i18n::setting();
+        let mut items = vec![("Automatycznie".to_string(), cur == "auto", H::Lang("auto"))];
+        items.extend(crate::i18n::LANGS.iter().map(|(code, name)| (name.to_string(), cur == *code, H::Lang(code))));
+        Row { label: "Język".into(), items }
+    }
     // the tab's content: sections (title, rows)
     fn sections(&self) -> Vec<(&'static str, Vec<Row>)> {
         let cfg = &self.cfg;
@@ -82,7 +90,7 @@ impl DeskSettings {
             return vec![
                 ("Karty", cards),
                 ("Zegar", vec![Self::row("Rozmiar", "desk", "clock", cfg), Self::row("Data", "desk", "date", cfg), Self::row("Wschód i zachód", "desk", "sun", cfg)]),
-                ("Wygląd", vec![Self::row("Tło kart", "desk", "glass", cfg)]),
+                ("Wygląd", vec![Self::row("Tło kart", "desk", "glass", cfg), Self::lang_row()]),
             ];
         }
         let rows = groups(card).into_iter().map(|gr| {
@@ -252,6 +260,10 @@ impl Pane for DeskSettings {
                     if let Some(gr) = groups(card).into_iter().find(|g| g.key == key) {
                         self.cfg.click(card, &gr, &v);
                     }
+                    Act::DeskCfg
+                }
+                Some(H::Lang(code)) => {
+                    crate::i18n::set(code);
                     Act::DeskCfg
                 }
                 Some(H::Slot(i, k)) => {

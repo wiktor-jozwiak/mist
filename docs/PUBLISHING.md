@@ -24,8 +24,9 @@ would be to skip it.
       shaders, emoji, sounds). One helper `mist_dir()` reading `$MIST_DIR`, default
       `$XDG_DATA_HOME/mist`, and an `install.sh` that copies assets there would let the repo live anywhere.
       The repo should also leave `~/.config/quickshell` once QML is gone.
-- [ ] **Polish UI strings.** All labels are Polish literals. Minimum: English default + Polish via a small
-      key → string table chosen from `$LANG`.
+- [x] **Polish UI strings.** Done: `native/assets/i18n.tsv` (pl, en, de, es), auto follows `$LANG` with an
+      English fallback. Left: text built from fragments at run time that no row matches stays Polish
+      (run `MIST_LANG=en` and look); the single-letter week initials on the running card.
 - [ ] **Personal integrations.** Garmin (InfluxDB of garmin-grafana), running plan, KDE Connect device id in
       a test (`phone.rs`, `runcommand_is_stable`), HyperOS-specific ADB call detection. Keep them, but behind
       config and documented as optional; cards without data should hide.

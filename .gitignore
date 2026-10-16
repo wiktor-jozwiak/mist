@@ -26,3 +26,7 @@ components/preferences.xml
 
 # macOS system sounds (not redistributable): local only; notif.rs falls back to the freedesktop theme
 sounds/*.wav
+
+# Garmin integration: local secrets and login tokens
+integrations/garmin/.env
+integrations/garmin/garminconnect-tokens/

@@ -10,6 +10,14 @@ nothing is released yet.
   (`docs/BENCHMARKS.md`, `bench/measure.sh`), publishing checklist, contributing guide, CI, issue templates,
   Hyprland example config (`examples/hyprland/mist.lua`), the `mist-ui` guard in `native/dist/`.
 - UI font fallback: Inter Variable, then Noto Sans, when SF Pro is not installed (was a panic).
+- UI languages: Polski, English, Deutsch, Español (`native/assets/i18n.tsv`, `mist-ui/src/i18n.rs`).
+  Chosen in *Dostosuj pulpit* → Wygląd → Język, saved in `~/.config/mist/settings.json`, `MIST_LANG`
+  overrides; *auto* follows `$LANG`, English fallback. Applied when text is shaped, so cached strings cost
+  nothing; Polish renders are pixel-identical to before.
+- Garmin setup guide (`docs/guides/garmin.md`, Polish version) and a compose file for garmin-grafana
+  (`integrations/garmin/`).
+- Benchmarks table in the README; demo data (`docs/demo`) and `docs/img/hero.sh` for the README
+  screenshot, now with the weather card and its sky; an English screenshot.
 
 ### Changed
 - `mistd data garmin` reads the InfluxDB connection from `~/.config/mist/influx.json` instead of constants

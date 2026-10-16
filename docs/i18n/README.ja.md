@@ -14,7 +14,7 @@
 ![Rust](https://img.shields.io/badge/rust-2024-orange)
 ![Wayland](https://img.shields.io/badge/wayland-Hyprland-58e1ff)
 
-![Mist のデスクトップ](../img/desktop.webp)
+![Mist のデスクトップ](../img/desktop-en.webp)
 
 <sub>オフスクリーン描画（`mist-ui --desk-png`、`--dock-png`、`--png`、`mist-wall-bin --png`）、デモデータ使用。
 実際のセッションでは、ガラスの下を Hyprland がぼかします。</sub>
@@ -39,6 +39,16 @@
 作者のマシンでの結果：**シェル全体で PSS 約 87〜106 MB**、音楽再生中で 1 コアの 0.6 %。
 詳細は [docs/BENCHMARKS.md](../BENCHMARKS.md)（英語）。
 
+Ryzen 7 5700X + RTX 4060、Hyprland 0.56.2、シェル全体アイドル時、[bench/measure.sh](../../bench/measure.sh)。
+
+| シェル | 技術 | PSS | アイドル CPU | GL コンテキスト |
+|---|---|---|---|---|
+| **Mist native** | Rust, CPU, `wl_shm` | **87–106 MB** | 0.6 % | `mist-wall` |
+| Mist native, `mist-ui` 単体 | | 36–50 MB | 0.6 % | – |
+| Noctalia v5 | C++, cairo + EGL | 122 MB | 0.07 % | ✓ |
+| 空の Quickshell（`PanelWindow` 1 つ） | Qt Quick | 124 MB | ~0 % | ✓ |
+| Quickshell 版 Mist（旧 QML） | Qt Quick + QML | 428 MB | 9.5 % | ✓ |
+
 ## 機能
 
 | | |
@@ -51,6 +61,18 @@
 | **システム** | 通知サーバー、polkit エージェント、ロック（`ext-session-lock-v1` + PAM）、アイドル（`ext-idle-notify-v1`、logind）、Windows 11 風のスナップ |
 | **壁紙** | 写真（CPU）、またはリアルタイム GLSL シーンと実際の天気に合わせた空（`mist-wall`） |
 | **mist-comp** *（実験的）* | Smithay ベースの独自コンポジター + グリーター。Hyprland なしで Mist を動かすため |
+
+### 言語
+
+UI は**ポーランド語・英語・ドイツ語・スペイン語**に対応。「デスクトップをカスタマイズ」（デスクトップの時計を右クリック）
+→ 外観 → 言語、または `MIST_LANG=en`。「自動」は `$LANG` に従い、なければ英語。翻訳表は
+[native/assets/i18n.tsv](../../native/assets/i18n.tsv)（1 行 1 文字列、1 列 1 言語）。日本語の列の追加を歓迎します。
+
+### デスクトップカード
+
+- **天気**：[Open-Meteo](https://open-meteo.com)、アカウント不要。カードの背後の空は実際の天気を反映します。
+- **Garmin のレディネス**と**ランニング**：ローカル InfluxDB 経由で自分の Garmin Connect データを表示。設定は
+  [docs/guides/garmin.md](../guides/garmin.md)（英語）。
 
 ## 構成
 
@@ -147,8 +169,8 @@ cd native && cargo build --release && cargo test --release
 ## 状況
 
 一人の日常環境、モニター 2 台、NVIDIA。機能表の内容はすべてネイティブで毎日使われています。
-`mist-comp` は実験的です。UI の文言は現在ポーランド語です（公開前に足りないもの：
-[docs/PUBLISHING.md](../PUBLISHING.md)）。
+`mist-comp` は実験的です。公開前に足りないもの（設定可能なパス、Apple 素材の除去）：
+[docs/PUBLISHING.md](../PUBLISHING.md)。
 
 ## クレジット
 

@@ -1,0 +1,30 @@
+{
+  "at": 1792136016,
+  "isoWeek": 42,
+  "last": {
+    "ago": "wczoraj",
+    "hr": 148,
+    "km": 8.4,
+    "min": 46,
+    "name": "Bieg poranny",
+    "pace": "5:28"
+  },
+  "monthKm": 42.0,
+  "monthN": 4,
+  "p5": "24:10",
+  "prevKm": 8.1,
+  "raceDays": 12,
+  "today": 2,
+  "week": [
+    5.2,
+    0,
+    8.4,
+    0,
+    0,
+    0,
+    0
+  ],
+  "weekKm": 13.6,
+  "yearKm": 612.4,
+  "yearN": 71
+}

@@ -1,0 +1,52 @@
+# Garmin Connect -> InfluxDB for Mist's desktop cards (readiness, sleep, HRV, steps, running).
+# Based on garmin-grafana (BSD-3-Clause): https://github.com/arpanghosh8453/garmin-grafana
+# Secrets come from .env next to this file (copy .env.example). Everything listens on 127.0.0.1 only.
+services:
+  influxdb:
+    image: influxdb:1.11
+    container_name: influxdb
+    restart: unless-stopped
+    environment:
+      - INFLUXDB_DB=GarminStats
+      - INFLUXDB_USER=${INFLUXDB_USER}
+      - INFLUXDB_USER_PASSWORD=${INFLUXDB_PASSWORD}
+      - INFLUXDB_DATA_INDEX_VERSION=tsi1
+    ports:
+      - "127.0.0.1:8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+
+  garmin-fetch-data:
+    image: thisisarpanghosh/garmin-fetch-data:latest
+    container_name: garmin-fetch-data
+    restart: unless-stopped
+    depends_on: [influxdb]
+    volumes:
+      - ./garminconnect-tokens:/home/appuser/.garminconnect # login tokens, written on the first interactive run
+    environment:
+      - INFLUXDB_HOST=influxdb
+      - INFLUXDB_PORT=8086
+      - INFLUXDB_USERNAME=${INFLUXDB_USER}
+      - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD}
+      - INFLUXDB_DATABASE=GarminStats
+      - GARMINCONNECT_IS_CN=False
+      - USER_TIMEZONE=${TZ}
+      # what Mist reads: training_readiness, sleep, hrv, stress, steps, activity, race_prediction (+ Body Battery in daily_avg)
+      - FETCH_SELECTION=daily_avg,sleep,steps,heartrate,stress,hrv,activity,race_prediction,training_status,training_readiness
+
+  # optional: dashboards in the browser (http://127.0.0.1:3000); Mist does not need it
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    profiles: [grafana]
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+
+volumes:
+  influxdb_data:
+  grafana_data:
