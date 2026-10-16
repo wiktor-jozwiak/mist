@@ -8,7 +8,7 @@ description = "Mist shell surfaces drawn on the CPU (no GPU context): bar, dock,
 smithay-client-toolkit = { version = "0.20", default-features = false, features = ["calloop", "xkbcommon"] }
 wayland-client = "0.31"
 wayland-scanner = "0.31"
-wayland-backend = "0.3"
+wayland-backend = { version = "0.3", features = ["client_system", "dlopen"] }
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 calloop = "0.14"
 tiny-skia = { version = "0.11", default-features = false, features = ["std", "simd", "png-format"] }

@@ -42,6 +42,7 @@ use wayland_client::{
     protocol::{wl_data_device, wl_data_source, wl_keyboard, wl_output, wl_pointer, wl_seat, wl_shm, wl_surface},
     Connection, Dispatch, QueueHandle,
 };
+use wayland_protocols::wp::idle_inhibit::zv1::client::{zwp_idle_inhibit_manager_v1, zwp_idle_inhibitor_v1};
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 
 pub type WinId = u32;
@@ -74,6 +75,8 @@ pub enum Ev {
     Drop(f32, f32, Vec<String>),
     // the size changed (already applied)
     Resized,
+    // the compositor made the window fullscreen (true) or not
+    Fullscreen(bool),
 }
 
 pub enum Cmd {
@@ -87,6 +90,8 @@ pub enum Cmd {
     Minimize(WinId),
     Maximize(WinId),
     Fullscreen(WinId, bool),
+    HideCursor(bool),
+    IdleInhibit(WinId, bool),
     Cursor(CursorIcon),
     WakeAt(Instant),
     // drag these uris out of the window (started by the last press), with an icon
@@ -132,19 +137,19 @@ pub trait Logic {
     fn message(&mut self, args: Vec<String>, cx: &mut Cx);
     // anything sent on Cx::tx by worker threads
     fn async_msg(&mut self, m: Box<dyn Any + Send>, cx: &mut Cx);
-    // optional video plane under the canvas: (buffer w, h, BGRA data) and where it goes in the window
-    fn video(&mut self, _id: WinId) -> Option<VideoFrame> {
+    // optional video plane under the canvas: where it goes in the window (x, y, w, h); None = no plane
+    fn video_rect(&mut self, _id: WinId) -> Option<(i32, i32, i32, i32)> {
         None
     }
+    // the plane's wl_surface was made (Some) or is about to go (None): the app draws it itself (EGL)
+    fn video_surface(&mut self, _id: WinId, _s: Option<VideoSurface>, _cx: &mut Cx) {}
 }
 
-pub struct VideoFrame {
-    pub w: u32,
-    pub h: u32,
-    pub stride: u32,
-    pub data: std::sync::Arc<Vec<u8>>,
-    pub dst: (i32, i32, i32, i32),
-    pub serial: u64,
+// raw pointers for wl_egl_window_create / eglGetDisplay (libwayland-client objects)
+#[derive(Clone, Copy)]
+pub struct VideoSurface {
+    pub surface: *mut std::ffi::c_void,
+    pub display: *mut std::ffi::c_void,
 }
 
 struct Win {
@@ -157,10 +162,11 @@ struct Win {
     animate: bool,
     frame_pending: bool,
     canvas: Canvas,
-    // video plane: a subsurface scaled by the compositor (wp_viewporter)
-    video: Option<(wl_surface::WlSurface, smithay_client_toolkit::reexports::client::protocol::wl_subsurface::WlSubsurface, wp_viewport::WpViewport, u64, (i32, i32, i32, i32))>,
-    video_pool: Option<SlotPool>,
+    // video plane: a subsurface the app draws with EGL (x, y, w, h)
+    video: Option<(wl_surface::WlSurface, smithay_client_toolkit::reexports::client::protocol::wl_subsurface::WlSubsurface, (i32, i32, i32, i32))>,
     min: (u32, u32),
+    fullscreen: bool,
+    inhibitor: Option<zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1>,
 }
 
 pub struct Rt {
@@ -169,6 +175,8 @@ pub struct Rt {
     compositor: CompositorState,
     subcompositor: SubcompositorState,
     viewporter: Option<wp_viewporter::WpViewporter>,
+    inhibit_mgr: Option<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1>,
+    cursor_hidden: bool,
     shm: Shm,
     seats: SeatState,
     xdg: XdgShell,
@@ -276,6 +284,8 @@ pub fn run(name: &str, logic: Box<dyn Logic>) -> i32 {
         compositor,
         subcompositor,
         viewporter,
+        inhibit_mgr: globals.bind::<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1, _, _>(&qh, 1..=1, ()).ok(),
+        cursor_hidden: false,
         seats: SeatState::new(&globals, &qh),
         xdg: XdgShell::bind(&globals, &qh).expect("xdg shell"),
         ddm: DataDeviceManagerState::bind(&globals, &qh).expect("data device"),
@@ -359,7 +369,7 @@ impl Rt {
                     window.commit();
                     let id = self.next_id;
                     self.next_id += 1;
-                    self.wins.push(Win { id, window, w, h, configured: false, dirty: true, animate: false, frame_pending: false, canvas: Canvas::new(1, 1), video: None, video_pool: None, min });
+                    self.wins.push(Win { id, window, w, h, configured: false, dirty: true, animate: false, frame_pending: false, canvas: Canvas::new(1, 1), video: None, min, fullscreen: false, inhibitor: None });
                     self.cx.mods = self.mods;
                     // its commands are applied after this batch (apply loops)
                     self.logic.opened(id, token, &mut self.cx);
@@ -414,10 +424,29 @@ impl Rt {
                         }
                     }
                 }
+                Cmd::HideCursor(h) => {
+                    if h != self.cursor_hidden {
+                        self.cursor_hidden = h;
+                        if let Some(p) = &self.pointer {
+                            let _ = if h { p.hide_cursor() } else { p.set_cursor(&self.conn, self.cursor) };
+                        }
+                    }
+                }
+                Cmd::IdleInhibit(id, on) => {
+                    let (mgr, qh) = (self.inhibit_mgr.clone(), self.qh.clone());
+                    if let Some(w) = self.win(id) {
+                        match (on, w.inhibitor.take(), mgr) {
+                            (true, None, Some(m)) => w.inhibitor = Some(m.create_inhibitor(w.window.wl_surface(), &qh, ())),
+                            (true, Some(i), _) => w.inhibitor = Some(i),
+                            (false, Some(i), _) => i.destroy(),
+                            _ => {}
+                        }
+                    }
+                }
                 Cmd::Cursor(c) => {
                     if c != self.cursor {
                         self.cursor = c;
-                        if let Some(p) = &self.pointer {
+                        if let (Some(p), false) = (&self.pointer, self.cursor_hidden) {
                             let _ = p.set_cursor(&self.conn, c);
                         }
                     }
@@ -470,7 +499,7 @@ impl Rt {
         let mut canvas = std::mem::replace(&mut self.wins[i].canvas, Canvas::new(1, 1));
         self.cx.mods = self.mods;
         self.logic.paint(id, &mut canvas, &mut self.cx);
-        let video = self.logic.video(id);
+        let video = self.logic.video_rect(id);
         let Some(i) = self.wins.iter().position(|w| w.id == id) else { return };
         let win = &mut self.wins[i];
         win.dirty = false;
@@ -481,51 +510,43 @@ impl Rt {
             let _ = buf.attach_to(surf);
         }
         win.canvas = canvas;
-        // the video plane (below the window surface)
-        match (video, self.viewporter.as_ref()) {
-            (Some(v), Some(vp)) => {
+        // the video plane (below the window surface, drawn by the app through EGL)
+        let mut made = None;
+        let mut gone = false;
+        match video {
+            Some(r) => {
                 if win.video.is_none() {
                     let (sub, s) = self.subcompositor.create_subsurface(win.window.wl_surface().clone(), &self.qh);
                     sub.place_below(win.window.wl_surface());
                     sub.set_desync();
-                    let viewport = vp.get_viewport(&s, &self.qh, ());
-                    win.video = Some((s, sub, viewport, 0, (0, 0, 0, 0)));
+                    sub.set_position(r.0, r.1);
+                    made = Some(VideoSurface { surface: wayland_client::Proxy::id(&s).as_ptr() as *mut _, display: self.conn.backend().display_ptr() as *mut _ });
+                    win.video = Some((s, sub, r));
                 }
-                if win.video_pool.is_none() {
-                    win.video_pool = SlotPool::new((v.stride * v.h) as usize, &self.shm).ok();
-                }
-                let (s, sub, viewport, serial, dst) = win.video.as_mut().unwrap();
-                if *dst != v.dst {
-                    *dst = v.dst;
-                    sub.set_position(v.dst.0, v.dst.1);
-                    viewport.set_destination(v.dst.2.max(1), v.dst.3.max(1));
-                }
-                if *serial != v.serial {
-                    *serial = v.serial;
-                    if let Some(pool) = win.video_pool.as_mut() {
-                        if let Ok((buf, data)) = pool.create_buffer(v.w as i32, v.h as i32, v.stride as i32, wl_shm::Format::Xrgb8888) {
-                            let n = data.len().min(v.data.len());
-                            data[..n].copy_from_slice(&v.data[..n]);
-                            let _ = buf.attach_to(s);
-                            s.damage_buffer(0, 0, v.w as i32, v.h as i32);
-                        }
-                    }
-                }
-                s.commit();
-            }
-            _ => {
-                if let Some((s, sub, viewport, _, _)) = win.video.take() {
-                    viewport.destroy();
-                    sub.destroy();
-                    s.destroy();
-                    win.video_pool = None;
+                let (_, sub, rect) = win.video.as_mut().unwrap();
+                if *rect != r {
+                    *rect = r;
+                    sub.set_position(r.0, r.1);
                 }
             }
+            None => gone = win.video.is_some(),
         }
         let surf = win.window.wl_surface();
         surf.frame(&self.qh, surf.clone());
         win.frame_pending = true;
         surf.commit();
+        if let Some(v) = made {
+            self.with_logic(|l, cx| l.video_surface(id, Some(v), cx));
+        }
+        if gone {
+            self.with_logic(|l, cx| l.video_surface(id, None, cx));
+            if let Some(w) = self.wins.iter_mut().find(|w| w.id == id) {
+                if let Some((s, sub, _)) = w.video.take() {
+                    sub.destroy();
+                    s.destroy();
+                }
+            }
+        }
     }
 
     fn emit(&mut self, id: WinId, e: Ev) {
@@ -573,6 +594,9 @@ impl WindowHandler for Rt {
         let w = self.win(id).unwrap();
         let (nw, nh) = (c.new_size.0.map(|v| v.get()).unwrap_or(w.w), c.new_size.1.map(|v| v.get()).unwrap_or(w.h));
         let changed = nw != w.w || nh != w.h;
+        let fs = c.state.contains(smithay_client_toolkit::reexports::csd_frame::WindowState::FULLSCREEN);
+        let fs_changed = fs != w.fullscreen;
+        w.fullscreen = fs;
         w.w = nw.max(1);
         w.h = nh.max(1);
         w.configured = true;
@@ -580,6 +604,9 @@ impl WindowHandler for Rt {
         w.frame_pending = false;
         if changed {
             self.emit(id, Ev::Resized);
+        }
+        if fs_changed {
+            self.emit(id, Ev::Fullscreen(fs));
         }
         self.draw(id);
     }
@@ -649,7 +676,7 @@ impl PointerHandler for Rt {
                     self.enter_serial = serial;
                     // the shape is per enter: set it again
                     if let Some(p) = &self.pointer {
-                        let _ = p.set_cursor(&self.conn, self.cursor);
+                        let _ = if self.cursor_hidden { p.hide_cursor() } else { p.set_cursor(&self.conn, self.cursor) };
                     }
                     self.emit(id, Ev::Motion(x, y));
                 }
@@ -777,6 +804,12 @@ impl ProvidesRegistryState for Rt {
         &mut self.registry
     }
     registry_handlers![OutputState, SeatState];
+}
+impl Dispatch<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1, ()> for Rt {
+    fn event(_: &mut Self, _: &zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1, _: zwp_idle_inhibit_manager_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+}
+impl Dispatch<zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1, ()> for Rt {
+    fn event(_: &mut Self, _: &zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1, _: zwp_idle_inhibitor_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
 }
 impl Dispatch<wp_viewporter::WpViewporter, ()> for Rt {
     fn event(_: &mut Self, _: &wp_viewporter::WpViewporter, _: wp_viewporter::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}

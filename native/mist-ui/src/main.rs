@@ -28,6 +28,7 @@ mod lock;
 mod appwin;
 mod edit;
 mod files;
+mod player;
 mod idle;
 mod polkit;
 mod pane;
@@ -64,6 +65,9 @@ fn main() {
     if args.get(1).map(|s| s.as_str()) == Some("msg") {
         // client of the running mist-ui: mist-ui-bin msg <target> <function> [args...]
         std::process::exit(ipc::call(&args[2..]));
+    }
+    if args.get(1).map(|s| s.as_str()) == Some("player") {
+        std::process::exit(player::run(&args[2..]));
     }
     if args.get(1).map(|s| s.as_str()) == Some("files") {
         std::process::exit(files::run(&args[2..]));
