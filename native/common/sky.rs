@@ -82,7 +82,7 @@ impl Model {
         let wind_dir = f(wx, "windDir", 270.0);
         let kp = f(wx, "kp", 0.0);
         let snow_depth = wx["snowDepth"].as_f64().unwrap_or(0.0);
-        let (lat, lon) = (f(wx, "lat", 52.2297), f(wx, "lon", 21.0122));
+        let (lat, lon) = (f(wx, "lat", 51.48), f(wx, "lon", 0.0));
 
         let code_snow = (71..=77).contains(&code) || code == 85 || code == 86;
         let code_wet = (51..=67).contains(&code) || (80..=82).contains(&code) || code >= 95;

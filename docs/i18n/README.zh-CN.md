@@ -88,7 +88,7 @@ Ryzen 7 5700X + RTX 4060，Hyprland 0.56.2，整个外壳空闲，[bench/measure
 | `native/mist-comp` | 实验性合成器、会话和登录界面 |
 | `native/common` | mist-ui 与 mist-wall 共用的代码（天文、预设） |
 | `scripts/mistd` | 后端：系统状态、手机（KDE Connect、ADB）、来电、剪贴板存储、文件管理器 D-Bus |
-| `shaders/` | 壁纸和天空着色器（`.frag` 源码，mist-wall 读取的 `.qsb` 包） |
+| `shaders/` | 壁纸和天空着色器（`.frag` 源码，mist-wall 读取的 `shaders/glsl` GLSL 150） |
 | `*.qml`、`components/` | 最初的 Quickshell 版本，保留作参考；已不再启动 |
 
 ## 安装
@@ -100,8 +100,7 @@ Mist 是作者个人的日常桌面：Arch / CachyOS，Hyprland 0.55+（Lua 配�
 `mist-comp` 另需 `libinput`、`libseat`、`libdrm`、`mesa`（gbm）、`systemd-libs`（udev）。
 
 **运行依赖：** `hyprland`、`pipewire` + `pipewire-pulse`（`pactl`、`pw-play`、`parec`）、`wireplumber`
-（`wpctl`）、`networkmanager`（`nmcli`）、`wl-clipboard`、`grim`、`slurp`、`polkit`、`qt6-shadertools`
-（`qsb`，仅动态壁纸需要）、`noto-fonts`、`noto-fonts-emoji`。可选：`ddcutil`（DDC/CI 亮度）、
+（`wpctl`）、`networkmanager`（`nmcli`）、`wl-clipboard`、`grim`、`slurp`、`polkit`、`noto-fonts`、`noto-fonts-emoji`。可选：`ddcutil`（DDC/CI 亮度）、
 `kdeconnect` / `android-tools`（手机）、`wf-recorder`（录屏）。
 
 **字体：** 界面按 SF Pro 设计（可变字体 `SF-Pro.ttf`，放在 `~/.local/share/fonts/SF-Pro/`）。Apple

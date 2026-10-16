@@ -91,7 +91,7 @@ pro Text, eine Spalte pro Sprache.
 | `native/mist-comp` | experimenteller Compositor, Sitzung und Greeter |
 | `native/common` | gemeinsamer Code von mist-ui und mist-wall (Astronomie, Presets) |
 | `scripts/mistd` | Backends: Systemwerte, Telefon (KDE Connect, ADB), Anrufe, Zwischenablage, Dateimanager-D-Bus |
-| `shaders/` | Shader für Hintergründe und Himmel (`.frag`-Quellen, `.qsb`-Pakete für mist-wall) |
+| `shaders/` | Shader für Hintergründe und Himmel (`.frag`-Quellen, GLSL 150 in `shaders/glsl` für mist-wall) |
 | `*.qml`, `components/` | die ursprüngliche Quickshell-Version, als Referenz behalten; wird nicht mehr gestartet |
 
 ## Installation
@@ -103,8 +103,7 @@ NVIDIA- oder Mesa-GPU. Rechne damit, Code zu lesen.
 `mist-comp` zusätzlich `libinput`, `libseat`, `libdrm`, `mesa` (gbm), `systemd-libs` (udev).
 
 **Laufzeit:** `hyprland`, `pipewire` + `pipewire-pulse` (`pactl`, `pw-play`, `parec`), `wireplumber`
-(`wpctl`), `networkmanager` (`nmcli`), `wl-clipboard`, `grim`, `slurp`, `polkit`, `qt6-shadertools`
-(`qsb`, nur Live-Hintergründe), `noto-fonts`, `noto-fonts-emoji`. Optional: `ddcutil` (Helligkeit über
+(`wpctl`), `networkmanager` (`nmcli`), `wl-clipboard`, `grim`, `slurp`, `polkit`, `noto-fonts`, `noto-fonts-emoji`. Optional: `ddcutil` (Helligkeit über
 DDC/CI), `kdeconnect` / `android-tools` (Telefon), `wf-recorder` (Bildschirmaufnahme).
 
 **Schrift:** Die Oberfläche ist für SF Pro gestaltet (variables `SF-Pro.ttf` in

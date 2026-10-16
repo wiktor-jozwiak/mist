@@ -16,14 +16,13 @@ would be to skip it.
 
 ## Should fix
 
-- [ ] **Personal defaults.** Home town and coordinates are fallbacks in `scripts/mistd/src/data.rs`
-      (`LAT`, `LON`, `CITY`), `native/common/sky.rs`, `native/mist-wall/src/main.rs`,
-      `native/mist-ui/src/wxcard.rs`, `island.rs` (rain demo). Move to `~/.config/mist/location.json` with a
-      neutral default or geolocation.
-- [ ] **Fixed install path.** About 15 places build `~/.config/quickshell/mist/...` (mistd binary, scripts,
-      shaders, emoji, sounds). One helper `mist_dir()` reading `$MIST_DIR`, default
-      `$XDG_DATA_HOME/mist`, and an `install.sh` that copies assets there would let the repo live anywhere.
-      The repo should also leave `~/.config/quickshell` once QML is gone.
+- [x] **Personal defaults.** Done: the weather place is `~/.config/mist/location.json`, chosen in
+      *Dostosuj pulpit* → Ogólne (search through `mistd geo`, Open-Meteo geocoding); the sky fallbacks are
+      Greenwich, the rain demo says Kraków. Left: the old home town and its coordinates are still in git
+      history (`scripts/mistd/src/data.rs` before 66a342f). Rewrite history or accept it before going public.
+- [x] **Fixed install path.** Done: `native/common/paths.rs` (`$MIST_DIR`, `~/.local/share/mist/shell`
+      linked by `native/install.sh`, `/usr/share/mist`, then the old `~/.config/quickshell/mist`); scripts
+      use XDG Pictures. Left: the checkout itself still lives in `~/.config/quickshell` until QML is gone.
 - [x] **Polish UI strings.** Done: `native/assets/i18n.tsv` (pl, en, de, es), auto follows `$LANG` with an
       English fallback. Left: text built from fragments at run time that no row matches stays Polish
       (run `MIST_LANG=en` and look); the single-letter week initials on the running card.
@@ -31,14 +30,15 @@ would be to skip it.
       a test (`phone.rs`, `runcommand_is_stable`), HyperOS-specific ADB call detection. Keep them, but behind
       config and documented as optional; cards without data should hide.
 - [ ] **Legacy QML.** Root `*.qml`, `components/`, `shaders/*.qsb` consumers: Quickshell no longer starts.
-      Move to a `legacy/` branch or tag and delete from `main`. Then `mist-wall` should read GLSL from
-      `shaders/*.frag` directly (it currently extracts it from `.qsb` with `qsb`, a Qt runtime dependency).
+      Move to a `legacy/` branch or tag and delete from `main`. Done: `mist-wall` reads GLSL 150 from
+      `shaders/glsl` (`regen.sh`), `.qsb` only as a fallback, so `qsb` is no longer a runtime dependency.
 - [ ] **Screenshots.** `docs/img/desktop.webp` is an offscreen composite without blur. Add real screenshots
       of a clean session (no personal windows, demo data in `~/.cache/mist/*.json`).
 
 ## Nice to have
 
-- [ ] Packaging: `PKGBUILD` (AUR `mist-shell-git`) building the workspace and installing to `/usr`.
+- [x] Packaging: `packaging/arch/PKGBUILD` (`mist-shell-git`, not on the AUR yet) and a release workflow
+      with prebuilt binaries on `v*` tags.
 - [ ] Config docs: `~/.config/mist/*.json` keys (widgets, feeds, influx, wallpaper).
 - [ ] CI is in `.github/workflows/ci.yml` (build + tests + shell syntax); add `cargo clippy` and `cargo deny` (licenses of
       dependencies).

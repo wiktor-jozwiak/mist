@@ -91,7 +91,7 @@ język. Nowy język to jedna kolumna więcej.
 | `native/mist-comp` | eksperymentalny kompozytor, sesja i greeter |
 | `native/common` | kod wspólny mist-ui i mist-wall (astronomia, presety) |
 | `scripts/mistd` | backendy: statystyki, telefon (KDE Connect, ADB), połączenia, schowek, D-Bus menedżera plików |
-| `shaders/` | shadery tapet i nieba (źródła `.frag`, paczki `.qsb` czytane przez mist-wall) |
+| `shaders/` | shadery tapet i nieba (źródła `.frag`, GLSL 150 w `shaders/glsl` czytany przez mist-wall) |
 | `*.qml`, `components/` | pierwotna wersja na Quickshellu, zostawiona jako wzorzec; już nieuruchamiana |
 
 ## Instalacja
@@ -103,8 +103,7 @@ NVIDIA lub Mesa. Licz się z czytaniem kodu.
 dla `mist-comp` także `libinput`, `libseat`, `libdrm`, `mesa` (gbm), `systemd-libs` (udev).
 
 **W działaniu:** `hyprland`, `pipewire` + `pipewire-pulse` (`pactl`, `pw-play`, `parec`), `wireplumber`
-(`wpctl`), `networkmanager` (`nmcli`), `wl-clipboard`, `grim`, `slurp`, `polkit`, `qt6-shadertools` (`qsb`,
-tylko tapety na żywo), `noto-fonts`, `noto-fonts-emoji`. Opcjonalnie: `ddcutil` (jasność przez DDC/CI),
+(`wpctl`), `networkmanager` (`nmcli`), `wl-clipboard`, `grim`, `slurp`, `polkit`, `noto-fonts`, `noto-fonts-emoji`. Opcjonalnie: `ddcutil` (jasność przez DDC/CI),
 `kdeconnect` / `android-tools` (telefon), `wf-recorder` (nagrywanie ekranu).
 
 **Font:** interfejs jest projektowany pod SF Pro (zmienny `SF-Pro.ttf` w `~/.local/share/fonts/SF-Pro/`);

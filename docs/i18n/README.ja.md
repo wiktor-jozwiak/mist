@@ -90,7 +90,7 @@ UI は**ポーランド語・英語・ドイツ語・スペイン語**に対応�
 | `native/mist-comp` | 実験的なコンポジター、セッション、グリーター |
 | `native/common` | mist-ui と mist-wall の共有コード（天文計算、プリセット） |
 | `scripts/mistd` | バックエンド：システム統計、スマートフォン（KDE Connect、ADB）、通話、クリップボード、ファイルマネージャーの D-Bus |
-| `shaders/` | 壁紙と空のシェーダー（`.frag` ソース、mist-wall が読む `.qsb`） |
+| `shaders/` | 壁紙と空のシェーダー（`.frag` ソース、mist-wall が読む `shaders/glsl` の GLSL 150） |
 | `*.qml`、`components/` | 元の Quickshell 版。参考として残しており、現在は起動されません |
 
 ## インストール
@@ -102,8 +102,7 @@ Mesa の GPU。コードを読む前提でお使いください。
 `mist-comp` には加えて `libinput`、`libseat`、`libdrm`、`mesa`（gbm）、`systemd-libs`（udev）。
 
 **実行時：** `hyprland`、`pipewire` + `pipewire-pulse`（`pactl`、`pw-play`、`parec`）、`wireplumber`
-（`wpctl`）、`networkmanager`（`nmcli`）、`wl-clipboard`、`grim`、`slurp`、`polkit`、`qt6-shadertools`
-（`qsb`、ライブ壁紙のみ）、`noto-fonts`、`noto-fonts-emoji`。任意：`ddcutil`（DDC/CI で輝度調整）、
+（`wpctl`）、`networkmanager`（`nmcli`）、`wl-clipboard`、`grim`、`slurp`、`polkit`、`noto-fonts`、`noto-fonts-emoji`。任意：`ddcutil`（DDC/CI で輝度調整）、
 `kdeconnect` / `android-tools`（スマートフォン）、`wf-recorder`（画面録画）。
 
 **フォント：** UI は SF Pro（可変フォント `SF-Pro.ttf` を `~/.local/share/fonts/SF-Pro/` に配置）を前提に

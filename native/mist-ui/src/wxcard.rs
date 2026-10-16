@@ -450,7 +450,7 @@ impl Wx {
         let inr = |x: f32, y: f32, ww: f32, hh: f32| ptr.map(|p| p.0 >= x && p.0 < x + ww && p.1 >= y && p.1 < y + hh).unwrap_or(false);
         let inr_i = |x: f32, y: f32, ww: f32, hh: f32| iptr.map(|p| p.0 >= x && p.0 < x + ww && p.1 >= y && p.1 < y + hh).unwrap_or(false);
         // headline
-        let city = format!("{}{}", wx["city"].as_str().unwrap_or("Warszawa"), if wx["stale"].as_bool().unwrap_or(false) { format!(" · dane z {}", crate::data::hm(wx["at"].as_i64().unwrap_or(0))) } else { String::new() });
+        let city = format!("{}{}", wx["city"].as_str().unwrap_or(""), if wx["stale"].as_bool().unwrap_or(false) { format!(" · dane z {}", crate::data::hm(wx["at"].as_i64().unwrap_or(0))) } else { String::new() });
         let cw_ = caps(&mut l, t, PAD, PAD, &city, FG2, None);
         let cs = caps_style();
         let clh = line_h(t, &cs);
@@ -691,7 +691,7 @@ impl Wx {
     fn popover(&mut self, c: &mut Canvas, t: &mut Text, wx: &Value, m: &crate::sky::Model, ox: f32, oy: f32, at: (f32, f32), o: f32, s: f32) -> (f32, f32, f32, f32) {
         let now = crate::data::now();
         let nowms = (now / 60 * 60) as f64 * 1000.0;
-        let (lat, lon) = (wx["lat"].as_f64().unwrap_or(52.2297), wx["lon"].as_f64().unwrap_or(21.0122));
+        let (lat, lon) = (wx["lat"].as_f64().unwrap_or(51.48), wx["lon"].as_f64().unwrap_or(0.0));
         let days = wx["days"].as_array().cloned().unwrap_or_default();
         let moon = self.last_pop == "moon";
         let p = m.moon.phase;

@@ -430,8 +430,8 @@ impl App {
     fn uniforms_of(&self, p: &Value, w: f32, h: f32, t: f64) -> (String, Vec<(&'static str, Vec<f32>)>, f32) {
         let p = p.clone();
         let wx = &self.weather;
-        let lat = wx["lat"].as_f64().unwrap_or(52.2297);
-        let lon = wx["lon"].as_f64().unwrap_or(21.0122);
+        let lat = wx["lat"].as_f64().unwrap_or(51.48);
+        let lon = wx["lon"].as_f64().unwrap_or(0.0);
         let auto = p["auto"].as_bool().unwrap_or(false);
         let now_min = (now_ms() / 60000.0).floor() * 60000.0; // Data.now ticks per minute
         let code = wx["code"].as_i64().unwrap_or(3);

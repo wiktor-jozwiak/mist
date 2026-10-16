@@ -19,7 +19,20 @@ nothing is released yet.
 - Benchmarks table in the README; demo data (`docs/demo`) and `docs/img/hero.sh` for the README
   screenshot, now with the weather card and its sky; an English screenshot.
 
+- Paths: `native/common/paths.rs` finds scripts, shaders and assets through `$MIST_DIR`,
+  `~/.local/share/mist/shell`, `/usr/share/mist`; the repo can live anywhere.
+- Packaging: `packaging/arch/PKGBUILD` (`mist-shell-git`), release workflow with prebuilt binaries on tags,
+  docs site (mkdocs-material), `scripts/demo-reel.sh` for the README GIF.
+- Weather place in settings: *Dostosuj pulpit* → Ogólne (language, place search through `mistd geo`,
+  wallpaper), saved in `~/.config/mist/location.json`; a welcome line on the first open.
+
 ### Changed
+- mist-wall reads GLSL 150 from `shaders/glsl`; `qsb` (qt6-shadertools) is no longer needed at run time.
+- Live wallpaper presets moved to `native/assets/live-presets.js`; photo wallpapers come from XDG
+  Pictures/Wallpapers (`Tapety` in Polish), `$MIST_WALLPAPERS` overrides; a new install starts on the live
+  scene.
+- Weather has no built-in place: without `location.json` the card stays empty; the timezone follows the place.
+- Dock icons are pre-scaled once per size, so a resting dock blits instead of resampling.
 - `mistd data garmin` reads the InfluxDB connection from `~/.config/mist/influx.json` instead of constants
   in the source.
 - `mist.desktop` no longer contains an absolute home path.

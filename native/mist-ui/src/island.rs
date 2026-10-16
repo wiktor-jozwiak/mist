@@ -1076,7 +1076,7 @@ impl Island {
             "num" => info("lock", 2, 1600, "numbers", T3, "Num Lock wyłączony", ""),
             "cal" => { let mut e = info("cal", 2, 5000, "calEvent", a, "Trening interwałowy", "za 5 min · Stadion"); e.act = Act::Popup("calendar".into()); e }
             "cal-now" => { let mut e = info("cal", 3, 6000, "calEvent", a, "Trening interwałowy", "zaczyna się teraz · Stadion"); e.pulse = true; e.act = Act::Popup("calendar".into()); e }
-            "rain" => info("rain", 2, 5000, "umbrella", a, "Deszcz za ok. 30 min", "Warszawa"),
+            "rain" => info("rain", 2, 5000, "umbrella", a, "Deszcz za ok. 30 min", "Kraków"),
             "clip" => info("clip", 2, 2500, "copy", a, "Skopiowano", "„Rozgrzewka 15 min, 5×800 m, przerwy 400 m truchtem”"),
             "link" => info("clip", 2, 2500, "link", a, "Skopiowano link", "https://github.com/quickshell-mirror/quickshell"),
             "color" => { let mut e = info("clip", 2, 2500, "palette", a, "Skopiowano kolor", "#A9C2EE"); e.swatch = Some(Rgba::hex("#a9c2ee")); e }

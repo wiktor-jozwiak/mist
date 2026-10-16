@@ -91,7 +91,7 @@ por idioma.
 | `native/mist-comp` | compositor experimental, sesión y greeter |
 | `native/common` | código compartido por mist-ui y mist-wall (astronomía, presets) |
 | `scripts/mistd` | backends: estadísticas, teléfono (KDE Connect, ADB), llamadas, portapapeles, D-Bus del gestor de archivos |
-| `shaders/` | shaders de fondos y cielo (fuentes `.frag`, paquetes `.qsb` que lee mist-wall) |
+| `shaders/` | shaders de fondos y cielo (fuentes `.frag`, GLSL 150 en `shaders/glsl` que lee mist-wall) |
 | `*.qml`, `components/` | la versión original en Quickshell, conservada como referencia; ya no se inicia |
 
 ## Instalación
@@ -103,8 +103,7 @@ NVIDIA o Mesa. Cuenta con leer código.
 para `mist-comp` también `libinput`, `libseat`, `libdrm`, `mesa` (gbm), `systemd-libs` (udev).
 
 **Ejecución:** `hyprland`, `pipewire` + `pipewire-pulse` (`pactl`, `pw-play`, `parec`), `wireplumber`
-(`wpctl`), `networkmanager` (`nmcli`), `wl-clipboard`, `grim`, `slurp`, `polkit`, `qt6-shadertools` (`qsb`,
-solo fondos en vivo), `noto-fonts`, `noto-fonts-emoji`. Opcional: `ddcutil` (brillo por DDC/CI),
+(`wpctl`), `networkmanager` (`nmcli`), `wl-clipboard`, `grim`, `slurp`, `polkit`, `noto-fonts`, `noto-fonts-emoji`. Opcional: `ddcutil` (brillo por DDC/CI),
 `kdeconnect` / `android-tools` (teléfono), `wf-recorder` (grabación de pantalla).
 
 **Fuente:** la interfaz está diseñada para SF Pro (`SF-Pro.ttf` variable en `~/.local/share/fonts/SF-Pro/`),

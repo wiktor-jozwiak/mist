@@ -96,7 +96,7 @@ string, one column per language. A new language is one more column.
 | `native/mist-comp` | experimental Smithay compositor, session and greeter |
 | `native/common` | code shared by mist-ui and mist-wall (astronomy, presets) |
 | `scripts/mistd` | backends: system stats, phone (KDE Connect, ADB), calls, clipboard store, file manager D-Bus |
-| `shaders/` | wallpaper and sky shaders (`.frag` sources, `.qsb` packs read by mist-wall) |
+| `shaders/` | wallpaper and sky shaders (`.frag` sources, GLSL 150 in `shaders/glsl` read by mist-wall) |
 | `*.qml`, `components/` | the original Quickshell version, kept as reference; no longer started |
 
 ## Install
