@@ -196,7 +196,17 @@ pub fn spawn(tx: Sender<Msg>, reqs: Receiver<Req>, menus: Sender<(String, Vec<Me
 
         // signals arrive on the connection's message stream; requests from the bar on `reqs`
         let stream = zbus::blocking::MessageIterator::from(&c);
-        let (sig_tx, sig_rx) = std::sync::mpsc::channel::<String>();
+        // both share one channel (Ok = a request, Err = a signal), so the loop sleeps until one comes
+        // (it woke every 250 ms to look at the signals before)
+        let (sig_tx, ev_rx) = std::sync::mpsc::channel::<Result<Req, String>>();
+        let req_tx = sig_tx.clone();
+        let _ = std::thread::Builder::new().name("tray-req".into()).stack_size(64 * 1024).spawn(move || {
+            for r in reqs {
+                if req_tx.send(Ok(r)).is_err() {
+                    break;
+                }
+            }
+        });
         let _ = std::thread::Builder::new().name("tray-sig".into()).stack_size(256 * 1024).spawn(move || {
             for m in stream {
                 let Ok(m) = m else { continue };
@@ -208,18 +218,27 @@ pub fn spawn(tx: Sender<Msg>, reqs: Receiver<Req>, menus: Sender<(String, Vec<Me
                 if member == "NameOwnerChanged" {
                     if let Ok((name, _old, new)) = m.body().deserialize::<(String, String, String)>() {
                         if name == WATCHER && new.is_empty() {
-                            let _ = sig_tx.send("watcher-gone".into());
+                            let _ = sig_tx.send(Err("watcher-gone".into()));
                         } else if name.starts_with(':') && new.is_empty() {
-                            let _ = sig_tx.send(format!("gone {name}"));
+                            let _ = sig_tx.send(Err(format!("gone {name}")));
                         }
                     }
                 } else {
-                    let _ = sig_tx.send(member);
+                    let _ = sig_tx.send(Err(member));
                 }
             }
         });
+        let mut pending: std::collections::VecDeque<Req> = Default::default();
         loop {
-            match reqs.recv_timeout(Duration::from_millis(250)) {
+            let e = match pending.pop_front() {
+                Some(r) => Ok(r),
+                None => match ev_rx.recv() {
+                    Ok(e) => e,
+                    Err(_) => return,
+                },
+            };
+            let mut sigs: Vec<String> = Vec::new();
+            match e {
                 Ok(Req::Activate(k, x, y)) => {
                     let (s, p) = split_key(&k);
                     let _ = c.call_method(Some(s.as_str()), p.as_str(), Some("org.kde.StatusNotifierItem"), "Activate", &(x, y));
@@ -240,12 +259,23 @@ pub fn spawn(tx: Sender<Msg>, reqs: Receiver<Req>, menus: Sender<(String, Vec<Me
                         let _ = c.call_method(Some(s.as_str()), mp.as_str(), Some("com.canonical.dbusmenu"), "Event", &(id, "clicked", Value::from(0i32), ts));
                     }
                 }
-                Err(RecvTimeoutError::Timeout) => {}
-                Err(RecvTimeoutError::Disconnected) => return,
+                Err(s) => sigs.push(s),
             }
-            // coalesce the signals that arrived meanwhile into one refresh
+            // a burst of signals (an item sets its icon, title and menu at once) makes one refresh: gather it
+            // for up to 200 ms; requests that come meanwhile wait in `pending`
+            if !sigs.is_empty() {
+                let until = std::time::Instant::now() + Duration::from_millis(200);
+                while let Some(left) = until.checked_duration_since(std::time::Instant::now()) {
+                    match ev_rx.recv_timeout(left.min(Duration::from_millis(40))) {
+                        Ok(Ok(r)) => pending.push_back(r),
+                        Ok(Err(s)) => sigs.push(s),
+                        Err(RecvTimeoutError::Timeout) => break,
+                        Err(RecvTimeoutError::Disconnected) => return,
+                    }
+                }
+            }
             let mut dirty = false;
-            while let Ok(s) = sig_rx.try_recv() {
+            for s in sigs {
                 if s == "watcher-gone" && !own_watcher {
                     own_watcher = become_watcher(&c);
                     // items re-register with the new watcher

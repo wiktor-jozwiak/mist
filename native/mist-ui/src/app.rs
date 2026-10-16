@@ -2431,6 +2431,9 @@ pub fn launch(exec: &str) {
 // ---------------------------------------------------------------- messages from the data threads
 impl App {
     pub fn on_msg(&mut self, m: Msg) {
+        // the bars and the dock draw only st, hypr, the tray and the popup: these messages touch none of it
+        // (with music on, Audio + Players alone redrew both bars and the dock ~8 times a second)
+        let bars_too = !matches!(&m, Msg::Players(..) | Msg::Audio(..) | Msg::Data(..) | Msg::Cursor(..) | Msg::HyprEv(..) | Msg::Note(..) | Msg::Phone2(..) | Msg::Profile(..) | Msg::Sys(..) | Msg::NmLine(..) | Msg::BtDevs(..) | Msg::WinThumb(..));
         let k: &'static str = match &m {
             Msg::Hypr(..) => "Hypr",
             Msg::Net(..) => "Net",
@@ -2592,7 +2595,9 @@ impl App {
                 self.dock_rebuild();
             }
         }
-        self.mark_all();
+        if bars_too {
+            self.mark_all();
+        }
         self.island_dirty = true;
     }
 }

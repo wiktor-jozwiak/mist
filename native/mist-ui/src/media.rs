@@ -122,7 +122,17 @@ pub fn spawn(tx: Sender<Msg>, cmds: std::sync::mpsc::Receiver<Cmd>) {
         };
         refresh(&c);
         let stream = zbus::blocking::MessageIterator::from(&c);
-        let (stx, srx) = std::sync::mpsc::channel::<()>();
+        // commands and signals share one channel (None = a signal), so the loop sleeps until one comes
+        // (it woke every 120 ms to look at the signals before)
+        let (stx, ev_rx) = std::sync::mpsc::channel::<Option<Cmd>>();
+        let cmd_tx = stx.clone();
+        let _ = std::thread::Builder::new().name("mpris-cmd".into()).stack_size(64 * 1024).spawn(move || {
+            for c in cmds {
+                if cmd_tx.send(Some(c)).is_err() {
+                    break;
+                }
+            }
+        });
         let _ = std::thread::Builder::new().name("mpris-sig".into()).stack_size(256 * 1024).spawn(move || {
             for m in stream {
                 let Ok(m) = m else { continue };
@@ -138,7 +148,7 @@ pub fn spawn(tx: Sender<Msg>, cmds: std::sync::mpsc::Receiver<Cmd>) {
                         }
                     }
                 }
-                let _ = stx.send(());
+                let _ = stx.send(None);
             }
         });
         let call = |bus: &str, method: &str| {
@@ -147,26 +157,37 @@ pub fn spawn(tx: Sender<Msg>, cmds: std::sync::mpsc::Receiver<Cmd>) {
         let set = |bus: &str, prop: &str, v: Value| {
             let _ = c.call_method(Some(bus), "/org/mpris/MediaPlayer2", Some("org.freedesktop.DBus.Properties"), "Set", &(P, prop, v));
         };
-        loop {
-            let mut dirty = false;
-            match cmds.recv_timeout(Duration::from_millis(120)) {
-                Ok(Cmd::Toggle(b)) => call(&b, "PlayPause"),
-                Ok(Cmd::Next(b)) => call(&b, "Next"),
-                Ok(Cmd::Prev(b)) => call(&b, "Previous"),
-                Ok(Cmd::Seek(b, track, pos)) => {
+        // a command, or None for a signal; true when the players need reading again
+        let handle = |e: Option<Cmd>| -> bool {
+            match e {
+                Some(Cmd::Toggle(b)) => call(&b, "PlayPause"),
+                Some(Cmd::Next(b)) => call(&b, "Next"),
+                Some(Cmd::Prev(b)) => call(&b, "Previous"),
+                Some(Cmd::Seek(b, track, pos)) => {
                     if let Ok(o) = zbus::zvariant::ObjectPath::try_from(track.as_str()) {
                         let _ = c.call_method(Some(b.as_str()), "/org/mpris/MediaPlayer2", Some(P), "SetPosition", &(o, (pos * 1e6) as i64));
                     }
-                    dirty = true;
+                    return true;
                 }
-                Ok(Cmd::Shuffle(b, on)) => set(&b, "Shuffle", Value::from(on)),
-                Ok(Cmd::Loop(b, l)) => set(&b, "LoopStatus", Value::from(l.as_str())),
-                Ok(Cmd::Refresh) => dirty = true,
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-                Err(_) => return,
+                Some(Cmd::Shuffle(b, on)) => set(&b, "Shuffle", Value::from(on)),
+                Some(Cmd::Loop(b, l)) => set(&b, "LoopStatus", Value::from(l.as_str())),
+                Some(Cmd::Refresh) | None => return true,
             }
-            while srx.try_recv().is_ok() {
-                dirty = true;
+            false
+        };
+        loop {
+            let Ok(e) = ev_rx.recv() else { return };
+            let mut dirty = handle(e);
+            // a burst of signals (a browser sends several PropertiesChanged at once) makes one refresh:
+            // gather it for up to 200 ms
+            if dirty {
+                let until = Instant::now() + Duration::from_millis(200);
+                while let Some(left) = until.checked_duration_since(Instant::now()) {
+                    match ev_rx.recv_timeout(left.min(Duration::from_millis(40))) {
+                        Ok(e) => dirty |= handle(e),
+                        Err(_) => break,
+                    }
+                }
             }
             if dirty {
                 refresh(&c);
