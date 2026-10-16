@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="280" viewBox="0 0 1200 280">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#140f1c"/>
+      <stop offset="0.55" stop-color="#2b1d26"/>
+      <stop offset="1" stop-color="#5a3826"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="1.05" r="0.6">
+      <stop offset="0" stop-color="#f3a35c" stop-opacity="0.75"/>
+      <stop offset="0.45" stop-color="#c46a3c" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#c46a3c" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="dune1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a2e22"/>
+      <stop offset="1" stop-color="#2a1a15"/>
+    </linearGradient>
+    <linearGradient id="dune2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2c1c17"/>
+      <stop offset="1" stop-color="#160e0c"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.05"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="18"/></filter>
+    <clipPath id="frame"><rect width="1200" height="280" rx="22"/></clipPath>
+  </defs>
+  <g clip-path="url(#frame)">
+    <rect width="1200" height="280" fill="url(#sky)"/>
+    <rect width="1200" height="280" fill="url(#sun)"/>
+    <g fill="#fff" opacity="0.55">
+      <circle cx="96" cy="38" r="1.1"/><circle cx="212" cy="74" r="0.8"/><circle cx="318" cy="28" r="1"/>
+      <circle cx="455" cy="58" r="0.7"/><circle cx="742" cy="36" r="0.9"/><circle cx="868" cy="70" r="1.1"/>
+      <circle cx="987" cy="30" r="0.8"/><circle cx="1104" cy="62" r="1"/><circle cx="1150" cy="22" r="0.7"/>
+      <circle cx="40" cy="96" r="0.7"/><circle cx="620" cy="22" r="0.8"/><circle cx="530" cy="92" r="0.6"/>
+    </g>
+    <ellipse cx="600" cy="300" rx="420" ry="80" fill="#f0a060" opacity="0.35" filter="url(#soft)"/>
+    <path d="M0 205 C 180 170, 330 182, 470 200 S 760 238, 900 206 S 1110 172, 1200 190 L1200 280 L0 280 Z" fill="url(#dune1)"/>
+    <path d="M0 240 C 220 214, 420 228, 610 246 S 960 262, 1200 232 L1200 280 L0 280 Z" fill="url(#dune2)"/>
+    <!-- the island -->
+    <rect x="530" y="18" width="140" height="30" rx="15" fill="#000" opacity="0.92"/>
+    <circle cx="548" cy="33" r="5" fill="#3b82f6"/>
+    <rect x="642" y="29" width="3" height="8" rx="1.5" fill="#60a5fa"/><rect x="648" y="26" width="3" height="14" rx="1.5" fill="#60a5fa"/><rect x="654" y="30" width="3" height="6" rx="1.5" fill="#60a5fa"/>
+    <!-- wordmark -->
+    <text x="600" y="150" text-anchor="middle" font-family="SF Pro Display, -apple-system, Segoe UI, Inter, Helvetica, Arial, sans-serif"
+          font-size="92" font-weight="700" letter-spacing="-2" fill="#f5efe9">Mist</text>
+    <text x="600" y="190" text-anchor="middle" font-family="SF Pro Text, -apple-system, Segoe UI, Inter, Helvetica, Arial, sans-serif"
+          font-size="20" fill="#e8dcd2" opacity="0.8">a macOS-inspired shell for Hyprland · Rust · drawn on the CPU</text>
+    <!-- the dock -->
+    <rect x="510" y="226" width="180" height="40" rx="12" fill="url(#glass)" stroke="#ffffff" stroke-opacity="0.18"/>
+    <rect x="522" y="234" width="24" height="24" rx="6" fill="#f5b942"/>
+    <rect x="554" y="234" width="24" height="24" rx="6" fill="#e9e3dc"/>
+    <rect x="586" y="234" width="24" height="24" rx="6" fill="#e2683c"/>
+    <rect x="618" y="234" width="24" height="24" rx="6" fill="#22c55e"/>
+    <rect x="654" y="234" width="24" height="24" rx="6" fill="#64748b"/>
+  </g>
+</svg>

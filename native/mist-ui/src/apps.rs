@@ -1,6 +1,6 @@
 // Applications and icons for mist-ui:
 // - .desktop entries (XDG data dirs): the app name for a window class, like Quickshell's
-//   DesktopEntries.byId / heuristicLookup (Name[pl] first)
+//   DesktopEntries.byId / heuristicLookup (Name[xx] of the UI language first)
 // - icon theme lookup (freedesktop spec: index.theme directories, inherited themes, hicolor, pixmaps),
 //   the theme from qt6ct (MistIcons), decoded to premultiplied RGBA at the asked size (PNG / SVG)
 use std::collections::HashMap;
@@ -38,6 +38,11 @@ impl Apps {
     pub fn load() -> Apps {
         let mut seen = std::collections::HashSet::new();
         let mut entries = Vec::new();
+        // Name[xx] / Comment[xx] ... in the UI language (Name[pl] or Name[pl_PL] for "pl"), else the plain key
+        let lang = crate::i18n::lang();
+        let local = |k: &str, base: &str| -> bool {
+            k.strip_prefix(base).and_then(|r| r.strip_prefix('[')).and_then(|r| r.strip_suffix(']')).map(|l| l == lang || l.split('_').next() == Some(lang)).unwrap_or(false)
+        };
         for d in data_dirs() {
             let dir = format!("{d}/applications");
             let Ok(rd) = std::fs::read_dir(&dir) else { continue };
@@ -61,19 +66,20 @@ impl Apps {
                         continue;
                     }
                     if let Some((k, v)) = l.split_once('=') {
-                        match k.trim() {
+                        let k = k.trim();
+                        match k {
                             "Name" => name = v.into(),
-                            "Name[pl]" | "Name[pl_PL]" => name_pl = v.into(),
+                            _ if local(k, "Name") => name_pl = v.into(),
                             "Icon" => icon = v.into(),
                             "StartupWMClass" => wm = v.into(),
                             "Exec" => exec = v.into(),
                             "NoDisplay" | "Hidden" => hidden |= v.trim() == "true",
                             "GenericName" => generic = v.into(),
-                            "GenericName[pl]" => generic_pl = v.into(),
+                            _ if local(k, "GenericName") => generic_pl = v.into(),
                             "Comment" => comment = v.into(),
-                            "Comment[pl]" => comment_pl = v.into(),
+                            _ if local(k, "Comment") => comment_pl = v.into(),
                             "Keywords" => kw = v.into(),
-                            "Keywords[pl]" => kw_pl = v.into(),
+                            _ if local(k, "Keywords") => kw_pl = v.into(),
                             "Terminal" => terminal = v.trim() == "true",
                             _ => {}
                         }

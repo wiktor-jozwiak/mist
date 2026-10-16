@@ -80,6 +80,11 @@ fn load(lang: &'static str) -> &'static Table {
     t
 }
 
+// the UI language's code ("pl", "en", ...)
+pub fn lang() -> &'static str {
+    current().0
+}
+
 fn current() -> (&'static str, &'static Table) {
     if let Some(c) = *CUR.read().unwrap() {
         return c;
