@@ -330,20 +330,43 @@ pub fn audio(tx: Sender<Msg>) {
     spawn("audio", move || loop {
         let (v, m) = volume();
         let _ = tx.send(Msg::Volume(v, m));
-        let _ = tx.send(Msg::Audio(audio_state()));
+        let mut a = audio_state();
+        let _ = tx.send(Msg::Audio(a.clone()));
         let Ok(mut ch) = Command::new("pactl").arg("subscribe").stdout(Stdio::piped()).stderr(Stdio::null()).spawn() else { return };
         let r = BufReader::new(ch.stdout.take().unwrap());
+        // the lines come through a channel, so a burst (a browser stream starts, moves, changes volume: a dozen
+        // events) is gathered for up to 300 ms and pactl is asked once per kind, not once per line
+        let (ltx, lrx) = std::sync::mpsc::channel::<String>();
+        let _ = std::thread::Builder::new().name("audio-ev".into()).stack_size(64 * 1024).spawn(move || {
+            for l in r.lines().map_while(Result::ok) {
+                if ltx.send(l).is_err() {
+                    break;
+                }
+            }
+        });
         let mut last = (v, m);
-        for l in r.lines() {
-            let Ok(l) = l else { break };
-            if l.contains("on sink #") || l.contains("on server") || l.contains("on source #") || l.contains("on source-output") {
-                let a = audio_state();
+        while let Ok(first) = lrx.recv() {
+            let mut lines = vec![first];
+            let until = std::time::Instant::now() + Duration::from_millis(300);
+            while let Some(left) = until.checked_duration_since(std::time::Instant::now()) {
+                match lrx.recv_timeout(left.min(Duration::from_millis(60))) {
+                    Ok(l) => lines.push(l),
+                    Err(_) => break,
+                }
+            }
+            let has = |k: &str| lines.iter().any(|l| l.contains(k));
+            if has("on sink #") || has("on server") || has("on source #") || has("on source-output") {
+                let before = a.clone();
+                a = audio_state();
                 let now = (a.vol, a.mute);
                 if now != last {
                     last = now;
                     let _ = tx.send(Msg::Volume(now.0, now.1));
                 }
-                let _ = tx.send(Msg::Audio(a));
+                // the same state again (a stream event that changed nothing shown) is not sent
+                if a != before {
+                    let _ = tx.send(Msg::Audio(a.clone()));
+                }
             }
         }
         let _ = ch.wait();
