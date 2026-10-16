@@ -1,0 +1,24 @@
+#!/bin/sh
+# Guard for the native Mist shell (installed as ~/.local/bin/mist-ui, started from the compositor's autostart):
+# restarts mist-ui-bin after a crash, gives up after 5 crashes in 2 min. Log: ~/.cache/mist/ui.log.
+# Stop: pkill -x mist-ui; pkill -x mist-ui-bin. MIST_FALLBACK: a command to start when it gives up.
+mkdir -p "$HOME/.cache/mist"; LOG="$HOME/.cache/mist/ui.log"
+[ -f "$LOG" ] && [ $(stat -c %s "$LOG") -gt 1000000 ] && mv -f "$LOG" "$LOG.1"
+pgrep -x mist-ui-bin >/dev/null && exit 0
+fails=""
+while :; do
+    "$HOME/.local/bin/mist-ui-bin" >>"$LOG" 2>&1
+    code=$?
+    [ $code -eq 0 ] && exit 0
+    now=$(date +%s); echo "$(date '+%F %T') mist-ui exited with $code" >>"$LOG"
+    # SIGTERM (pkill after an install) is a restart, not a crash
+    [ $code -eq 143 ] && { sleep 0.2; continue; }
+    fails="$(for t in $fails; do [ $((now - t)) -lt 120 ] && echo $t; done) $now"
+    if [ $(echo $fails | wc -w) -ge 5 ]; then
+        echo "$(date '+%F %T') giving up after 5 crashes" >>"$LOG"
+        [ -n "$MIST_FALLBACK" ] && setsid -f sh -c "$MIST_FALLBACK" >/dev/null 2>&1
+        notify-send "Mist" "mist-ui crashed 5 times in 2 minutes. Log: ~/.cache/mist/ui.log" 2>/dev/null
+        exit 1
+    fi
+    sleep 1
+done

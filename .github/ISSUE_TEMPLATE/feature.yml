@@ -1,0 +1,15 @@
+name: Feature
+description: An idea for Mist
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What and why
+    validations:
+      required: true
+  - type: textarea
+    id: cost
+    attributes:
+      label: Cost
+      description: Mist keeps idle cost near zero. Does this need a timer, a new process, a GPU context or per-frame work? How would it stay event-driven?

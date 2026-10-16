@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    # Arch, like the machines Mist runs on (system libraries match)
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: System packages
+        run: |
+          pacman -Syu --noconfirm --needed base-devel git rust pkgconf libxkbcommon pam wayland mesa \
+            libinput seatd libdrm systemd-libs noto-fonts
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/target
+            scripts/mistd/target
+          key: cargo-${{ hashFiles('native/Cargo.lock', 'scripts/mistd/Cargo.lock') }}
+      # native/.cargo/config.toml builds for the author's CPU; CI builds for the runner (any x86-64)
+      - name: native workspace
+        working-directory: native
+        env:
+          RUSTFLAGS: ""
+          CARGO_BUILD_RUSTFLAGS: ""
+        run: |
+          cargo build --release --locked
+          cargo test --release --locked
+      - name: mistd
+        working-directory: scripts/mistd
+        run: |
+          cargo build --release --locked
+          cargo test --release --locked
+      - name: Shell scripts
+        run: for f in native/install.sh native/dist/mist-ui scripts/*.sh scripts/mistd/install.sh bench/measure.sh; do sh -n "$f"; done

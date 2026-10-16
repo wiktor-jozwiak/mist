@@ -9,8 +9,6 @@ use std::collections::{HashMap, HashSet};
 const LAT: f64 = 52.2297;
 const LON: f64 = 21.0122;
 const CITY: &str = "Warszawa";
-const INFLUX: &str = "http://127.0.0.1:8086/query";
-const INFLUX_AUTH: (&str, &str) = ("", "");
 
 type R<T> = Result<T, String>;
 
@@ -59,15 +57,20 @@ fn fz(v: &J) -> f64 {
 
 type Rows = Vec<Map<String, J>>;
 
+// InfluxDB 1.x of garmin-grafana; connection in ~/.config/mist/influx.json (kept out of the repo):
+// {"url": "http://127.0.0.1:8086/query", "db": "GarminStats", "user": "...", "password": "..."}
 fn influx(qs: &[String]) -> R<Vec<Rows>> {
+    let path = format!("{}/.config/mist/influx.json", home());
+    let cfg: J = std::fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str(&s).ok()).ok_or(format!("brak {path}"))?;
+    let s = |k: &str, d: &str| cfg[k].as_str().unwrap_or(d).to_string();
     let q = qs.join(";");
     let res = agent(8)
-        .get(INFLUX)
-        .query("db", "GarminStats")
+        .get(&s("url", "http://127.0.0.1:8086/query"))
+        .query("db", &s("db", "GarminStats"))
         .query("q", &q)
         .query("epoch", "s")
-        .query("u", INFLUX_AUTH.0)
-        .query("p", INFLUX_AUTH.1)
+        .query("u", &s("user", ""))
+        .query("p", &s("password", ""))
         .header("User-Agent", "mist-shell/1.0")
         .call()
         .map_err(|e| e.to_string())?

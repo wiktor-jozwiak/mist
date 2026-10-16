@@ -10,6 +10,8 @@ for b in mist-ui mist-wall; do
     mv -f "$HOME/.local/bin/.$b-bin.new" "$HOME/.local/bin/$b-bin"
     ls -l "$HOME/.local/bin/$b-bin"
 done
+# the guard (dist/mist-ui) only on a first install: a local copy may carry its own fallback
+[ -e "$HOME/.local/bin/mist-ui" ] || install -m 755 dist/mist-ui "$HOME/.local/bin/mist-ui"
 cp target/release/mist-comp "$HOME/.local/bin/.mist-comp.new"
 mv -f "$HOME/.local/bin/.mist-comp.new" "$HOME/.local/bin/mist-comp"
 ls -l "$HOME/.local/bin/mist-comp"

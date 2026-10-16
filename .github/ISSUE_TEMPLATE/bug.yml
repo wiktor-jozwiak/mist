@@ -1,0 +1,28 @@
+name: Bug
+description: Something in Mist is broken
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, what did you expect
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: A `mist-ui-bin msg ...` command that triggers it is the best reproduction.
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: Last lines of `~/.cache/mist/ui.log` (and `mist-ui-bin msg ui stats` for performance issues).
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "commit abc1234, Hyprland 0.56.2, NVIDIA 615 / Mesa 26, 2 monitors"
+    validations:
+      required: true

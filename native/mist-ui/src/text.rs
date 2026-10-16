@@ -99,7 +99,14 @@ pub struct Text {
     shaped: HashMap<(String, Face, u32, u32, bool), std::rc::Rc<Shaped>>,
 }
 
-pub const UI_FONT: &str = "/home/wiktor/.local/share/fonts/SF-Pro/SF-Pro.ttf";
+// SF Pro (variable, wght + opsz) is not shipped: without it the UI falls back to Inter, then Noto Sans
+pub const UI_FONT: &str = ".local/share/fonts/SF-Pro/SF-Pro.ttf";
+const UI_FALLBACKS: [&str; 4] = [
+    "/usr/share/fonts/OTF/SF-Pro.ttf",
+    "/usr/share/fonts/inter/InterVariable.ttf",
+    "/usr/share/fonts/TTF/InterVariable.ttf",
+    "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+];
 pub const ICON_FONT: &str = "/usr/share/noctalia/assets/fonts/noctalia-tabler.ttf";
 
 impl Text {
@@ -107,8 +114,8 @@ impl Text {
         let home = std::env::var("HOME").unwrap_or_default();
         // MIST_FONT_DIR (the greeter: its user cannot read this home) holds SF-Pro.ttf + tabler-icons.ttf
         let dir = std::env::var("MIST_FONT_DIR").ok();
-        let ui_path = dir.as_ref().map(|d| format!("{d}/SF-Pro.ttf")).unwrap_or_else(|| UI_FONT.replace("/home/wiktor", &home));
-        let ui = Mapped::open(&ui_path).expect("SF Pro font");
+        let ui_path = dir.as_ref().map(|d| format!("{d}/SF-Pro.ttf")).unwrap_or_else(|| format!("{home}/{UI_FONT}"));
+        let ui = Mapped::open(&ui_path).or_else(|| UI_FALLBACKS.iter().find_map(|p| Mapped::open(p))).expect("UI font (SF Pro, Inter or Noto Sans)");
         // the repo's copy (native/assets), else Noctalia's
         let icons_path = dir.map(|d| format!("{d}/tabler-icons.ttf")).unwrap_or_else(|| format!("{home}/.config/quickshell/mist/native/assets/tabler-icons.ttf"));
         let icons = Mapped::open(&icons_path).or_else(|| Mapped::open(ICON_FONT)).expect("tabler icon font");
