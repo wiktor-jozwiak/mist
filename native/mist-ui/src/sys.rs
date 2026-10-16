@@ -514,12 +514,21 @@ pub fn power_profile(tx: Sender<Msg>) {
                 .and_then(|v| String::try_from(v).ok())
                 .unwrap_or_default()
         };
-        let _ = tx.send(Msg::Profile(get()));
+        let mut last = get();
+        let _ = tx.send(Msg::Profile(last.clone()));
         let rule = "type='signal',sender='net.hadess.PowerProfiles',member='PropertiesChanged'";
         let _ = c.call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), "AddMatch", &(rule,));
+        // only the signal: the replies to get()'s own calls come through here too (a reply, a get(), a reply...)
         for m in zbus::blocking::MessageIterator::from(&c) {
-            if m.is_ok() {
-                let _ = tx.send(Msg::Profile(get()));
+            let Ok(m) = m else { continue };
+            let h = m.header();
+            if h.message_type() != zbus::message::Type::Signal || h.member().map(|x| x.as_str()) != Some("PropertiesChanged") {
+                continue;
+            }
+            let p = get();
+            if p != last {
+                last = p.clone();
+                let _ = tx.send(Msg::Profile(p));
             }
         }
     });
