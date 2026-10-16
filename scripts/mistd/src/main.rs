@@ -1,6 +1,7 @@
 // mistd: the native backends of the Mist shell (one binary, one mode per process).
 //   mistd notify | island | calls | phone      long-running watchers, JSON lines on stdout, commands on stdin
 //   mistd data weather|garmin|running|calendar|sys
+//   mistd geo <place> [lang]                     weather place candidates (JSON array)
 //   mistd tiles <icon name | path | @glyph> ...  dock tiles -> ~/.cache/mist/tiles
 //   mistd notifimg | clipstore | cliplist <dir>
 //   mistd stats                                  CPU / RAM / network for the bar (changes only)
@@ -41,6 +42,7 @@ fn main() {
             phone::main()
         }
         "data" => data::main(a(1)),
+        "geo" => data::geo(a(1), a(2)),
         "tiles" => tiles::main(&args[1..]),
         "notifimg" => tools::notifimg(),
         "clipstore" => tools::clipstore(),
@@ -56,7 +58,7 @@ fn main() {
             }
         }
         _ => {
-            eprintln!("usage: mistd notify|island|calls|phone|data <src>|tiles <names>|notifimg|clipstore|cliplist <dir>|stats|filemanager1");
+            eprintln!("usage: mistd notify|island|calls|phone|data <src>|geo <place>|tiles <names>|notifimg|clipstore|cliplist <dir>|stats|filemanager1");
             std::process::exit(2);
         }
     }

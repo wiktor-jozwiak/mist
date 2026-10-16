@@ -6,11 +6,37 @@ use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveDateTime, Time
 use serde_json::{Map, Value as J, json};
 use std::collections::{HashMap, HashSet};
 
-const LAT: f64 = 52.2297;
-const LON: f64 = 21.0122;
-const CITY: &str = "Warszawa";
-
 type R<T> = Result<T, String>;
+
+// the weather place: ~/.config/mist/location.json {"city", "lat", "lon"}, chosen in Dostosuj pulpit -> Pogoda
+// (`mistd geo <name>` finds the candidates)
+struct Loc {
+    city: String,
+    lat: f64,
+    lon: f64,
+}
+fn location() -> R<Loc> {
+    let path = format!("{}/.config/mist/location.json", home());
+    let v: J = std::fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str(&s).ok()).ok_or("brak lokalizacji")?;
+    match (v["lat"].as_f64(), v["lon"].as_f64()) {
+        (Some(lat), Some(lon)) => Ok(Loc { city: v["city"].as_str().unwrap_or("").to_string(), lat, lon }),
+        _ => Err("brak lokalizacji".into()),
+    }
+}
+
+fn enc(s: &str) -> String {
+    s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
+}
+
+/// `mistd geo <name> [lang]`: up to 6 places (Open-Meteo geocoding, no key) as a JSON array
+/// [{"city", "region", "country", "lat", "lon"}]
+pub fn geo(name: &str, lang: &str) {
+    let url = format!("https://geocoding-api.open-meteo.com/v1/search?name={}&count=6&language={}&format=json", enc(name.trim()), if lang.is_empty() { "en" } else { lang });
+    let out: Vec<J> = get_json(&url, 8).ok().and_then(|v| v["results"].as_array().cloned()).unwrap_or_default().iter().map(|r| {
+        json!({"city": r["name"], "region": r["admin1"], "country": r["country"], "lat": r["latitude"], "lon": r["longitude"]})
+    }).collect();
+    println!("{}", J::Array(out));
+}
 
 fn agent(timeout: u64) -> ureq::Agent {
     ureq::Agent::config_builder().timeout_global(Some(std::time::Duration::from_secs(timeout))).build().into()
@@ -123,6 +149,7 @@ fn kp() -> f64 {
 }
 
 fn weather() -> R<J> {
+    let loc = location()?;
     let url = format!(
         "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}\
          &current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m,cloud_cover,is_day\
@@ -132,8 +159,8 @@ fn weather() -> R<J> {
          ,precipitation,snowfall,cloud_cover,visibility,wind_speed_10m,wind_gusts_10m,wind_direction_10m,is_day,snow_depth\
          &daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset\
          ,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunshine_duration,uv_index_max\
-         &timezone=Europe%2FWarsaw&forecast_days=5&forecast_minutely_15=8",
-        LAT, LON
+         &timezone=auto&forecast_days=5&forecast_minutely_15=8",
+        loc.lat, loc.lon
     );
     let w = get_json(&url, 12)?;
     let (c, d) = (&w["current"], &w["daily"]);
@@ -170,7 +197,8 @@ fn weather() -> R<J> {
     }
     // hourly for the whole forecast (time scrubbing on the card): t = unix seconds of the hour
     let h = &w["hourly"];
-    let tz: chrono_tz::Tz = chrono_tz::Europe::Warsaw;
+    // the place's own zone (timezone=auto answers with it)
+    let tz: chrono_tz::Tz = w["timezone"].as_str().and_then(|z| z.parse().ok()).unwrap_or(chrono_tz::UTC);
     let mut hourly = vec![];
     for (i, ts) in h["time"].as_array().into_iter().flatten().enumerate() {
         let g = |k: &str, def: J| -> J {
@@ -188,7 +216,7 @@ fn weather() -> R<J> {
     }
     let nowts = now();
     let cur = hourly.iter().rev().find(|x| x["t"].as_f64().unwrap_or(0.0) <= nowts);
-    Ok(json!({"city": CITY, "temp": r0(fz(&c["temperature_2m"])), "feels": r0(fz(&c["apparent_temperature"])),
+    Ok(json!({"city": loc.city, "temp": r0(fz(&c["temperature_2m"])), "feels": r0(fz(&c["apparent_temperature"])),
         "code": c["weather_code"], "wind": r0(fz(&c["wind_speed_10m"])), "hum": c["relative_humidity_2m"],
         "cloud": c["cloud_cover"], "day": c["is_day"], "desc": wmo(c["weather_code"].as_i64().unwrap_or(-1)),
         "sunrise": tail5(&d["sunrise"][0]), "sunset": tail5(&d["sunset"][0]), "days": days,
@@ -198,7 +226,7 @@ fn weather() -> R<J> {
         "vis": c["visibility"], "soon": soon, "hourly": hourly,
         "snowDepth": cur.map(|x| x["depth"].clone()).unwrap_or(json!(0)),
         // for the sky scene: observer (sun / moon positions) and the planetary K index (aurora)
-        "lat": LAT, "lon": LON, "kp": kp()}))
+        "lat": loc.lat, "lon": loc.lon, "kp": kp()}))
 }
 
 // ---------------------------------------------------------------- garmin

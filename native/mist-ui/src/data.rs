@@ -3,7 +3,30 @@
 use crate::sys::Msg;
 use calloop::channel::Sender;
 use serde_json::Value;
+use std::sync::{Condvar, Mutex};
 use std::time::Duration;
+
+// refresh(): wake a source's thread now (the weather place changed); a Condvar, so nothing polls meanwhile
+static WAKE: (Mutex<Vec<&'static str>>, Condvar) = (Mutex::new(Vec::new()), Condvar::new());
+pub fn refresh(name: &'static str) {
+    WAKE.0.lock().unwrap().push(name);
+    WAKE.1.notify_all();
+}
+fn sleep_or_wake(name: &str, d: Duration) {
+    let until = std::time::Instant::now() + d;
+    let mut q = WAKE.0.lock().unwrap();
+    loop {
+        if let Some(i) = q.iter().position(|n| *n == name) {
+            q.remove(i);
+            return;
+        }
+        let left = until.saturating_duration_since(std::time::Instant::now());
+        if left.is_zero() {
+            return;
+        }
+        q = WAKE.1.wait_timeout(q, left).unwrap().0;
+    }
+}
 
 pub fn spawn(tx: Sender<Msg>) {
     for (name, every) in [("weather", 600u64), ("garmin", 300), ("running", 600), ("calendar", 900)] {
@@ -12,11 +35,13 @@ pub fn spawn(tx: Sender<Msg>) {
             let bin = crate::paths::mistd();
             let out = std::process::Command::new(bin).args(["data", name]).stderr(std::process::Stdio::null()).output();
             let v: Option<Value> = out.ok().and_then(|o| serde_json::from_slice(&o.stdout).ok());
-            let retry = v.as_ref().map(|v| v.get("stale").and_then(|x| x.as_bool()).unwrap_or(false) || v.get("error").is_some()).unwrap_or(true);
+            // no place chosen yet is not a failure: wait for refresh() instead of asking every minute
+            let unset = v.as_ref().and_then(|v| v["error"].as_str()).map(|e| e == "brak lokalizacji").unwrap_or(false);
+            let retry = !unset && v.as_ref().map(|v| v.get("stale").and_then(|x| x.as_bool()).unwrap_or(false) || v.get("error").is_some()).unwrap_or(true);
             if let Some(v) = v {
                 let _ = tx.send(Msg::Data(name.to_string(), v));
             }
-            std::thread::sleep(Duration::from_secs(if retry { 60 } else { every }));
+            sleep_or_wake(name, Duration::from_secs(if retry { 60 } else { every }));
         });
     }
 }

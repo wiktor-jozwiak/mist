@@ -1,4 +1,6 @@
-// "Dostosuj pulpit": every desktop widget setting in one sheet (right click on the desktop's cards or the
+// "Dostosuj pulpit": Mist's settings in one sheet. Tab Ogólne: the UI language, the weather place (searched with
+// `mistd geo`, saved to ~/.config/mist/location.json), the wallpaper gallery; it opens by itself on the first
+// start (settings.json "welcomed"). Then every desktop widget setting (right click on the desktop's cards or the
 // clock, or `msg mist toggleOn desk <screen>`). Tab Układ: how many cards, which widget in which place, the
 // clock / date / sun path, the cards' glass; one tab per widget with what it shows (the same options as its
 // adjust button). The look of the cards' backs (dark sheet, chips); a label column, options on the right;
@@ -11,7 +13,7 @@ use crate::pane::*;
 use serde_json::Value;
 use smithay_client_toolkit::seat::keyboard::{KeyEvent, Keysym};
 
-const TABS: [(&str, &str); 4] = [("desk", "Układ"), ("garmin", "Garmin"), ("weather", "Pogoda"), ("running", "Bieganie")];
+const TABS: [(&str, &str); 5] = [("general", "Ogólne"), ("desk", "Układ"), ("garmin", "Garmin"), ("weather", "Pogoda"), ("running", "Bieganie")];
 const WIDGETS: [(&str, &str); 3] = [("garmin", "Garmin"), ("weather", "Pogoda"), ("running", "Bieganie")];
 const W: f32 = 620.0;
 const M: f32 = 40.0; // the layer's room for the sheet's shadow
@@ -27,6 +29,9 @@ enum H {
     Slot(usize, &'static str),
     Show(&'static str),
     Lang(&'static str),
+    Field,
+    Place(usize),
+    Gallery,
     Done,
     Sheet,
 }
@@ -40,12 +45,55 @@ pub struct DeskSettings {
     scroll: f32,
     max_scroll: f32,
     o: Anim,
+    // the weather place search: the field, its answers, the search running in a thread
+    place: crate::edit::LineEdit,
+    editing: bool,
+    found: Vec<Value>,
+    asked: String,
+    geo_rx: Option<std::sync::mpsc::Receiver<Vec<Value>>>,
+    welcome: bool,
 }
 
-// one row: a label on the left, its chips wrapped in the options column
+// one row: a label on the left, its chips wrapped in the options column (under a text field when `field`)
 struct Row {
     label: String,
     items: Vec<(String, bool, H)>,
+    field: bool,
+}
+
+fn settings_path() -> String {
+    format!("{}/.config/mist/settings.json", std::env::var("HOME").unwrap_or_default())
+}
+// first start: nothing saved yet about the welcome
+pub fn first_run() -> bool {
+    let v: Value = std::fs::read_to_string(settings_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    !v["welcomed"].as_bool().unwrap_or(false)
+}
+fn mark_welcomed() {
+    let p = settings_path();
+    let mut v: Value = std::fs::read_to_string(&p).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(serde_json::json!({}));
+    v["welcomed"] = serde_json::json!(true);
+    let _ = std::fs::create_dir_all(std::path::Path::new(&p).parent().unwrap());
+    let tmp = format!("{p}.tmp");
+    if std::fs::write(&tmp, v.to_string()).is_ok() {
+        let _ = std::fs::rename(&tmp, &p);
+    }
+}
+fn location_path() -> String {
+    format!("{}/.config/mist/location.json", std::env::var("HOME").unwrap_or_default())
+}
+fn current_place() -> String {
+    std::fs::read_to_string(location_path()).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).and_then(|v| v["city"].as_str().map(String::from)).unwrap_or_default()
+}
+fn place_label(v: &Value) -> String {
+    let mut s = v["city"].as_str().unwrap_or("").to_string();
+    for k in ["region", "country"] {
+        if let Some(x) = v[k].as_str().filter(|x| !x.is_empty() && *x != s) {
+            s.push_str(", ");
+            s.push_str(x);
+        }
+    }
+    s
 }
 
 impl DeskSettings {
@@ -53,8 +101,13 @@ impl DeskSettings {
     pub fn new(card: &str) -> DeskSettings {
         let mut o = Anim::new(0.0);
         o.set(1.0, 140.0, Ease::OutCubic);
-        let tab = TABS.iter().position(|t| t.0 == card).unwrap_or(0);
-        DeskSettings { cfg: Cfg::load(), tab, ptr: (-1.0, -1.0), hits: Vec::new(), hot: None, scroll: 0.0, max_scroll: 0.0, o }
+        let welcome = first_run();
+        let tab = if welcome { 0 } else { TABS.iter().position(|t| t.0 == card).unwrap_or(1) };
+        if welcome {
+            mark_welcomed();
+        }
+        let editing = welcome && current_place().is_empty();
+        DeskSettings { cfg: Cfg::load(), tab, ptr: (-1.0, -1.0), hits: Vec::new(), hot: None, scroll: 0.0, max_scroll: 0.0, o, place: Default::default(), editing, found: Vec::new(), asked: String::new(), geo_rx: None, welcome }
     }
     fn hit(&self) -> Option<H> {
         let p = self.ptr;
@@ -67,25 +120,68 @@ impl DeskSettings {
             let on = if gr.multi { cur.as_array().map(|a| a.contains(v)).unwrap_or(false) } else { &cur == v };
             (lab.to_string(), on, H::Opt(card, gr.key, v.clone()))
         }).collect()).unwrap_or_default();
-        Row { label: label.to_string(), items }
+        Row { label: label.to_string(), items, field: false }
+    }
+    // start a place search in a thread (the answer arrives in slow())
+    fn search(&mut self) {
+        let q = self.place.text.trim().to_string();
+        if q.chars().count() < 2 || q == self.asked {
+            return;
+        }
+        self.asked = q.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.geo_rx = Some(rx);
+        let lang = if crate::i18n::setting() == "pl" || std::env::var("LANG").unwrap_or_default().starts_with("pl") { "pl" } else { "en" };
+        let _ = std::thread::Builder::new().name("geo".into()).spawn(move || {
+            let out = std::process::Command::new(crate::paths::mistd()).args(["geo", &q, lang]).stderr(std::process::Stdio::null()).output();
+            let v: Vec<Value> = out.ok().and_then(|o| serde_json::from_slice(&o.stdout).ok()).unwrap_or_default();
+            let _ = tx.send(v);
+        });
+    }
+    fn choose(&mut self, i: usize) {
+        let Some(v) = self.found.get(i) else { return };
+        let loc = serde_json::json!({"city": v["city"], "lat": v["lat"], "lon": v["lon"]});
+        let p = location_path();
+        let tmp = format!("{p}.tmp");
+        if std::fs::write(&tmp, loc.to_string()).is_ok() {
+            let _ = std::fs::rename(&tmp, &p);
+        }
+        self.found.clear();
+        self.editing = false;
+        self.place.set("");
+        self.asked.clear();
+        crate::data::refresh("weather");
     }
     // the UI language (i18n.rs); language names stay in their own language
     fn lang_row() -> Row {
         let cur = crate::i18n::setting();
         let mut items = vec![("Automatycznie".to_string(), cur == "auto", H::Lang("auto"))];
         items.extend(crate::i18n::LANGS.iter().map(|(code, name)| (name.to_string(), cur == *code, H::Lang(code))));
-        Row { label: "Język".into(), items }
+        Row { label: "Język".into(), items, field: false }
     }
     // the tab's content: sections (title, rows)
     fn sections(&self) -> Vec<(&'static str, Vec<Row>)> {
         let cfg = &self.cfg;
         let card = TABS[self.tab].0;
+        if card == "general" {
+            let cur = current_place();
+            let mut place = Row { label: "Miejsce pogody".into(), items: Vec::new(), field: true };
+            place.items = self.found.iter().enumerate().map(|(i, v)| (place_label(v), false, H::Place(i))).collect();
+            if !self.editing && !cur.is_empty() {
+                place.field = false;
+                place.items = vec![(cur, true, H::Field)];
+            }
+            return vec![
+                ("Język i miejsce", vec![Self::lang_row(), place]),
+                ("Tapeta", vec![Row { label: "Tło pulpitu".into(), items: vec![("Wybierz tapetę…".into(), false, H::Gallery)], field: false }]),
+            ];
+        }
         if card == "desk" {
             let order = cfg.order();
             let mut cards = vec![Self::row("Liczba kart", "desk", "cards", cfg)];
             for i in 0..cfg.cards() {
                 let items = WIDGETS.iter().map(|(k, lab)| (lab.to_string(), order.get(i).map(|o| o == k).unwrap_or(false), H::Slot(i, k))).collect();
-                cards.push(Row { label: format!("Miejsce {}", i + 1), items });
+                cards.push(Row { label: format!("Miejsce {}", i + 1), items, field: false });
             }
             return vec![
                 ("Karty", cards),
@@ -110,6 +206,32 @@ impl Pane for DeskSettings {
     fn animating(&self) -> bool {
         self.o.running()
     }
+    // the place search answered
+    fn slow(&mut self) -> bool {
+        let Some(rx) = &self.geo_rx else { return false };
+        match rx.try_recv() {
+            Ok(v) => {
+                self.found = v;
+                self.geo_rx = None;
+                true
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.geo_rx = None;
+                true
+            }
+            Err(_) => false,
+        }
+    }
+    // `--pane-png desk:general … <query>`: the field typed and searched (blocking, for the check)
+    fn seed(&mut self, q: &str) {
+        self.tab = 0;
+        self.editing = true;
+        self.place.set(q);
+        self.search();
+        if let Some(rx) = self.geo_rx.take() {
+            self.found = rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap_or_default();
+        }
+    }
     fn hand(&self) -> bool {
         !matches!(self.hit(), None | Some(H::Sheet))
     }
@@ -125,7 +247,14 @@ impl Pane for DeskSettings {
         let mut body = Canvas::new(W as u32, 1600);
         let mut bh: Vec<(f32, f32, f32, f32, H)> = Vec::new();
         let mut y = 4.0;
-        if card != "desk" && !self.cfg.shown().iter().any(|k| k == card) {
+        if self.welcome && card == "general" {
+            let ws = st(13.0, 500.0);
+            text(&mut body, cx.t, LX, y, "Witaj w Mist. Wybierz język i miejsce pogody.", &ws, FG, true, Some(W - 2.0 * LX));
+            y += line_h(cx.t, &ws) + 4.0;
+            text(&mut body, cx.t, LX, y, "Ten arkusz otworzysz później prawym klikiem na zegarze pulpitu.", &st(12.0, 500.0), MUTED, true, Some(W - 2.0 * LX));
+            y += line_h(cx.t, &st(12.0, 500.0)) + 18.0;
+        }
+        if !matches!(card, "desk" | "general") && !self.cfg.shown().iter().any(|k| k == card) {
             // a hidden card: say so, offer to show it
             rect(&mut body, LX, y, W - 2.0 * LX, 48.0, 14.0, WHITE.alpha(0.05));
             let ns = st(13.0, 550.0);
@@ -151,6 +280,24 @@ impl Pane for DeskSettings {
                 text(&mut body, cx.t, LX, y + (26.0 - lsh) / 2.0, &r.label, &ls, MUTED, true, Some(CX - LX - 12.0));
                 let mut x = CX;
                 let mut cy = y;
+                if r.field {
+                    // the search field: Enter or a pause searches, the answers come as chips under it
+                    let fw = W - LX - CX;
+                    rect(&mut body, CX, cy, fw, 28.0, 14.0, WHITE.alpha(if self.editing { 0.10 } else { 0.06 }));
+                    if self.editing {
+                        border(&mut body, CX, cy, fw, 28.0, 14.0, 1.0, crate::theme::ACCENT.alpha(0.6));
+                    }
+                    let fs = st(13.0, 500.0);
+                    let hint = if self.geo_rx.is_some() { "Szukam…" } else { "Wpisz miasto i naciśnij Enter" };
+                    self.place.paint(&mut body, cx.t, CX + 12.0, cy, fw - 24.0, 28.0, &fs, FG, hint, self.editing, false);
+                    bh.push((CX, cy, fw, 28.0, H::Field));
+                    cy += 28.0 + 8.0;
+                    if r.items.is_empty() && !self.asked.is_empty() && self.geo_rx.is_none() {
+                        text(&mut body, cx.t, CX + 4.0, cy + 2.0, "Nic nie znaleziono", &st(12.0, 500.0), MUTED, true, None);
+                        cy += 22.0;
+                    }
+                }
+                let ends_at_field = r.field && r.items.is_empty();
                 for (lab, on, h) in r.items {
                     let cw = chip_w(cx.t, &lab, on);
                     if x > CX && x + cw > W - LX {
@@ -161,7 +308,7 @@ impl Pane for DeskSettings {
                     bh.push((x, cy, cw, 26.0, h));
                     x += cw + 6.0;
                 }
-                y = cy + 26.0 + 12.0;
+                y = if ends_at_field { cy + 4.0 } else { cy + 26.0 + 12.0 };
             }
             y += 6.0;
         }
@@ -266,6 +413,15 @@ impl Pane for DeskSettings {
                     crate::i18n::set(code);
                     Act::DeskCfg
                 }
+                Some(H::Field) => {
+                    self.editing = true;
+                    Act::Redraw
+                }
+                Some(H::Place(i)) => {
+                    self.choose(i);
+                    Act::DeskCfg
+                }
+                Some(H::Gallery) => Act::Toggle("wallpaper"),
                 Some(H::Slot(i, k)) => {
                     self.cfg.put_slot(i, k);
                     Act::DeskCfg
@@ -287,7 +443,30 @@ impl Pane for DeskSettings {
             _ => Act::None,
         }
     }
-    fn key(&mut self, ev: &KeyEvent, _cx: &mut Ctx) -> Act {
+    fn key(&mut self, ev: &KeyEvent, cx: &mut Ctx) -> Act {
+        // typing into the place field
+        if self.editing && TABS[self.tab].0 == "general" {
+            let shift = false;
+            return match self.place.key(ev.keysym, ev.utf8.as_deref(), cx.ctrl, shift) {
+                crate::edit::EditResult::Accept => {
+                    // Enter: the only answer is taken, else search
+                    if self.found.len() == 1 && self.asked == self.place.text.trim() {
+                        self.choose(0);
+                        Act::DeskCfg
+                    } else {
+                        self.search();
+                        Act::Redraw
+                    }
+                }
+                crate::edit::EditResult::Cancel => {
+                    self.editing = false;
+                    self.found.clear();
+                    Act::Redraw
+                }
+                crate::edit::EditResult::Used => Act::Redraw,
+                crate::edit::EditResult::Ignored => Act::None,
+            };
+        }
         match ev.keysym {
             Keysym::Escape | Keysym::Return | Keysym::KP_Enter => Act::Close,
             Keysym::Tab | Keysym::Right => {
