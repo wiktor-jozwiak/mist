@@ -121,8 +121,8 @@ caveats: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 - **Weather**: [Open-Meteo](https://open-meteo.com), no account. Hourly curve, 4 days, rain nowcast, running
   window, clothing tip, sun and moon; the live sky behind the card follows the current conditions.
-- **Garmin readiness** and **running**: your own Garmin Connect data through a local InfluxDB.
-  Setup: [docs/guides/garmin.md](docs/guides/garmin.md) ([Polski](docs/guides/garmin.pl.md)).
+- **Garmin readiness** and **running**: your own Garmin Connect data through a local InfluxDB. Optional:
+  without `influx.json` these cards are not shown. Setup: [docs/guides/garmin.md](docs/guides/garmin.md) ([Polski](docs/guides/garmin.pl.md)).
 
 ### Languages and monitors
 
