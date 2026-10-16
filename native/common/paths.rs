@@ -19,6 +19,7 @@ pub fn mist_path(rel: &str) -> String {
 }
 
 // the mistd backend: the checkout's build, else the one on $PATH (a package installs /usr/bin/mistd)
+#[allow(dead_code)]
 pub fn mistd() -> String {
     let p = mist_path("scripts/bin/mistd");
     if std::path::Path::new(&p).exists() { p } else { "mistd".into() }
