@@ -64,6 +64,11 @@ use calloop_wayland_source::WaylandSource;
 use wayland_client::{globals::registry_queue_init, Connection};
 
 fn main() {
+    // ~35 threads, mostly asleep: glibc would give each one that allocates its own malloc arena (memory freed in
+    // one is not reused by the others); two arenas are plenty for a shell
+    unsafe {
+        libc::mallopt(libc::M_ARENA_MAX, 2);
+    }
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(|s| s.as_str()) == Some("msg") {
         // client of the running mist-ui: mist-ui-bin msg <target> <function> [args...]
