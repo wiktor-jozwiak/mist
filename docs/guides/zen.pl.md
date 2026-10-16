@@ -28,7 +28,8 @@ paletę, zielone przełączniki i boczne menu jak w Ustawieniach systemowych.
 Szuka profili w `~/.zen`, `~/.config/zen` i katalogu Flatpaka, kopiuje `chrome/` do każdego i dopisuje
 ustawienia do `<profil>/user.js` między `// mist-begin` a `// mist-end`. Istniejący `userChrome.css` /
 `userContent.css` zostaje zachowany jako `*.before-mist`; twoje reguły zostają, a `@import`-y Mist trafiają na
-początek. Po aktualizacji Mist uruchom ponownie. Zrestartuj Zen.
+początek. Starszy, ręcznie robiony motyw Mist (plik z `MIST SHELL THEME`) zostaje zastąpiony, bo zostawiony
+pod `@import`-ami nadpisywałby ten. Po aktualizacji Mist uruchom ponownie. Zrestartuj Zen.
 
 Cofnięcie: `install.sh --uninstall`. Ustawienia zapisane już w `prefs.js` zostają, dopóki nie zresetujesz ich
 w `about:config`.
@@ -38,6 +39,13 @@ w `about:config`.
 Pasek boczny jest półprzezroczysty; Hyprland rozmywa to, co pod nim, jeśli `decoration.blur` jest włączone
 (domyślnie jest). Żeby rozmyć też menu i popupy, ustaw `decoration.blur.popups = true`.
 Jeśli okno wygląda płasko, sprawdź, czy żadna reguła okna nie wymusza `opaque` dla Zen.
+
+To, co unosi się nad stroną (pasek boczny w trybie kompaktowym, pływający pasek adresu, wyszukiwanie na
+stronie, dialogi), ma pełny kolor szkła: Zen nie potrafi rozmyć strony pod spodem, a prześwitujący panel
+pokazuje ostry tekst strony za kartami.
+
+Żółte światło minimalizuje przez pozycję kliknięcia (Hyprland ignoruje prośbę aplikacji): jego środek jest
+41, 20 px od lewego górnego rogu okna; `ZEN_MIN` w konfiguracji Hyprland musi się zgadzać.
 
 ## Wskazówki
 

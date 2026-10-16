@@ -28,7 +28,8 @@ green toggles and System Settings–style sidebar rows.
 It looks for profiles in `~/.zen`, `~/.config/zen` and the Flatpak directory, copies `chrome/` into each,
 and writes the prefs into `<profile>/user.js` between `// mist-begin` and `// mist-end`. An existing
 `userChrome.css` / `userContent.css` is kept as `*.before-mist`; your own rules stay and the Mist `@import`s
-go on top. Run it again after updating Mist. Restart Zen.
+go on top. An older hand-made Mist theme (a file with `MIST SHELL THEME` in it) is replaced instead, since
+kept below the `@import`s it would override this one. Run it again after updating Mist. Restart Zen.
 
 Undo: `install.sh --uninstall`. Prefs already written to `prefs.js` keep their value until reset in
 `about:config`.
@@ -38,6 +39,13 @@ Undo: `install.sh --uninstall`. Prefs already written to `prefs.js` keep their v
 The sidebar is translucent; Hyprland blurs what is behind it as long as `decoration.blur` is on (the
 default). For the menus and popups too, set `decoration.blur.popups = true`. If the window
 looks flat, check that no window rule forces `opaque` on Zen.
+
+What floats over the page (the compact-mode sidebar, the floating address bar, the find bar, dialogs) is
+solid glass tone: Zen cannot blur the page under it, and a see-through pane shows the page text behind
+the tabs.
+
+The yellow light minimizes through the click position (Hyprland ignores the app's minimize request): its
+centre is 41, 20 px from the window's top-left corner; `ZEN_MIN` in the Hyprland config has to match.
 
 ## Tips
 
