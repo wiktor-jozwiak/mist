@@ -44,7 +44,7 @@ const FADE_MS: f32 = 600.0;
 // the main monitor's scene is visible: only then is the music measured
 static SHOWN: AtomicBool = AtomicBool::new(true);
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 enum Kind {
     Wall,
     Sky,
@@ -178,6 +178,7 @@ struct App {
     energy_to: f32,
     gallery: (bool, String), // the wallpaper gallery is open on that monitor
     asleep: bool,            // nobody sees it: the monitors are off or the session is locked (screen.json)
+    waiting: HashMap<wayland_client::backend::ObjectId, Instant>, // drawn, the compositor has not shown it yet
     prev: Prev,
     prev_tx: std::sync::mpsc::Sender<(String, i32, i32, Vec<u8>)>,
     prev_rx: std::sync::mpsc::Receiver<(String, i32, i32, Vec<u8>)>,
@@ -194,6 +195,30 @@ struct App {
 fn home() -> String {
     std::env::var("HOME").unwrap_or_default()
 }
+// a check: while $XDG_RUNTIME_DIR/mist/wall-fps exists, the frames each surface drew go to stderr every 5 s
+fn fps_note(name: &str, kind: Kind) {
+    thread_local!(static N: std::cell::RefCell<(Instant, bool, Instant, HashMap<String, u32>)> =
+        std::cell::RefCell::new((Instant::now(), false, Instant::now(), HashMap::new())));
+    N.with(|n| {
+        let mut n = n.borrow_mut();
+        if n.0.elapsed() >= Duration::from_secs(1) {
+            n.0 = Instant::now();
+            n.1 = std::path::Path::new(&format!("{}/wall-fps", run_dir())).exists();
+        }
+        if !n.1 {
+            return;
+        }
+        *n.3.entry(format!("{name}/{kind:?}")).or_default() += 1;
+        if n.2.elapsed() >= Duration::from_secs(5) {
+            let mut v: Vec<String> = n.3.iter().map(|(k, c)| format!("{k} {:.1}", *c as f32 / 5.0)).collect();
+            v.sort();
+            eprintln!("mist-wall fps: {}", v.join(", "));
+            n.3.clear();
+            n.2 = Instant::now();
+        }
+    });
+}
+
 fn run_dir() -> String {
     format!("{}/mist", std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".into()))
 }
@@ -496,6 +521,12 @@ impl App {
     }
 
     fn draw(&mut self, i: usize) {
+        // one frame at a time: the next waits for the compositor's frame callback (none while the output is off
+        // or the surface is not shown), 1 s at most
+        let id = self.surfs[i].layer.wl_surface().id();
+        if self.waiting.get(&id).map(|t| t.elapsed() < Duration::from_secs(1)).unwrap_or(false) {
+            return;
+        }
         if !self.make_current(i) {
             return;
         }
@@ -516,9 +547,13 @@ impl App {
             Kind::Preview => self.preview_scene(w, h),
         }
         let es = self.surfs[i].egl_surf.unwrap();
+        let s = self.surfs[i].layer.wl_surface().clone();
+        s.frame(&self.qh, s.clone());
+        self.waiting.insert(s.id(), Instant::now());
         let _ = self.egl.swap_buffers(self.display, es);
         self.surfs[i].last = Instant::now();
         self.surfs[i].dirty = false;
+        fps_note(&self.surfs[i].name, kind);
     }
 
     fn wall_scene(&mut self, w: i32, h: i32, primary: bool) {
@@ -654,7 +689,8 @@ impl App {
     }
 
     fn cur_fps(&self, name: &str) -> f32 {
-        if *self.hidden.get(name).unwrap_or(&false) { 5.0 } else { 30.0 }
+        // the other monitors at half rate: the eye is on the main one, half the GPU work there
+        if *self.hidden.get(name).unwrap_or(&false) { 5.0 } else if name != primary_monitor() { 15.0 } else { 30.0 }
     }
     fn animate(&self, name: &str) -> bool {
         !self.asleep && !*self.fs.get(name).unwrap_or(&false) && !(self.gallery.0 && self.gallery.1 == name)
@@ -1237,6 +1273,7 @@ fn main() {
         energy_to: 0.0,
         gallery: (false, String::new()),
         asleep: paths::screen_asleep(),
+        waiting: HashMap::new(),
         prev: Prev { screen: String::new(), key: String::new(), shown: String::new(), fbo: [None, None], size: (0, 0), cur: 0, fade: None, photo: None, asked: String::new(), t: 0.0 },
         prev_tx,
         prev_rx,
@@ -1497,7 +1534,9 @@ fn music_loop(tx: calloop::channel::Sender<Ev>) {
 impl CompositorHandler for App {
     fn scale_factor_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: i32) {}
     fn transform_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: wl_output::Transform) {}
-    fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {}
+    fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, s: &wl_surface::WlSurface, _: u32) {
+        self.waiting.remove(&s.id());
+    }
     fn surface_enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: &wl_output::WlOutput) {}
     fn surface_leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: &wl_output::WlOutput) {}
 }
