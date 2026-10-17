@@ -1,13 +1,3 @@
-<div align="right">
-  🌐 <b>Language / Język:</b>
-  <a href="README.md"><b>English</b></a> ·
-  <a href="docs/i18n/README.pl.md"><b>Polski</b></a> ·
-  <a href="docs/i18n/README.de.md"><b>Deutsch</b></a> ·
-  <a href="docs/i18n/README.es.md"><b>Español</b></a> ·
-  <a href="docs/i18n/README.zh-CN.md"><b>简体中文</b></a> ·
-  <a href="docs/i18n/README.ja.md"><b>日本語</b></a>
-</div>
-
 <div align="center">
 
 <img src="docs/img/banner.svg" alt="Mist" width="100%">
@@ -22,7 +12,7 @@ lock screen and polkit agent in one ~50 MB process, without a GPU context.
 [![Hyprland](https://img.shields.io/badge/wayland-Hyprland-58e1ff?style=flat-square)](https://hyprland.org)
 [![CI](https://img.shields.io/github/actions/workflow/status/wiktor-jozwiak/mist/ci.yml?branch=main&style=flat-square&label=CI)](.github/workflows/ci.yml)
 [![Status](https://img.shields.io/badge/status-personal%20daily%20driver-8d8590?style=flat-square)](#status)
-[![Views](https://komarev.com/ghpvc/?username=wiktor-jozwiak-mist&label=views&color=0e75b6&style=flat-square)](https://github.com/wiktor-jozwiak/mist)
+[![Views](https://hits.sh/github.com/wiktor-jozwiak/mist.svg?style=flat-square&label=views&color=0e75b6)](https://github.com/wiktor-jozwiak/mist)
 
 [Features](#features) · [Benchmarks](#benchmarks) · [Install](#install) · [Use](#use) · [Develop](#develop)
 
@@ -134,12 +124,6 @@ caveats: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
   window, clothing tip, sun and moon; the live sky behind the card follows the current conditions.
 - **Garmin readiness** and **running**: your own Garmin Connect data through a local InfluxDB. Optional:
   without `influx.json` these cards are not shown. Setup: [docs/guides/garmin.md](docs/guides/garmin.md) ([Polski](docs/guides/garmin.pl.md)).
-
-### Zen Browser theme
-
-`integrations/zen/` restyles [Zen Browser](https://zen-browser.app) as a Mist window: glass sidebar over the
-blurred wallpaper, Mist menus, popups and panels, a Spotlight-style address bar, SF Pro / Inter fonts. Setup:
-[docs/guides/zen.md](docs/guides/zen.md) ([Polski](docs/guides/zen.pl.md)).
 
 ### Languages and monitors
 

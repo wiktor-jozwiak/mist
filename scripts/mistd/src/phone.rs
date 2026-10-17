@@ -662,7 +662,9 @@ fn show(icon: &str, title: &str, sub: &str) -> String {
 
 fn pc_commands(did: &str) -> Vec<(&'static str, &'static str, String)> {
     let shot = format!(
-        "f=/tmp/mist-shot-$(date +%s).png; grim \"$f\" && kdeconnect-cli -d {} --share \"$f\" && {}",
+        // private runtime dir (0700), not world-readable /tmp. --share only queues the transfer (kdeconnectd
+        // reads the file later), so the file is removed after a grace period, or at once on failure.
+        "f=\"${{XDG_RUNTIME_DIR:?}}/mist-shot-$(date +%s).png\"; if grim \"$f\" && kdeconnect-cli -d {} --share \"$f\"; then {}; (sleep 120; rm -f \"$f\") >/dev/null 2>&1 & else rm -f \"$f\"; fi",
         did,
         show("screenshot", "Zrzut ekranu", "wysłano na telefon")
     );
@@ -1236,6 +1238,17 @@ pub fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn screenshot_not_in_tmp() {
+        let c = pc_commands("dev").into_iter().find(|(k, _, _)| *k == "mist-shot").unwrap().2;
+        assert!(!c.contains("/tmp/"), "{c}");
+        assert!(c.contains("${XDG_RUNTIME_DIR:?}/mist-shot-"), "{c}");
+        assert!(c.contains("rm -f \"$f\""), "{c}");
+        // valid sh syntax
+        let ok = std::process::Command::new("sh").args(["-n", "-c", &c]).status().unwrap().success();
+        assert!(ok, "{c}");
+    }
 
     #[test]
     fn telecom_lines() {

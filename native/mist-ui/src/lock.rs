@@ -27,6 +27,34 @@ use wayland_client::{globals::registry_queue_init, protocol::{wl_keyboard, wl_ou
 
 use crate::paths::primary_monitor;
 
+// ------------------------------------------------------------------ secrets
+// Zero a buffer's whole capacity before it is freed or reused (bytes past len keep what pop() removed).
+// Volatile stores + fence so the compiler cannot drop them as dead writes.
+fn wipe_vec(v: &mut Vec<u8>) {
+    let p = v.as_mut_ptr();
+    for i in 0..v.capacity() {
+        unsafe { std::ptr::write_volatile(p.add(i), 0) };
+    }
+    std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+    v.clear();
+}
+fn wipe(s: &mut String) {
+    // all zero bytes stay valid UTF-8
+    wipe_vec(unsafe { s.as_mut_vec() });
+}
+// every string in a JSON value (the greetd request carrying the password)
+fn wipe_json(v: &mut serde_json::Value) {
+    use serde_json::Value;
+    match v {
+        Value::String(s) => wipe(s),
+        Value::Array(a) => a.iter_mut().for_each(wipe_json),
+        Value::Object(o) => o.values_mut().for_each(wipe_json),
+        _ => {}
+    }
+}
+// the typed password lives in one buffer this big, so typing does not reallocate and leave copies behind
+const PW_CAP: usize = 256;
+
 // ------------------------------------------------------------------ PAM
 mod pam {
     use std::ffi::{CStr, CString};
@@ -115,11 +143,15 @@ mod greetd {
         os::unix::net::UnixStream,
     };
 
-    fn rpc(s: &mut UnixStream, v: Value) -> Result<Value, String> {
-        let b = v.to_string();
+    // the request may carry the password: both it and its serialized copy are wiped once sent
+    fn rpc(s: &mut UnixStream, mut v: Value) -> Result<Value, String> {
+        let mut b = Vec::with_capacity(1024);
+        let _ = serde_json::to_writer(&mut b, &v);
+        super::wipe_json(&mut v);
         let io = |e: std::io::Error| format!("greetd: {e}");
-        s.write_all(&(b.len() as u32).to_ne_bytes()).map_err(io)?;
-        s.write_all(b.as_bytes()).map_err(io)?;
+        let sent = s.write_all(&(b.len() as u32).to_ne_bytes()).and_then(|_| s.write_all(&b));
+        super::wipe_vec(&mut b);
+        sent.map_err(io)?;
         let mut l = [0u8; 4];
         s.read_exact(&mut l).map_err(io)?;
         let mut r = vec![0u8; u32::from_ne_bytes(l) as usize];
@@ -324,7 +356,7 @@ impl L {
         }
         self.busy = true;
         self.message.clear();
-        let (user, pw, tx) = (self.user.clone(), std::mem::take(&mut self.pw), self.tx.clone());
+        let (user, mut pw, tx) = (self.user.clone(), std::mem::replace(&mut self.pw, String::with_capacity(PW_CAP)), self.tx.clone());
         self.pending_len = pw.chars().count();
         let greeter = self.greeter.clone();
         std::thread::spawn(move || {
@@ -332,6 +364,7 @@ impl L {
                 Some(g) => greetd::login(&user, &pw, &g.session, &g.env),
                 None => pam::check(&user, &pw),
             };
+            wipe(&mut pw);
             let _ = tx.send(r);
         });
         self.dirty_all();
@@ -655,7 +688,7 @@ pub fn run(args: &[String]) -> i32 {
         user,
         full_name,
         face,
-        pw: String::new(),
+        pw: String::with_capacity(PW_CAP),
         busy: false,
         message: String::new(),
         awake: crate::anim::Anim::new(0.0),
@@ -700,7 +733,7 @@ pub fn run(args: &[String]) -> i32 {
             Ok(()) => l.unlock(),
             Err(m) => {
                 l.message = m;
-                l.pw.clear();
+                wipe(&mut l.pw);
                 l.shake = Some(Instant::now());
                 l.wake();
             }
@@ -837,7 +870,7 @@ impl KeyboardHandler for L {
         }
         match ev.keysym {
             Keysym::Return | Keysym::KP_Enter => self.submit(),
-            Keysym::Escape => self.pw.clear(),
+            Keysym::Escape => wipe(&mut self.pw),
             Keysym::BackSpace => {
                 self.pw.pop();
             }
@@ -909,3 +942,28 @@ delegate_keyboard!(L);
 delegate_pointer!(L);
 delegate_session_lock!(L);
 delegate_registry!(L);
+
+#[cfg(test)]
+mod wipe_tests {
+    use super::*;
+
+    #[test]
+    fn wipes_whole_capacity() {
+        let mut s = String::with_capacity(PW_CAP);
+        s.push_str("hunter2");
+        s.pop(); // "2" stays past len
+        let (p, cap) = (s.as_ptr(), s.capacity());
+        wipe(&mut s);
+        assert!(s.is_empty());
+        assert_eq!((s.as_ptr(), s.capacity()), (p, cap)); // same buffer, still usable
+        let raw = unsafe { std::slice::from_raw_parts(p, 7) };
+        assert_eq!(raw, &[0u8; 7]);
+    }
+
+    #[test]
+    fn wipes_json_strings() {
+        let mut v = serde_json::json!({ "type": "post_auth_message_response", "response": "hunter2", "a": ["x"] });
+        wipe_json(&mut v);
+        assert_eq!(v, serde_json::json!({ "type": "", "response": "", "a": [""] }));
+    }
+}
