@@ -260,6 +260,16 @@ cd native && cargo build --release && cargo test --release
 1 人の日常環境、モニター 2 台、NVIDIA。上の表はすべてネイティブで毎日使っています。`mist-comp` は実験的です。
 公開リリースまでに残っていること: [docs/PUBLISHING.md](../PUBLISHING.md)。
 
+## Star History
+
+<a href="https://star-history.com/#wiktor-jozwiak/mist&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date" />
+ </picture>
+</a>
+
 ## クレジット
 
 [Hyprland]、[Smithay] と [smithay-client-toolkit]、[tiny-skia]、[swash]、[resvg]、[zbus]、[Tabler Icons]（MIT）。

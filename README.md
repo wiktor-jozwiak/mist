@@ -250,6 +250,16 @@ Daily driver of one person, two monitors, NVIDIA. Everything in the tables above
 day; `mist-comp` is experimental. [docs/PUBLISHING.md](docs/PUBLISHING.md) lists what is left before a public
 release.
 
+## Star History
+
+<a href="https://star-history.com/#wiktor-jozwiak/mist&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date" />
+ </picture>
+</a>
+
 ## Credits
 
 [Hyprland], [Smithay] and [smithay-client-toolkit], [tiny-skia], [swash], [resvg], [zbus], [Tabler Icons]

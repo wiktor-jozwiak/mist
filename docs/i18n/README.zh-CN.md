@@ -255,6 +255,16 @@ cd native && cargo build --release && cargo test --release
 一个人的日常环境，两台显示器，NVIDIA。上表中的一切都是原生实现并每天使用；`mist-comp` 仍是实验性的。
 [docs/PUBLISHING.md](../PUBLISHING.md) 列出了公开发布前还剩下的工作。
 
+## Star History
+
+<a href="https://star-history.com/#wiktor-jozwiak/mist&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date" />
+ </picture>
+</a>
+
 ## 致谢
 
 [Hyprland]、[Smithay] 和 [smithay-client-toolkit]、[tiny-skia]、[swash]、[resvg]、[zbus]、[Tabler Icons]（MIT）。

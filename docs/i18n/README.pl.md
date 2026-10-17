@@ -251,6 +251,16 @@ Codzienne narzędzie jednej osoby, dwa monitory, NVIDIA. Wszystko z tabel powyż
 codziennie; `mist-comp` jest eksperymentalny. [docs/PUBLISHING.md](../PUBLISHING.md) wymienia, co zostało
 przed publicznym wydaniem.
 
+## Star History
+
+<a href="https://star-history.com/#wiktor-jozwiak/mist&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date" />
+ </picture>
+</a>
+
 ## Podziękowania
 
 [Hyprland], [Smithay] i [smithay-client-toolkit], [tiny-skia], [swash], [resvg], [zbus], [Tabler Icons]
