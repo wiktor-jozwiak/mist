@@ -135,6 +135,9 @@ fn capture<'a>(parts: &[&str], s: &'a str) -> Option<Vec<&'a str>> {
         caps.push(&rest[..at]);
         rest = &rest[at + p.len()..];
     }
+    if !parts.iter().any(|p| p.contains(" · ")) && caps.iter().any(|c| c.contains(" · ")) {
+        return None;
+    }
     Some(caps)
 }
 
@@ -154,16 +157,43 @@ fn fill(tpl: &str, caps: &[&str]) -> String {
 }
 
 fn one(t: &Table, s: &str) -> Option<String> {
+    one_depth(t, s, 0)
+}
+
+fn one_depth(t: &Table, s: &str, depth: usize) -> Option<String> {
     if let Some(v) = t.exact.get(s) {
         return Some(v.to_string());
     }
-    // headings drawn in capitals ("GOTOWOŚĆ"): the key is the capitalised form
+    // headings drawn in capitals ("GOTOWOŚĆ", "TYDZIEŃ 42"): the key is the capitalised or lowercase form
     if s.chars().any(|c| c.is_lowercase()) == false && s.chars().any(|c| c.is_uppercase()) {
         let low = s.to_lowercase();
         let mut cs = low.chars();
         let cap: String = cs.next().map(|f| f.to_uppercase().chain(cs).collect()).unwrap_or_default();
         if let Some(v) = t.exact.get(cap.as_str()).or_else(|| t.exact.get(low.as_str())) {
             return Some(v.to_uppercase());
+        }
+        for (parts, v) in &t.tpl {
+            if parts.iter().all(|p| p.is_empty()) {
+                continue;
+            }
+            if let Some(caps) = capture(parts, &cap).or_else(|| capture(parts, &low)) {
+                let caps: Vec<String> = if depth < 2 {
+                    caps.iter().map(|c| one_depth(t, c, depth + 1).unwrap_or_else(|| c.to_string())).collect()
+                } else {
+                    caps.iter().map(|c| t.exact.get(c).map(|x| x.to_string()).unwrap_or_else(|| c.to_string())).collect()
+                };
+                return Some(fill(v, &caps.iter().map(|c| c.as_str()).collect::<Vec<_>>()).to_uppercase());
+            }
+        }
+    }
+    // lowercase words whose table key is capitalised ("pochmurno" -> "Pochmurno" -> "cloudy")
+    let mut cs = s.chars();
+    if let Some(first) = cs.next().filter(|c| c.is_lowercase()) {
+        let cap: String = first.to_uppercase().chain(cs).collect();
+        if let Some(v) = t.exact.get(cap.as_str()) {
+            let mut v_cs = v.chars();
+            let v_low: String = v_cs.next().map(|f| f.to_lowercase().chain(v_cs).collect()).unwrap_or_default();
+            return Some(v_low);
         }
     }
     for (parts, v) in &t.tpl {
@@ -172,7 +202,11 @@ fn one(t: &Table, s: &str) -> Option<String> {
         }
         if let Some(caps) = capture(parts, s) {
             // captured texts may be words of their own ("{} dni temu" with "pon")
-            let caps: Vec<String> = caps.iter().map(|c| t.exact.get(c).map(|x| x.to_string()).unwrap_or_else(|| c.to_string())).collect();
+            let caps: Vec<String> = if depth < 2 {
+                caps.iter().map(|c| one_depth(t, c, depth + 1).unwrap_or_else(|| c.to_string())).collect()
+            } else {
+                caps.iter().map(|c| t.exact.get(c).map(|x| x.to_string()).unwrap_or_else(|| c.to_string())).collect()
+            };
             return Some(fill(v, &caps.iter().map(|c| c.as_str()).collect::<Vec<_>>()));
         }
     }
@@ -269,6 +303,15 @@ mod tests {
         assert_eq!(with("en", "PON"), "MON");
         assert_eq!(with("de", "Wydmy"), "Dünen");
         assert_eq!(with("pl", "Nie przeszkadzać"), "Nie przeszkadzać");
+        assert_eq!(with("en", "TYDZIEŃ 42"), "WEEK 42");
+        assert_eq!(with("de", "TYDZIEŃ 42"), "WOCHE 42");
+        assert_eq!(with("en", "poprzedni 8,1 km"), "previous 8,1 km");
+        assert_eq!(with("en", "umiarkowana"), "moderate");
+        assert_eq!(with("en", "Odpoczynek"), "Rest");
+        assert_eq!(with("en", "Ostatni bieg 0,8 km · 2 dni temu"), "Last run 0,8 km · 2 days ago");
+        assert_eq!(with("en", "Pochmurno"), "Cloudy");
+        assert_eq!(with("en", "pochmurno"), "cloudy");
+        assert_eq!(with("en", "Jutro 9°/3° · pochmurno, 5° chłodniej"), "Tomorrow 9°/3° · cloudy, 5° cooler");
     }
     #[test]
     fn table_is_well_formed() {

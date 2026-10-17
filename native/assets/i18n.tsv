@@ -67,7 +67,9 @@ Dziś	Today	Heute	Hoy
 Dzisiaj	Today	Heute	Hoy
 dziś	today	heute	hoy
 Jutro	Tomorrow	Morgen	Mañana
+Jutro {}	Tomorrow {}	Morgen {}	Mañana {}
 jutro	tomorrow	morgen	mañana
+jutro {}	tomorrow {}	morgen {}	mañana {}
 Wczoraj	Yesterday	Gestern	Ayer
 Wcześniej	Earlier	Früher	Antes
 Dzisiaj, {hm}	Today, {hm}	Heute, {hm}	Hoy, {hm}
@@ -551,15 +553,41 @@ Mało energii — odpuść intensywność	Low energy — skip the intensity	Weni
 Dzień na spokojne tempo	A day for an easy pace	Ein Tag für ruhiges Tempo	Un día para ritmo suave
 Brak połączenia z Garmin	No connection to Garmin	Keine Verbindung zu Garmin	Sin conexión con Garmin
 dane z {}	data from {}	Daten von {}	datos de {}
+najwyższa	prime	optimal	óptima
+wysoka	high	hoch	alta
+umiarkowana	moderate	moderat	moderada
+niska	low	niedrig	baja
+słaba	poor	schwach	deficiente
+Najwyższa	Prime	Optimal	Óptima
+Wysoka	High	Hoch	Alta
+Umiarkowana	Moderate	Moderat	Moderada
+Niska	Low	Niedrig	Baja
+Słaba	Poor	Schwach	Deficiente
 słaby	poor	schwach	bajo
 przeciętny	fair	mittel	regular
+dobry	good	gut	bueno
+doskonały	excellent	ausgezeichnet	excelente
 średni	moderate	mittel	medio
 średnio	moderate	mittel	medio
+niski	low	niedrig	bajo
+wysoki	high	hoch	alto
 dobra	good	gut	buena
 spokój	calm	ruhig	calma
 Trening	Workout	Training	Entrenamiento
 Trening dnia	Workout of the day	Training des Tages	Entrenamiento del día
 Trening interwałowy	Interval workout	Intervalltraining	Entrenamiento por intervalos
+Odpoczynek	Rest	Erholung	Descanso
+Dzień wolny albo 20–30 min spaceru	Rest day or 20–30 min walk	Ruhetag oder 20–30 Min. Spaziergang	Día libre o 20-30 min de paseo
+Dzień wolny albo 20-30 min spaceru	Rest day or 20-30 min walk	Ruhetag oder 20–30 Min. Spaziergang	Día libre o 20-30 min de paseo
+Bieg regeneracyjny	Recovery run	Erholungslauf	Carrera de recuperación
+Bieg spokojny	Base run	Basislauf	Carrera base
+Bieg bazowy	Base run	Basislauf	Carrera base
+Bieg progowy	Threshold run	Schwellenlauf	Carrera de umbral
+Bieg z tempem startowym	Tempo run	Tempolauf	Carrera a ritmo
+Bieg długi	Long run	Langer Lauf	Tirada larga
+Interwały	Intervals	Intervalle	Intervalos
+Rytmy	Strides	Steigerungsläufe	Progresiones
+Sprinty	Sprints	Sprints	Esprints
 # cards: running
 Start · 5 km	Race · 5 km	Rennen · 5 km	Carrera · 5 km
 Do startu	To the race	Bis zum Rennen	Para la carrera
@@ -570,8 +598,15 @@ prognoza	forecast	Prognose	previsión
 Prognoza 5 km	5 km prediction	5-km-Prognose	Previsión 5 km
 Ostatni bieg	Last run	Letzter Lauf	Última carrera
 Ostatni bieg {} km · {}	Last run {} km · {}	Letzter Lauf {} km · {}	Última carrera {} km · {}
+poprzedni {} km	previous {} km	vorherige {} km	anterior {} km
+poprzedni {}	previous {}	vorherige {}	anterior {}
 Tydzień {} km · poprzedni {}	Week {} km · previous {}	Woche {} km · vorherige {}	Semana {} km · anterior {}
 Rok {year}: {} km · {year_n} {}	Year {year}: {} km · {year_n} {}	Jahr {year}: {} km · {year_n} {}	Año {year}: {} km · {year_n} {}
+{} bieg	{} run	{} Lauf	{} carrera
+{} biegi	{} runs	{} Läufe	{} carreras
+{} biegów	{} runs	{} Läufe	{} carreras
+bieg	run	Lauf	carrera
+biegi	runs	Läufe	carreras
 biegów	runs	Läufe	carreras
 Brak biegów w historii	No runs in the history	Keine Läufe im Verlauf	Sin carreras en el historial
 rok {}	year {}	Jahr {}	año {}
@@ -658,6 +693,9 @@ Przybywający garb	Waxing gibbous	Zunehmender Mond	Gibosa creciente
 Ubywający garb	Waning gibbous	Abnehmender Mond	Gibosa menguante
 Ubywający sierp	Waning crescent	Abnehmende Sichel	Luna menguante
 , {}° chłodniej	, {}° cooler	, {}° kühler	, {}° más frío
+, {}° cieplej	, {}° warmer	, {}° wärmer	, {}° más cálido
+{}, {}° chłodniej	{}, {}° cooler	{}, {}° kühler	{}, {}° más frío
+{}, {}° cieplej	{}, {}° warmer	{}, {}° wärmer	{}, {}° más cálido
 # media, timers
 Minutnik	Timer	Timer	Temporizador
 Minutnik zatrzymany	Timer stopped	Timer gestoppt	Temporizador detenido
