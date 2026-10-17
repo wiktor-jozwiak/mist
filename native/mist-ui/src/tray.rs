@@ -93,21 +93,53 @@ fn read_item(c: &Connection, key: &str) -> Option<Item> {
     it.menu = p.get("Menu").and_then(|v| OwnedObjectPath::try_from(v.clone()).ok()).map(|o| o.to_string());
     if let Some(v) = p.get("IconPixmap") {
         if let Ok(list) = <Vec<(i32, i32, Vec<u8>)>>::try_from(v.clone()) {
-            // the largest one; ARGB32 in network byte order
-            if let Some((w, h, d)) = list.into_iter().filter(|(w, h, d)| *w > 0 && *h > 0 && d.len() >= (*w * *h * 4) as usize).max_by_key(|(w, _, _)| *w) {
-                let mut rgba = vec![0u8; (w * h * 4) as usize];
-                for (o, i) in rgba.chunks_exact_mut(4).zip(d.chunks_exact(4)) {
-                    let a = i[0] as u32;
-                    o[0] = (i[1] as u32 * a / 255) as u8;
-                    o[1] = (i[2] as u32 * a / 255) as u8;
-                    o[2] = (i[3] as u32 * a / 255) as u8;
-                    o[3] = a as u8;
-                }
-                it.pixmap = Some((w as u32, h as u32, rgba));
-            }
+            it.pixmap = pixmap_rgba(list);
         }
     }
     Some(it)
+}
+
+// largest sane icon from an IconPixmap list (ARGB32, network byte order) as premultiplied RGBA.
+// Sizes come from any D-Bus client: bounded so w*h*4 cannot overflow or allocate gigabytes.
+const MAX_PIXMAP: i32 = 1024;
+fn pixmap_rgba(list: Vec<(i32, i32, Vec<u8>)>) -> Option<(u32, u32, Vec<u8>)> {
+    let bytes = |w: i32, h: i32| (w as usize) * (h as usize) * 4;
+    let (w, h, d) = list
+        .into_iter()
+        .filter(|(w, h, d)| (1..=MAX_PIXMAP).contains(w) && (1..=MAX_PIXMAP).contains(h) && d.len() >= bytes(*w, *h))
+        .max_by_key(|(w, _, _)| *w)?;
+    let mut rgba = vec![0u8; bytes(w, h)];
+    for (o, i) in rgba.chunks_exact_mut(4).zip(d.chunks_exact(4)) {
+        let a = i[0] as u32;
+        o[0] = (i[1] as u32 * a / 255) as u8;
+        o[1] = (i[2] as u32 * a / 255) as u8;
+        o[2] = (i[3] as u32 * a / 255) as u8;
+        o[3] = a as u8;
+    }
+    Some((w as u32, h as u32, rgba))
+}
+
+#[cfg(test)]
+mod pixmap_tests {
+    use super::*;
+
+    #[test]
+    fn picks_largest_valid() {
+        let px = [255u8, 255, 0, 0]; // opaque red, ARGB
+        let l = vec![(1, 1, px.to_vec()), (2, 2, px.repeat(4)), (4, 4, px.to_vec())]; // 4x4 short of data
+        let (w, h, d) = pixmap_rgba(l).unwrap();
+        assert_eq!((w, h, d.len()), (2, 2, 16));
+        assert_eq!(&d[..4], &[255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn rejects_overflow_and_huge() {
+        // 65536*65536*4 wraps to 0 in i32: used to pass the length check
+        assert!(pixmap_rgba(vec![(65536, 65536, vec![])]).is_none());
+        assert!(pixmap_rgba(vec![(i32::MAX, 2, vec![0; 16])]).is_none());
+        assert!(pixmap_rgba(vec![(-4, -4, vec![0; 64])]).is_none());
+        assert!(pixmap_rgba(vec![(2048, 1, vec![0; 2048 * 4])]).is_none());
+    }
 }
 
 fn menu_layout(c: &Connection, dest: &str, path: &str) -> Vec<MenuEntry> {
