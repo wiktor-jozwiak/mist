@@ -1,3 +1,13 @@
+<div align="right">
+  🌐 <b>Seleccionar idioma:</b>
+  <a href="../../README.md">English</a> ·
+  <a href="README.pl.md">Polski</a> ·
+  <a href="README.de.md">Deutsch</a> ·
+  <a href="README.es.md"><b>Español</b></a> ·
+  <a href="README.zh-CN.md">简体中文</a> ·
+  <a href="README.ja.md">日本語</a>
+</div>
+
 <div align="center">
 
 <img src="../img/banner.svg" alt="Mist" width="100%">

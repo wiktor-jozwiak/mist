@@ -36,3 +36,8 @@ docs/index.md
 site/
 # launch drafts (not part of the repo)
 launch-posts.md
+
+# AI agent local configs
+.claude/
+CLAUDE.md
+claude.md

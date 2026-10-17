@@ -1,3 +1,13 @@
+<div align="right">
+  🌐 <b>Wybierz język:</b>
+  <a href="../../README.md">English</a> ·
+  <a href="README.pl.md"><b>Polski</b></a> ·
+  <a href="README.de.md">Deutsch</a> ·
+  <a href="README.es.md">Español</a> ·
+  <a href="README.zh-CN.md">简体中文</a> ·
+  <a href="README.ja.md">日本語</a>
+</div>
+
 <div align="center">
 
 <img src="../img/banner.svg" alt="Mist" width="100%">
@@ -11,6 +21,7 @@ powiadomienia, ekran blokady i agent polkit w jednym procesie ~50 MB, bez kontek
 [![Rust 2024](https://img.shields.io/badge/rust-2024-e2683c?style=flat-square&logo=rust&logoColor=white)](../../native)
 [![Hyprland](https://img.shields.io/badge/wayland-Hyprland-58e1ff?style=flat-square)](https://hyprland.org)
 [![CI](https://img.shields.io/github/actions/workflow/status/wiktor-jozwiak/mist/ci.yml?branch=main&style=flat-square&label=CI)](../../.github/workflows/ci.yml)
+[![Views](https://komarev.com/ghpvc/?username=wiktor-jozwiak-mist&label=views&color=0e75b6&style=flat-square)](https://github.com/wiktor-jozwiak/mist)
 
 [Funkcje](#funkcje) · [Pomiary](#pomiary) · [Instalacja](#instalacja) · [Użycie](#użycie) · [Rozwój](#rozwój)
 
