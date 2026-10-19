@@ -15,6 +15,7 @@ chrono-tz = "0.10"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 resvg = { version = "0.45", default-features = false, features = ["raster-images"] }
 libc = "0.2"
+base64 = "0.22"
 
 [profile.release]
 opt-level = 3
