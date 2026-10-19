@@ -11,6 +11,7 @@ notificaciones, pantalla de bloqueo y agente polkit en un solo proceso de ~50 MB
 [![Rust 2024](https://img.shields.io/badge/rust-2024-e2683c?style=flat-square&logo=rust&logoColor=white)](../../native)
 [![Hyprland](https://img.shields.io/badge/wayland-Hyprland-58e1ff?style=flat-square)](https://hyprland.org)
 [![CI](https://img.shields.io/github/actions/workflow/status/wiktor-jozwiak/mist/ci.yml?branch=main&style=flat-square&label=CI)](../../.github/workflows/ci.yml)
+[![Discord](https://img.shields.io/badge/discord-unirse-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/4rRabwQTPE)
 
 [Funciones](#funciones) · [Mediciones](#mediciones) · [Instalación](#instalación) · [Uso](#uso) · [Desarrollo](#desarrollo)
 

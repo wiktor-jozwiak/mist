@@ -11,6 +11,7 @@ Sperrbildschirm und Polkit-Agent in einem Prozess mit ~50 MB, ohne GPU-Kontext.
 [![Rust 2024](https://img.shields.io/badge/rust-2024-e2683c?style=flat-square&logo=rust&logoColor=white)](../../native)
 [![Hyprland](https://img.shields.io/badge/wayland-Hyprland-58e1ff?style=flat-square)](https://hyprland.org)
 [![CI](https://img.shields.io/github/actions/workflow/status/wiktor-jozwiak/mist/ci.yml?branch=main&style=flat-square&label=CI)](../../.github/workflows/ci.yml)
+[![Discord](https://img.shields.io/badge/discord-chat%20beitreten-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/4rRabwQTPE)
 
 [Funktionen](#funktionen) · [Messungen](#messungen) · [Installation](#installation) · [Bedienung](#bedienung) · [Entwicklung](#entwicklung)
 
