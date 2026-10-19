@@ -10,6 +10,7 @@ mod calls;
 mod common;
 mod data;
 mod filemanager;
+mod garmin;
 mod island;
 mod notify;
 mod phone;
@@ -57,8 +58,9 @@ fn main() {
                 std::process::exit(1);
             }
         }
+        "garmin" => garmin::main(&args[1..]),
         _ => {
-            eprintln!("usage: mistd notify|island|calls|phone|data <src>|geo <place>|tiles <names>|notifimg|clipstore|cliplist <dir>|stats|filemanager1");
+            eprintln!("usage: mistd notify|island|calls|phone|data <src>|geo <place>|tiles <names>|notifimg|clipstore|cliplist <dir>|stats|filemanager1|garmin [sync]");
             std::process::exit(2);
         }
     }
