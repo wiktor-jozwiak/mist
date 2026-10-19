@@ -11,6 +11,7 @@ powiadomienia, ekran blokady i agent polkit w jednym procesie ~50 MB, bez kontek
 [![Rust 2024](https://img.shields.io/badge/rust-2024-e2683c?style=flat-square&logo=rust&logoColor=white)](../../native)
 [![Hyprland](https://img.shields.io/badge/wayland-Hyprland-58e1ff?style=flat-square)](https://hyprland.org)
 [![CI](https://img.shields.io/github/actions/workflow/status/wiktor-jozwiak/mist/ci.yml?branch=main&style=flat-square&label=CI)](../../.github/workflows/ci.yml)
+[![Discord](https://img.shields.io/badge/discord-dołącz-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/4rRabwQTPE)
 [![Views](https://hits.sh/github.com/wiktor-jozwiak/mist.svg?style=flat-square&label=views&color=0e75b6)](https://github.com/wiktor-jozwiak/mist)
 
 [Funkcje](#funkcje) · [Pomiary](#pomiary) · [Instalacja](#instalacja) · [Użycie](#użycie) · [Rozwój](#rozwój)
