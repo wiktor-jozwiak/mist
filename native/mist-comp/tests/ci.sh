@@ -49,6 +49,26 @@ S=$(grep -m1 '^WAYLAND_DISPLAY=' "$OUT/comp.log" | cut -d= -f2)
 wait_for "C stats | grep -q frames" 50
 check "compositor up, 2 outputs" "J j/monitors | grep -o '\"model\"' | wc -l | grep -qx 2"
 
+# ------------------------------------------------------------------ protocols a desktop needs
+WAYLAND_DISPLAY=$S "$BIN/mist-ui" --wayland-globals >"$OUT/globals.txt" 2>/dev/null
+for g in xdg_wm_base zwlr_layer_shell_v1 ext_session_lock_manager_v1 zwp_linux_dmabuf_v1 wp_viewporter wp_fractional_scale_manager_v1 \
+         wp_presentation xdg_activation_v1 zxdg_decoration_manager_v1 zwp_pointer_constraints_v1 zwp_relative_pointer_manager_v1 \
+         zwp_text_input_manager_v3 zwp_input_method_manager_v2 zwp_virtual_keyboard_manager_v1 zwp_tablet_manager_v2 \
+         ext_foreign_toplevel_list_v1 ext_data_control_manager_v1 zwlr_data_control_manager_v1 zxdg_exporter_v2 zxdg_importer_v2 \
+         xdg_toplevel_icon_manager_v1 xdg_toplevel_tag_manager_v1 wp_content_type_manager_v1 wp_alpha_modifier_v1 xdg_system_bell_v1 \
+         wp_security_context_manager_v1 wp_cursor_shape_manager_v1 zwlr_screencopy_manager_v1 ext_idle_notifier_v1 zwp_idle_inhibit_manager_v1; do
+    grep -q "^$g " "$OUT/globals.txt" || bad "global $g"
+done
+ok "globals ($(wc -l <"$OUT/globals.txt") advertised)"
+if command -v wl-copy >/dev/null && command -v wl-paste >/dev/null; then
+    echo -n mist-clip-test | WAYLAND_DISPLAY=$S timeout 5 wl-copy
+    check "clipboard: wl-copy then wl-paste (data-control)" "[ \"\$(WAYLAND_DISPLAY=$S timeout 5 wl-paste -n)\" = mist-clip-test ]"
+    WAYLAND_DISPLAY=$S timeout 5 wl-copy --clear 2>/dev/null
+fi
+if command -v wtype >/dev/null; then
+    check "virtual keyboard: wtype" "WAYLAND_DISPLAY=$S timeout 5 wtype abc"
+fi
+
 # ------------------------------------------------------------------ lock screen
 L=$(spawn "$BIN/mist-ui" lock)
 check "lock: a lock surface per output" "wait_for \"C locked | grep -q 'true surfaces=2'\" 80"

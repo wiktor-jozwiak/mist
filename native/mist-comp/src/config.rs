@@ -12,6 +12,7 @@
 //!   swallow on                                  a window started from a terminal hides it until it closes
 //!   middle_click_paste off                      no primary selection (Hyprland misc.middle_click_paste)
 //!   pointer flat                                libinput accel profile: flat | adaptive
+//!   explicit_sync off                           no linux-drm-syncobj (default: on where the GPU supports it)
 //!
 //! Actions: exec CMD | close | kill | quit | reload | workspace N|+1|-1 | movetoworkspace N|+1|-1
 //!          | maximize | fullscreen | float | focus left|right|up|down | cycle | vt N
@@ -107,6 +108,8 @@ pub struct Config {
     pub vrr: bool,
     /// libinput acceleration profile for mice / touchpads (None: the device default)
     pub pointer_flat: Option<bool>,
+    /// linux-drm-syncobj when the GPU supports it (Hyprland render:explicit_sync auto); `explicit_sync off`
+    pub no_explicit_sync: bool,
 }
 
 pub fn path() -> std::path::PathBuf {
@@ -154,6 +157,10 @@ pub fn parse(text: &str) -> Config {
             }
             "vrr" => {
                 c.vrr = rest == "fullscreen";
+                true
+            }
+            "explicit_sync" => {
+                c.no_explicit_sync = rest == "off";
                 true
             }
             "swallow" => {

@@ -147,6 +147,11 @@ pub fn init(event_loop: &mut EventLoop<CalloopData>, data: &mut CalloopData) -> 
     let fd = DrmDeviceFd::new(DeviceFd::from(fd));
     let node = DrmNode::from_file(fd.clone())?;
     let (drm, drm_notifier) = DrmDevice::new(fd.clone(), true)?;
+    // explicit sync (NVIDIA 555+, Mesa): clients hand acquire / release points instead of implicit fences
+    if !data.config.no_explicit_sync && smithay::wayland::drm_syncobj::supports_syncobj_eventfd(&fd) {
+        tracing::info!("explicit sync: linux-drm-syncobj-v1");
+        data.syncobj = Some(smithay::wayland::drm_syncobj::DrmSyncobjState::new::<MistComp>(&data.display_handle, fd.clone()));
+    }
     let gbm = GbmDevice::new(fd)?;
 
     let egl = unsafe { EGLDisplay::new(gbm.clone())? };

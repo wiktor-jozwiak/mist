@@ -41,6 +41,9 @@ pub struct MistComp {
     pub xdg_shell_state: XdgShellState,
     pub layer_shell_state: WlrLayerShellState,
     pub protocols: crate::handlers::protocols::Protocols,
+    pub extra: crate::handlers::extra::Extra,
+    /// linux-drm-syncobj (explicit sync): only on a DRM device that supports syncobj eventfd
+    pub syncobj: Option<smithay::wayland::drm_syncobj::DrmSyncobjState>,
     pub shm_state: ShmState,
     pub output_manager_state: OutputManagerState,
     pub seat_state: SeatState<MistComp>,
@@ -136,6 +139,7 @@ impl MistComp {
         let layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let config = crate::config::load();
         let protocols = crate::handlers::protocols::Protocols::new(&dh, config.middle_click_paste);
+        let extra = crate::handlers::extra::Extra::new(&dh, config.middle_click_paste.then_some(&protocols.primary_selection));
         let lock_manager = smithay::wayland::session_lock::SessionLockManagerState::new::<Self, _>(&dh, |_| true);
         let idle = smithay::wayland::idle_notify::IdleNotifierState::new(&dh, event_loop.handle());
         let idle_inhibit = smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Self>(&dh);
@@ -199,6 +203,8 @@ impl MistComp {
             xdg_shell_state,
             layer_shell_state,
             protocols,
+            extra,
+            syncobj: None,
             shm_state,
             output_manager_state,
             seat_state,
@@ -410,6 +416,8 @@ impl MistComp {
 #[derive(Default)]
 pub struct ClientState {
     pub compositor_state: CompositorClientState,
+    /// connected through a sandbox's security-context listener (flatpak): no privileged globals
+    pub security_context: Option<smithay::wayland::security_context::SecurityContext>,
 }
 
 impl ClientData for ClientState {

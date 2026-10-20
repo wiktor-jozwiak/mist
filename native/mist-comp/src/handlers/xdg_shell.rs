@@ -288,6 +288,7 @@ impl MistComp {
             let a = crate::wm::data(&w).addr.get();
             let t = crate::hyprcompat::title(&w);
             self.hypr_event("windowtitlev2", &format!("{a:x},{t}"));
+            self.list_update(&w);
         }
     }
 }

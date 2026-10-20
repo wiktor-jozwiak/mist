@@ -359,6 +359,7 @@ impl MistComp {
         data(&window).addr.set(self.next_addr);
         let class = crate::hyprcompat::app_id(&window);
         self.hypr_event("openwindow", &format!("{:x},{ws},{class},", self.next_addr));
+        self.list_window(&window);
         self.space.map_element(window.clone(), loc, true);
         self.anim.opened(self.next_addr);
         if focus {
@@ -385,6 +386,7 @@ impl MistComp {
         self.stash.retain(|(x, _)| x != w);
         self.focus_history.retain(|x| *x != a);
         self.hypr_event("closewindow", &format!("{a:x}"));
+        self.unlist_window(w);
         let next = self.space.elements().filter(|w| w.alive()).next_back().cloned();
         self.focus_window(next.as_ref());
         self.unswallow(w);

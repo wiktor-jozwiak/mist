@@ -70,6 +70,15 @@ fn main() {
         libc::mallopt(libc::M_ARENA_MAX, 2);
     }
     let args: Vec<String> = std::env::args().collect();
+    // `--wayland-globals`: the compositor's globals, one `interface version` per line (checks, CI)
+    if args.get(1).map(|s| s.as_str()) == Some("--wayland-globals") {
+        let Ok(conn) = Connection::connect_to_env() else { std::process::exit(1) };
+        let Ok((globals, _queue)) = registry_queue_init::<app::App>(&conn) else { std::process::exit(1) };
+        for g in globals.contents().clone_list() {
+            println!("{} {}", g.interface, g.version);
+        }
+        return;
+    }
     if args.get(1).map(|s| s.as_str()) == Some("msg") {
         // client of the running mist-ui: mist-ui-bin msg <target> <function> [args...]
         std::process::exit(ipc::call(&args[2..]));
