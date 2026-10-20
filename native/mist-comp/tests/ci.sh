@@ -109,6 +109,36 @@ check "workspaces: the window is hidden on 1" "C windows | grep -q '^mist-files 
 C action workspace 1 >/dev/null
 check "workspaces: back on 1, the window shown" "C windows | grep -q '^mist-files ws1 [0-9]'"
 
+# ------------------------------------------------------------------ Hyprland compatibility (mist-ui, scripts)
+SIG=$(grep -m1 '^HYPRLAND_INSTANCE_SIGNATURE=' "$OUT/comp.log" | cut -d= -f2)
+socat -u "UNIX-CONNECT:$RT/hypr/$SIG/.socket2.sock" - >"$OUT/events.log" 2>/dev/null &
+pids="$pids $!"
+sleep 0.3
+ln -sf "$BIN/mist-comp" "$RT/hyprctl"
+HY() { HYPRLAND_INSTANCE_SIGNATURE=$SIG "$RT/hyprctl" "$@" 2>/dev/null; }
+check "hyprctl shim: monitors -j" "HY -j monitors | grep -q '\"name\":\"HDMI-A-1\"'"
+check "hyprctl shim: getoption hyprbars height" "HY -j getoption plugin:hyprbars:bar_height | grep -q '\"int\":30'"
+check "hyprctl shim: decorations" "HY -j decorations address:0x1 | grep -qx '\[\]'"
+check "hyprctl shim: unknown request fails" "! HY bogus >/dev/null"
+A=$(J j/clients | tr ',' '\n' | sed -n 's/.*"address":"\(0x[0-9a-f]*\)".*/\1/p' | head -1)
+J "eval hl.dispatch(hl.dsp.window.move({ x = 300, y = 0, window = \"address:$A\" }))" >/dev/null
+check "eval window.move: placed, kept below the bar" "C windows | grep -q '^mist-files ws1 300,'" "$(C windows | head -1)"
+G=$(geo); Y4=${G#*,}
+check "eval window.move: y not over the bar" "[ \"$Y4\" -ge \"${TOP:-0}\" ]" "y=$Y4"
+J "eval hl.dispatch(hl.dsp.window.resize({ x = 900, y = 600, window = \"address:$A\" }))" >/dev/null
+check "eval window.resize" "wait_for \"C windows | grep -q '^mist-files ws1 [0-9,]* 900x600'\" 50" "$(C windows | head -1)"
+C motion 1900 400 >/dev/null; C motion 300 400 >/dev/null
+check "event focusedmonv2 when the pointer changes output" "wait_for \"grep -q '^focusedmonv2>>HDMI-A-1' '$OUT/events.log'\" 30"
+J "eval hl.dispatch(hl.dsp.window.fullscreen({ window = \"address:$A\" }))" >/dev/null
+check "eval window.fullscreen + event" "wait_for \"grep -q '^fullscreen>>1' '$OUT/events.log'\" 30"
+J "eval hl.dispatch(hl.dsp.window.fullscreen({ window = \"address:$A\" }))" >/dev/null
+check "fullscreen off + event" "wait_for \"grep -q '^fullscreen>>0' '$OUT/events.log'\" 30"
+J "eval hl.dispatch(hl.dsp.window.close({ window = \"address:$A\" }))" >/dev/null
+check "eval window.close of a given window" "wait_for \"! C windows | grep -q '^mist-files'\" 50"
+check "event closewindow" "grep -q '^closewindow>>' '$OUT/events.log'"
+C action reload >/dev/null
+check "event configreloaded" "wait_for \"grep -q '^configreloaded>>' '$OUT/events.log'\" 30"
+
 # ------------------------------------------------------------------ health
 check "no panic in the compositor" "! grep -q panicked '$OUT/comp.log'"
 check "no panic in the clients" "! grep -q panicked '$OUT/clients.log'"

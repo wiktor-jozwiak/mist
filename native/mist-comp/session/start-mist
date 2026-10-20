@@ -6,5 +6,11 @@ export XDG_CURRENT_DESKTOP=mist XDG_SESSION_DESKTOP=mist XDG_SESSION_TYPE=waylan
 unset WAYLAND_DISPLAY DISPLAY HYPRLAND_INSTANCE_SIGNATURE
 # the Quickshell shim (mist-shell.service, ~210 MB RSS) has nothing left to do: everything is mist-ui now
 systemctl --user stop mist-shell.service 2>/dev/null
+# scripts call `hyprctl` (screenshots, monitors): without Hyprland installed, mist-comp answers as it
+if ! command -v hyprctl >/dev/null 2>&1; then
+    mkdir -p "$HOME/.cache/mist/bin"
+    ln -sf "$HOME/.local/bin/mist-comp" "$HOME/.cache/mist/bin/hyprctl"
+    export PATH="$HOME/.cache/mist/bin:$PATH"
+fi
 [ -f "$HOME/.cache/mist/comp.log" ] && mv -f "$HOME/.cache/mist/comp.log" "$HOME/.cache/mist/comp.log.old"
 RUST_LOG=${RUST_LOG:-warn,mist_comp=info} exec "$HOME/.local/bin/mist-comp" --tty >"$HOME/.cache/mist/comp.log" 2>&1

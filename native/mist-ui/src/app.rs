@@ -2424,6 +2424,10 @@ fn home() -> String {
 }
 pub fn spawn(argv: &[&str]) {
     use std::os::unix::process::CommandExt;
+    // `hyprctl eval` commands (switcher::hypr and the like): the socket, no process
+    if let ["hyprctl", "eval", lua] = argv {
+        return crate::sys::hypr_eval(lua);
+    }
     let mut c = std::process::Command::new(argv[0]);
     c.args(&argv[1..]).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).process_group(0);
     if let Ok(mut ch) = c.spawn() {
@@ -2436,7 +2440,7 @@ pub fn sh(cmd: &str) {
     spawn(&["sh", "-c", cmd]);
 }
 pub fn hypr(lua: &str) {
-    spawn(&["hyprctl", "eval", lua]);
+    crate::sys::hypr_eval(lua);
 }
 fn focus_win(addr: &str) {
     let a = if addr.starts_with("0x") { addr.to_string() } else { format!("0x{addr}") };

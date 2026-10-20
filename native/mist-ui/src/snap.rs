@@ -130,7 +130,7 @@ pub fn apply(addr: &str, z: &Z, grab: Option<[f32; 4]>, pre: &str, delay: u64) {
         if delay > 0 {
             std::thread::sleep(std::time::Duration::from_millis(delay));
         }
-        let _ = std::process::Command::new("hyprctl").args(["eval", &lua]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
+        let _ = crate::sys::hypr_eval_sync(&lua);
     });
 }
 
@@ -168,7 +168,7 @@ pub fn keep_below_bar() {
         let h = wh - (top - y);
         let resize = if h >= 120.0 { format!("hl.dispatch(hl.dsp.window.resize({{ x = {}, y = {}, window = \"address:{addr}\" }})); ", ww.round(), h.round()) } else { String::new() };
         let lua = format!("{resize}hl.dispatch(hl.dsp.window.move({{ x = {}, y = {}, window = \"address:{addr}\" }}))", x.round(), top.round());
-        let _ = std::process::Command::new("hyprctl").args(["eval", &lua]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
+        let _ = crate::sys::hypr_eval_sync(&lua);
     });
 }
 

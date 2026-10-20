@@ -1,10 +1,13 @@
 //! Hyprland-compatible IPC so mist-ui (and scripts calling `hyprctl`) run unchanged on mist-comp.
 //!
-//! $XDG_RUNTIME_DIR/hypr/<sig>/.socket.sock: `j/clients|monitors|workspaces|activewindow|activeworkspace|cursorpos`,
-//! `/eval <lua>` (only the calls Mist makes: focus / close / bring_to_top / dpms / MistMinimize / MistRestore /
-//! MistSnapApply), `/dispatch <classic>` (workspace, exec, killactive).
+//! $XDG_RUNTIME_DIR/hypr/<sig>/.socket.sock: `j/clients|monitors|workspaces|activewindow|activeworkspace|cursorpos|
+//! decorations|getoption|configerrors|version`, `eval <lua>` (only the calls Mist makes: focus window / workspace /
+//! monitor, window.close / move / resize / fullscreen / bring_to_top, dpms, send_shortcut, hl.config night light,
+//! MistMinimize / MistRestore / MistSnapApply / MistMaximize / MistUnsnap / MistLayouts), `dispatch <classic>`.
 //! .socket2.sock: the events mist-ui listens to (openwindow, closewindow, activewindow(v2), workspace(v2),
-//! focusedmon(v2), windowtitlev2, movewindowv2).
+//! focusedmon(v2), windowtitlev2, movewindowv2, activespecial(v2), fullscreen, urgent, activelayout,
+//! configreloaded, monitoradded/removedv2, mistdrag, mistsnap).
+//! `mist-comp hyprctl …` (or mist-comp run as `hyprctl`): the command line for scripts without Hyprland.
 use std::{
     io::{Read, Write},
     os::unix::net::{UnixListener, UnixStream},
@@ -24,6 +27,44 @@ use crate::{
     wm::{data, MINIMIZED},
     CalloopData, MistComp,
 };
+
+/// The `hyprctl` command line: flags (-j, --batch is not supported), a request and its arguments, sent to the
+/// compatibility socket of $HYPRLAND_INSTANCE_SIGNATURE (else the newest one); prints the answer.
+pub fn cli(args: &[String]) -> i32 {
+    let mut json = false;
+    let mut words: Vec<&str> = Vec::new();
+    for a in args {
+        match a.as_str() {
+            "-j" | "--json" => json = true,
+            "-q" | "--quiet" => {}
+            w => words.push(w),
+        }
+    }
+    let Some((cmd, rest)) = words.split_first() else {
+        eprintln!("usage: hyprctl [-j] <monitors|clients|workspaces|activewindow|activeworkspace|cursorpos|eval|dispatch|…> [args]");
+        return 2;
+    };
+    let rt = std::env::var("XDG_RUNTIME_DIR").unwrap_or_default();
+    let sig = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok().filter(|s| !s.is_empty()).or_else(|| {
+        let mut d: Vec<_> = std::fs::read_dir(format!("{rt}/hypr")).ok()?.flatten().filter(|e| e.path().join(".socket.sock").exists()).collect();
+        d.sort_by_key(|e| e.metadata().and_then(|m| m.modified()).ok());
+        d.last().map(|e| e.file_name().to_string_lossy().into_owned())
+    });
+    let Some(sig) = sig else {
+        eprintln!("hyprctl: no compositor socket in {rt}/hypr");
+        return 1;
+    };
+    let req = format!("{}{cmd}{}{}", if json { "j/" } else { "" }, if rest.is_empty() { "" } else { " " }, rest.join(" "));
+    let Ok(mut s) = UnixStream::connect(format!("{rt}/hypr/{sig}/.socket.sock")) else {
+        eprintln!("hyprctl: cannot connect to {sig}");
+        return 1;
+    };
+    let _ = s.write_all(req.as_bytes());
+    let mut out = String::new();
+    let _ = s.read_to_string(&mut out);
+    println!("{}", out.trim_end());
+    if out.starts_with("unknown") { 1 } else { 0 }
+}
 
 pub fn signature(socket: &str) -> String {
     format!("mist-comp-{socket}")
@@ -228,6 +269,13 @@ fn answer(state: &mut MistComp, req: &str) -> String {
         "eval" => return eval(state, rest),
         "dispatch" => return dispatch(state, rest),
         "version" => json!({ "branch": "mist-comp", "tag": env!("CARGO_PKG_VERSION") }),
+        // the Mist title bar is already inside `at` / `size` (client_json): no decoration to add on top
+        "decorations" => json!([]),
+        // what scripts and mist-ui read; the title bar height stands in for hyprbars'
+        "getoption" => match rest.trim() {
+            "plugin:hyprbars:bar_height" => json!({ "option": rest.trim(), "int": crate::decor::BAR, "set": true }),
+            o => json!({ "option": o, "set": false }),
+        },
         "configerrors" => json!([]),
         _ => return "unknown request\n".into(),
     };
@@ -304,7 +352,7 @@ fn eval(state: &mut MistComp, code: &str) -> String {
                     _ => state.snap_key_on(&w, crate::snap::Key::Layouts),
                 }
             }
-        } else if stmt.contains("hl.dsp.focus") {
+        } else if stmt.contains("hl.dsp.focus") && field(stmt, "monitor").is_none() {
             if let Some(sel) = field(stmt, "window") {
                 if let Some(w) = find_target(state, sel) {
                     state.restore(&w, None);
@@ -320,7 +368,35 @@ fn eval(state: &mut MistComp, code: &str) -> String {
                 }
             }
         } else if stmt.contains("hl.dsp.window.close") {
-            state.do_action(Action::Close);
+            match field(stmt, "window").and_then(|sel| find_target(state, sel)) {
+                Some(w) => state.close_window(&w),
+                None => state.do_action(Action::Close),
+            }
+        } else if stmt.contains("hl.dsp.window.move") || stmt.contains("hl.dsp.window.resize") {
+            // { x, y, window? }: the outer rectangle (title bar included), as `at` / `size` report it
+            let num = |k: &str| field(stmt, k).and_then(|v| v.parse::<f64>().ok());
+            let w = field(stmt, "window").and_then(|sel| find_target(state, sel)).or_else(|| state.focused_window());
+            if let (Some(w), Some(x), Some(y)) = (w, num("x"), num("y")) {
+                let relative = field(stmt, "relative") == Some("true");
+                if stmt.contains("hl.dsp.window.move") {
+                    state.move_window_outer(&w, x, y, relative);
+                } else {
+                    state.resize_window_outer(&w, x, y, relative);
+                }
+            }
+        } else if stmt.contains("hl.dsp.window.fullscreen") {
+            let w = field(stmt, "window").and_then(|sel| find_target(state, sel)).or_else(|| state.focused_window());
+            if let Some(w) = w {
+                state.toggle_max(&w, true);
+            }
+        } else if stmt.contains("hl.dsp.focus") && field(stmt, "monitor").is_some() {
+            let name = field(stmt, "monitor").unwrap_or("").to_string();
+            let g = state.space.outputs().find(|o| o.name() == name).and_then(|o| state.space.output_geometry(o));
+            if let Some(g) = g {
+                let c = g.loc.to_f64() + g.size.to_f64().downscale(2.0).to_point();
+                let t = state.start_time.elapsed().as_millis() as u32;
+                state.pointer_to(c, t);
+            }
         } else if stmt.contains("hl.dsp.window.bring_to_top") {
             if let Some(w) = state.focused_window() {
                 state.space.raise_element(&w, true);

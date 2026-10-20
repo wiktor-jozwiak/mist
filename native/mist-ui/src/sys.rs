@@ -105,6 +105,22 @@ pub fn hypr_request(cmd: &str) -> Option<Value> {
     s.read_to_string(&mut out).ok()?;
     serde_json::from_str(&out).ok()
 }
+// `hyprctl eval <lua>` without the process: the same request straight on the socket (Hyprland and mist-comp
+// both take it); blocks until the compositor answers, so call it off the UI thread or use hypr_eval
+pub fn hypr_eval_sync(lua: &str) -> Option<String> {
+    let mut s = UnixStream::connect(format!("{}/.socket.sock", hypr_dir())).ok()?;
+    let _ = s.set_read_timeout(Some(Duration::from_secs(2)));
+    s.write_all(format!("eval {lua}").as_bytes()).ok()?;
+    let mut out = String::new();
+    s.read_to_string(&mut out).ok()?;
+    Some(out)
+}
+pub fn hypr_eval(lua: &str) {
+    let lua = lua.to_string();
+    let _ = std::thread::Builder::new().name("hypr-eval".into()).stack_size(64 * 1024).spawn(move || {
+        let _ = hypr_eval_sync(&lua);
+    });
+}
 pub fn hypr_now() -> Hypr {
     hypr_state()
 }
@@ -212,7 +228,7 @@ pub fn hyprland(tx: Sender<Msg>) {
                     if d.ends_with(",1") {
                         let a = d.split(',').next().unwrap_or("");
                         let a = if a.starts_with("0x") { a.to_string() } else { format!("0x{a}") };
-                        let _ = Command::new("hyprctl").args(["eval", &format!("MistMinimize('{a}')")]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+                        let _ = hypr_eval_sync(&format!("MistMinimize('{a}')"));
                     }
                 }
             }

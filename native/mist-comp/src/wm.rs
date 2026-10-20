@@ -61,6 +61,19 @@ impl MistComp {
             .cloned()
     }
 
+    /// focusedmon / focusedmonv2 when the pointer moves onto another output (mist-ui: the bar's window title,
+    /// which monitor Spotlight opens on)
+    pub fn note_pointer_output(&mut self) {
+        let Some(o) = self.active_output() else { return };
+        if self.ev_mon == o.name() {
+            return;
+        }
+        self.ev_mon = o.name();
+        let ws = self.active_ws(&o);
+        self.hypr_event("focusedmon", &format!("{},{ws}", o.name()));
+        self.hypr_event("focusedmonv2", &format!("{},{ws}", o.name()));
+    }
+
     pub fn active_ws(&mut self, output: &Output) -> u32 {
         if let Some(&ws) = self.ws_active.get(&output.name()) {
             return ws;
@@ -98,6 +111,48 @@ impl MistComp {
                 self.active_ws(o);
             }
         }
+    }
+
+    /// Ask a window to close (xdg close / X11 WM_DELETE).
+    pub fn close_window(&mut self, w: &Window) {
+        if let Some(t) = w.toplevel() {
+            t.send_close();
+        } else if let Some(x) = w.x11_surface() {
+            let _ = x.close();
+        }
+    }
+
+    /// hl.dsp.window.move: the outer top-left (title bar included) to x, y (or by x, y), kept below the bar.
+    pub fn move_window_outer(&mut self, w: &Window, x: f64, y: f64, relative: bool) {
+        let bar = self.bar_h(w);
+        let Some(loc) = self.space.element_location(w) else { return };
+        let (mut nx, mut ny) = if relative { (loc.x as f64 + x, loc.y as f64 + y) } else { (x, y + bar as f64) };
+        if let Some(top) = self.usable_top((nx, ny).into()) {
+            ny = ny.max((top + bar) as f64);
+        }
+        nx = nx.round();
+        let p = smithay::utils::Point::from((nx as i32, ny.round() as i32));
+        if let Some(x11) = w.x11_surface() {
+            let _ = x11.configure(smithay::utils::Rectangle::new(p, w.geometry().size));
+        }
+        self.space.map_element(w.clone(), p, false);
+        self.dirty = true;
+    }
+
+    /// hl.dsp.window.resize: the outer size (title bar included) to x, y (or by x, y); the top-left stays.
+    pub fn resize_window_outer(&mut self, w: &Window, x: f64, y: f64, relative: bool) {
+        let bar = self.bar_h(w);
+        let cur = w.geometry().size;
+        let (nw, nh) = if relative { (cur.w as f64 + x, cur.h as f64 + y) } else { (x, y - bar as f64) };
+        let size: smithay::utils::Size<i32, smithay::utils::Logical> = ((nw.round() as i32).max(1), (nh.round() as i32).max(1)).into();
+        if let Some(t) = w.toplevel() {
+            t.with_pending_state(|s| s.size = Some(size));
+            t.send_pending_configure();
+        } else if let Some(x11) = w.x11_surface() {
+            let loc = self.space.element_location(w).unwrap_or_default();
+            let _ = x11.configure(smithay::utils::Rectangle::new(loc, size));
+        }
+        self.dirty = true;
     }
 
     pub fn focused_window(&self) -> Option<Window> {
@@ -427,6 +482,7 @@ impl MistComp {
             Action::Reload => {
                 self.config = crate::config::load();
                 tracing::info!("config reloaded: {} binds", self.config.binds.len());
+                self.hypr_event("configreloaded", "");
             }
             Action::Workspace(arg) => {
                 if let Some(o) = output {
@@ -514,6 +570,10 @@ impl MistComp {
         let d = data(w);
         let og = self.space.output_geometry(&output).unwrap_or_default();
         if let Some(prev) = d.restore.borrow_mut().take() {
+            let was_full = t.as_ref().is_some_and(|t| t.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Fullscreen))) || x.as_ref().is_some_and(|x| x.is_fullscreen());
+            if was_full {
+                self.hypr_event("fullscreen", "0");
+            }
             if let Some(t) = &t {
                 t.with_pending_state(|s| {
                     s.size = Some(prev.size);
@@ -532,6 +592,9 @@ impl MistComp {
         }
         let cur = Rectangle::new(self.space.element_location(w).unwrap_or_default(), w.geometry().size);
         *d.restore.borrow_mut() = Some(cur);
+        if full {
+            self.hypr_event("fullscreen", "1");
+        }
         let area = if full {
             og
         } else {

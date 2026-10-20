@@ -53,6 +53,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing_subscriber::fmt().init();
     }
 
+    // `hyprctl` for scripts on a session without Hyprland (start-mist links it): `hyprctl [-j] cmd args…`
+    let argv: Vec<String> = std::env::args().collect();
+    let as_hyprctl = argv.first().is_some_and(|a| a.rsplit('/').next() == Some("hyprctl"));
+    if as_hyprctl || argv.get(1).map(String::as_str) == Some("hyprctl") {
+        let rest = if as_hyprctl { &argv[1..] } else { &argv[2..] };
+        std::process::exit(hyprcompat::cli(rest));
+    }
     if std::env::args().any(|a| a == "--probe") {
         return crate::udev::probe();
     }

@@ -866,6 +866,9 @@ pub fn spawn(cmd: &[&str]) {
     if cmd.is_empty() {
         return;
     }
+    if let ["hyprctl", "eval", lua] = cmd {
+        return crate::sys::hypr_eval(lua);
+    }
     let mut c = std::process::Command::new(cmd[0]);
     c.args(&cmd[1..]).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     unsafe {
@@ -882,5 +885,5 @@ pub fn spawn(cmd: &[&str]) {
     }
 }
 pub fn hypr(lua: &str) {
-    spawn(&["hyprctl", "eval", lua]);
+    crate::sys::hypr_eval(lua);
 }

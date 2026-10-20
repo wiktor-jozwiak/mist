@@ -80,6 +80,7 @@ impl MistComp {
                 pointer.frame(self);
                 self.bar_hover(pos);
                 self.edge_hover(pos);
+                self.note_pointer_output();
             }
             InputEvent::PointerMotionAbsolute { event, .. } => {
                 let output = self.space.outputs().next().unwrap();
@@ -191,6 +192,17 @@ impl MistComp {
             serial,
             time,
             |st, mods, handle| {
+                {
+                    let x = handle.xkb().lock().unwrap();
+                    let name = x.layout_name(x.active_layout());
+                    if st.ev_layout != name {
+                        let first = st.ev_layout.is_empty();
+                        st.ev_layout = name.to_string();
+                        if !first {
+                            st.hypr_event("activelayout", &format!("keyboard,{name}"));
+                        }
+                    }
+                }
                 let m = Mods::from(mods);
                 let modified = handle.modified_sym().raw();
                 let sym = handle.raw_latin_sym_or_raw_current_sym().map(|s| s.raw()).unwrap_or(modified);
@@ -261,6 +273,7 @@ impl MistComp {
         pointer.frame(self);
         self.bar_hover(pos);
         self.edge_hover(pos);
+        self.note_pointer_output();
     }
 
     fn bar_drag_motion(&mut self, pos: Point<f64, Logical>) {

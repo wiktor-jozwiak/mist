@@ -594,8 +594,7 @@ impl Island {
                 if !self.armed {
                     return;
                 }
-                let out = std::process::Command::new("hyprctl").args(["configerrors", "-j"]).output().ok();
-                let errs: Vec<String> = out.and_then(|o| serde_json::from_slice::<Vec<String>>(&o.stdout).ok()).unwrap_or_default().into_iter().filter(|x| !x.trim().is_empty()).collect();
+                let errs: Vec<String> = crate::sys::hypr_request("j/configerrors").and_then(|v| serde_json::from_value::<Vec<String>>(v).ok()).unwrap_or_default().into_iter().filter(|x| !x.trim().is_empty()).collect();
                 if !errs.is_empty() {
                     let mut e = info("cfg", 3, 7000, "alert", DANGER, &format!("Błędy konfiguracji Hyprland ({})", errs.len()), &errs[0].split_whitespace().collect::<Vec<_>>().join(" "));
                     e.hold = true;

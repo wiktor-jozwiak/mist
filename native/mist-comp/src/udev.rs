@@ -253,6 +253,8 @@ pub fn init(event_loop: &mut EventLoop<CalloopData>, data: &mut CalloopData) -> 
 /// Connected connectors <-> outputs.
 fn scan(state: &mut MistComp, dh: &smithay::reexports::wayland_server::DisplayHandle) {
     let Some(udev) = state.udev.as_mut() else { return };
+    // monitoraddedv2 / monitorremovedv2 for mist-ui's island, sent once the outputs are settled
+    let mut events: Vec<(&str, String)> = Vec::new();
     let drm = udev.mgr.device();
     let Ok(res) = drm.resource_handles() else { return };
     let mut wanted: Vec<(connector::Info, crtc::Handle)> = Vec::new();
@@ -282,6 +284,7 @@ fn scan(state: &mut MistComp, dh: &smithay::reexports::wayland_server::DisplayHa
     for crtc in gone {
         if let Some(s) = udev.surfaces.remove(&crtc) {
             tracing::info!("output {} gone", s.output.name());
+            events.push(("monitorremovedv2", format!("0,{},{}", s.output.name(), s.output.description())));
             state.space.unmap_output(&s.output);
             dh.remove_global::<MistComp>(s.global);
         }
@@ -345,6 +348,7 @@ fn scan(state: &mut MistComp, dh: &smithay::reexports::wayland_server::DisplayHa
             }
         };
         tracing::info!("output {name} {}x{}@{} at {pos:?}", wl_mode.size.w, wl_mode.size.h, wl_mode.refresh);
+        events.push(("monitoraddedv2", format!("0,{name},{}", output.description())));
         udev.surfaces.insert(crtc, Surf { output, drm_output, global, pending: false, vrr: Some(false) });
         if udev.night {
             udev.apply_gamma(crtc);
@@ -355,6 +359,9 @@ fn scan(state: &mut MistComp, dh: &smithay::reexports::wayland_server::DisplayHa
     }
     state.fix_ws();
     state.dirty = true;
+    for (e, d) in events {
+        state.hypr_event(e, &d);
+    }
 }
 
 fn conn_name(info: &connector::Info) -> String {

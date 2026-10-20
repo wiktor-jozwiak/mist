@@ -153,6 +153,11 @@ impl XdgActivationHandler for MistComp {
         if data.timestamp.elapsed().as_secs() < 10 {
             let w = self.space.elements().find(|w| w.toplevel().is_some_and(|t| t.wl_surface() == &surface)).cloned();
             if let Some(w) = w {
+                // not focused: raised, and mist-ui's island asks for attention (Hyprland's urgent)
+                if self.focused_window().as_ref() != Some(&w) {
+                    let a = crate::wm::data(&w).addr.get();
+                    self.hypr_event("urgent", &format!("{a:x}"));
+                }
                 self.space.raise_element(&w, true);
                 self.dirty = true;
             }

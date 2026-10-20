@@ -74,6 +74,10 @@ pub struct MistComp {
     pub special_on: Option<String>,
     /// Super went down and nothing else since (release binds)
     pub super_alone: bool,
+    /// the xkb layout name in use and the output under the pointer, as last announced (activelayout,
+    /// focusedmon events)
+    pub ev_layout: String,
+    pub ev_mon: String,
     /// keys whose press a bind ate: eat their release too
     pub suppressed: std::collections::HashSet<u32>,
     /// socket2 listeners (hyprcompat)
@@ -217,6 +221,8 @@ impl MistComp {
             special_on: None,
             ws_changed: false,
             super_alone: false,
+            ev_layout: String::new(),
+            ev_mon: String::new(),
             suppressed: Default::default(),
             locked: false,
             screencopy: Vec::new(),
