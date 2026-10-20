@@ -14,8 +14,14 @@ sleep 0.25 # schowanie interfejsu paska
 
 [ "$delay" -gt 0 ] 2>/dev/null && sleep "$delay"
 
-ts=$(date +'%Y-%m-%d o %H.%M.%S')
-f="$dir/Zrzut ekranu ${ts}.png"
+# file name in the same language as the folder: "Screenshot <date> at <time>.png"
+case "${LANG:-}" in
+    pl*) word="Zrzut ekranu" at="o" ;; de*) word="Bildschirmfoto" at="um" ;;
+    es*) word="Captura de pantalla" at="a las" ;; fr*) word="Capture d'écran" at="à" ;;
+    *) word="Screenshot" at="at" ;;
+esac
+ts=$(date +'%Y-%m-%d_%H.%M.%S')
+f="$dir/$word ${ts%%_*} $at ${ts#*_}.png"
 
 if [ "$mode" = "screen" ]; then
     g=$(hyprctl monitors -j | python3 -c 'import json,sys;m=[m for m in json.load(sys.stdin) if m["focused"]][0];print("%d,%d %dx%d"%(m["x"],m["y"],m["width"],m["height"]))')

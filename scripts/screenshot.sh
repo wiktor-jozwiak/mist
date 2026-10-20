@@ -8,7 +8,13 @@ case "${LANG:-}" in pl*) sub="Zrzuty ekranu" ;; *) sub="Screenshots" ;; esac
 dir="${MIST_SHOT_DIR:-$pics/$sub}"
 mkdir -p "$dir"
 ts=$(date +'%Y-%m-%d_%H:%M:%S')
-out_file="$dir/Zrzut ekranu ${ts//_/\ o\ }.png"
+# file name in the same language as the folder: "Screenshot <date> at <time>.png"
+case "${LANG:-}" in
+    pl*) word="Zrzut ekranu" at="o" ;; de*) word="Bildschirmfoto" at="um" ;;
+    es*) word="Captura de pantalla" at="a las" ;; fr*) word="Capture d'écran" at="à" ;;
+    *) word="Screenshot" at="at" ;;
+esac
+out_file="$dir/$word ${ts%%_*} $at ${ts#*_}.png"
 name="swash-${ts}.png"
 
 if [ "$1" = "full" ]; then

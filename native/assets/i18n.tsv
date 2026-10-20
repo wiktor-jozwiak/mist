@@ -1,1055 +1,1103 @@
-pl	en	de	es
+pl	en	de	es	fr
 # days, months (dates are translated word by word: "Piątek, 16 października")
-Poniedziałek	Monday	Montag	Lunes
-Wtorek	Tuesday	Dienstag	Martes
-Środa	Wednesday	Mittwoch	Miércoles
-Czwartek	Thursday	Donnerstag	Jueves
-Piątek	Friday	Freitag	Viernes
-Sobota	Saturday	Samstag	Sábado
-Niedziela	Sunday	Sonntag	Domingo
-poniedziałek	Monday	Montag	lunes
-wtorek	Tuesday	Dienstag	martes
-środa	Wednesday	Mittwoch	miércoles
-czwartek	Thursday	Donnerstag	jueves
-piątek	Friday	Freitag	viernes
-sobota	Saturday	Samstag	sábado
-niedziela	Sunday	Sonntag	domingo
-pon	Mon	Mo	lun
-wt	Tue	Di	mar
-śr	Wed	Mi	mié
-czw	Thu	Do	jue
-pt	Fri	Fr	vie
-sob	Sat	Sa	sáb
-nd	Sun	So	dom
-Pn	Mo	Mo	Lu
-Wt	Tu	Di	Ma
-Śr	We	Mi	Mi
-Cz	Th	Do	Ju
-Pt	Fr	Fr	Vi
-So	Sa	Sa	Sá
-Nd	Su	So	Do
-stycznia	January	Januar	de enero
-lutego	February	Februar	de febrero
-marca	March	März	de marzo
-kwietnia	April	April	de abril
-maja	May	Mai	de mayo
-czerwca	June	Juni	de junio
-lipca	July	Juli	de julio
-sierpnia	August	August	de agosto
-września	September	September	de septiembre
-października	October	Oktober	de octubre
-listopada	November	November	de noviembre
-grudnia	December	Dezember	de diciembre
-Styczeń	January	Januar	Enero
-Luty	February	Februar	Febrero
-Marzec	March	März	Marzo
-Kwiecień	April	April	Abril
-Maj	May	Mai	Mayo
-Czerwiec	June	Juni	Junio
-Lipiec	July	Juli	Julio
-Sierpień	August	August	Agosto
-Wrzesień	September	September	Septiembre
-Październik	October	Oktober	Octubre
-Listopad	November	November	Noviembre
-Grudzień	December	Dezember	Diciembre
-sty	Jan	Jan	ene
-lut	Feb	Feb	feb
-mar	Mar	Mär	mar
-kwi	Apr	Apr	abr
-cze	Jun	Jun	jun
-lip	Jul	Jul	jul
-sie	Aug	Aug	ago
-wrz	Sep	Sep	sep
-paź	Oct	Okt	oct
-lis	Nov	Nov	nov
-gru	Dec	Dez	dic
-Dziś	Today	Heute	Hoy
-Dzisiaj	Today	Heute	Hoy
-dziś	today	heute	hoy
-Jutro	Tomorrow	Morgen	Mañana
-Jutro {}	Tomorrow {}	Morgen {}	Mañana {}
-jutro	tomorrow	morgen	mañana
-jutro {}	tomorrow {}	morgen {}	mañana {}
-Wczoraj	Yesterday	Gestern	Ayer
-Wcześniej	Earlier	Früher	Antes
-Dzisiaj, {hm}	Today, {hm}	Heute, {hm}	Hoy, {hm}
-Wczoraj, {hm}	Yesterday, {hm}	Gestern, {hm}	Ayer, {hm}
-Tydzień	Week	Woche	Semana
-Tydzień {}	Week {}	Woche {}	Semana {}
-tydzień {}	week {}	Woche {}	semana {}
-Rok	Year	Jahr	Año
-Rok {year}	Year {year}	Jahr {year}	Año {year}
-dzień	day	Tag	día
-cały dzień	all day	ganztägig	todo el día
-święto	holiday	Feiertag	festivo
+Poniedziałek	Monday	Montag	Lunes	Lundi
+Wtorek	Tuesday	Dienstag	Martes	Mardi
+Środa	Wednesday	Mittwoch	Miércoles	Mercredi
+Czwartek	Thursday	Donnerstag	Jueves	Jeudi
+Piątek	Friday	Freitag	Viernes	Vendredi
+Sobota	Saturday	Samstag	Sábado	Samedi
+Niedziela	Sunday	Sonntag	Domingo	Dimanche
+poniedziałek	Monday	Montag	lunes	lundi
+wtorek	Tuesday	Dienstag	martes	mardi
+środa	Wednesday	Mittwoch	miércoles	mercredi
+czwartek	Thursday	Donnerstag	jueves	jeudi
+piątek	Friday	Freitag	viernes	vendredi
+sobota	Saturday	Samstag	sábado	samedi
+niedziela	Sunday	Sonntag	domingo	dimanche
+pon	Mon	Mo	lun	lun
+wt	Tue	Di	mar	mar
+śr	Wed	Mi	mié	mer
+czw	Thu	Do	jue	jeu
+pt	Fri	Fr	vie	ven
+sob	Sat	Sa	sáb	sam
+nd	Sun	So	dom	dim
+Pn	Mo	Mo	Lu	Lu
+Wt	Tu	Di	Ma	Ma
+Śr	We	Mi	Mi	Me
+Cz	Th	Do	Ju	Je
+Pt	Fr	Fr	Vi	Ve
+So	Sa	Sa	Sá	Sa
+Nd	Su	So	Do	Di
+stycznia	January	Januar	de enero	janvier
+lutego	February	Februar	de febrero	février
+marca	March	März	de marzo	mars
+kwietnia	April	April	de abril	avril
+maja	May	Mai	de mayo	mai
+czerwca	June	Juni	de junio	juin
+lipca	July	Juli	de julio	juillet
+sierpnia	August	August	de agosto	août
+września	September	September	de septiembre	septembre
+października	October	Oktober	de octubre	octobre
+listopada	November	November	de noviembre	novembre
+grudnia	December	Dezember	de diciembre	décembre
+Styczeń	January	Januar	Enero	Janvier
+Luty	February	Februar	Febrero	Février
+Marzec	March	März	Marzo	Mars
+Kwiecień	April	April	Abril	Avril
+Maj	May	Mai	Mayo	Mai
+Czerwiec	June	Juni	Junio	Juin
+Lipiec	July	Juli	Julio	Juillet
+Sierpień	August	August	Agosto	Août
+Wrzesień	September	September	Septiembre	Septembre
+Październik	October	Oktober	Octubre	Octobre
+Listopad	November	November	Noviembre	Novembre
+Grudzień	December	Dezember	Diciembre	Décembre
+sty	Jan	Jan	ene	janv.
+lut	Feb	Feb	feb	févr.
+mar	Mar	Mär	mar	mars
+kwi	Apr	Apr	abr	avr.
+cze	Jun	Jun	jun	juin
+lip	Jul	Jul	jul	juil.
+sie	Aug	Aug	ago	août
+wrz	Sep	Sep	sep	sept.
+paź	Oct	Okt	oct	oct.
+lis	Nov	Nov	nov	nov.
+gru	Dec	Dez	dic	déc.
+Dziś	Today	Heute	Hoy	Aujourd'hui
+Dzisiaj	Today	Heute	Hoy	Aujourd'hui
+dziś	today	heute	hoy	aujourd'hui
+Jutro	Tomorrow	Morgen	Mañana	Demain
+Jutro {}	Tomorrow {}	Morgen {}	Mañana {}	Demain {}
+jutro	tomorrow	morgen	mañana	demain
+jutro {}	tomorrow {}	morgen {}	mañana {}	demain {}
+Wczoraj	Yesterday	Gestern	Ayer	Hier
+Wcześniej	Earlier	Früher	Antes	Plus tôt
+Dzisiaj, {hm}	Today, {hm}	Heute, {hm}	Hoy, {hm}	Aujourd'hui, {hm}
+Wczoraj, {hm}	Yesterday, {hm}	Gestern, {hm}	Ayer, {hm}	Hier, {hm}
+Tydzień	Week	Woche	Semana	Semaine
+Tydzień {}	Week {}	Woche {}	Semana {}	Semaine {}
+tydzień {}	week {}	Woche {}	semana {}	semaine {}
+Rok	Year	Jahr	Año	Année
+Rok {year}	Year {year}	Jahr {year}	Año {year}	Année {year}
+dzień	day	Tag	día	jour
+cały dzień	all day	ganztägig	todo el día	toute la journée
+święto	holiday	Feiertag	festivo	jour férié
 # relative time
-przed chwilą	just now	gerade eben	ahora mismo
-{} min temu	{} min ago	vor {} Min.	hace {} min
-{} godz. temu	{} h ago	vor {} Std.	hace {} h
-{} dni temu	{} days ago	vor {} Tagen	hace {} días
-{d} dni temu	{d} days ago	vor {d} Tagen	hace {d} días
-{d} d {h} godz.	{d} d {h} h	{d} T. {h} Std.	{d} d {h} h
-{h} godz. {mi} min	{h} h {mi} min	{h} Std. {mi} Min.	{h} h {mi} min
-{h} h {} min	{h} h {} min	{h} h {} min	{h} h {} min
-{} h {} min	{} h {} min	{} h {} min	{} h {} min
-{} min {} s	{} min {} s	{} min {} s	{} min {} s
-za {n} dni	in {n} days	in {n} Tagen	en {n} días
-za {} tyg.	in {} wk	in {} Wo.	en {} sem.
-za {left} min	in {left} min	in {left} Min.	en {left} min
-start za {} d	race in {} d	Rennen in {} T.	carrera en {} d
-trwa · zostało {}	now · {} left	läuft · noch {}	en curso · quedan {}
-koliduje z: {}	overlaps: {}	überschneidet sich: {}	se solapa con: {}
-czas minął · {}	time is up · {}	Zeit abgelaufen · {}	se acabó el tiempo · {}
-Jeśli nic nie zrobisz, {} automatycznie za {} s.	If you do nothing, {} automatically in {} s.	Wenn du nichts tust, {} automatisch in {} s.	Si no haces nada, {} automáticamente en {} s.
+przed chwilą	just now	gerade eben	ahora mismo	à l'instant
+{} min temu	{} min ago	vor {} Min.	hace {} min	il y a {} min
+{} godz. temu	{} h ago	vor {} Std.	hace {} h	il y a {} h
+{} dni temu	{} days ago	vor {} Tagen	hace {} días	il y a {} jours
+{d} dni temu	{d} days ago	vor {d} Tagen	hace {d} días	il y a {d} jours
+{d} d {h} godz.	{d} d {h} h	{d} T. {h} Std.	{d} d {h} h	{d} j {h} h
+{h} godz. {mi} min	{h} h {mi} min	{h} Std. {mi} Min.	{h} h {mi} min	{h} h {mi} min
+{h} h {} min	{h} h {} min	{h} h {} min	{h} h {} min	{h} h {} min
+{} h {} min	{} h {} min	{} h {} min	{} h {} min	{} h {} min
+{} min {} s	{} min {} s	{} min {} s	{} min {} s	{} min {} s
+za {n} dni	in {n} days	in {n} Tagen	en {n} días	dans {n} jours
+za {} tyg.	in {} wk	in {} Wo.	en {} sem.	dans {} sem.
+za {left} min	in {left} min	in {left} Min.	en {left} min	dans {left} min
+start za {} d	race in {} d	Rennen in {} T.	carrera en {} d	course dans {} j
+trwa · zostało {}	now · {} left	läuft · noch {}	en curso · quedan {}	en cours · reste {}
+koliduje z: {}	overlaps: {}	überschneidet sich: {}	se solapa con: {}	chevauche : {}
+czas minął · {}	time is up · {}	Zeit abgelaufen · {}	se acabó el tiempo · {}	temps écoulé · {}
+Jeśli nic nie zrobisz, {} automatycznie za {} s.	If you do nothing, {} automatically in {} s.	Wenn du nichts tust, {} automatisch in {} s.	Si no haces nada, {} automáticamente en {} s.	Sans action de votre part, {} automatiquement dans {} s.
 # common
-Anuluj	Cancel	Abbrechen	Cancelar
-Gotowe	Done	Fertig	Listo
-Zamknij	Close	Schließen	Cerrar
-Zamknij (Esc)	Close (Esc)	Schließen (Esc)	Cerrar (Esc)
-Otwórz	Open	Öffnen	Abrir
-Zapisz	Save	Speichern	Guardar
-Usuń	Delete	Löschen	Eliminar
-Kopiuj	Copy	Kopieren	Copiar
-Wklej	Paste	Einfügen	Pegar
-Wytnij	Cut	Ausschneiden	Cortar
-Cofnij	Undo	Rückgängig	Deshacer
-Wybierz	Choose	Auswählen	Elegir
-Pokaż	Show	Anzeigen	Mostrar
-Ukryj	Hide	Ausblenden	Ocultar
-Ukryty	Hidden	Ausgeblendet	Oculto
-Więcej	More	Mehr	Más
-Mniej	Less	Weniger	Menos
-Więcej akcji	More actions	Weitere Aktionen	Más acciones
-Szukaj	Search	Suchen	Buscar
-Znajdź	Find	Suchen	Buscar
-Wykonaj	Run	Ausführen	Ejecutar
-Uruchom	Run	Starten	Ejecutar
-Potwierdź	Confirm	Bestätigen	Confirmar
-potwierdź	confirm	bestätigen	confirmar
-Akceptuj	Accept	Annehmen	Aceptar
-Odrzuć	Decline	Ablehnen	Rechazar
-Wyślij	Send	Senden	Enviar
-Wyczyść	Clear	Leeren	Borrar
-Wyczyść wszystko	Clear all	Alle löschen	Borrar todo
-Odśwież	Refresh	Aktualisieren	Actualizar
-Odśwież (F5)	Refresh (F5)	Aktualisieren (F5)	Actualizar (F5)
-Brak	None	Keine	Ninguno
-Brak wyników	No results	Keine Ergebnisse	Sin resultados
-Brak wyników dla „{}”	No results for “{}”	Keine Ergebnisse für „{}“	Sin resultados para «{}»
-Nic nie znaleziono	Nothing found	Nichts gefunden	No se encontró nada
-Wszystkie	All	Alle	Todos
-Wszystkie ›	All ›	Alle ›	Todos ›
-Włączone	On	Ein	Activado
-Wyłączone	Off	Aus	Desactivado
-Włączony	On	Ein	Activado
-Wyłączony	Off	Aus	Desactivado
-Połączono	Connected	Verbunden	Conectado
-połączono	connected	verbunden	conectado
-Połączony	Connected	Verbunden	Conectado
-Połączono · {}	Connected · {}	Verbunden · {}	Conectado · {}
-Połączono · {}%	Connected · {}%	Verbunden · {}%	Conectado · {}%
-połączono · {}%	connected · {}%	verbunden · {}%	conectado · {}%
-połączono{bat}	connected{bat}	verbunden{bat}	conectado{bat}
-Rozłączono	Disconnected	Getrennt	Desconectado
-rozłączono	disconnected	getrennt	desconectado
-Nie połączono	Not connected	Nicht verbunden	No conectado
-Łączenie…	Connecting…	Verbinden…	Conectando…
-łączenie…	connecting…	verbinden…	conectando…
-Rozłączanie…	Disconnecting…	Trennen…	Desconectando…
-Wczytywanie…	Loading…	Laden…	Cargando…
-Sprawdzanie…	Checking…	Prüfen…	Comprobando…
-Wyszukiwanie…	Searching…	Suchen…	Buscando…
-błąd	error	Fehler	error
-Błąd przy: {}	Failed at: {}	Fehler bei: {}	Error en: {}
-Skopiowano	Copied	Kopiert	Copiado
-Skopiowano {}	Copied {}	{} kopiert	Copiado {}
-Zapisano	Saved	Gespeichert	Guardado
-Usunięto	Deleted	Gelöscht	Eliminado
-Przywróć	Restore	Wiederherstellen	Restaurar
-Przywrócono	Restored	Wiederhergestellt	Restaurado
-Podpowiedź	Tip	Tipp	Consejo
-Uprawnienia	Permissions	Berechtigungen	Permisos
-maks. {}	max {}	max. {}	máx. {}
-{} (maks. {})	{} (max {})	{} (max. {})	{} (máx. {})
-+{} więcej	+{} more	+{} weitere	+{} más
-Kliknij jeszcze raz: {}	Click again: {}	Noch einmal klicken: {}	Haz clic otra vez: {}
-Naciśnij jeszcze raz, aby potwierdzić	Press again to confirm	Zum Bestätigen erneut drücken	Pulsa otra vez para confirmar
-kliknij, aby otworzyć	click to open	zum Öffnen klicken	haz clic para abrir
+Anuluj	Cancel	Abbrechen	Cancelar	Annuler
+Gotowe	Done	Fertig	Listo	Terminé
+Zamknij	Close	Schließen	Cerrar	Fermer
+Zamknij (Esc)	Close (Esc)	Schließen (Esc)	Cerrar (Esc)	Fermer (Échap)
+Otwórz	Open	Öffnen	Abrir	Ouvrir
+Zapisz	Save	Speichern	Guardar	Enregistrer
+Usuń	Delete	Löschen	Eliminar	Supprimer
+Kopiuj	Copy	Kopieren	Copiar	Copier
+Wklej	Paste	Einfügen	Pegar	Coller
+Wytnij	Cut	Ausschneiden	Cortar	Couper
+Cofnij	Undo	Rückgängig	Deshacer	Annuler
+Wybierz	Choose	Auswählen	Elegir	Choisir
+Pokaż	Show	Anzeigen	Mostrar	Afficher
+Ukryj	Hide	Ausblenden	Ocultar	Masquer
+Ukryty	Hidden	Ausgeblendet	Oculto	Masqué
+Więcej	More	Mehr	Más	Plus
+Mniej	Less	Weniger	Menos	Moins
+Więcej akcji	More actions	Weitere Aktionen	Más acciones	Plus d'actions
+Szukaj	Search	Suchen	Buscar	Rechercher
+Znajdź	Find	Suchen	Buscar	Trouver
+Wykonaj	Run	Ausführen	Ejecutar	Exécuter
+Uruchom	Run	Starten	Ejecutar	Lancer
+Potwierdź	Confirm	Bestätigen	Confirmar	Confirmer
+potwierdź	confirm	bestätigen	confirmar	confirmer
+Akceptuj	Accept	Annehmen	Aceptar	Accepter
+Odrzuć	Decline	Ablehnen	Rechazar	Refuser
+Wyślij	Send	Senden	Enviar	Envoyer
+Wyczyść	Clear	Leeren	Borrar	Effacer
+Wyczyść wszystko	Clear all	Alle löschen	Borrar todo	Tout effacer
+Odśwież	Refresh	Aktualisieren	Actualizar	Actualiser
+Odśwież (F5)	Refresh (F5)	Aktualisieren (F5)	Actualizar (F5)	Actualiser (F5)
+Brak	None	Keine	Ninguno	Aucun
+Brak wyników	No results	Keine Ergebnisse	Sin resultados	Aucun résultat
+Brak wyników dla „{}”	No results for “{}”	Keine Ergebnisse für „{}“	Sin resultados para «{}»	Aucun résultat pour « {} »
+Nic nie znaleziono	Nothing found	Nichts gefunden	No se encontró nada	Rien trouvé
+Wszystkie	All	Alle	Todos	Tous
+Wszystkie ›	All ›	Alle ›	Todos ›	Tous ›
+Włączone	On	Ein	Activado	Activé
+Wyłączone	Off	Aus	Desactivado	Désactivé
+Włączony	On	Ein	Activado	Activé
+Wyłączony	Off	Aus	Desactivado	Désactivé
+Połączono	Connected	Verbunden	Conectado	Connecté
+połączono	connected	verbunden	conectado	connecté
+Połączony	Connected	Verbunden	Conectado	Connecté
+Połączono · {}	Connected · {}	Verbunden · {}	Conectado · {}	Connecté · {}
+Połączono · {}%	Connected · {}%	Verbunden · {}%	Conectado · {}%	Connecté · {}%
+połączono · {}%	connected · {}%	verbunden · {}%	conectado · {}%	connecté · {}%
+połączono{bat}	connected{bat}	verbunden{bat}	conectado{bat}	connecté{bat}
+Rozłączono	Disconnected	Getrennt	Desconectado	Déconnecté
+rozłączono	disconnected	getrennt	desconectado	déconnecté
+Nie połączono	Not connected	Nicht verbunden	No conectado	Non connecté
+Łączenie…	Connecting…	Verbinden…	Conectando…	Connexion…
+łączenie…	connecting…	verbinden…	conectando…	connexion…
+Rozłączanie…	Disconnecting…	Trennen…	Desconectando…	Déconnexion…
+Wczytywanie…	Loading…	Laden…	Cargando…	Chargement…
+Sprawdzanie…	Checking…	Prüfen…	Comprobando…	Vérification…
+Wyszukiwanie…	Searching…	Suchen…	Buscando…	Recherche…
+błąd	error	Fehler	error	erreur
+Błąd przy: {}	Failed at: {}	Fehler bei: {}	Error en: {}	Échec à : {}
+Skopiowano	Copied	Kopiert	Copiado	Copié
+Skopiowano {}	Copied {}	{} kopiert	Copiado {}	Copié {}
+Zapisano	Saved	Gespeichert	Guardado	Enregistré
+Usunięto	Deleted	Gelöscht	Eliminado	Supprimé
+Przywróć	Restore	Wiederherstellen	Restaurar	Restaurer
+Przywrócono	Restored	Wiederhergestellt	Restaurado	Restauré
+Podpowiedź	Tip	Tipp	Consejo	Astuce
+Uprawnienia	Permissions	Berechtigungen	Permisos	Autorisations
+maks. {}	max {}	max. {}	máx. {}	max. {}
+{} (maks. {})	{} (max {})	{} (max. {})	{} (máx. {})	{} (max. {})
++{} więcej	+{} more	+{} weitere	+{} más	+{} de plus
+Kliknij jeszcze raz: {}	Click again: {}	Noch einmal klicken: {}	Haz clic otra vez: {}	Cliquez encore : {}
+Naciśnij jeszcze raz, aby potwierdzić	Press again to confirm	Zum Bestätigen erneut drücken	Pulsa otra vez para confirmar	Appuyez encore pour confirmer
+kliknij, aby otworzyć	click to open	zum Öffnen klicken	haz clic para abrir	cliquez pour ouvrir
 # session
-Zablokuj	Lock	Sperren	Bloquear
-Zablokuj ekran	Lock screen	Bildschirm sperren	Bloquear pantalla
-Wyloguj	Log out	Abmelden	Cerrar sesión
-Uśpij	Sleep	Ruhezustand	Suspender
-Uruchom ponownie	Restart	Neu starten	Reiniciar
-Wyłącz	Shut down	Ausschalten	Apagar
-Wyłącz komputer	Shut down	Computer ausschalten	Apagar el equipo
-Czy na pewno chcesz zamknąć wszystkie aplikacje i się wylogować?	Are you sure you want to quit all apps and log out?	Möchtest du wirklich alle Apps beenden und dich abmelden?	¿Seguro que quieres cerrar todas las apps y cerrar sesión?
-Czy na pewno chcesz teraz ponownie uruchomić komputer?	Are you sure you want to restart your computer now?	Möchtest du den Computer jetzt wirklich neu starten?	¿Seguro que quieres reiniciar el equipo ahora?
-Czy na pewno chcesz teraz wyłączyć komputer?	Are you sure you want to shut down your computer now?	Möchtest du den Computer jetzt wirklich ausschalten?	¿Seguro que quieres apagar el equipo ahora?
-wylogujesz się	you will be logged out	wirst du abgemeldet	se cerrará la sesión
-komputer uruchomi się ponownie	the computer will restart	startet der Computer neu	el equipo se reiniciará
-komputer wyłączy się	the computer will shut down	schaltet sich der Computer aus	el equipo se apagará
+Zablokuj	Lock	Sperren	Bloquear	Verrouiller
+Zablokuj ekran	Lock screen	Bildschirm sperren	Bloquear pantalla	Verrouiller l'écran
+Wyloguj	Log out	Abmelden	Cerrar sesión	Se déconnecter
+Uśpij	Sleep	Ruhezustand	Suspender	Suspendre
+Uruchom ponownie	Restart	Neu starten	Reiniciar	Redémarrer
+Wyłącz	Shut down	Ausschalten	Apagar	Éteindre
+Wyłącz komputer	Shut down	Computer ausschalten	Apagar el equipo	Éteindre
+Czy na pewno chcesz zamknąć wszystkie aplikacje i się wylogować?	Are you sure you want to quit all apps and log out?	Möchtest du wirklich alle Apps beenden und dich abmelden?	¿Seguro que quieres cerrar todas las apps y cerrar sesión?	Voulez-vous vraiment quitter toutes les applications et vous déconnecter ?
+Czy na pewno chcesz teraz ponownie uruchomić komputer?	Are you sure you want to restart your computer now?	Möchtest du den Computer jetzt wirklich neu starten?	¿Seguro que quieres reiniciar el equipo ahora?	Voulez-vous vraiment redémarrer l'ordinateur maintenant ?
+Czy na pewno chcesz teraz wyłączyć komputer?	Are you sure you want to shut down your computer now?	Möchtest du den Computer jetzt wirklich ausschalten?	¿Seguro que quieres apagar el equipo ahora?	Voulez-vous vraiment éteindre l'ordinateur maintenant ?
+wylogujesz się	you will be logged out	wirst du abgemeldet	se cerrará la sesión	vous serez déconnecté
+komputer uruchomi się ponownie	the computer will restart	startet der Computer neu	el equipo se reiniciará	l'ordinateur va redémarrer
+komputer wyłączy się	the computer will shut down	schaltet sich der Computer aus	el equipo se apagará	l'ordinateur va s'éteindre
 # lock, polkit
-Wpisz hasło	Enter password	Passwort eingeben	Introduce la contraseña
-Hasło	Password	Passwort	Contraseña
-hasło	password	Passwort	contraseña
-Nieprawidłowe hasło	Wrong password	Falsches Passwort	Contraseña incorrecta
-Zbyt wiele prób, poczekaj chwilę	Too many attempts, wait a moment	Zu viele Versuche, warte kurz	Demasiados intentos, espera un momento
-Naciśnij Enter, aby odblokować	Press Enter to unlock	Zum Entsperren Enter drücken	Pulsa Intro para desbloquear
-Nie można uruchomić PAM	Cannot start PAM	PAM kann nicht gestartet werden	No se puede iniciar PAM
-Błąd greetd	greetd error	greetd-Fehler	Error de greetd
-Wymagane uprawnienia administratora	Administrator privileges required	Administratorrechte erforderlich	Se requieren privilegios de administrador
-Użytkownik: {}	User: {}	Benutzer: {}	Usuario: {}
-Uwierzytelnij	Authenticate	Authentifizieren	Autenticar
-Nie można uruchomić pomocnika polkit	Cannot start the polkit helper	polkit-Helfer kann nicht gestartet werden	No se puede iniciar el asistente de polkit
-Caps Lock włączony	Caps Lock on	Feststelltaste ein	Bloq Mayús activado
-Caps Lock wyłączony	Caps Lock off	Feststelltaste aus	Bloq Mayús desactivado
-Num Lock włączony	Num Lock on	Num Lock ein	Bloq Num activado
-Num Lock wyłączony	Num Lock off	Num Lock aus	Bloq Num desactivado
+Wpisz hasło	Enter password	Passwort eingeben	Introduce la contraseña	Saisissez le mot de passe
+Hasło	Password	Passwort	Contraseña	Mot de passe
+hasło	password	Passwort	contraseña	mot de passe
+Nieprawidłowe hasło	Wrong password	Falsches Passwort	Contraseña incorrecta	Mot de passe incorrect
+Zbyt wiele prób, poczekaj chwilę	Too many attempts, wait a moment	Zu viele Versuche, warte kurz	Demasiados intentos, espera un momento	Trop de tentatives, patientez un instant
+Naciśnij Enter, aby odblokować	Press Enter to unlock	Zum Entsperren Enter drücken	Pulsa Intro para desbloquear	Appuyez sur Entrée pour déverrouiller
+Nie można uruchomić PAM	Cannot start PAM	PAM kann nicht gestartet werden	No se puede iniciar PAM	Impossible de démarrer PAM
+Błąd greetd	greetd error	greetd-Fehler	Error de greetd	Erreur greetd
+Wymagane uprawnienia administratora	Administrator privileges required	Administratorrechte erforderlich	Se requieren privilegios de administrador	Privilèges administrateur requis
+Użytkownik: {}	User: {}	Benutzer: {}	Usuario: {}	Utilisateur : {}
+Uwierzytelnij	Authenticate	Authentifizieren	Autenticar	S'authentifier
+Nie można uruchomić pomocnika polkit	Cannot start the polkit helper	polkit-Helfer kann nicht gestartet werden	No se puede iniciar el asistente de polkit	Impossible de démarrer l'assistant polkit
+Caps Lock włączony	Caps Lock on	Feststelltaste ein	Bloq Mayús activado	Verr. Maj activé
+Caps Lock wyłączony	Caps Lock off	Feststelltaste aus	Bloq Mayús desactivado	Verr. Maj désactivé
+Num Lock włączony	Num Lock on	Num Lock ein	Bloq Num activado	Verr. Num activé
+Num Lock wyłączony	Num Lock off	Num Lock aus	Bloq Num desactivado	Verr. Num désactivé
 # start, spotlight
-Szukaj aplikacji, plików i poleceń…	Search apps, files and commands…	Apps, Dateien und Befehle suchen…	Buscar apps, archivos y comandos…
-Szukaj w Spotlight	Spotlight Search	Spotlight-Suche	Buscar en Spotlight
-Wszystkie aplikacje	All apps	Alle Apps	Todas las apps
-Ulubione	Favourites	Favoriten	Favoritos
-‹ Ulubione	‹ Favourites	‹ Favoriten	‹ Favoritos
-Ostatnie pliki	Recent files	Zuletzt verwendet	Archivos recientes
-Aplikacja	App	App	App
-Aplikacje	Apps	Apps	Apps
-Pliki	Files	Dateien	Archivos
-Polecenia	Commands	Befehle	Comandos
-Polecenie	Command	Befehl	Comando
-Enter dwa razy	Enter twice	Zweimal Enter	Intro dos veces
-Terminal	Terminal	Terminal	Terminal
-Sieć	Web	Web	Web
-sieć	web	Web	web
-Kalkulator	Calculator	Rechner	Calculadora
-Enter kopiuje wynik	Enter copies the result	Enter kopiert das Ergebnis	Intro copia el resultado
-Szukaj w sieci: {t}	Search the web: {t}	Im Web suchen: {t}	Buscar en la web: {t}
-Szukaj w sieci: {raw}	Search the web: {raw}	Im Web suchen: {raw}	Buscar en la web: {raw}
-Uruchom w terminalu (Alacritty)	Run in terminal (Alacritty)	Im Terminal ausführen (Alacritty)	Ejecutar en terminal (Alacritty)
-Centrum sterowania	Control Centre	Kontrollzentrum	Centro de control
-Centrum powiadomień	Notification Centre	Mitteilungszentrale	Centro de notificaciones
-Wygląd aplikacji Qt	Qt app appearance	Qt-App-Darstellung	Apariencia de apps Qt
-Wygląd aplikacji GTK	GTK app appearance	GTK-App-Darstellung	Apariencia de apps GTK
-Zmień tapetę	Change wallpaper	Hintergrund ändern	Cambiar fondo
-Historia schowka	Clipboard history	Zwischenablage-Verlauf	Historial del portapapeles
-Zrzut ekranu	Screenshot	Bildschirmfoto	Captura de pantalla
-Emoji · Enter kopiuje	Emoji · Enter copies	Emoji · Enter kopiert	Emoji · Intro copia
-Ludzie i emocje	Smileys & people	Smileys & Personen	Caras y personas
-Zwierzęta i natura	Animals & nature	Tiere & Natur	Animales y naturaleza
-Jedzenie i napoje	Food & drink	Essen & Trinken	Comida y bebida
-Aktywności	Activities	Aktivitäten	Actividades
-Podróże i miejsca	Travel & places	Reisen & Orte	Viajes y lugares
-Przedmioty	Objects	Objekte	Objetos
-Symbole	Symbols	Symbole	Símbolos
-Flagi	Flags	Flaggen	Banderas
-Znajdź telefon	Find phone	Telefon suchen	Buscar teléfono
-Znajdź telefon (dzwoni)	Find phone (rings)	Telefon suchen (klingelt)	Buscar teléfono (suena)
-Wyślij schowek	Send clipboard	Zwischenablage senden	Enviar portapapeles
-Wyślij schowek na telefon	Send clipboard to phone	Zwischenablage ans Telefon senden	Enviar portapapeles al teléfono
-Wyślij pliki	Send files	Dateien senden	Enviar archivos
-Wyślij pliki na telefon	Send files to phone	Dateien ans Telefon senden	Enviar archivos al teléfono
-Pliki telefonu	Phone files	Telefondateien	Archivos del teléfono
-Przeglądaj pliki telefonu	Browse phone files	Telefondateien durchsuchen	Explorar archivos del teléfono
-Zrób zdjęcie telefonem	Take a photo with the phone	Foto mit dem Telefon aufnehmen	Hacer foto con el teléfono
-Zrób zdjęcie na telefonie	Take a photo on the phone	Foto auf dem Telefon aufnehmen	Hacer foto en el teléfono
-Wiadomości SMS	SMS messages	SMS-Nachrichten	Mensajes SMS
-Wiadomość SMS	SMS message	SMS-Nachricht	Mensaje SMS
-Ekran telefonu na komputerze	Phone screen on the computer	Telefonbildschirm am Computer	Pantalla del teléfono en el equipo
-Wyślij na telefon: {raw}	Send to phone: {raw}	Ans Telefon senden: {raw}	Enviar al teléfono: {raw}
-Wyślij link lub tekst na telefon	Send a link or text to the phone	Link oder Text ans Telefon senden	Enviar enlace o texto al teléfono
-Nic w kalendarzu na najbliższy miesiąc	Nothing in the calendar for the next month	Nichts im Kalender für den nächsten Monat	Nada en el calendario el próximo mes
-Najbliższe	Upcoming	Demnächst	Próximos
-Nadchodzące	Upcoming	Demnächst	Próximos
-brak wydarzeń	no events	keine Termine	sin eventos
-wolny dzień	free day	freier Tag	día libre
-dziś wolne	free today	heute frei	hoy libre
-{n_today} wydarzenia dziś	{n_today} events today	{n_today} Termine heute	{n_today} eventos hoy
-Brak wydarzeń dziś i jutro	No events today or tomorrow	Keine Termine heute und morgen	Sin eventos hoy ni mañana
-Brak wydarzeń do jutra	No events until tomorrow	Keine Termine bis morgen	Sin eventos hasta mañana
-Nic nie zaplanowano	Nothing planned	Nichts geplant	Nada planificado
-Nowe wydarzenie	New event	Neuer Termin	Nuevo evento
-zaczyna się teraz{wh}	starts now{wh}	beginnt jetzt{wh}	empieza ahora{wh}
+Szukaj aplikacji, plików i poleceń…	Search apps, files and commands…	Apps, Dateien und Befehle suchen…	Buscar apps, archivos y comandos…	Rechercher des apps, fichiers et commandes…
+Szukaj w Spotlight	Spotlight Search	Spotlight-Suche	Buscar en Spotlight	Recherche Spotlight
+Wszystkie aplikacje	All apps	Alle Apps	Todas las apps	Toutes les apps
+Ulubione	Favourites	Favoriten	Favoritos	Favoris
+‹ Ulubione	‹ Favourites	‹ Favoriten	‹ Favoritos	‹ Favoris
+Ostatnie pliki	Recent files	Zuletzt verwendet	Archivos recientes	Fichiers récents
+Aplikacja	App	App	App	App
+Aplikacje	Apps	Apps	Apps	Apps
+Pliki	Files	Dateien	Archivos	Fichiers
+Polecenia	Commands	Befehle	Comandos	Commandes
+Polecenie	Command	Befehl	Comando	Commande
+Enter dwa razy	Enter twice	Zweimal Enter	Intro dos veces	Entrée deux fois
+Terminal	Terminal	Terminal	Terminal	Terminal
+Sieć	Web	Web	Web	Web
+sieć	web	Web	web	web
+Kalkulator	Calculator	Rechner	Calculadora	Calculatrice
+Enter kopiuje wynik	Enter copies the result	Enter kopiert das Ergebnis	Intro copia el resultado	Entrée copie le résultat
+Szukaj w sieci: {t}	Search the web: {t}	Im Web suchen: {t}	Buscar en la web: {t}	Rechercher sur le web : {t}
+Szukaj w sieci: {raw}	Search the web: {raw}	Im Web suchen: {raw}	Buscar en la web: {raw}	Rechercher sur le web : {raw}
+Uruchom w terminalu (Alacritty)	Run in terminal (Alacritty)	Im Terminal ausführen (Alacritty)	Ejecutar en terminal (Alacritty)	Exécuter dans le terminal (Alacritty)
+Centrum sterowania	Control Centre	Kontrollzentrum	Centro de control	Centre de contrôle
+Centrum powiadomień	Notification Centre	Mitteilungszentrale	Centro de notificaciones	Centre de notifications
+Wygląd aplikacji Qt	Qt app appearance	Qt-App-Darstellung	Apariencia de apps Qt	Apparence des apps Qt
+Wygląd aplikacji GTK	GTK app appearance	GTK-App-Darstellung	Apariencia de apps GTK	Apparence des apps GTK
+Zmień tapetę	Change wallpaper	Hintergrund ändern	Cambiar fondo	Changer de fond d'écran
+Historia schowka	Clipboard history	Zwischenablage-Verlauf	Historial del portapapeles	Historique du presse-papiers
+Zrzut ekranu	Screenshot	Bildschirmfoto	Captura de pantalla	Capture d'écran
+Emoji · Enter kopiuje	Emoji · Enter copies	Emoji · Enter kopiert	Emoji · Intro copia	Emoji · Entrée copie
+Ludzie i emocje	Smileys & people	Smileys & Personen	Caras y personas	Smileys et personnes
+Zwierzęta i natura	Animals & nature	Tiere & Natur	Animales y naturaleza	Animaux et nature
+Jedzenie i napoje	Food & drink	Essen & Trinken	Comida y bebida	Nourriture et boissons
+Aktywności	Activities	Aktivitäten	Actividades	Activités
+Podróże i miejsca	Travel & places	Reisen & Orte	Viajes y lugares	Voyages et lieux
+Przedmioty	Objects	Objekte	Objetos	Objets
+Symbole	Symbols	Symbole	Símbolos	Symboles
+Flagi	Flags	Flaggen	Banderas	Drapeaux
+Znajdź telefon	Find phone	Telefon suchen	Buscar teléfono	Localiser le téléphone
+Znajdź telefon (dzwoni)	Find phone (rings)	Telefon suchen (klingelt)	Buscar teléfono (suena)	Localiser le téléphone (sonnerie)
+Wyślij schowek	Send clipboard	Zwischenablage senden	Enviar portapapeles	Envoyer le presse-papiers
+Wyślij schowek na telefon	Send clipboard to phone	Zwischenablage ans Telefon senden	Enviar portapapeles al teléfono	Envoyer le presse-papiers au téléphone
+Wyślij pliki	Send files	Dateien senden	Enviar archivos	Envoyer des fichiers
+Wyślij pliki na telefon	Send files to phone	Dateien ans Telefon senden	Enviar archivos al teléfono	Envoyer des fichiers au téléphone
+Pliki telefonu	Phone files	Telefondateien	Archivos del teléfono	Fichiers du téléphone
+Przeglądaj pliki telefonu	Browse phone files	Telefondateien durchsuchen	Explorar archivos del teléfono	Parcourir les fichiers du téléphone
+Zrób zdjęcie telefonem	Take a photo with the phone	Foto mit dem Telefon aufnehmen	Hacer foto con el teléfono	Prendre une photo avec le téléphone
+Zrób zdjęcie na telefonie	Take a photo on the phone	Foto auf dem Telefon aufnehmen	Hacer foto en el teléfono	Prendre une photo sur le téléphone
+Wiadomości SMS	SMS messages	SMS-Nachrichten	Mensajes SMS	Messages SMS
+Wiadomość SMS	SMS message	SMS-Nachricht	Mensaje SMS	Message SMS
+Ekran telefonu na komputerze	Phone screen on the computer	Telefonbildschirm am Computer	Pantalla del teléfono en el equipo	Écran du téléphone sur l'ordinateur
+Wyślij na telefon: {raw}	Send to phone: {raw}	Ans Telefon senden: {raw}	Enviar al teléfono: {raw}	Envoyer au téléphone : {raw}
+Wyślij link lub tekst na telefon	Send a link or text to the phone	Link oder Text ans Telefon senden	Enviar enlace o texto al teléfono	Envoyer un lien ou du texte au téléphone
+Nic w kalendarzu na najbliższy miesiąc	Nothing in the calendar for the next month	Nichts im Kalender für den nächsten Monat	Nada en el calendario el próximo mes	Rien dans le calendrier pour le mois à venir
+Najbliższe	Upcoming	Demnächst	Próximos	À venir
+Nadchodzące	Upcoming	Demnächst	Próximos	À venir
+brak wydarzeń	no events	keine Termine	sin eventos	aucun événement
+wolny dzień	free day	freier Tag	día libre	jour libre
+dziś wolne	free today	heute frei	hoy libre	libre aujourd'hui
+{n_today} wydarzenia dziś	{n_today} events today	{n_today} Termine heute	{n_today} eventos hoy	{n_today} événements aujourd'hui
+Brak wydarzeń dziś i jutro	No events today or tomorrow	Keine Termine heute und morgen	Sin eventos hoy ni mañana	Aucun événement aujourd'hui ni demain
+Brak wydarzeń do jutra	No events until tomorrow	Keine Termine bis morgen	Sin eventos hasta mañana	Aucun événement d'ici demain
+Nic nie zaplanowano	Nothing planned	Nichts geplant	Nada planificado	Rien de prévu
+Nowe wydarzenie	New event	Neuer Termin	Nuevo evento	Nouvel événement
+zaczyna się teraz{wh}	starts now{wh}	beginnt jetzt{wh}	empieza ahora{wh}	commence maintenant{wh}
 # phone
-Telefon	Phone	Telefon	Teléfono
-Telefon dzwoni	Phone is ringing	Telefon klingelt	El teléfono está sonando
-Schowek wysłany	Clipboard sent	Zwischenablage gesendet	Portapapeles enviado
-Schowek wysłany na telefon	Clipboard sent to phone	Zwischenablage ans Telefon gesendet	Portapapeles enviado al teléfono
-Tekst wysłany na telefon	Text sent to phone	Text ans Telefon gesendet	Texto enviado al teléfono
-Link otwarty na telefonie	Link opened on the phone	Link auf dem Telefon geöffnet	Enlace abierto en el teléfono
-KDE Connect nie działa	KDE Connect is not running	KDE Connect läuft nicht	KDE Connect no está en marcha
-KDE Connect nie działa (kdeconnectd).	KDE Connect is not running (kdeconnectd).	KDE Connect läuft nicht (kdeconnectd).	KDE Connect no está en marcha (kdeconnectd).
-Brak urządzeń · otwórz KDE Connect na telefonie	No devices · open KDE Connect on the phone	Keine Geräte · KDE Connect auf dem Telefon öffnen	Sin dispositivos · abre KDE Connect en el teléfono
-Otwórz KDE Connect na telefonie w tej samej sieci.	Open KDE Connect on a phone in the same network.	Öffne KDE Connect auf einem Telefon im selben Netz.	Abre KDE Connect en un teléfono de la misma red.
-Chce się sparować · klucz {key}	Wants to pair · key {key}	Möchte koppeln · Schlüssel {key}	Quiere emparejarse · clave {key}
-Potwierdź na telefonie · klucz {key}	Confirm on the phone · key {key}	Auf dem Telefon bestätigen · Schlüssel {key}	Confirma en el teléfono · clave {key}
-Zaakceptuj parowanie na telefonie (klucz {key}).	Accept the pairing on the phone (key {key}).	Kopplung auf dem Telefon annehmen (Schlüssel {key}).	Acepta el emparejamiento en el teléfono (clave {key}).
-Telefon chce się sparować. Sprawdź, czy klucz {key} jest taki sam na telefonie.	The phone wants to pair. Check that the key {key} is the same on the phone.	Das Telefon möchte koppeln. Prüfe, ob der Schlüssel {key} auf dem Telefon gleich ist.	El teléfono quiere emparejarse. Comprueba que la clave {key} sea la misma en el teléfono.
-{n} chce się sparować	{n} wants to pair	{n} möchte koppeln	{n} quiere emparejarse
-klucz {} · kliknij, aby zaakceptować	key {} · click to accept	Schlüssel {} · zum Annehmen klicken	clave {} · haz clic para aceptar
-W zasięgu · niesparowany	In range · not paired	In Reichweite · nicht gekoppelt	En alcance · no emparejado
-Niesparowany	Not paired	Nicht gekoppelt	No emparejado
-Telefon w sieci, ale niesparowany.	Phone in the network, but not paired.	Telefon im Netz, aber nicht gekoppelt.	Teléfono en la red, pero no emparejado.
-Poza zasięgiem	Out of range	Außer Reichweite	Fuera de alcance
-poza zasięgiem	out of range	außer Reichweite	fuera de alcance
-Telefon poza zasięgiem. Wróci sam, gdy będzie w tej samej sieci.	Phone out of range. It comes back by itself in the same network.	Telefon außer Reichweite. Es kommt im selben Netz von selbst zurück.	Teléfono fuera de alcance. Volverá solo cuando esté en la misma red.
-Telefon niepołączony	Phone not connected	Telefon nicht verbunden	Teléfono no conectado
-sparowano · telefon i komputer połączone	paired · phone and computer connected	gekoppelt · Telefon und Computer verbunden	emparejado · teléfono y equipo conectados
-Sparuj	Pair	Koppeln	Emparejar
-Parowanie…	Pairing…	Koppeln…	Emparejando…
-Kliknij, aby sparować	Click to pair	Zum Koppeln klicken	Haz clic para emparejar
-ładuje	charging	lädt	cargando
-ładowanie · {ob}%	charging · {ob}%	lädt · {ob}%	cargando · {ob}%
-naładowana	charged	geladen	cargada
-naładowany · 100%	charged · 100%	geladen · 100%	cargado · 100%
-słaba bateria	low battery	Akku schwach	batería baja
-słaba bateria · {}%	low battery · {}%	Akku schwach · {}%	batería baja · {}%
-Bateria	Battery	Akku	Batería
-Bateria {ph_bat}%	Battery {ph_bat}%	Akku {ph_bat}%	Batería {ph_bat}%
-pliki podłączone	files mounted	Dateien eingebunden	archivos montados
-Ekran na PC	Screen on PC	Bildschirm am PC	Pantalla en el PC
-Zdjęcie z telefonu	Photo from the phone	Foto vom Telefon	Foto del teléfono
-Zrzut ekranu telefonu	Phone screenshot	Telefon-Bildschirmfoto	Captura del teléfono
-Zrzut ekranu telefonu w schowku	Phone screenshot in the clipboard	Telefon-Bildschirmfoto in der Zwischenablage	Captura del teléfono en el portapapeles
-Brak powiadomień z telefonu	No notifications from the phone	Keine Mitteilungen vom Telefon	Sin notificaciones del teléfono
-Jeśli powinny tu być: daj KDE Connect dostęp do powiadomień na telefonie{}	If there should be some: give KDE Connect access to notifications on the phone{}	Falls welche da sein sollten: KDE Connect auf dem Telefon Zugriff auf Mitteilungen geben{}	Si debería haber alguna: da a KDE Connect acceso a las notificaciones del teléfono{}
-KDE Connect na telefonie potrzebuje dostępu do kontaktów{}	KDE Connect on the phone needs access to contacts{}	KDE Connect auf dem Telefon braucht Zugriff auf Kontakte{}	KDE Connect en el teléfono necesita acceso a los contactos{}
-Włącz wtyczkę SMS w KDE Connect na telefonie	Enable the SMS plugin in KDE Connect on the phone	SMS-Plugin in KDE Connect auf dem Telefon aktivieren	Activa el complemento SMS de KDE Connect en el teléfono
-SMS niedostępne	SMS not available	SMS nicht verfügbar	SMS no disponible
-SMS wysłany	SMS sent	SMS gesendet	SMS enviado
-Nowa wiadomość	New message	Neue Nachricht	Nuevo mensaje
-Odpowiedz	Reply	Antworten	Responder
-Odpowiedź wysłana	Reply sent	Antwort gesendet	Respuesta enviada
-odpowiedź wysłana	reply sent	Antwort gesendet	respuesta enviada
-Odpowiedź do {}	Reply to {}	Antwort an {}	Respuesta a {}
-Odpowiedź do {title}	Reply to {title}	Antwort an {title}	Respuesta a {title}
-Wczytuję rozmowę…	Loading conversation…	Unterhaltung wird geladen…	Cargando conversación…
-Wczytuję wiadomości…	Loading messages…	Nachrichten werden geladen…	Cargando mensajes…
-Szukaj kontaktu	Search contacts	Kontakt suchen	Buscar contacto
-Brak kontaktów	No contacts	Keine Kontakte	Sin contactos
-Kontakty{}	Contacts{}	Kontakte{}	Contactos{}
-Wiadomości{}	Messages{}	Nachrichten{}	Mensajes{}
-Powiadomienia{}	Notifications{}	Mitteilungen{}	Notificaciones{}
-Do: numer lub imię z kontaktów	To: number or name from contacts	An: Nummer oder Name aus Kontakten	Para: número o nombre de contactos
-Ty: 	You: 	Du: 	Tú:
-Wysłano: {a}	Sent: {a}	Gesendet: {a}	Enviado: {a}
-wysłano · {a}	sent · {a}	gesendet · {a}	enviado · {a}
-Nieznany numer	Unknown number	Unbekannte Nummer	Número desconocido
-nieodebrane połączenie	missed call	verpasster Anruf	llamada perdida
-połączenie przychodzące	incoming call	eingehender Anruf	llamada entrante
-rozmowa zakończona · {}	call ended · {}	Anruf beendet · {}	llamada finalizada · {}
-Dzwonię: {nm}	Calling: {nm}	Anruf: {nm}	Llamando: {nm}
-dzwonię…	calling…	rufe an…	llamando…
-łączę dźwięk…	connecting audio…	verbinde Audio…	conectando audio…
-rozmowy na PC	calls on the PC	Anrufe am PC	llamadas en el PC
-dźwięk na telefonie	audio on the phone	Ton am Telefon	audio en el teléfono
-dźwięk przez komputer{}	audio through the computer{}	Ton über den Computer{}	audio por el equipo{}
-bez Bluetooth: dźwięk na telefonie	no Bluetooth: audio on the phone	ohne Bluetooth: Ton am Telefon	sin Bluetooth: audio en el teléfono
-Nadaję uprawnienia KDE Connect…	Granting KDE Connect permissions…	KDE Connect erhält Berechtigungen…	Concediendo permisos a KDE Connect…
-ADB już działa przez Wi-Fi	ADB already works over Wi-Fi	ADB läuft bereits über WLAN	ADB ya funciona por Wi-Fi
-Włączam ADB przez Wi-Fi…	Enabling ADB over Wi-Fi…	ADB über WLAN wird aktiviert…	Activando ADB por Wi-Fi…
-ADB: podłącz telefon kablem z włączonym debugowaniem USB i zezwól na komputer. Potem „ADB przez Wi-Fi” i kabel można odłączyć.	ADB: connect the phone by cable with USB debugging on and allow this computer. Then “ADB over Wi-Fi” and the cable can go.	ADB: Telefon per Kabel mit USB-Debugging verbinden und diesen Computer zulassen. Dann „ADB über WLAN“, das Kabel kann ab.	ADB: conecta el teléfono por cable con depuración USB y permite este equipo. Luego «ADB por Wi-Fi» y puedes quitar el cable.
-ADB daje więcej (ekran telefonu na PC, zrzuty, dzwonienie, pamięć, temperatura): sudo pacman -S android-tools scrcpy	ADB gives more (phone screen on the PC, screenshots, ringing, storage, temperature): sudo pacman -S android-tools scrcpy	ADB kann mehr (Telefonbildschirm am PC, Screenshots, Klingeln, Speicher, Temperatur): sudo pacman -S android-tools scrcpy	ADB da más (pantalla del teléfono en el PC, capturas, timbre, almacenamiento, temperatura): sudo pacman -S android-tools scrcpy
-ekran wł.	screen on	Bildschirm an	pantalla enc.
-ekran wył.	screen off	Bildschirm aus	pantalla apag.
-prosi o uwagę · kliknij	wants attention · click	möchte Aufmerksamkeit · klicken	pide atención · haz clic
-📎 załącznik	📎 attachment	📎 Anhang	📎 adjunto
+Telefon	Phone	Telefon	Teléfono	Téléphone
+Telefon dzwoni	Phone is ringing	Telefon klingelt	El teléfono está sonando	Le téléphone sonne
+Schowek wysłany	Clipboard sent	Zwischenablage gesendet	Portapapeles enviado	Presse-papiers envoyé
+Schowek wysłany na telefon	Clipboard sent to phone	Zwischenablage ans Telefon gesendet	Portapapeles enviado al teléfono	Presse-papiers envoyé au téléphone
+Tekst wysłany na telefon	Text sent to phone	Text ans Telefon gesendet	Texto enviado al teléfono	Texte envoyé au téléphone
+Link otwarty na telefonie	Link opened on the phone	Link auf dem Telefon geöffnet	Enlace abierto en el teléfono	Lien ouvert sur le téléphone
+KDE Connect nie działa	KDE Connect is not running	KDE Connect läuft nicht	KDE Connect no está en marcha	KDE Connect ne fonctionne pas
+KDE Connect nie działa (kdeconnectd).	KDE Connect is not running (kdeconnectd).	KDE Connect läuft nicht (kdeconnectd).	KDE Connect no está en marcha (kdeconnectd).	KDE Connect ne fonctionne pas (kdeconnectd).
+Brak urządzeń · otwórz KDE Connect na telefonie	No devices · open KDE Connect on the phone	Keine Geräte · KDE Connect auf dem Telefon öffnen	Sin dispositivos · abre KDE Connect en el teléfono	Aucun appareil · ouvrez KDE Connect sur le téléphone
+Otwórz KDE Connect na telefonie w tej samej sieci.	Open KDE Connect on a phone in the same network.	Öffne KDE Connect auf einem Telefon im selben Netz.	Abre KDE Connect en un teléfono de la misma red.	Ouvrez KDE Connect sur un téléphone du même réseau.
+Chce się sparować · klucz {key}	Wants to pair · key {key}	Möchte koppeln · Schlüssel {key}	Quiere emparejarse · clave {key}	Veut s'appairer · clé {key}
+Potwierdź na telefonie · klucz {key}	Confirm on the phone · key {key}	Auf dem Telefon bestätigen · Schlüssel {key}	Confirma en el teléfono · clave {key}	Confirmez sur le téléphone · clé {key}
+Zaakceptuj parowanie na telefonie (klucz {key}).	Accept the pairing on the phone (key {key}).	Kopplung auf dem Telefon annehmen (Schlüssel {key}).	Acepta el emparejamiento en el teléfono (clave {key}).	Acceptez l'appairage sur le téléphone (clé {key}).
+Telefon chce się sparować. Sprawdź, czy klucz {key} jest taki sam na telefonie.	The phone wants to pair. Check that the key {key} is the same on the phone.	Das Telefon möchte koppeln. Prüfe, ob der Schlüssel {key} auf dem Telefon gleich ist.	El teléfono quiere emparejarse. Comprueba que la clave {key} sea la misma en el teléfono.	Le téléphone veut s'appairer. Vérifiez que la clé {key} est la même sur le téléphone.
+{n} chce się sparować	{n} wants to pair	{n} möchte koppeln	{n} quiere emparejarse	{n} veut s'appairer
+klucz {} · kliknij, aby zaakceptować	key {} · click to accept	Schlüssel {} · zum Annehmen klicken	clave {} · haz clic para aceptar	clé {} · cliquez pour accepter
+W zasięgu · niesparowany	In range · not paired	In Reichweite · nicht gekoppelt	En alcance · no emparejado	À portée · non appairé
+Niesparowany	Not paired	Nicht gekoppelt	No emparejado	Non appairé
+Telefon w sieci, ale niesparowany.	Phone in the network, but not paired.	Telefon im Netz, aber nicht gekoppelt.	Teléfono en la red, pero no emparejado.	Téléphone sur le réseau, mais non appairé.
+Poza zasięgiem	Out of range	Außer Reichweite	Fuera de alcance	Hors de portée
+poza zasięgiem	out of range	außer Reichweite	fuera de alcance	hors de portée
+Telefon poza zasięgiem. Wróci sam, gdy będzie w tej samej sieci.	Phone out of range. It comes back by itself in the same network.	Telefon außer Reichweite. Es kommt im selben Netz von selbst zurück.	Teléfono fuera de alcance. Volverá solo cuando esté en la misma red.	Téléphone hors de portée. Il reviendra tout seul sur le même réseau.
+Telefon niepołączony	Phone not connected	Telefon nicht verbunden	Teléfono no conectado	Téléphone non connecté
+sparowano · telefon i komputer połączone	paired · phone and computer connected	gekoppelt · Telefon und Computer verbunden	emparejado · teléfono y equipo conectados	appairé · téléphone et ordinateur connectés
+Sparuj	Pair	Koppeln	Emparejar	Appairer
+Parowanie…	Pairing…	Koppeln…	Emparejando…	Appairage…
+Kliknij, aby sparować	Click to pair	Zum Koppeln klicken	Haz clic para emparejar	Cliquez pour appairer
+ładuje	charging	lädt	cargando	en charge
+ładowanie · {ob}%	charging · {ob}%	lädt · {ob}%	cargando · {ob}%	en charge · {ob}%
+naładowana	charged	geladen	cargada	chargée
+naładowany · 100%	charged · 100%	geladen · 100%	cargado · 100%	chargé · 100%
+słaba bateria	low battery	Akku schwach	batería baja	batterie faible
+słaba bateria · {}%	low battery · {}%	Akku schwach · {}%	batería baja · {}%	batterie faible · {}%
+Bateria	Battery	Akku	Batería	Batterie
+Bateria {ph_bat}%	Battery {ph_bat}%	Akku {ph_bat}%	Batería {ph_bat}%	Batterie {ph_bat}%
+pliki podłączone	files mounted	Dateien eingebunden	archivos montados	fichiers montés
+Ekran na PC	Screen on PC	Bildschirm am PC	Pantalla en el PC	Écran sur le PC
+Zdjęcie z telefonu	Photo from the phone	Foto vom Telefon	Foto del teléfono	Photo du téléphone
+Zrzut ekranu telefonu	Phone screenshot	Telefon-Bildschirmfoto	Captura del teléfono	Capture du téléphone
+Zrzut ekranu telefonu w schowku	Phone screenshot in the clipboard	Telefon-Bildschirmfoto in der Zwischenablage	Captura del teléfono en el portapapeles	Capture du téléphone dans le presse-papiers
+Brak powiadomień z telefonu	No notifications from the phone	Keine Mitteilungen vom Telefon	Sin notificaciones del teléfono	Aucune notification du téléphone
+Jeśli powinny tu być: daj KDE Connect dostęp do powiadomień na telefonie{}	If there should be some: give KDE Connect access to notifications on the phone{}	Falls welche da sein sollten: KDE Connect auf dem Telefon Zugriff auf Mitteilungen geben{}	Si debería haber alguna: da a KDE Connect acceso a las notificaciones del teléfono{}	S'il devrait y en avoir : donnez à KDE Connect l'accès aux notifications sur le téléphone{}
+KDE Connect na telefonie potrzebuje dostępu do kontaktów{}	KDE Connect on the phone needs access to contacts{}	KDE Connect auf dem Telefon braucht Zugriff auf Kontakte{}	KDE Connect en el teléfono necesita acceso a los contactos{}	KDE Connect sur le téléphone a besoin d'accéder aux contacts{}
+Włącz wtyczkę SMS w KDE Connect na telefonie	Enable the SMS plugin in KDE Connect on the phone	SMS-Plugin in KDE Connect auf dem Telefon aktivieren	Activa el complemento SMS de KDE Connect en el teléfono	Activez le module SMS dans KDE Connect sur le téléphone
+SMS niedostępne	SMS not available	SMS nicht verfügbar	SMS no disponible	SMS indisponibles
+SMS wysłany	SMS sent	SMS gesendet	SMS enviado	SMS envoyé
+Nowa wiadomość	New message	Neue Nachricht	Nuevo mensaje	Nouveau message
+Odpowiedz	Reply	Antworten	Responder	Répondre
+Odpowiedź wysłana	Reply sent	Antwort gesendet	Respuesta enviada	Réponse envoyée
+odpowiedź wysłana	reply sent	Antwort gesendet	respuesta enviada	réponse envoyée
+Odpowiedź do {}	Reply to {}	Antwort an {}	Respuesta a {}	Réponse à {}
+Odpowiedź do {title}	Reply to {title}	Antwort an {title}	Respuesta a {title}	Réponse à {title}
+Wczytuję rozmowę…	Loading conversation…	Unterhaltung wird geladen…	Cargando conversación…	Chargement de la conversation…
+Wczytuję wiadomości…	Loading messages…	Nachrichten werden geladen…	Cargando mensajes…	Chargement des messages…
+Szukaj kontaktu	Search contacts	Kontakt suchen	Buscar contacto	Rechercher un contact
+Brak kontaktów	No contacts	Keine Kontakte	Sin contactos	Aucun contact
+Kontakty{}	Contacts{}	Kontakte{}	Contactos{}	Contacts{}
+Wiadomości{}	Messages{}	Nachrichten{}	Mensajes{}	Messages{}
+Powiadomienia{}	Notifications{}	Mitteilungen{}	Notificaciones{}	Notifications{}
+Do: numer lub imię z kontaktów	To: number or name from contacts	An: Nummer oder Name aus Kontakten	Para: número o nombre de contactos	À : numéro ou nom des contacts
+Ty: 	You: 	Du: 	Tú:	Vous : 
+Wysłano: {a}	Sent: {a}	Gesendet: {a}	Enviado: {a}	Envoyé : {a}
+wysłano · {a}	sent · {a}	gesendet · {a}	enviado · {a}	envoyé · {a}
+Nieznany numer	Unknown number	Unbekannte Nummer	Número desconocido	Numéro inconnu
+nieodebrane połączenie	missed call	verpasster Anruf	llamada perdida	appel manqué
+połączenie przychodzące	incoming call	eingehender Anruf	llamada entrante	appel entrant
+rozmowa zakończona · {}	call ended · {}	Anruf beendet · {}	llamada finalizada · {}	appel terminé · {}
+Dzwonię: {nm}	Calling: {nm}	Anruf: {nm}	Llamando: {nm}	Appel : {nm}
+dzwonię…	calling…	rufe an…	llamando…	appel…
+łączę dźwięk…	connecting audio…	verbinde Audio…	conectando audio…	connexion audio…
+rozmowy na PC	calls on the PC	Anrufe am PC	llamadas en el PC	appels sur le PC
+dźwięk na telefonie	audio on the phone	Ton am Telefon	audio en el teléfono	audio sur le téléphone
+dźwięk przez komputer{}	audio through the computer{}	Ton über den Computer{}	audio por el equipo{}	audio via l'ordinateur{}
+bez Bluetooth: dźwięk na telefonie	no Bluetooth: audio on the phone	ohne Bluetooth: Ton am Telefon	sin Bluetooth: audio en el teléfono	sans Bluetooth : audio sur le téléphone
+Nadaję uprawnienia KDE Connect…	Granting KDE Connect permissions…	KDE Connect erhält Berechtigungen…	Concediendo permisos a KDE Connect…	Attribution des autorisations à KDE Connect…
+ADB już działa przez Wi-Fi	ADB already works over Wi-Fi	ADB läuft bereits über WLAN	ADB ya funciona por Wi-Fi	ADB fonctionne déjà en Wi-Fi
+Włączam ADB przez Wi-Fi…	Enabling ADB over Wi-Fi…	ADB über WLAN wird aktiviert…	Activando ADB por Wi-Fi…	Activation d'ADB en Wi-Fi…
+ADB: podłącz telefon kablem z włączonym debugowaniem USB i zezwól na komputer. Potem „ADB przez Wi-Fi” i kabel można odłączyć.	ADB: connect the phone by cable with USB debugging on and allow this computer. Then “ADB over Wi-Fi” and the cable can go.	ADB: Telefon per Kabel mit USB-Debugging verbinden und diesen Computer zulassen. Dann „ADB über WLAN“, das Kabel kann ab.	ADB: conecta el teléfono por cable con depuración USB y permite este equipo. Luego «ADB por Wi-Fi» y puedes quitar el cable.	ADB : branchez le téléphone par câble avec le débogage USB activé et autorisez cet ordinateur. Ensuite « ADB en Wi-Fi » et le câble peut être retiré.
+ADB daje więcej (ekran telefonu na PC, zrzuty, dzwonienie, pamięć, temperatura): sudo pacman -S android-tools scrcpy	ADB gives more (phone screen on the PC, screenshots, ringing, storage, temperature): sudo pacman -S android-tools scrcpy	ADB kann mehr (Telefonbildschirm am PC, Screenshots, Klingeln, Speicher, Temperatur): sudo pacman -S android-tools scrcpy	ADB da más (pantalla del teléfono en el PC, capturas, timbre, almacenamiento, temperatura): sudo pacman -S android-tools scrcpy	ADB offre plus (écran du téléphone sur le PC, captures, sonnerie, stockage, température) : sudo pacman -S android-tools scrcpy
+ekran wł.	screen on	Bildschirm an	pantalla enc.	écran allumé
+ekran wył.	screen off	Bildschirm aus	pantalla apag.	écran éteint
+prosi o uwagę · kliknij	wants attention · click	möchte Aufmerksamkeit · klicken	pide atención · haz clic	demande votre attention · cliquez
+📎 załącznik	📎 attachment	📎 Anhang	📎 adjunto	📎 pièce jointe
 # control centre
-Dźwięk	Sound	Ton	Sonido
-Wyjście	Output	Ausgabe	Salida
-Wejście	Input	Eingabe	Entrada
-Głośniki · EQ	Speakers · EQ	Lautsprecher · EQ	Altavoces · EQ
-Mikrofon · EQ	Microphone · EQ	Mikrofon · EQ	Micrófono · EQ
-Mikrofon	Microphone	Mikrofon	Micrófono
-Słuchawki	Headphones	Kopfhörer	Auriculares
-Żadna aplikacja nie odtwarza dźwięku	No app is playing sound	Keine App gibt Ton wieder	Ninguna app reproduce sonido
-Działa {}	Up {}	Läuft seit {}	En marcha {}
-Nie przeszkadzać	Do not disturb	Nicht stören	No molestar
-nie przeszkadzać	do not disturb	nicht stören	no molestar
-Nie przeszk.	DND	Nicht stören	No molestar
-Nocne światło	Night light	Nachtlicht	Luz nocturna
-{} urządzenia	{} devices	{} Geräte	{} dispositivos
-Bluetooth jest wyłączony	Bluetooth is off	Bluetooth ist aus	Bluetooth está desactivado
-Bluetooth włączony	Bluetooth on	Bluetooth an	Bluetooth activado
-Bluetooth wyłączony	Bluetooth off	Bluetooth aus	Bluetooth desactivado
-Moje urządzenia	My devices	Meine Geräte	Mis dispositivos
-Inne urządzenia	Other devices	Andere Geräte	Otros dispositivos
-Nie znaleziono urządzeń w pobliżu	No devices found nearby	Keine Geräte in der Nähe gefunden	No hay dispositivos cerca
-Ruch	Traffic	Datenverkehr	Tráfico
-Pobieranie	Download	Download	Descarga
-Wysyłanie	Upload	Upload	Subida
-Szczegóły	Details	Details	Detalles
-Połączenie	Connection	Verbindung	Conexión
-Interfejs	Interface	Schnittstelle	Interfaz
-Adres IP	IP address	IP-Adresse	Dirección IP
-Brama	Gateway	Gateway	Puerta de enlace
-Brak internetu	No internet	Kein Internet	Sin internet
-Połączono z internetem	Connected to the internet	Mit dem Internet verbunden	Conectado a internet
-główne połączenie	main connection	Hauptverbindung	conexión principal
-VPN połączony	VPN connected	VPN verbunden	VPN conectada
-VPN rozłączony	VPN disconnected	VPN getrennt	VPN desconectada
-Głośność	Volume	Lautstärke	Volumen
-Głośność {}%	Volume {}%	Lautstärke {}%	Volumen {}%
-Wycisz	Mute	Stumm	Silenciar
-Wyciszono	Muted	Stumm	Silenciado
-Wyciszony	Muted	Stumm	Silenciado
-Mikrofon wyciszony	Microphone muted	Mikrofon stumm	Micrófono silenciado
-Mikrofon włączony	Microphone on	Mikrofon an	Micrófono activado
-Mikrofon w użyciu	Microphone in use	Mikrofon in Verwendung	Micrófono en uso
-Mikrofon zwolniony	Microphone released	Mikrofon freigegeben	Micrófono liberado
-Kamera w użyciu	Camera in use	Kamera in Verwendung	Cámara en uso
-Kamera wyłączona	Camera off	Kamera aus	Cámara desactivada
-Udostępniasz ekran	You are sharing your screen	Du teilst deinen Bildschirm	Estás compartiendo la pantalla
-Koniec udostępniania	Sharing ended	Freigabe beendet	Fin de compartir
-treść ukryta · udostępniasz ekran	content hidden · you are sharing your screen	Inhalt verborgen · du teilst deinen Bildschirm	contenido oculto · estás compartiendo la pantalla
-Oszczędzanie energii	Power saver	Energiesparen	Ahorro de energía
-Zrównoważony	Balanced	Ausgewogen	Equilibrado
-Wydajność	Performance	Leistung	Rendimiento
-wyjście audio	audio output	Audioausgabe	salida de audio
-wejście audio	audio input	Audioeingang	entrada de audio
-monitor podłączony	monitor connected	Monitor angeschlossen	monitor conectado
-monitor odłączony	monitor disconnected	Monitor getrennt	monitor desconectado
-podłączono	connected	angeschlossen	conectado
-odłączono	disconnected	getrennt	desconectado
-układ klawiatury	keyboard layout	Tastaturlayout	distribución de teclado
-Konfiguracja przeładowana	Configuration reloaded	Konfiguration neu geladen	Configuración recargada
-Błędy konfiguracji Hyprland ({})	Hyprland config errors ({})	Hyprland-Konfigurationsfehler ({})	Errores de configuración de Hyprland ({})
-Mało miejsca na dysku	Low disk space	Wenig Speicherplatz	Poco espacio en disco
-zamontowano{} · otwórz	mounted{} · open	eingebunden{} · öffnen	montado{} · abrir
-odmontowano · można odłączyć	unmounted · safe to remove	ausgehängt · kann entfernt werden	desmontado · se puede quitar
-{} wolne z {}	{} free of {}	{} frei von {}	{} libres de {}
-Pamięć	Memory	Speicher	Memoria
-Klawiatura	Keyboard	Tastatur	Teclado
+Dźwięk	Sound	Ton	Sonido	Son
+Wyjście	Output	Ausgabe	Salida	Sortie
+Wejście	Input	Eingabe	Entrada	Entrée
+Głośniki · EQ	Speakers · EQ	Lautsprecher · EQ	Altavoces · EQ	Haut-parleurs · EQ
+Mikrofon · EQ	Microphone · EQ	Mikrofon · EQ	Micrófono · EQ	Microphone · EQ
+Mikrofon	Microphone	Mikrofon	Micrófono	Microphone
+Słuchawki	Headphones	Kopfhörer	Auriculares	Casque
+Żadna aplikacja nie odtwarza dźwięku	No app is playing sound	Keine App gibt Ton wieder	Ninguna app reproduce sonido	Aucune app ne joue de son
+Działa {}	Up {}	Läuft seit {}	En marcha {}	Actif depuis {}
+Nie przeszkadzać	Do not disturb	Nicht stören	No molestar	Ne pas déranger
+nie przeszkadzać	do not disturb	nicht stören	no molestar	ne pas déranger
+Nie przeszk.	DND	Nicht stören	No molestar	NPD
+Nocne światło	Night light	Nachtlicht	Luz nocturna	Éclairage nocturne
+{} urządzenia	{} devices	{} Geräte	{} dispositivos	{} appareils
+Bluetooth jest wyłączony	Bluetooth is off	Bluetooth ist aus	Bluetooth está desactivado	Le Bluetooth est désactivé
+Bluetooth włączony	Bluetooth on	Bluetooth an	Bluetooth activado	Bluetooth activé
+Bluetooth wyłączony	Bluetooth off	Bluetooth aus	Bluetooth desactivado	Bluetooth désactivé
+Moje urządzenia	My devices	Meine Geräte	Mis dispositivos	Mes appareils
+Inne urządzenia	Other devices	Andere Geräte	Otros dispositivos	Autres appareils
+Nie znaleziono urządzeń w pobliżu	No devices found nearby	Keine Geräte in der Nähe gefunden	No hay dispositivos cerca	Aucun appareil trouvé à proximité
+Ruch	Traffic	Datenverkehr	Tráfico	Trafic
+Pobieranie	Download	Download	Descarga	Réception
+Wysyłanie	Upload	Upload	Subida	Envoi
+Szczegóły	Details	Details	Detalles	Détails
+Połączenie	Connection	Verbindung	Conexión	Connexion
+Interfejs	Interface	Schnittstelle	Interfaz	Interface
+Adres IP	IP address	IP-Adresse	Dirección IP	Adresse IP
+Brama	Gateway	Gateway	Puerta de enlace	Passerelle
+Brak internetu	No internet	Kein Internet	Sin internet	Pas d'internet
+Połączono z internetem	Connected to the internet	Mit dem Internet verbunden	Conectado a internet	Connecté à internet
+główne połączenie	main connection	Hauptverbindung	conexión principal	connexion principale
+VPN połączony	VPN connected	VPN verbunden	VPN conectada	VPN connecté
+VPN rozłączony	VPN disconnected	VPN getrennt	VPN desconectada	VPN déconnecté
+Głośność	Volume	Lautstärke	Volumen	Volume
+Głośność {}%	Volume {}%	Lautstärke {}%	Volumen {}%	Volume {}%
+Wycisz	Mute	Stumm	Silenciar	Couper le son
+Wyciszono	Muted	Stumm	Silenciado	Son coupé
+Wyciszony	Muted	Stumm	Silenciado	Muet
+Mikrofon wyciszony	Microphone muted	Mikrofon stumm	Micrófono silenciado	Microphone coupé
+Mikrofon włączony	Microphone on	Mikrofon an	Micrófono activado	Microphone activé
+Mikrofon w użyciu	Microphone in use	Mikrofon in Verwendung	Micrófono en uso	Microphone utilisé
+Mikrofon zwolniony	Microphone released	Mikrofon freigegeben	Micrófono liberado	Microphone libéré
+Kamera w użyciu	Camera in use	Kamera in Verwendung	Cámara en uso	Caméra utilisée
+Kamera wyłączona	Camera off	Kamera aus	Cámara desactivada	Caméra désactivée
+Udostępniasz ekran	You are sharing your screen	Du teilst deinen Bildschirm	Estás compartiendo la pantalla	Vous partagez votre écran
+Koniec udostępniania	Sharing ended	Freigabe beendet	Fin de compartir	Partage terminé
+treść ukryta · udostępniasz ekran	content hidden · you are sharing your screen	Inhalt verborgen · du teilst deinen Bildschirm	contenido oculto · estás compartiendo la pantalla	contenu masqué · vous partagez votre écran
+Oszczędzanie energii	Power saver	Energiesparen	Ahorro de energía	Économie d'énergie
+Zrównoważony	Balanced	Ausgewogen	Equilibrado	Équilibré
+Wydajność	Performance	Leistung	Rendimiento	Performances
+wyjście audio	audio output	Audioausgabe	salida de audio	sortie audio
+wejście audio	audio input	Audioeingang	entrada de audio	entrée audio
+monitor podłączony	monitor connected	Monitor angeschlossen	monitor conectado	moniteur branché
+monitor odłączony	monitor disconnected	Monitor getrennt	monitor desconectado	moniteur débranché
+podłączono	connected	angeschlossen	conectado	branché
+odłączono	disconnected	getrennt	desconectado	débranché
+układ klawiatury	keyboard layout	Tastaturlayout	distribución de teclado	disposition du clavier
+Konfiguracja przeładowana	Configuration reloaded	Konfiguration neu geladen	Configuración recargada	Configuration rechargée
+Błędy konfiguracji Hyprland ({})	Hyprland config errors ({})	Hyprland-Konfigurationsfehler ({})	Errores de configuración de Hyprland ({})	Erreurs de configuration Hyprland ({})
+Mało miejsca na dysku	Low disk space	Wenig Speicherplatz	Poco espacio en disco	Espace disque faible
+zamontowano{} · otwórz	mounted{} · open	eingebunden{} · öffnen	montado{} · abrir	monté{} · ouvrir
+odmontowano · można odłączyć	unmounted · safe to remove	ausgehängt · kann entfernt werden	desmontado · se puede quitar	démonté · retrait sans risque
+{} wolne z {}	{} free of {}	{} frei von {}	{} libres de {}	{} libres sur {}
+Pamięć	Memory	Speicher	Memoria	Mémoire
+Klawiatura	Keyboard	Tastatur	Teclado	Clavier
 # notifications
-Powiadomienia	Notifications	Mitteilungen	Notificaciones
-Powiadomienie	Notification	Mitteilung	Notificación
-Brak powiadomień	No notifications	Keine Mitteilungen	Sin notificaciones
-Nie przeszkadzać jest włączone	Do not disturb is on	Nicht stören ist an	No molestar está activado
-Pokaż mniej	Show less	Weniger anzeigen	Mostrar menos
-Powiadomienia usunięte	Notifications cleared	Mitteilungen gelöscht	Notificaciones borradas
-System	System	System	Sistema
-powiadomień	notifications	Mitteilungen	notificaciones
+Powiadomienia	Notifications	Mitteilungen	Notificaciones	Notifications
+Powiadomienie	Notification	Mitteilung	Notificación	Notification
+Brak powiadomień	No notifications	Keine Mitteilungen	Sin notificaciones	Aucune notification
+Nie przeszkadzać jest włączone	Do not disturb is on	Nicht stören ist an	No molestar está activado	Ne pas déranger est activé
+Pokaż mniej	Show less	Weniger anzeigen	Mostrar menos	Afficher moins
+Powiadomienia usunięte	Notifications cleared	Mitteilungen gelöscht	Notificaciones borradas	Notifications effacées
+System	System	System	Sistema	Système
+powiadomień	notifications	Mitteilungen	notificaciones	notifications
 # clipboard
-Szukaj w historii schowka	Search clipboard history	Zwischenablage-Verlauf durchsuchen	Buscar en el historial del portapapeles
-Historia schowka jest pusta	Clipboard history is empty	Zwischenablage-Verlauf ist leer	El historial del portapapeles está vacío
-Obraz	Image	Bild	Imagen
-{} znaków	{} characters	{} Zeichen	{} caracteres
-Usuń  ⌦	Delete  ⌦	Löschen  ⌦	Eliminar  ⌦
-Kopiuj  ↵	Copy  ↵	Kopieren  ↵	Copiar  ↵
-Skopiowano hasło	Password copied	Passwort kopiert	Contraseña copiada
-Skopiowano kolor	Colour copied	Farbe kopiert	Color copiado
-Skopiowano link	Link copied	Link kopiert	Enlace copiado
-Skopiowano obraz	Image copied	Bild kopiert	Imagen copiada
-Skopiowano plik	File copied	Datei kopiert	Archivo copiado
-Skopiowano pliki ({n})	Files copied ({n})	Dateien kopiert ({n})	Archivos copiados ({n})
-Skopiowano ścieżkę	Path copied	Pfad kopiert	Ruta copiada
-Kopiuj kod	Copy code	Code kopieren	Copiar código
-Kopiuj kod: {code}	Copy code: {code}	Code kopieren: {code}	Copiar código: {code}
-Kopiuj link	Copy link	Link kopieren	Copiar enlace
-w schowku · kliknij, aby otworzyć	in the clipboard · click to open	in der Zwischenablage · zum Öffnen klicken	en el portapapeles · haz clic para abrir
-otwieram link w przeglądarce…	opening the link in the browser…	Link wird im Browser geöffnet…	abriendo el enlace en el navegador…
+Szukaj w historii schowka	Search clipboard history	Zwischenablage-Verlauf durchsuchen	Buscar en el historial del portapapeles	Rechercher dans l'historique du presse-papiers
+Historia schowka jest pusta	Clipboard history is empty	Zwischenablage-Verlauf ist leer	El historial del portapapeles está vacío	L'historique du presse-papiers est vide
+Obraz	Image	Bild	Imagen	Image
+{} znaków	{} characters	{} Zeichen	{} caracteres	{} caractères
+Usuń  ⌦	Delete  ⌦	Löschen  ⌦	Eliminar  ⌦	Supprimer  ⌦
+Kopiuj  ↵	Copy  ↵	Kopieren  ↵	Copiar  ↵	Copier  ↵
+Skopiowano hasło	Password copied	Passwort kopiert	Contraseña copiada	Mot de passe copié
+Skopiowano kolor	Colour copied	Farbe kopiert	Color copiado	Couleur copiée
+Skopiowano link	Link copied	Link kopiert	Enlace copiado	Lien copié
+Skopiowano obraz	Image copied	Bild kopiert	Imagen copiada	Image copiée
+Skopiowano plik	File copied	Datei kopiert	Archivo copiado	Fichier copié
+Skopiowano pliki ({n})	Files copied ({n})	Dateien kopiert ({n})	Archivos copiados ({n})	Fichiers copiés ({n})
+Skopiowano ścieżkę	Path copied	Pfad kopiert	Ruta copiada	Chemin copié
+Kopiuj kod	Copy code	Code kopieren	Copiar código	Copier le code
+Kopiuj kod: {code}	Copy code: {code}	Code kopieren: {code}	Copiar código: {code}	Copier le code : {code}
+Kopiuj link	Copy link	Link kopieren	Copiar enlace	Copier le lien
+w schowku · kliknij, aby otworzyć	in the clipboard · click to open	in der Zwischenablage · zum Öffnen klicken	en el portapapeles · haz clic para abrir	dans le presse-papiers · cliquez pour ouvrir
+otwieram link w przeglądarce…	opening the link in the browser…	Link wird im Browser geöffnet…	abriendo el enlace en el navegador…	ouverture du lien dans le navigateur…
 # screenshots
-Przechwyć	Capture	Aufnehmen	Capturar
-Cały ekran	Entire screen	Ganzer Bildschirm	Pantalla completa
-Wybrane okno	Selected window	Ausgewähltes Fenster	Ventana seleccionada
-Zaznaczony obszar	Selected area	Ausgewählter Bereich	Área seleccionada
-Opóźnienie {} s	Delay {} s	Verzögerung {} s	Retraso {} s
-Bez opóźnienia	No delay	Ohne Verzögerung	Sin retraso
-Schowek	Clipboard	Zwischenablage	Portapapeles
-✓ Schowek	✓ Clipboard	✓ Zwischenablage	✓ Portapapeles
-W schowku	In the clipboard	In der Zwischenablage	En el portapapeles
-Zrzut ekranu w schowku	Screenshot in the clipboard	Bildschirmfoto in der Zwischenablage	Captura en el portapapeles
-Zrzut	Shot	Aufnahme	Captura
+Przechwyć	Capture	Aufnehmen	Capturar	Capturer
+Cały ekran	Entire screen	Ganzer Bildschirm	Pantalla completa	Écran entier
+Wybrane okno	Selected window	Ausgewähltes Fenster	Ventana seleccionada	Fenêtre sélectionnée
+Zaznaczony obszar	Selected area	Ausgewählter Bereich	Área seleccionada	Zone sélectionnée
+Opóźnienie {} s	Delay {} s	Verzögerung {} s	Retraso {} s	Délai {} s
+Bez opóźnienia	No delay	Ohne Verzögerung	Sin retraso	Sans délai
+Schowek	Clipboard	Zwischenablage	Portapapeles	Presse-papiers
+✓ Schowek	✓ Clipboard	✓ Zwischenablage	✓ Portapapeles	✓ Presse-papiers
+W schowku	In the clipboard	In der Zwischenablage	En el portapapeles	Dans le presse-papiers
+Zrzut ekranu w schowku	Screenshot in the clipboard	Bildschirmfoto in der Zwischenablage	Captura en el portapapeles	Capture d'écran dans le presse-papiers
+Zrzut	Shot	Aufnahme	Captura	Capture
 # snap, windows, dock
-Układy przyciągania	Snap layouts	Andock-Layouts	Diseños de ajuste
-Wybierz układ rozmieszczenia okna	Choose a layout for the window	Layout für das Fenster wählen	Elige un diseño para la ventana
-Nowe okno	New window	Neues Fenster	Nueva ventana
-Zamknij okno	Close window	Fenster schließen	Cerrar ventana
-Zamknij wszystkie okna	Close all windows	Alle Fenster schließen	Cerrar todas las ventanas
-Minimalizuj	Minimise	Minimieren	Minimizar
-Pełny ekran	Full screen	Vollbild	Pantalla completa
-Przypnij do docka	Keep in Dock	Im Dock behalten	Mantener en el Dock
-Odepnij od docka	Remove from Dock	Aus dem Dock entfernen	Quitar del Dock
-Okno przypięte	Window pinned	Fenster angeheftet	Ventana fijada
-Okno odpięte	Window unpinned	Fenster gelöst	Ventana desfijada
-Okno	Window	Fenster	Ventana
-Kosz	Trash	Papierkorb	Papelera
+Układy przyciągania	Snap layouts	Andock-Layouts	Diseños de ajuste	Dispositions d'ancrage
+Wybierz układ rozmieszczenia okna	Choose a layout for the window	Layout für das Fenster wählen	Elige un diseño para la ventana	Choisissez une disposition pour la fenêtre
+Nowe okno	New window	Neues Fenster	Nueva ventana	Nouvelle fenêtre
+Zamknij okno	Close window	Fenster schließen	Cerrar ventana	Fermer la fenêtre
+Zamknij wszystkie okna	Close all windows	Alle Fenster schließen	Cerrar todas las ventanas	Fermer toutes les fenêtres
+Minimalizuj	Minimise	Minimieren	Minimizar	Réduire
+Pełny ekran	Full screen	Vollbild	Pantalla completa	Plein écran
+Przypnij do docka	Keep in Dock	Im Dock behalten	Mantener en el Dock	Garder dans le Dock
+Odepnij od docka	Remove from Dock	Aus dem Dock entfernen	Quitar del Dock	Retirer du Dock
+Okno przypięte	Window pinned	Fenster angeheftet	Ventana fijada	Fenêtre épinglée
+Okno odpięte	Window unpinned	Fenster gelöst	Ventana desfijada	Fenêtre désépinglée
+Okno	Window	Fenster	Ventana	Fenêtre
+Kosz	Trash	Papierkorb	Papelera	Corbeille
 # wallpapers
-Same się dopasowują	Adaptive	Passen sich an	Adaptativos
-Spokojne	Calm	Ruhig	Tranquilos
-Żywe	Vivid	Lebhaft	Vivos
-Bajki	Fairy tales	Märchen	Cuentos
-Zdjęcia	Photos	Fotos	Fotos
-Zdjęcie	Photo	Foto	Foto
-Spokojnie	Calm	Ruhig	Tranquilo
-Normalnie	Normal	Normal	Normal
-Dynamicznie	Dynamic	Dynamisch	Dinámico
-Otwórz folder	Open folder	Ordner öffnen	Abrir carpeta
-Rytm muzyki	Music beat	Musikrhythmus	Ritmo de la música
-Ustawiona	Current	Aktuell	Actual
-Ustaw tapetę	Set wallpaper	Als Hintergrund	Poner de fondo
-← →  przeglądaj   ·   Tab  kategoria   ·   Spacja  ustaw   ·   Enter  ustaw i zamknij   ·   Esc  zamknij	← →  browse   ·   Tab  category   ·   Space  set   ·   Enter  set and close   ·   Esc  close	← →  blättern   ·   Tab  Kategorie   ·   Leertaste  setzen   ·   Enter  setzen und schließen   ·   Esc  schließen	← →  explorar   ·   Tab  categoría   ·   Espacio  poner   ·   Intro  poner y cerrar   ·   Esc  cerrar
+Same się dopasowują	Adaptive	Passen sich an	Adaptativos	Adaptatifs
+Spokojne	Calm	Ruhig	Tranquilos	Calmes
+Żywe	Vivid	Lebhaft	Vivos	Vifs
+Bajki	Fairy tales	Märchen	Cuentos	Contes
+Zdjęcia	Photos	Fotos	Fotos	Photos
+Zdjęcie	Photo	Foto	Foto	Photo
+Spokojnie	Calm	Ruhig	Tranquilo	Calme
+Normalnie	Normal	Normal	Normal	Normal
+Dynamicznie	Dynamic	Dynamisch	Dinámico	Dynamique
+Otwórz folder	Open folder	Ordner öffnen	Abrir carpeta	Ouvrir le dossier
+Rytm muzyki	Music beat	Musikrhythmus	Ritmo de la música	Rythme de la musique
+Ustawiona	Current	Aktuell	Actual	Actuel
+Ustaw tapetę	Set wallpaper	Als Hintergrund	Poner de fondo	Définir le fond d'écran
+← →  przeglądaj   ·   Tab  kategoria   ·   Spacja  ustaw   ·   Enter  ustaw i zamknij   ·   Esc  zamknij	← →  browse   ·   Tab  category   ·   Space  set   ·   Enter  set and close   ·   Esc  close	← →  blättern   ·   Tab  Kategorie   ·   Leertaste  setzen   ·   Enter  setzen und schließen   ·   Esc  schließen	← →  explorar   ·   Tab  categoría   ·   Espacio  poner   ·   Intro  poner y cerrar   ·   Esc  cerrar	← →  parcourir   ·   Tab  catégorie   ·   Espace  définir   ·   Entrée  définir et fermer   ·   Échap  fermer
 # desktop settings
-Dostosuj pulpit	Customise desktop	Schreibtisch anpassen	Personalizar escritorio
-Układ	Layout	Layout	Diseño
-Pogoda	Weather	Wetter	Tiempo
-Bieganie	Running	Laufen	Running
-Liczba kart	Number of cards	Anzahl der Karten	Número de tarjetas
-Miejsce {}	Place {}	Platz {}	Posición {}
-Karty	Cards	Karten	Tarjetas
-Zegar	Clock	Uhr	Reloj
-Rozmiar	Size	Größe	Tamaño
-Data	Date	Datum	Fecha
-Wschód i zachód	Sunrise and sunset	Sonnenauf- und -untergang	Salida y puesta del sol
-Wschód i zachód słońca	Sunrise and sunset	Sonnenauf- und -untergang	Salida y puesta del sol
-Wygląd	Appearance	Darstellung	Apariencia
-Tło kart	Card background	Kartenhintergrund	Fondo de tarjetas
-Dane na karcie	Data on the card	Daten auf der Karte	Datos de la tarjeta
-Ta karta jest ukryta	This card is hidden	Diese Karte ist ausgeblendet	Esta tarjeta está oculta
-Pokaż na pulpicie	Show on desktop	Auf dem Schreibtisch zeigen	Mostrar en el escritorio
-Język	Language	Sprache	Idioma
-Automatycznie	Automatic	Automatisch	Automático
-Bez kart	No cards	Keine Karten	Sin tarjetas
-Jedna	One	Eine	Una
-Dwie	Two	Zwei	Dos
-Trzy	Three	Drei	Tres
-Mały	Small	Klein	Pequeño
-Duży	Large	Groß	Grande
-Normalna	Normal	Normal	Normal
-Ciemniejsze	Darker	Dunkler	Más oscuro
-Jaśniejsze	Lighter	Heller	Más claro
-Stopka	Footer	Fußzeile	Pie
-Podpowiedzi w stopce	Tips in the footer	Tipps in der Fußzeile	Consejos en el pie
-Główna liczba	Main number	Hauptzahl	Número principal
-Wykres	Chart	Diagramm	Gráfico
-Wartości na dole	Values at the bottom	Werte unten	Valores abajo
-Tylko po najechaniu	Only on hover	Nur beim Darüberfahren	Solo al pasar el ratón
-Prognoza dni	Daily forecast	Tagesvorhersage	Previsión diaria
+Dostosuj pulpit	Customise desktop	Schreibtisch anpassen	Personalizar escritorio	Personnaliser le bureau
+Układ	Layout	Layout	Diseño	Disposition
+Pogoda	Weather	Wetter	Tiempo	Météo
+Bieganie	Running	Laufen	Running	Course
+Liczba kart	Number of cards	Anzahl der Karten	Número de tarjetas	Nombre de cartes
+Miejsce {}	Place {}	Platz {}	Posición {}	Emplacement {}
+Karty	Cards	Karten	Tarjetas	Cartes
+Zegar	Clock	Uhr	Reloj	Horloge
+Rozmiar	Size	Größe	Tamaño	Taille
+Data	Date	Datum	Fecha	Date
+Wschód i zachód	Sunrise and sunset	Sonnenauf- und -untergang	Salida y puesta del sol	Lever et coucher
+Wschód i zachód słońca	Sunrise and sunset	Sonnenauf- und -untergang	Salida y puesta del sol	Lever et coucher du soleil
+Wygląd	Appearance	Darstellung	Apariencia	Apparence
+Tło kart	Card background	Kartenhintergrund	Fondo de tarjetas	Fond des cartes
+Dane na karcie	Data on the card	Daten auf der Karte	Datos de la tarjeta	Données sur la carte
+Ta karta jest ukryta	This card is hidden	Diese Karte ist ausgeblendet	Esta tarjeta está oculta	Cette carte est masquée
+Pokaż na pulpicie	Show on desktop	Auf dem Schreibtisch zeigen	Mostrar en el escritorio	Afficher sur le bureau
+Język	Language	Sprache	Idioma	Langue
+Automatycznie	Automatic	Automatisch	Automático	Automatique
+Bez kart	No cards	Keine Karten	Sin tarjetas	Aucune carte
+Jedna	One	Eine	Una	Une
+Dwie	Two	Zwei	Dos	Deux
+Trzy	Three	Drei	Tres	Trois
+Mały	Small	Klein	Pequeño	Petit
+Duży	Large	Groß	Grande	Grand
+Normalna	Normal	Normal	Normal	Normal
+Ciemniejsze	Darker	Dunkler	Más oscuro	Plus sombre
+Jaśniejsze	Lighter	Heller	Más claro	Plus clair
+Stopka	Footer	Fußzeile	Pie	Pied de carte
+Podpowiedzi w stopce	Tips in the footer	Tipps in der Fußzeile	Consejos en el pie	Astuces en pied de carte
+Główna liczba	Main number	Hauptzahl	Número principal	Nombre principal
+Wykres	Chart	Diagramm	Gráfico	Graphique
+Wartości na dole	Values at the bottom	Werte unten	Valores abajo	Valeurs en bas
+Tylko po najechaniu	Only on hover	Nur beim Darüberfahren	Solo al pasar el ratón	Seulement au survol
+Prognoza dni	Daily forecast	Tagesvorhersage	Previsión diaria	Prévisions par jour
 # cards: readiness
-Gotowość	Readiness	Bereitschaft	Disposición
-gotowość	readiness	Bereitschaft	disposición
-Gotowość {} · {}	Readiness {} · {}	Bereitschaft {} · {}	Disposición {} · {}
-na 100	of 100	von 100	de 100
-{} kroków	{} steps	{} Schritte	{} pasos
-Kroki	Steps	Schritte	Pasos
-Kroki dziś: {}	Steps today: {}	Schritte heute: {}	Pasos hoy: {}
-Sen	Sleep	Schlaf	Sueño
-sen	sleep	Schlaf	sueño
-Sen {}{}	Sleep {}{}	Schlaf {}{}	Sueño {}{}
-Krótka noc: {}	Short night: {}	Kurze Nacht: {}	Noche corta: {}
-Tętno	Heart rate	Herzfrequenz	Frecuencia cardiaca
-tętno	heart rate	Puls	pulso
-Tętno spoczynkowe {} bpm	Resting heart rate {} bpm	Ruhepuls {} bpm	Pulso en reposo {} ppm
-Stres	Stress	Stress	Estrés
-stres	stress	Stress	estrés
-Stres {} · {}	Stress {} · {}	Stress {} · {}	Estrés {} · {}
-HRV {} ms · średnia 7 dni {}	HRV {} ms · 7-day average {}	HRV {} ms · 7-Tage-Mittel {}	HRV {} ms · media de 7 días {}
-HRV {} ms poniżej średniej 7 dni	HRV {} ms below the 7-day average	HRV {} ms unter dem 7-Tage-Mittel	HRV {} ms por debajo de la media de 7 días
-średnia 7 dni {}	7-day average {}	7-Tage-Mittel {}	media de 7 días {}
-Body Battery {} · 24 h: maks {}, min {}	Body Battery {} · 24 h: max {}, min {}	Body Battery {} · 24 h: max. {}, min. {}	Body Battery {} · 24 h: máx. {}, mín. {}
-Gotowy na mocny trening	Ready for a hard workout	Bereit für ein hartes Training	Listo para un entrenamiento duro
-Podwyższony stres — zwolnij	Elevated stress — slow down	Erhöhter Stress — mach langsamer	Estrés elevado — baja el ritmo
-Mało energii — odpuść intensywność	Low energy — skip the intensity	Wenig Energie — Intensität rausnehmen	Poca energía — evita la intensidad
-Dzień na spokojne tempo	A day for an easy pace	Ein Tag für ruhiges Tempo	Un día para ritmo suave
-Brak połączenia z Garmin	No connection to Garmin	Keine Verbindung zu Garmin	Sin conexión con Garmin
-dane z {}	data from {}	Daten von {}	datos de {}
-najwyższa	prime	optimal	óptima
-wysoka	high	hoch	alta
-umiarkowana	moderate	moderat	moderada
-niska	low	niedrig	baja
-słaba	poor	schwach	deficiente
-Najwyższa	Prime	Optimal	Óptima
-Wysoka	High	Hoch	Alta
-Umiarkowana	Moderate	Moderat	Moderada
-Niska	Low	Niedrig	Baja
-Słaba	Poor	Schwach	Deficiente
-słaby	poor	schwach	bajo
-przeciętny	fair	mittel	regular
-dobry	good	gut	bueno
-doskonały	excellent	ausgezeichnet	excelente
-średni	moderate	mittel	medio
-średnio	moderate	mittel	medio
-niski	low	niedrig	bajo
-wysoki	high	hoch	alto
-dobra	good	gut	buena
-spokój	calm	ruhig	calma
-Trening	Workout	Training	Entrenamiento
-Trening dnia	Workout of the day	Training des Tages	Entrenamiento del día
-Trening interwałowy	Interval workout	Intervalltraining	Entrenamiento por intervalos
-Odpoczynek	Rest	Erholung	Descanso
-Dzień wolny albo 20–30 min spaceru	Rest day or 20–30 min walk	Ruhetag oder 20–30 Min. Spaziergang	Día libre o 20-30 min de paseo
-Dzień wolny albo 20-30 min spaceru	Rest day or 20-30 min walk	Ruhetag oder 20–30 Min. Spaziergang	Día libre o 20-30 min de paseo
-Bieg regeneracyjny	Recovery run	Erholungslauf	Carrera de recuperación
-Bieg spokojny	Base run	Basislauf	Carrera base
-Bieg bazowy	Base run	Basislauf	Carrera base
-Bieg progowy	Threshold run	Schwellenlauf	Carrera de umbral
-Bieg z tempem startowym	Tempo run	Tempolauf	Carrera a ritmo
-Bieg długi	Long run	Langer Lauf	Tirada larga
-Interwały	Intervals	Intervalle	Intervalos
-Rytmy	Strides	Steigerungsläufe	Progresiones
-Sprinty	Sprints	Sprints	Esprints
+Gotowość	Readiness	Bereitschaft	Disposición	Disponibilité
+gotowość	readiness	Bereitschaft	disposición	disponibilité
+Gotowość {} · {}	Readiness {} · {}	Bereitschaft {} · {}	Disposición {} · {}	Disponibilité {} · {}
+na 100	of 100	von 100	de 100	sur 100
+{} kroków	{} steps	{} Schritte	{} pasos	{} pas
+Kroki	Steps	Schritte	Pasos	Pas
+Kroki dziś: {}	Steps today: {}	Schritte heute: {}	Pasos hoy: {}	Pas aujourd'hui : {}
+Sen	Sleep	Schlaf	Sueño	Sommeil
+sen	sleep	Schlaf	sueño	sommeil
+Sen {}{}	Sleep {}{}	Schlaf {}{}	Sueño {}{}	Sommeil {}{}
+Krótka noc: {}	Short night: {}	Kurze Nacht: {}	Noche corta: {}	Nuit courte : {}
+Tętno	Heart rate	Herzfrequenz	Frecuencia cardiaca	Fréquence cardiaque
+tętno	heart rate	Puls	pulso	fréquence cardiaque
+Tętno spoczynkowe {} bpm	Resting heart rate {} bpm	Ruhepuls {} bpm	Pulso en reposo {} ppm	Fréquence cardiaque au repos {} bpm
+Stres	Stress	Stress	Estrés	Stress
+stres	stress	Stress	estrés	stress
+Stres {} · {}	Stress {} · {}	Stress {} · {}	Estrés {} · {}	Stress {} · {}
+HRV {} ms · średnia 7 dni {}	HRV {} ms · 7-day average {}	HRV {} ms · 7-Tage-Mittel {}	HRV {} ms · media de 7 días {}	VFC {} ms · moyenne sur 7 jours {}
+HRV {} ms poniżej średniej 7 dni	HRV {} ms below the 7-day average	HRV {} ms unter dem 7-Tage-Mittel	HRV {} ms por debajo de la media de 7 días	VFC {} ms sous la moyenne sur 7 jours
+średnia 7 dni {}	7-day average {}	7-Tage-Mittel {}	media de 7 días {}	moyenne sur 7 jours {}
+Body Battery {} · 24 h: maks {}, min {}	Body Battery {} · 24 h: max {}, min {}	Body Battery {} · 24 h: max. {}, min. {}	Body Battery {} · 24 h: máx. {}, mín. {}	Body Battery {} · 24 h : max {}, min {}
+Gotowy na mocny trening	Ready for a hard workout	Bereit für ein hartes Training	Listo para un entrenamiento duro	Prêt pour un entraînement intense
+Podwyższony stres — zwolnij	Elevated stress — slow down	Erhöhter Stress — mach langsamer	Estrés elevado — baja el ritmo	Stress élevé — ralentissez
+Mało energii — odpuść intensywność	Low energy — skip the intensity	Wenig Energie — Intensität rausnehmen	Poca energía — evita la intensidad	Peu d'énergie — évitez l'intensité
+Dzień na spokojne tempo	A day for an easy pace	Ein Tag für ruhiges Tempo	Un día para ritmo suave	Une journée à allure tranquille
+Brak połączenia z Garmin	No connection to Garmin	Keine Verbindung zu Garmin	Sin conexión con Garmin	Pas de connexion à Garmin
+dane z {}	data from {}	Daten von {}	datos de {}	données de {}
+najwyższa	prime	optimal	óptima	optimale
+wysoka	high	hoch	alta	élevée
+umiarkowana	moderate	moderat	moderada	modérée
+niska	low	niedrig	baja	faible
+słaba	poor	schwach	deficiente	médiocre
+Najwyższa	Prime	Optimal	Óptima	Optimale
+Wysoka	High	Hoch	Alta	Élevée
+Umiarkowana	Moderate	Moderat	Moderada	Modérée
+Niska	Low	Niedrig	Baja	Faible
+Słaba	Poor	Schwach	Deficiente	Médiocre
+słaby	poor	schwach	bajo	médiocre
+przeciętny	fair	mittel	regular	passable
+dobry	good	gut	bueno	bon
+doskonały	excellent	ausgezeichnet	excelente	excellent
+średni	moderate	mittel	medio	moyen
+średnio	moderate	mittel	medio	moyen
+niski	low	niedrig	bajo	faible
+wysoki	high	hoch	alto	élevé
+dobra	good	gut	buena	bonne
+spokój	calm	ruhig	calma	calme
+Trening	Workout	Training	Entrenamiento	Entraînement
+Trening dnia	Workout of the day	Training des Tages	Entrenamiento del día	Entraînement du jour
+Trening interwałowy	Interval workout	Intervalltraining	Entrenamiento por intervalos	Entraînement fractionné
+Odpoczynek	Rest	Erholung	Descanso	Repos
+Dzień wolny albo 20–30 min spaceru	Rest day or 20–30 min walk	Ruhetag oder 20–30 Min. Spaziergang	Día libre o 20-30 min de paseo	Jour de repos ou 20–30 min de marche
+Dzień wolny albo 20-30 min spaceru	Rest day or 20-30 min walk	Ruhetag oder 20–30 Min. Spaziergang	Día libre o 20-30 min de paseo	Jour de repos ou 20-30 min de marche
+Bieg regeneracyjny	Recovery run	Erholungslauf	Carrera de recuperación	Course de récupération
+Bieg spokojny	Base run	Basislauf	Carrera base	Footing
+Bieg bazowy	Base run	Basislauf	Carrera base	Course de base
+Bieg progowy	Threshold run	Schwellenlauf	Carrera de umbral	Course au seuil
+Bieg z tempem startowym	Tempo run	Tempolauf	Carrera a ritmo	Course au tempo
+Bieg długi	Long run	Langer Lauf	Tirada larga	Sortie longue
+Interwały	Intervals	Intervalle	Intervalos	Fractionné
+Rytmy	Strides	Steigerungsläufe	Progresiones	Lignes droites
+Sprinty	Sprints	Sprints	Esprints	Sprints
 # cards: running
-Start · 5 km	Race · 5 km	Rennen · 5 km	Carrera · 5 km
-Do startu	To the race	Bis zum Rennen	Para la carrera
-Dni do startu	Days to the race	Tage bis zum Rennen	Días para la carrera
-dni	days	Tage	días
-do startu	to the race	bis zum Rennen	para la carrera
-prognoza	forecast	Prognose	previsión
-Prognoza 5 km	5 km prediction	5-km-Prognose	Previsión 5 km
-Ostatni bieg	Last run	Letzter Lauf	Última carrera
-Ostatni bieg {} km · {}	Last run {} km · {}	Letzter Lauf {} km · {}	Última carrera {} km · {}
-poprzedni {} km	previous {} km	vorherige {} km	anterior {} km
-poprzedni {}	previous {}	vorherige {}	anterior {}
-Tydzień {} km · poprzedni {}	Week {} km · previous {}	Woche {} km · vorherige {}	Semana {} km · anterior {}
-Rok {year}: {} km · {year_n} {}	Year {year}: {} km · {year_n} {}	Jahr {year}: {} km · {year_n} {}	Año {year}: {} km · {year_n} {}
-{} bieg	{} run	{} Lauf	{} carrera
-{} biegi	{} runs	{} Läufe	{} carreras
-{} biegów	{} runs	{} Läufe	{} carreras
-bieg	run	Lauf	carrera
-biegi	runs	Läufe	carreras
-biegów	runs	Läufe	carreras
-Brak biegów w historii	No runs in the history	Keine Läufe im Verlauf	Sin carreras en el historial
-rok {}	year {}	Jahr {}	año {}
-Bieg	Run	Lauf	Carrera
-Okno na bieg	Running window	Laufzeitfenster	Ventana para correr
-Ubiór	Clothing	Kleidung	Ropa
-{coat} · na bieg {run}	{coat} · for the run {run}	{coat} · zum Laufen {run}	{coat} · para correr {run}
-Krótki rękaw	Short sleeves	Kurzarm	Manga corta
-krótki rękaw	short sleeves	kurzarm	manga corta
-Długi rękaw	Long sleeves	Langarm	Manga larga
-długi rękaw	long sleeves	langarm	manga larga
-długi rękaw + rękawiczki	long sleeves + gloves	langarm + Handschuhe	manga larga + guantes
-warstwy, czapka, rękawiczki	layers, hat, gloves	Schichten, Mütze, Handschuhe	capas, gorro, guantes
-Bluza lub lekka kurtka	Sweatshirt or light jacket	Pullover oder leichte Jacke	Sudadera o chaqueta ligera
-Kurtka	Jacket	Jacke	Chaqueta
-Kurtka i czapka	Jacket and hat	Jacke und Mütze	Chaqueta y gorro
-Ciepła kurtka, czapka, rękawiczki	Warm jacket, hat, gloves	Warme Jacke, Mütze, Handschuhe	Chaqueta abrigada, gorro, guantes
+Start · 5 km	Race · 5 km	Rennen · 5 km	Carrera · 5 km	Course · 5 km
+Do startu	To the race	Bis zum Rennen	Para la carrera	Jusqu'à la course
+Dni do startu	Days to the race	Tage bis zum Rennen	Días para la carrera	Jours avant la course
+dni	days	Tage	días	jours
+do startu	to the race	bis zum Rennen	para la carrera	avant la course
+prognoza	forecast	Prognose	previsión	prévision
+Prognoza 5 km	5 km prediction	5-km-Prognose	Previsión 5 km	Prévision 5 km
+Ostatni bieg	Last run	Letzter Lauf	Última carrera	Dernière course
+Ostatni bieg {} km · {}	Last run {} km · {}	Letzter Lauf {} km · {}	Última carrera {} km · {}	Dernière course {} km · {}
+poprzedni {} km	previous {} km	vorherige {} km	anterior {} km	précédente {} km
+poprzedni {}	previous {}	vorherige {}	anterior {}	précédente {}
+Tydzień {} km · poprzedni {}	Week {} km · previous {}	Woche {} km · vorherige {}	Semana {} km · anterior {}	Semaine {} km · précédente {}
+Rok {year}: {} km · {year_n} {}	Year {year}: {} km · {year_n} {}	Jahr {year}: {} km · {year_n} {}	Año {year}: {} km · {year_n} {}	Année {year} : {} km · {year_n} {}
+{} bieg	{} run	{} Lauf	{} carrera	{} course
+{} biegi	{} runs	{} Läufe	{} carreras	{} courses
+{} biegów	{} runs	{} Läufe	{} carreras	{} courses
+bieg	run	Lauf	carrera	course
+biegi	runs	Läufe	carreras	courses
+biegów	runs	Läufe	carreras	courses
+Brak biegów w historii	No runs in the history	Keine Läufe im Verlauf	Sin carreras en el historial	Aucune course dans l'historique
+rok {}	year {}	Jahr {}	año {}	année {}
+Bieg	Run	Lauf	Carrera	Course
+Okno na bieg	Running window	Laufzeitfenster	Ventana para correr	Créneau pour courir
+Ubiór	Clothing	Kleidung	Ropa	Tenue
+{coat} · na bieg {run}	{coat} · for the run {run}	{coat} · zum Laufen {run}	{coat} · para correr {run}	{coat} · pour courir {run}
+Krótki rękaw	Short sleeves	Kurzarm	Manga corta	Manches courtes
+krótki rękaw	short sleeves	kurzarm	manga corta	manches courtes
+Długi rękaw	Long sleeves	Langarm	Manga larga	Manches longues
+długi rękaw	long sleeves	langarm	manga larga	manches longues
+długi rękaw + rękawiczki	long sleeves + gloves	langarm + Handschuhe	manga larga + guantes	manches longues + gants
+warstwy, czapka, rękawiczki	layers, hat, gloves	Schichten, Mütze, Handschuhe	capas, gorro, guantes	couches, bonnet, gants
+Bluza lub lekka kurtka	Sweatshirt or light jacket	Pullover oder leichte Jacke	Sudadera o chaqueta ligera	Sweat ou veste légère
+Kurtka	Jacket	Jacke	Chaqueta	Veste
+Kurtka i czapka	Jacket and hat	Jacke und Mütze	Chaqueta y gorro	Veste et bonnet
+Ciepła kurtka, czapka, rękawiczki	Warm jacket, hat, gloves	Warme Jacke, Mütze, Handschuhe	Chaqueta abrigada, gorro, guantes	Veste chaude, bonnet, gants
 # cards: weather
-Odczuwalna	Feels like	Gefühlt	Sensación
-odczuwalna {}°	feels like {}°	gefühlt {}°	sensación {}°
-teraz	now	jetzt	ahora
-Temperatura	Temperature	Temperatur	Temperatura
-Temp.	Temp.	Temp.	Temp.
-Opady	Precipitation	Niederschlag	Precipitación
-Szansa opadu	Chance of rain	Regenwahrscheinlichkeit	Probabilidad de lluvia
-Wiatr	Wind	Wind	Viento
-Porywy	Gusts	Böen	Rachas
-Słońce	Sun	Sonne	Sol
-Światło dnia	Daylight	Tageslicht	Luz del día
-Bezchmurnie	Clear	Klar	Despejado
-Przeważnie słonecznie	Mostly sunny	Überwiegend sonnig	Mayormente soleado
-Częściowe zachmurzenie	Partly cloudy	Teilweise bewölkt	Parcialmente nublado
-Pochmurno	Cloudy	Bewölkt	Nublado
-Mgła	Fog	Nebel	Niebla
-Szadź	Rime fog	Raureif	Niebla helada
-Lekka mżawka	Light drizzle	Leichter Nieselregen	Llovizna ligera
-Mżawka	Drizzle	Nieselregen	Llovizna
-Gęsta mżawka	Dense drizzle	Starker Nieselregen	Llovizna densa
-Marznąca mżawka	Freezing drizzle	Gefrierender Nieselregen	Llovizna helada
-Lekki deszcz	Light rain	Leichter Regen	Lluvia ligera
-Deszcz	Rain	Regen	Lluvia
-Ulewa	Heavy rain	Starkregen	Lluvia fuerte
-Marznący deszcz	Freezing rain	Gefrierender Regen	Lluvia helada
-Lekki śnieg	Light snow	Leichter Schnee	Nieve ligera
-Śnieg	Snow	Schnee	Nieve
-Intensywny śnieg	Heavy snow	Starker Schneefall	Nieve intensa
-Ziarna śniegu	Snow grains	Schneegriesel	Granos de nieve
-Przelotny deszcz	Rain showers	Regenschauer	Chubascos
-Przelotne opady	Showers	Schauer	Chubascos
-Ulewy	Heavy showers	Starke Schauer	Chubascos fuertes
-Przelotny śnieg	Snow showers	Schneeschauer	Chubascos de nieve
-Śnieżyca	Snowstorm	Schneesturm	Ventisca
-Burza	Thunderstorm	Gewitter	Tormenta
-Burza z gradem	Thunderstorm with hail	Gewitter mit Hagel	Tormenta con granizo
-Bez opadów przez 24 h	No precipitation for 24 h	24 h ohne Niederschlag	Sin precipitación en 24 h
-Opady przez całą dobę	Precipitation all day	Niederschlag den ganzen Tag	Precipitación todo el día
-Zaczyna padać	Rain starting	Es beginnt zu regnen	Empieza a llover
-Zaczyna padać śnieg	Snow starting	Es beginnt zu schneien	Empieza a nevar
-zaraz zacznie padać	rain any minute	gleich regnet es	lloverá enseguida
-Deszcz za ok. 30 min	Rain in about 30 min	Regen in etwa 30 Min.	Lluvia en unos 30 min
-{} za ok. {} min	{} in about {} min	{} in etwa {} Min.	{} en unos {} min
-{} za {}	{} in {}	{} in {}	{} en {}
-opad za {} min	rain in {} min	Regen in {} Min.	lluvia en {} min
-przestanie za {} min	stops in {} min	hört in {} Min. auf	para en {} min
-Przestanie padać ok. {}	Rain stops around {}	Regen hört gegen {} auf	Deja de llover hacia las {}
-Opad {}%, {} mm · 	Rain {}%, {} mm · 	Regen {}%, {} mm · 	Lluvia {}%, {} mm ·
-Wschód {} · za {}	Sunrise {} · in {}	Aufgang {} · in {}	Salida {} · en {}
-Wschód jutro {}{tail}	Sunrise tomorrow {}{tail}	Aufgang morgen {}{tail}	Salida mañana {}{tail}
-wschód jutro {}	sunrise tomorrow {}	Aufgang morgen {}	salida mañana {}
-wschód {} · zachód {}	sunrise {} · sunset {}	Aufgang {} · Untergang {}	salida {} · puesta {}
-Zachód {} · światła jeszcze {}{tail}	Sunset {} · light for {}{tail}	Untergang {} · noch {} hell{tail}	Puesta {} · luz durante {}{tail}
-do zachodu {} · złota godzina od {}:{:02}	{} to sunset · golden hour from {}:{:02}	{} bis Sonnenuntergang · goldene Stunde ab {}:{:02}	{} para la puesta · hora dorada desde las {}:{:02}
-dzień trwa {}	day length {}	Tageslänge {}	el día dura {}
-słońce {}° nad horyzontem	sun {}° above the horizon	Sonne {}° über dem Horizont	sol {}° sobre el horizonte
-słońce {}° pod horyzontem	sun {}° below the horizon	Sonne {}° unter dem Horizont	sol {}° bajo el horizonte
-oświetlenie {}% · dzień {}	illumination {}% · day {}	Beleuchtung {}% · Tag {}	iluminación {}% · día {}
-nów {} · pełnia {}	new moon {} · full moon {}	Neumond {} · Vollmond {}	luna nueva {} · luna llena {}
-Nów	New moon	Neumond	Luna nueva
-Pełnia	Full moon	Vollmond	Luna llena
-Pierwsza kwadra	First quarter	Erstes Viertel	Cuarto creciente
-Ostatnia kwadra	Last quarter	Letztes Viertel	Cuarto menguante
-Przybywający sierp	Waxing crescent	Zunehmende Sichel	Luna creciente
-Przybywający garb	Waxing gibbous	Zunehmender Mond	Gibosa creciente
-Ubywający garb	Waning gibbous	Abnehmender Mond	Gibosa menguante
-Ubywający sierp	Waning crescent	Abnehmende Sichel	Luna menguante
-, {}° chłodniej	, {}° cooler	, {}° kühler	, {}° más frío
-, {}° cieplej	, {}° warmer	, {}° wärmer	, {}° más cálido
-{}, {}° chłodniej	{}, {}° cooler	{}, {}° kühler	{}, {}° más frío
-{}, {}° cieplej	{}, {}° warmer	{}, {}° wärmer	{}, {}° más cálido
+Odczuwalna	Feels like	Gefühlt	Sensación	Ressenti
+odczuwalna {}°	feels like {}°	gefühlt {}°	sensación {}°	ressenti {}°
+teraz	now	jetzt	ahora	maintenant
+Temperatura	Temperature	Temperatur	Temperatura	Température
+Temp.	Temp.	Temp.	Temp.	Temp.
+Opady	Precipitation	Niederschlag	Precipitación	Précipitations
+Szansa opadu	Chance of rain	Regenwahrscheinlichkeit	Probabilidad de lluvia	Risque de pluie
+Wiatr	Wind	Wind	Viento	Vent
+Porywy	Gusts	Böen	Rachas	Rafales
+Słońce	Sun	Sonne	Sol	Soleil
+Światło dnia	Daylight	Tageslicht	Luz del día	Lumière du jour
+Bezchmurnie	Clear	Klar	Despejado	Dégagé
+Przeważnie słonecznie	Mostly sunny	Überwiegend sonnig	Mayormente soleado	Plutôt ensoleillé
+Częściowe zachmurzenie	Partly cloudy	Teilweise bewölkt	Parcialmente nublado	Partiellement nuageux
+Pochmurno	Cloudy	Bewölkt	Nublado	Nuageux
+Mgła	Fog	Nebel	Niebla	Brouillard
+Szadź	Rime fog	Raureif	Niebla helada	Brouillard givrant
+Lekka mżawka	Light drizzle	Leichter Nieselregen	Llovizna ligera	Bruine légère
+Mżawka	Drizzle	Nieselregen	Llovizna	Bruine
+Gęsta mżawka	Dense drizzle	Starker Nieselregen	Llovizna densa	Bruine dense
+Marznąca mżawka	Freezing drizzle	Gefrierender Nieselregen	Llovizna helada	Bruine verglaçante
+Lekki deszcz	Light rain	Leichter Regen	Lluvia ligera	Pluie légère
+Deszcz	Rain	Regen	Lluvia	Pluie
+Ulewa	Heavy rain	Starkregen	Lluvia fuerte	Forte pluie
+Marznący deszcz	Freezing rain	Gefrierender Regen	Lluvia helada	Pluie verglaçante
+Lekki śnieg	Light snow	Leichter Schnee	Nieve ligera	Neige légère
+Śnieg	Snow	Schnee	Nieve	Neige
+Intensywny śnieg	Heavy snow	Starker Schneefall	Nieve intensa	Forte neige
+Ziarna śniegu	Snow grains	Schneegriesel	Granos de nieve	Neige en grains
+Przelotny deszcz	Rain showers	Regenschauer	Chubascos	Averses de pluie
+Przelotne opady	Showers	Schauer	Chubascos	Averses
+Ulewy	Heavy showers	Starke Schauer	Chubascos fuertes	Fortes averses
+Przelotny śnieg	Snow showers	Schneeschauer	Chubascos de nieve	Averses de neige
+Śnieżyca	Snowstorm	Schneesturm	Ventisca	Tempête de neige
+Burza	Thunderstorm	Gewitter	Tormenta	Orage
+Burza z gradem	Thunderstorm with hail	Gewitter mit Hagel	Tormenta con granizo	Orage avec grêle
+Bez opadów przez 24 h	No precipitation for 24 h	24 h ohne Niederschlag	Sin precipitación en 24 h	Pas de précipitations pendant 24 h
+Opady przez całą dobę	Precipitation all day	Niederschlag den ganzen Tag	Precipitación todo el día	Précipitations toute la journée
+Zaczyna padać	Rain starting	Es beginnt zu regnen	Empieza a llover	Il commence à pleuvoir
+Zaczyna padać śnieg	Snow starting	Es beginnt zu schneien	Empieza a nevar	Il commence à neiger
+zaraz zacznie padać	rain any minute	gleich regnet es	lloverá enseguida	la pluie arrive d'une minute à l'autre
+Deszcz za ok. 30 min	Rain in about 30 min	Regen in etwa 30 Min.	Lluvia en unos 30 min	Pluie dans environ 30 min
+{} za ok. {} min	{} in about {} min	{} in etwa {} Min.	{} en unos {} min	{} dans environ {} min
+{} za {}	{} in {}	{} in {}	{} en {}	{} dans {}
+opad za {} min	rain in {} min	Regen in {} Min.	lluvia en {} min	pluie dans {} min
+przestanie za {} min	stops in {} min	hört in {} Min. auf	para en {} min	s'arrête dans {} min
+Przestanie padać ok. {}	Rain stops around {}	Regen hört gegen {} auf	Deja de llover hacia las {}	La pluie s'arrête vers {}
+Opad {}%, {} mm · 	Rain {}%, {} mm · 	Regen {}%, {} mm · 	Lluvia {}%, {} mm ·	Pluie {}%, {} mm · 
+Wschód {} · za {}	Sunrise {} · in {}	Aufgang {} · in {}	Salida {} · en {}	Lever {} · dans {}
+Wschód jutro {}{tail}	Sunrise tomorrow {}{tail}	Aufgang morgen {}{tail}	Salida mañana {}{tail}	Lever demain {}{tail}
+wschód jutro {}	sunrise tomorrow {}	Aufgang morgen {}	salida mañana {}	lever demain {}
+wschód {} · zachód {}	sunrise {} · sunset {}	Aufgang {} · Untergang {}	salida {} · puesta {}	lever {} · coucher {}
+Zachód {} · światła jeszcze {}{tail}	Sunset {} · light for {}{tail}	Untergang {} · noch {} hell{tail}	Puesta {} · luz durante {}{tail}	Coucher {} · encore {} de lumière{tail}
+do zachodu {} · złota godzina od {}:{:02}	{} to sunset · golden hour from {}:{:02}	{} bis Sonnenuntergang · goldene Stunde ab {}:{:02}	{} para la puesta · hora dorada desde las {}:{:02}	coucher dans {} · heure dorée dès {}:{:02}
+dzień trwa {}	day length {}	Tageslänge {}	el día dura {}	durée du jour {}
+słońce {}° nad horyzontem	sun {}° above the horizon	Sonne {}° über dem Horizont	sol {}° sobre el horizonte	soleil à {}° au-dessus de l'horizon
+słońce {}° pod horyzontem	sun {}° below the horizon	Sonne {}° unter dem Horizont	sol {}° bajo el horizonte	soleil à {}° sous l'horizon
+oświetlenie {}% · dzień {}	illumination {}% · day {}	Beleuchtung {}% · Tag {}	iluminación {}% · día {}	illumination {}% · jour {}
+nów {} · pełnia {}	new moon {} · full moon {}	Neumond {} · Vollmond {}	luna nueva {} · luna llena {}	nouvelle lune {} · pleine lune {}
+Nów	New moon	Neumond	Luna nueva	Nouvelle lune
+Pełnia	Full moon	Vollmond	Luna llena	Pleine lune
+Pierwsza kwadra	First quarter	Erstes Viertel	Cuarto creciente	Premier quartier
+Ostatnia kwadra	Last quarter	Letztes Viertel	Cuarto menguante	Dernier quartier
+Przybywający sierp	Waxing crescent	Zunehmende Sichel	Luna creciente	Premier croissant
+Przybywający garb	Waxing gibbous	Zunehmender Mond	Gibosa creciente	Gibbeuse croissante
+Ubywający garb	Waning gibbous	Abnehmender Mond	Gibosa menguante	Gibbeuse décroissante
+Ubywający sierp	Waning crescent	Abnehmende Sichel	Luna menguante	Dernier croissant
+, {}° chłodniej	, {}° cooler	, {}° kühler	, {}° más frío	, {}° plus frais
+, {}° cieplej	, {}° warmer	, {}° wärmer	, {}° más cálido	, {}° plus chaud
+{}, {}° chłodniej	{}, {}° cooler	{}, {}° kühler	{}, {}° más frío	{}, {}° plus frais
+{}, {}° cieplej	{}, {}° warmer	{}, {}° wärmer	{}, {}° más cálido	{}, {}° plus chaud
 # media, timers
-Minutnik	Timer	Timer	Temporizador
-Minutnik zatrzymany	Timer stopped	Timer gestoppt	Temporizador detenido
-Muzyka	Music	Musik	Música
-Multimedia	Media	Medien	Multimedia
-Otwórz multimedia	Open media	Medien öffnen	Abrir multimedia
-Ostatnio odtwarzane	Recently played	Zuletzt gespielt	Reproducido recientemente
-Kolejka	Queue	Warteschlange	Cola
-Dodaj do kolejki	Add to queue	Zur Warteschlange	Añadir a la cola
-Dodano do kolejki	Added to queue	Zur Warteschlange hinzugefügt	Añadido a la cola
-Losowo	Shuffle	Zufällig	Aleatorio
-Po kolei	In order	Der Reihe nach	En orden
-Bez powtarzania	No repeat	Keine Wiederholung	Sin repetir
-Powtarzaj kolejkę	Repeat queue	Warteschlange wiederholen	Repetir cola
-Powtarzaj ten plik	Repeat this file	Diese Datei wiederholen	Repetir este archivo
-Od początku	From the start	Von vorn	Desde el principio
-Wznowiono od {}	Resumed from {}	Fortgesetzt ab {}	Reanudado desde {}
-Napisy	Subtitles	Untertitel	Subtítulos
-Napisy wyłączone	Subtitles off	Untertitel aus	Subtítulos desactivados
-Brak napisów	No subtitles	Keine Untertitel	Sin subtítulos
-Jedna ścieżka audio	One audio track	Eine Audiospur	Una pista de audio
-Normalna prędkość	Normal speed	Normale Geschwindigkeit	Velocidad normal
-Wypełnij okno	Fill window	Fenster füllen	Llenar ventana
-Cały obraz	Whole picture	Ganzes Bild	Imagen completa
-Pierwotnie	Original	Original	Original
-Upuść tu film lub muzykę, albo wybierz plik	Drop a video or music here, or choose a file	Video oder Musik hier ablegen oder Datei wählen	Suelta aquí un vídeo o música, o elige un archivo
-Upuść, aby odtworzyć	Drop to play	Zum Abspielen ablegen	Suelta para reproducir
-Upuść, aby odtworzyć  ·  Shift: dodaj do kolejki	Drop to play  ·  Shift: add to queue	Zum Abspielen ablegen  ·  Umschalt: zur Warteschlange	Suelta para reproducir  ·  Mayús: añadir a la cola
-Nie można odtworzyć: {m}	Cannot play: {m}	Kann nicht abspielen: {m}	No se puede reproducir: {m}
-Odtwarzacz — {}	Player — {}	Player — {}	Reproductor — {}
-Otwórz plik	Open file	Datei öffnen	Abrir archivo
-Otwórz plik…	Open file…	Datei öffnen…	Abrir archivo…
-Angielski	English	Englisch	Inglés
-Niemiecki	German	Deutsch	Alemán
-Hiszpański	Spanish	Spanisch	Español
-Francuski	French	Französisch	Francés
-Włoski	Italian	Italienisch	Italiano
-Rosyjski	Russian	Russisch	Ruso
-Ukraiński	Ukrainian	Ukrainisch	Ucraniano
-Czeski	Czech	Tschechisch	Checo
-Japoński	Japanese	Japanisch	Japonés
-Koreański	Korean	Koreanisch	Coreano
+Minutnik	Timer	Timer	Temporizador	Minuteur
+Minutnik zatrzymany	Timer stopped	Timer gestoppt	Temporizador detenido	Minuteur arrêté
+Muzyka	Music	Musik	Música	Musique
+Multimedia	Media	Medien	Multimedia	Médias
+Otwórz multimedia	Open media	Medien öffnen	Abrir multimedia	Ouvrir les médias
+Ostatnio odtwarzane	Recently played	Zuletzt gespielt	Reproducido recientemente	Lus récemment
+Kolejka	Queue	Warteschlange	Cola	File d'attente
+Dodaj do kolejki	Add to queue	Zur Warteschlange	Añadir a la cola	Ajouter à la file d'attente
+Dodano do kolejki	Added to queue	Zur Warteschlange hinzugefügt	Añadido a la cola	Ajouté à la file d'attente
+Losowo	Shuffle	Zufällig	Aleatorio	Aléatoire
+Po kolei	In order	Der Reihe nach	En orden	Dans l'ordre
+Bez powtarzania	No repeat	Keine Wiederholung	Sin repetir	Sans répétition
+Powtarzaj kolejkę	Repeat queue	Warteschlange wiederholen	Repetir cola	Répéter la file
+Powtarzaj ten plik	Repeat this file	Diese Datei wiederholen	Repetir este archivo	Répéter ce fichier
+Od początku	From the start	Von vorn	Desde el principio	Depuis le début
+Wznowiono od {}	Resumed from {}	Fortgesetzt ab {}	Reanudado desde {}	Reprise à {}
+Napisy	Subtitles	Untertitel	Subtítulos	Sous-titres
+Napisy wyłączone	Subtitles off	Untertitel aus	Subtítulos desactivados	Sous-titres désactivés
+Brak napisów	No subtitles	Keine Untertitel	Sin subtítulos	Pas de sous-titres
+Jedna ścieżka audio	One audio track	Eine Audiospur	Una pista de audio	Une seule piste audio
+Normalna prędkość	Normal speed	Normale Geschwindigkeit	Velocidad normal	Vitesse normale
+Wypełnij okno	Fill window	Fenster füllen	Llenar ventana	Remplir la fenêtre
+Cały obraz	Whole picture	Ganzes Bild	Imagen completa	Image entière
+Pierwotnie	Original	Original	Original	Original
+Upuść tu film lub muzykę, albo wybierz plik	Drop a video or music here, or choose a file	Video oder Musik hier ablegen oder Datei wählen	Suelta aquí un vídeo o música, o elige un archivo	Déposez une vidéo ou de la musique ici, ou choisissez un fichier
+Upuść, aby odtworzyć	Drop to play	Zum Abspielen ablegen	Suelta para reproducir	Déposez pour lire
+Upuść, aby odtworzyć  ·  Shift: dodaj do kolejki	Drop to play  ·  Shift: add to queue	Zum Abspielen ablegen  ·  Umschalt: zur Warteschlange	Suelta para reproducir  ·  Mayús: añadir a la cola	Déposez pour lire  ·  Maj : ajouter à la file
+Nie można odtworzyć: {m}	Cannot play: {m}	Kann nicht abspielen: {m}	No se puede reproducir: {m}	Lecture impossible : {m}
+Odtwarzacz — {}	Player — {}	Player — {}	Reproductor — {}	Lecteur — {}
+Otwórz plik	Open file	Datei öffnen	Abrir archivo	Ouvrir un fichier
+Otwórz plik…	Open file…	Datei öffnen…	Abrir archivo…	Ouvrir un fichier…
+Angielski	English	Englisch	Inglés	Anglais
+Niemiecki	German	Deutsch	Alemán	Allemand
+Hiszpański	Spanish	Spanisch	Español	Espagnol
+Francuski	French	Französisch	Francés	Français
+Włoski	Italian	Italienisch	Italiano	Italien
+Rosyjski	Russian	Russisch	Ruso	Russe
+Ukraiński	Ukrainian	Ukrainisch	Ucraniano	Ukrainien
+Czeski	Czech	Tschechisch	Checo	Tchèque
+Japoński	Japanese	Japanisch	Japonés	Japonais
+Koreański	Korean	Koreanisch	Coreano	Coréen
 # files
-Plik	File	Datei	Archivo
-Folder	Folder	Ordner	Carpeta
-Foldery	Folders	Ordner	Carpetas
-Nazwa	Name	Name	Nombre
-Nazwa pliku	File name	Dateiname	Nombre de archivo
-Typ	Kind	Art	Tipo
-Data modyfikacji	Date modified	Änderungsdatum	Fecha de modificación
-Zmodyfikowano	Modified	Geändert	Modificado
-Rozmiar plików	File size	Dateigröße	Tamaño de archivo
-Typ plików	File type	Dateityp	Tipo de archivo
-Wszystkie pliki	All files	Alle Dateien	Todos los archivos
-Ścieżka	Path	Pfad	Ruta
-Zawiera	Contains	Enthält	Contiene
-Położenie	Location	Ort	Ubicación
-Sortuj	Sort	Sortieren	Ordenar
-Sortuj według	Sort by	Sortieren nach	Ordenar por
-Rosnąco	Ascending	Aufsteigend	Ascendente
-Malejąco	Descending	Absteigend	Descendente
-Widok	View	Ansicht	Ver
-Ikony	Icons	Symbole	Iconos
-Ikony (Ctrl+Shift+2)	Icons (Ctrl+Shift+2)	Symbole (Ctrl+Shift+2)	Iconos (Ctrl+Shift+2)
-Szczegóły (Ctrl+Shift+6)	Details (Ctrl+Shift+6)	Details (Ctrl+Shift+6)	Detalles (Ctrl+Shift+6)
-Okienko nawigacji	Navigation pane	Navigationsbereich	Panel de navegación
-Okienko podglądu	Preview pane	Vorschaubereich	Panel de vista previa
-Okienko podglądu (Alt+P)	Preview pane (Alt+P)	Vorschaubereich (Alt+P)	Panel de vista previa (Alt+P)
-Pokaż ukryte	Show hidden	Verborgene zeigen	Mostrar ocultos
-Pokaż ukryte elementy	Show hidden items	Verborgene Elemente zeigen	Mostrar elementos ocultos
-Wstecz (Alt+←)	Back (Alt+←)	Zurück (Alt+←)	Atrás (Alt+←)
-Dalej (Alt+→)	Forward (Alt+→)	Vor (Alt+→)	Adelante (Alt+→)
-W górę (Alt+↑)	Up (Alt+↑)	Nach oben (Alt+↑)	Arriba (Alt+↑)
-Nowa karta (Ctrl+T)	New tab (Ctrl+T)	Neuer Tab (Ctrl+T)	Nueva pestaña (Ctrl+T)
-Zamknij kartę	Close tab	Tab schließen	Cerrar pestaña
-Otwórz w nowej karcie	Open in new tab	In neuem Tab öffnen	Abrir en pestaña nueva
-Otwórz w nowym oknie	Open in new window	In neuem Fenster öffnen	Abrir en ventana nueva
-Otwórz w terminalu	Open in terminal	Im Terminal öffnen	Abrir en terminal
-Nowy	New	Neu	Nuevo
-Nowy folder	New folder	Neuer Ordner	Nueva carpeta
-Nowy dokument tekstowy	New text document	Neues Textdokument	Nuevo documento de texto
-Zmień nazwę	Rename	Umbenennen	Cambiar nombre
-Zmień nazwę (F2)	Rename (F2)	Umbenennen (F2)	Cambiar nombre (F2)
-Kopiuj (Ctrl+C)	Copy (Ctrl+C)	Kopieren (Strg+C)	Copiar (Ctrl+C)
-Wklej (Ctrl+V)	Paste (Ctrl+V)	Einfügen (Strg+V)	Pegar (Ctrl+V)
-Wytnij (Ctrl+X)	Cut (Ctrl+X)	Ausschneiden (Strg+X)	Cortar (Ctrl+X)
-Wklej do folderu	Paste into folder	In Ordner einfügen	Pegar en la carpeta
-Kopiuj ścieżkę	Copy path	Pfad kopieren	Copiar ruta
-Kopiuj ścieżkę (Ctrl+Shift+C)	Copy path (Ctrl+Shift+C)	Pfad kopieren (Strg+Umschalt+C)	Copiar ruta (Ctrl+Mayús+C)
-Zaznacz wszystko	Select all	Alles auswählen	Seleccionar todo
-Wyczyść zaznaczenie	Clear selection	Auswahl aufheben	Quitar selección
-Odwróć zaznaczenie	Invert selection	Auswahl umkehren	Invertir selección
-Zaznaczono {} elem.	{} items selected	{} Elemente ausgewählt	{} elementos seleccionados
-Przenieś do kosza	Move to Trash	In den Papierkorb	Mover a la papelera
-Przenieś do kosza (Del)	Move to Trash (Del)	In den Papierkorb (Entf)	Mover a la papelera (Supr)
-Przeniesiono do kosza: {n} elem.	Moved to Trash: {n} items	In den Papierkorb: {n} Elemente	Movidos a la papelera: {n} elementos
-Przeniesiono do kosza: {o}	Moved to Trash: {o}	In den Papierkorb: {o}	Movido a la papelera: {o}
-Nie można przenieść do kosza	Cannot move to Trash	Kann nicht in den Papierkorb verschoben werden	No se puede mover a la papelera
-Nie udało się przenieść do kosza	Could not move to Trash	Verschieben in den Papierkorb fehlgeschlagen	No se pudo mover a la papelera
-Nie udało się przenieść do kosza: {}	Could not move to Trash: {}	Verschieben in den Papierkorb fehlgeschlagen: {}	No se pudo mover a la papelera: {}
-Kosz jest pusty	Trash is empty	Papierkorb ist leer	La papelera está vacía
-Kosz opróżniony	Trash emptied	Papierkorb geleert	Papelera vaciada
-Opróżnij	Empty	Leeren	Vaciar
-Opróżnij kosz	Empty Trash	Papierkorb leeren	Vaciar papelera
-Opróżnić kosz?	Empty the Trash?	Papierkorb leeren?	¿Vaciar la papelera?
-Wszystkie elementy w koszu zostaną usunięte na zawsze.	All items in the Trash will be deleted forever.	Alle Elemente im Papierkorb werden endgültig gelöscht.	Todos los elementos de la papelera se eliminarán para siempre.
-Nie znaleziono elementów w koszu	No items found in the Trash	Keine Elemente im Papierkorb gefunden	No hay elementos en la papelera
-Usuń trwale	Delete permanently	Endgültig löschen	Eliminar definitivamente
-Usunąć trwale?	Delete permanently?	Endgültig löschen?	¿Eliminar definitivamente?
-Ten dysk nie ma kosza. Usunąć zaznaczone elementy trwale? Tej operacji nie można cofnąć.	This drive has no Trash. Delete the selected items permanently? This cannot be undone.	Dieses Laufwerk hat keinen Papierkorb. Ausgewählte Elemente endgültig löschen? Das kann nicht rückgängig gemacht werden.	Esta unidad no tiene papelera. ¿Eliminar definitivamente los elementos seleccionados? No se puede deshacer.
-„{}” zostanie usunięty na zawsze. Tej operacji nie można cofnąć.	“{}” will be deleted forever. This cannot be undone.	„{}“ wird endgültig gelöscht. Das kann nicht rückgängig gemacht werden.	«{}» se eliminará para siempre. No se puede deshacer.
-{} elementów zostanie usuniętych na zawsze. Tej operacji nie można cofnąć.	{} items will be deleted forever. This cannot be undone.	{} Elemente werden endgültig gelöscht. Das kann nicht rückgängig gemacht werden.	{} elementos se eliminarán para siempre. No se puede deshacer.
-Nie udało się usunąć	Could not delete	Löschen fehlgeschlagen	No se pudo eliminar
-Nie udało się przywrócić	Could not restore	Wiederherstellen fehlgeschlagen	No se pudo restaurar
-Nie ma czego cofnąć	Nothing to undo	Nichts rückgängig zu machen	Nada que deshacer
-Cofnij {l}	Undo {l}	{l} rückgängig	Deshacer {l}
-Cofnięto: {label}	Undone: {label}	Rückgängig: {label}	Deshecho: {label}
-usunięcie {n} elem.	deleting {n} items	Löschen von {n} Elementen	eliminar {n} elementos
-usunięcie „{o}”	deleting “{o}”	Löschen von „{o}“	eliminar «{o}»
-Przeniesiono	Moved	Verschoben	Movido
-Zastąp	Replace	Ersetzen	Reemplazar
-Zastąpić „{name}”?	Replace “{name}”?	„{name}“ ersetzen?	¿Reemplazar «{name}»?
-Plik o tej nazwie już istnieje w tym folderze. Zastąpienie nadpisze jego zawartość.	A file with this name already exists in this folder. Replacing it overwrites its contents.	In diesem Ordner gibt es bereits eine Datei mit diesem Namen. Ersetzen überschreibt ihren Inhalt.	Ya existe un archivo con este nombre en esta carpeta. Reemplazarlo sobrescribe su contenido.
-Element o nazwie „{name}” już istnieje	An item named “{name}” already exists	Ein Element namens „{name}“ existiert bereits	Ya existe un elemento llamado «{name}»
-Nie można utworzyć folderu	Cannot create the folder	Ordner kann nicht erstellt werden	No se puede crear la carpeta
-Nie można utworzyć pliku	Cannot create the file	Datei kann nicht erstellt werden	No se puede crear el archivo
-Nie można zmienić nazwy	Cannot rename	Umbenennen nicht möglich	No se puede cambiar el nombre
-Brak dostępu do tego folderu	No access to this folder	Kein Zugriff auf diesen Ordner	Sin acceso a esta carpeta
-Ten folder jest pusty	This folder is empty	Dieser Ordner ist leer	Esta carpeta está vacía
-Ten folder nie istnieje	This folder does not exist	Dieser Ordner existiert nicht	Esta carpeta no existe
-Dodano {n} pliki	Added {n} files	{n} Dateien hinzugefügt	Añadidos {n} archivos
-Szukaj w: {}	Search in: {}	Suchen in: {}	Buscar en: {}
-Pliki — {}	Files — {}	Dateien — {}	Archivos — {}
-Ten komputer	This PC	Dieser PC	Este equipo
-Katalog domowy	Home	Persönlicher Ordner	Carpeta personal
-Pulpit	Desktop	Schreibtisch	Escritorio
-Dokumenty	Documents	Dokumente	Documentos
-Pobrane	Downloads	Downloads	Descargas
-Obrazy	Pictures	Bilder	Imágenes
-Wideo	Videos	Videos	Vídeos
-Dysk systemowy	System drive	Systemlaufwerk	Disco del sistema
-Komputer	Computer	Computer	Equipo
-Biblioteka	Library	Bibliothek	Biblioteca
-Skrót	Shortcut	Verknüpfung	Acceso directo
-Skrót aplikacji	App shortcut	App-Verknüpfung	Acceso directo de app
-Skróty klawiszowe	Keyboard shortcuts	Tastenkürzel	Atajos de teclado
-Folder plików	File folder	Dateiordner	Carpeta de archivos
-Dokument tekstowy	Text document	Textdokument	Documento de texto
-Dokument PDF	PDF document	PDF-Dokument	Documento PDF
-Dokument Word	Word document	Word-Dokument	Documento de Word
-Dokument Markdown	Markdown document	Markdown-Dokument	Documento Markdown
-Arkusz Excel	Excel spreadsheet	Excel-Tabelle	Hoja de Excel
-Strona HTML	HTML page	HTML-Seite	Página HTML
-Plik JSON	JSON file	JSON-Datei	Archivo JSON
-Plik QML	QML file	QML-Datei	Archivo QML
-Plik {}	{} file	{}-Datei	Archivo {}
-Skrypt Python	Python script	Python-Skript	Script de Python
-Skrypt powłoki	Shell script	Shell-Skript	Script de shell
-Kod C	C source	C-Quelltext	Código C
-Kod C++	C++ source	C++-Quelltext	Código C++
-Kod Rust	Rust source	Rust-Quelltext	Código Rust
-Obraz PNG	PNG image	PNG-Bild	Imagen PNG
-Obraz JPEG	JPEG image	JPEG-Bild	Imagen JPEG
-Obraz GIF	GIF image	GIF-Bild	Imagen GIF
-Obraz SVG	SVG image	SVG-Bild	Imagen SVG
-Obraz WebP	WebP image	WebP-Bild	Imagen WebP
-Wideo MP4	MP4 video	MP4-Video	Vídeo MP4
-Wideo MKV	MKV video	MKV-Video	Vídeo MKV
-Wideo WebM	WebM video	WebM-Video	Vídeo WebM
-Dźwięk MP3	MP3 audio	MP3-Audio	Audio MP3
-Dźwięk FLAC	FLAC audio	FLAC-Audio	Audio FLAC
-Dźwięk OGG	OGG audio	OGG-Audio	Audio OGG
-Archiwum ZIP	ZIP archive	ZIP-Archiv	Archivo ZIP
-Archiwum TAR	TAR archive	TAR-Archiv	Archivo TAR
-Archiwum TAR.GZ	TAR.GZ archive	TAR.GZ-Archiv	Archivo TAR.GZ
-Archiwum 7z	7z archive	7z-Archiv	Archivo 7z
-Archiwum RAR	RAR archive	RAR-Archiv	Archivo RAR
-Nazwa:	Name:	Name:	Nombre:
-Oś czasu	Timeline	Zeitleiste	Cronología
-Brudnopis	Scratchpad	Notizblock	Borrador
-elementów	items	Elemente	elementos
-plików	files	Dateien	archivos
-wczoraj	yesterday	gestern	ayer
-sucho	dry	trocken	seco
-{} najlepiej ok. {} · {}°, {}, wiatr {}	{} best around {} · {}°, {}, wind {}	{} am besten gegen {} · {}°, {}, Wind {}	{} mejor hacia las {} · {}°, {}, viento {}
-wiatr {} km/h	wind {} km/h	Wind {} km/h	viento {} km/h
-opad {}%	rain {}%	Regen {}%	lluvia {}%
-Bieg spokojny {} min	Easy run {} min	Lockerer Lauf {} Min.	Rodaje suave {} min
-Bieg poranny	Morning run	Morgenlauf	Carrera matutina
-Strefa {}, kadencja {}	Zone {}, cadence {}	Zone {}, Kadenz {}	Zona {}, cadencia {}
-Zdjęcie z folderu tapet	Photo from the wallpaper folder	Foto aus dem Hintergrundordner	Foto de la carpeta de fondos
-Ogólne	General	Allgemein	General
-Język i miejsce	Language and place	Sprache und Ort	Idioma y lugar
-Miejsce pogody	Weather place	Wetterort	Lugar del tiempo
-Tapeta	Wallpaper	Hintergrund	Fondo
-Tło pulpitu	Desktop background	Schreibtischhintergrund	Fondo del escritorio
-Wybierz tapetę…	Choose wallpaper…	Hintergrund wählen…	Elegir fondo…
-Witaj w Mist. Wybierz język i miejsce pogody.	Welcome to Mist. Choose a language and the weather place.	Willkommen bei Mist. Wähle Sprache und Wetterort.	Bienvenido a Mist. Elige idioma y lugar del tiempo.
-Ten arkusz otworzysz później prawym klikiem na zegarze pulpitu.	Open this sheet again with a right click on the desktop clock.	Dieses Blatt öffnest du später mit Rechtsklick auf die Schreibtischuhr.	Vuelve a abrir esta hoja con clic derecho en el reloj del escritorio.
-Wpisz miasto i naciśnij Enter	Type a city and press Enter	Stadt eingeben und Enter drücken	Escribe una ciudad y pulsa Intro
-Szukam…	Searching…	Suche…	Buscando…
-Wybierz miejsce pogody	Choose the weather place	Wetterort wählen	Elige el lugar del tiempo
+Plik	File	Datei	Archivo	Fichier
+Folder	Folder	Ordner	Carpeta	Dossier
+Foldery	Folders	Ordner	Carpetas	Dossiers
+Nazwa	Name	Name	Nombre	Nom
+Nazwa pliku	File name	Dateiname	Nombre de archivo	Nom du fichier
+Typ	Kind	Art	Tipo	Type
+Data modyfikacji	Date modified	Änderungsdatum	Fecha de modificación	Date de modification
+Zmodyfikowano	Modified	Geändert	Modificado	Modifié
+Rozmiar plików	File size	Dateigröße	Tamaño de archivo	Taille des fichiers
+Typ plików	File type	Dateityp	Tipo de archivo	Type de fichiers
+Wszystkie pliki	All files	Alle Dateien	Todos los archivos	Tous les fichiers
+Ścieżka	Path	Pfad	Ruta	Chemin
+Zawiera	Contains	Enthält	Contiene	Contient
+Położenie	Location	Ort	Ubicación	Emplacement
+Sortuj	Sort	Sortieren	Ordenar	Trier
+Sortuj według	Sort by	Sortieren nach	Ordenar por	Trier par
+Rosnąco	Ascending	Aufsteigend	Ascendente	Croissant
+Malejąco	Descending	Absteigend	Descendente	Décroissant
+Widok	View	Ansicht	Ver	Affichage
+Ikony	Icons	Symbole	Iconos	Icônes
+Ikony (Ctrl+Shift+2)	Icons (Ctrl+Shift+2)	Symbole (Ctrl+Shift+2)	Iconos (Ctrl+Shift+2)	Icônes (Ctrl+Shift+2)
+Szczegóły (Ctrl+Shift+6)	Details (Ctrl+Shift+6)	Details (Ctrl+Shift+6)	Detalles (Ctrl+Shift+6)	Détails (Ctrl+Shift+6)
+Okienko nawigacji	Navigation pane	Navigationsbereich	Panel de navegación	Volet de navigation
+Okienko podglądu	Preview pane	Vorschaubereich	Panel de vista previa	Volet d'aperçu
+Okienko podglądu (Alt+P)	Preview pane (Alt+P)	Vorschaubereich (Alt+P)	Panel de vista previa (Alt+P)	Volet d'aperçu (Alt+P)
+Pokaż ukryte	Show hidden	Verborgene zeigen	Mostrar ocultos	Afficher les fichiers cachés
+Pokaż ukryte elementy	Show hidden items	Verborgene Elemente zeigen	Mostrar elementos ocultos	Afficher les éléments cachés
+Wstecz (Alt+←)	Back (Alt+←)	Zurück (Alt+←)	Atrás (Alt+←)	Précédent (Alt+←)
+Dalej (Alt+→)	Forward (Alt+→)	Vor (Alt+→)	Adelante (Alt+→)	Suivant (Alt+→)
+W górę (Alt+↑)	Up (Alt+↑)	Nach oben (Alt+↑)	Arriba (Alt+↑)	Dossier parent (Alt+↑)
+Nowa karta (Ctrl+T)	New tab (Ctrl+T)	Neuer Tab (Ctrl+T)	Nueva pestaña (Ctrl+T)	Nouvel onglet (Ctrl+T)
+Zamknij kartę	Close tab	Tab schließen	Cerrar pestaña	Fermer l'onglet
+Otwórz w nowej karcie	Open in new tab	In neuem Tab öffnen	Abrir en pestaña nueva	Ouvrir dans un nouvel onglet
+Otwórz w nowym oknie	Open in new window	In neuem Fenster öffnen	Abrir en ventana nueva	Ouvrir dans une nouvelle fenêtre
+Otwórz w terminalu	Open in terminal	Im Terminal öffnen	Abrir en terminal	Ouvrir dans le terminal
+Nowy	New	Neu	Nuevo	Nouveau
+Nowy folder	New folder	Neuer Ordner	Nueva carpeta	Nouveau dossier
+Nowy dokument tekstowy	New text document	Neues Textdokument	Nuevo documento de texto	Nouveau document texte
+Zmień nazwę	Rename	Umbenennen	Cambiar nombre	Renommer
+Zmień nazwę (F2)	Rename (F2)	Umbenennen (F2)	Cambiar nombre (F2)	Renommer (F2)
+Kopiuj (Ctrl+C)	Copy (Ctrl+C)	Kopieren (Strg+C)	Copiar (Ctrl+C)	Copier (Ctrl+C)
+Wklej (Ctrl+V)	Paste (Ctrl+V)	Einfügen (Strg+V)	Pegar (Ctrl+V)	Coller (Ctrl+V)
+Wytnij (Ctrl+X)	Cut (Ctrl+X)	Ausschneiden (Strg+X)	Cortar (Ctrl+X)	Couper (Ctrl+X)
+Wklej do folderu	Paste into folder	In Ordner einfügen	Pegar en la carpeta	Coller dans le dossier
+Kopiuj ścieżkę	Copy path	Pfad kopieren	Copiar ruta	Copier le chemin
+Kopiuj ścieżkę (Ctrl+Shift+C)	Copy path (Ctrl+Shift+C)	Pfad kopieren (Strg+Umschalt+C)	Copiar ruta (Ctrl+Mayús+C)	Copier le chemin (Ctrl+Shift+C)
+Zaznacz wszystko	Select all	Alles auswählen	Seleccionar todo	Tout sélectionner
+Wyczyść zaznaczenie	Clear selection	Auswahl aufheben	Quitar selección	Effacer la sélection
+Odwróć zaznaczenie	Invert selection	Auswahl umkehren	Invertir selección	Inverser la sélection
+Zaznaczono {} elem.	{} items selected	{} Elemente ausgewählt	{} elementos seleccionados	{} éléments sélectionnés
+Przenieś do kosza	Move to Trash	In den Papierkorb	Mover a la papelera	Mettre à la corbeille
+Przenieś do kosza (Del)	Move to Trash (Del)	In den Papierkorb (Entf)	Mover a la papelera (Supr)	Mettre à la corbeille (Suppr)
+Przeniesiono do kosza: {n} elem.	Moved to Trash: {n} items	In den Papierkorb: {n} Elemente	Movidos a la papelera: {n} elementos	Mis à la corbeille : {n} éléments
+Przeniesiono do kosza: {o}	Moved to Trash: {o}	In den Papierkorb: {o}	Movido a la papelera: {o}	Mis à la corbeille : {o}
+Nie można przenieść do kosza	Cannot move to Trash	Kann nicht in den Papierkorb verschoben werden	No se puede mover a la papelera	Impossible de mettre à la corbeille
+Nie udało się przenieść do kosza	Could not move to Trash	Verschieben in den Papierkorb fehlgeschlagen	No se pudo mover a la papelera	Échec de la mise à la corbeille
+Nie udało się przenieść do kosza: {}	Could not move to Trash: {}	Verschieben in den Papierkorb fehlgeschlagen: {}	No se pudo mover a la papelera: {}	Échec de la mise à la corbeille : {}
+Kosz jest pusty	Trash is empty	Papierkorb ist leer	La papelera está vacía	La corbeille est vide
+Kosz opróżniony	Trash emptied	Papierkorb geleert	Papelera vaciada	Corbeille vidée
+Opróżnij	Empty	Leeren	Vaciar	Vider
+Opróżnij kosz	Empty Trash	Papierkorb leeren	Vaciar papelera	Vider la corbeille
+Opróżnić kosz?	Empty the Trash?	Papierkorb leeren?	¿Vaciar la papelera?	Vider la corbeille ?
+Wszystkie elementy w koszu zostaną usunięte na zawsze.	All items in the Trash will be deleted forever.	Alle Elemente im Papierkorb werden endgültig gelöscht.	Todos los elementos de la papelera se eliminarán para siempre.	Tous les éléments de la corbeille seront supprimés définitivement.
+Nie znaleziono elementów w koszu	No items found in the Trash	Keine Elemente im Papierkorb gefunden	No hay elementos en la papelera	Aucun élément trouvé dans la corbeille
+Usuń trwale	Delete permanently	Endgültig löschen	Eliminar definitivamente	Supprimer définitivement
+Usunąć trwale?	Delete permanently?	Endgültig löschen?	¿Eliminar definitivamente?	Supprimer définitivement ?
+Ten dysk nie ma kosza. Usunąć zaznaczone elementy trwale? Tej operacji nie można cofnąć.	This drive has no Trash. Delete the selected items permanently? This cannot be undone.	Dieses Laufwerk hat keinen Papierkorb. Ausgewählte Elemente endgültig löschen? Das kann nicht rückgängig gemacht werden.	Esta unidad no tiene papelera. ¿Eliminar definitivamente los elementos seleccionados? No se puede deshacer.	Ce disque n'a pas de corbeille. Supprimer définitivement les éléments sélectionnés ? Cette action est irréversible.
+„{}” zostanie usunięty na zawsze. Tej operacji nie można cofnąć.	“{}” will be deleted forever. This cannot be undone.	„{}“ wird endgültig gelöscht. Das kann nicht rückgängig gemacht werden.	«{}» se eliminará para siempre. No se puede deshacer.	« {} » sera supprimé définitivement. Cette action est irréversible.
+{} elementów zostanie usuniętych na zawsze. Tej operacji nie można cofnąć.	{} items will be deleted forever. This cannot be undone.	{} Elemente werden endgültig gelöscht. Das kann nicht rückgängig gemacht werden.	{} elementos se eliminarán para siempre. No se puede deshacer.	{} éléments seront supprimés définitivement. Cette action est irréversible.
+Nie udało się usunąć	Could not delete	Löschen fehlgeschlagen	No se pudo eliminar	Échec de la suppression
+Nie udało się przywrócić	Could not restore	Wiederherstellen fehlgeschlagen	No se pudo restaurar	Échec de la restauration
+Nie ma czego cofnąć	Nothing to undo	Nichts rückgängig zu machen	Nada que deshacer	Rien à annuler
+Cofnij {l}	Undo {l}	{l} rückgängig	Deshacer {l}	Annuler {l}
+Cofnięto: {label}	Undone: {label}	Rückgängig: {label}	Deshecho: {label}	Annulé : {label}
+usunięcie {n} elem.	deleting {n} items	Löschen von {n} Elementen	eliminar {n} elementos	suppression de {n} éléments
+usunięcie „{o}”	deleting “{o}”	Löschen von „{o}“	eliminar «{o}»	suppression de « {o} »
+Przeniesiono	Moved	Verschoben	Movido	Déplacé
+Zastąp	Replace	Ersetzen	Reemplazar	Remplacer
+Zastąpić „{name}”?	Replace “{name}”?	„{name}“ ersetzen?	¿Reemplazar «{name}»?	Remplacer « {name} » ?
+Plik o tej nazwie już istnieje w tym folderze. Zastąpienie nadpisze jego zawartość.	A file with this name already exists in this folder. Replacing it overwrites its contents.	In diesem Ordner gibt es bereits eine Datei mit diesem Namen. Ersetzen überschreibt ihren Inhalt.	Ya existe un archivo con este nombre en esta carpeta. Reemplazarlo sobrescribe su contenido.	Un fichier portant ce nom existe déjà dans ce dossier. Le remplacer écrasera son contenu.
+Element o nazwie „{name}” już istnieje	An item named “{name}” already exists	Ein Element namens „{name}“ existiert bereits	Ya existe un elemento llamado «{name}»	Un élément nommé « {name} » existe déjà
+Nie można utworzyć folderu	Cannot create the folder	Ordner kann nicht erstellt werden	No se puede crear la carpeta	Impossible de créer le dossier
+Nie można utworzyć pliku	Cannot create the file	Datei kann nicht erstellt werden	No se puede crear el archivo	Impossible de créer le fichier
+Nie można zmienić nazwy	Cannot rename	Umbenennen nicht möglich	No se puede cambiar el nombre	Impossible de renommer
+Brak dostępu do tego folderu	No access to this folder	Kein Zugriff auf diesen Ordner	Sin acceso a esta carpeta	Pas d'accès à ce dossier
+Ten folder jest pusty	This folder is empty	Dieser Ordner ist leer	Esta carpeta está vacía	Ce dossier est vide
+Ten folder nie istnieje	This folder does not exist	Dieser Ordner existiert nicht	Esta carpeta no existe	Ce dossier n'existe pas
+Dodano {n} pliki	Added {n} files	{n} Dateien hinzugefügt	Añadidos {n} archivos	{n} fichiers ajoutés
+Szukaj w: {}	Search in: {}	Suchen in: {}	Buscar en: {}	Rechercher dans : {}
+Pliki — {}	Files — {}	Dateien — {}	Archivos — {}	Fichiers — {}
+Ten komputer	This PC	Dieser PC	Este equipo	Ce PC
+Katalog domowy	Home	Persönlicher Ordner	Carpeta personal	Dossier personnel
+Pulpit	Desktop	Schreibtisch	Escritorio	Bureau
+Dokumenty	Documents	Dokumente	Documentos	Documents
+Pobrane	Downloads	Downloads	Descargas	Téléchargements
+Obrazy	Pictures	Bilder	Imágenes	Images
+Wideo	Videos	Videos	Vídeos	Vidéos
+Dysk systemowy	System drive	Systemlaufwerk	Disco del sistema	Disque système
+Komputer	Computer	Computer	Equipo	Ordinateur
+Biblioteka	Library	Bibliothek	Biblioteca	Bibliothèque
+Skrót	Shortcut	Verknüpfung	Acceso directo	Raccourci
+Skrót aplikacji	App shortcut	App-Verknüpfung	Acceso directo de app	Raccourci d'application
+Skróty klawiszowe	Keyboard shortcuts	Tastenkürzel	Atajos de teclado	Raccourcis clavier
+Folder plików	File folder	Dateiordner	Carpeta de archivos	Dossier de fichiers
+Dokument tekstowy	Text document	Textdokument	Documento de texto	Document texte
+Dokument PDF	PDF document	PDF-Dokument	Documento PDF	Document PDF
+Dokument Word	Word document	Word-Dokument	Documento de Word	Document Word
+Dokument Markdown	Markdown document	Markdown-Dokument	Documento Markdown	Document Markdown
+Arkusz Excel	Excel spreadsheet	Excel-Tabelle	Hoja de Excel	Feuille de calcul Excel
+Strona HTML	HTML page	HTML-Seite	Página HTML	Page HTML
+Plik JSON	JSON file	JSON-Datei	Archivo JSON	Fichier JSON
+Plik QML	QML file	QML-Datei	Archivo QML	Fichier QML
+Plik {}	{} file	{}-Datei	Archivo {}	Fichier {}
+Skrypt Python	Python script	Python-Skript	Script de Python	Script Python
+Skrypt powłoki	Shell script	Shell-Skript	Script de shell	Script shell
+Kod C	C source	C-Quelltext	Código C	Source C
+Kod C++	C++ source	C++-Quelltext	Código C++	Source C++
+Kod Rust	Rust source	Rust-Quelltext	Código Rust	Source Rust
+Obraz PNG	PNG image	PNG-Bild	Imagen PNG	Image PNG
+Obraz JPEG	JPEG image	JPEG-Bild	Imagen JPEG	Image JPEG
+Obraz GIF	GIF image	GIF-Bild	Imagen GIF	Image GIF
+Obraz SVG	SVG image	SVG-Bild	Imagen SVG	Image SVG
+Obraz WebP	WebP image	WebP-Bild	Imagen WebP	Image WebP
+Wideo MP4	MP4 video	MP4-Video	Vídeo MP4	Vidéo MP4
+Wideo MKV	MKV video	MKV-Video	Vídeo MKV	Vidéo MKV
+Wideo WebM	WebM video	WebM-Video	Vídeo WebM	Vidéo WebM
+Dźwięk MP3	MP3 audio	MP3-Audio	Audio MP3	Audio MP3
+Dźwięk FLAC	FLAC audio	FLAC-Audio	Audio FLAC	Audio FLAC
+Dźwięk OGG	OGG audio	OGG-Audio	Audio OGG	Audio OGG
+Archiwum ZIP	ZIP archive	ZIP-Archiv	Archivo ZIP	Archive ZIP
+Archiwum TAR	TAR archive	TAR-Archiv	Archivo TAR	Archive TAR
+Archiwum TAR.GZ	TAR.GZ archive	TAR.GZ-Archiv	Archivo TAR.GZ	Archive TAR.GZ
+Archiwum 7z	7z archive	7z-Archiv	Archivo 7z	Archive 7z
+Archiwum RAR	RAR archive	RAR-Archiv	Archivo RAR	Archive RAR
+Nazwa:	Name:	Name:	Nombre:	Nom :
+Oś czasu	Timeline	Zeitleiste	Cronología	Chronologie
+Brudnopis	Scratchpad	Notizblock	Borrador	Brouillon
+elementów	items	Elemente	elementos	éléments
+plików	files	Dateien	archivos	fichiers
+wczoraj	yesterday	gestern	ayer	hier
+sucho	dry	trocken	seco	sec
+{} najlepiej ok. {} · {}°, {}, wiatr {}	{} best around {} · {}°, {}, wind {}	{} am besten gegen {} · {}°, {}, Wind {}	{} mejor hacia las {} · {}°, {}, viento {}	{} idéalement vers {} · {}°, {}, vent {}
+wiatr {} km/h	wind {} km/h	Wind {} km/h	viento {} km/h	vent {} km/h
+opad {}%	rain {}%	Regen {}%	lluvia {}%	pluie {}%
+Bieg spokojny {} min	Easy run {} min	Lockerer Lauf {} Min.	Rodaje suave {} min	Footing {} min
+Bieg poranny	Morning run	Morgenlauf	Carrera matutina	Course du matin
+Strefa {}, kadencja {}	Zone {}, cadence {}	Zone {}, Kadenz {}	Zona {}, cadencia {}	Zone {}, cadence {}
+Zdjęcie z folderu tapet	Photo from the wallpaper folder	Foto aus dem Hintergrundordner	Foto de la carpeta de fondos	Photo du dossier des fonds d'écran
+Ogólne	General	Allgemein	General	Général
+Język i miejsce	Language and place	Sprache und Ort	Idioma y lugar	Langue et lieu
+Miejsce pogody	Weather place	Wetterort	Lugar del tiempo	Lieu de la météo
+Tapeta	Wallpaper	Hintergrund	Fondo	Fond d'écran
+Tło pulpitu	Desktop background	Schreibtischhintergrund	Fondo del escritorio	Arrière-plan du bureau
+Wybierz tapetę…	Choose wallpaper…	Hintergrund wählen…	Elegir fondo…	Choisir un fond d'écran…
+Witaj w Mist. Wybierz język i miejsce pogody.	Welcome to Mist. Choose a language and the weather place.	Willkommen bei Mist. Wähle Sprache und Wetterort.	Bienvenido a Mist. Elige idioma y lugar del tiempo.	Bienvenue dans Mist. Choisissez une langue et le lieu de la météo.
+Ten arkusz otworzysz później prawym klikiem na zegarze pulpitu.	Open this sheet again with a right click on the desktop clock.	Dieses Blatt öffnest du später mit Rechtsklick auf die Schreibtischuhr.	Vuelve a abrir esta hoja con clic derecho en el reloj del escritorio.	Rouvrez cette feuille d'un clic droit sur l'horloge du bureau.
+Wpisz miasto i naciśnij Enter	Type a city and press Enter	Stadt eingeben und Enter drücken	Escribe una ciudad y pulsa Intro	Saisissez une ville et appuyez sur Entrée
+Szukam…	Searching…	Suche…	Buscando…	Recherche…
+Wybierz miejsce pogody	Choose the weather place	Wetterort wählen	Elige el lugar del tiempo	Choisissez le lieu de la météo
 # the island demo notification (docs/img/gifs.sh)
-Nowa wiadomość od Kasi	New message from Kasia	Neue Nachricht von Kasia	Nuevo mensaje de Kasia
-Hej! Widzimy się dziś o 18 na bieganiu? Weź bidon, bo ma być ciepło.	Hi! See you at 6 pm for the run? Bring a bottle, it will be warm.	Hi! Sehen wir uns um 18 Uhr zum Laufen? Nimm eine Flasche mit, es wird warm.	¡Hola! ¿Nos vemos a las 18 para correr? Trae una botella, hará calor.
+Nowa wiadomość od Kasi	New message from Kasia	Neue Nachricht von Kasia	Nuevo mensaje de Kasia	Nouveau message de Kasia
+Hej! Widzimy się dziś o 18 na bieganiu? Weź bidon, bo ma być ciepło.	Hi! See you at 6 pm for the run? Bring a bottle, it will be warm.	Hi! Sehen wir uns um 18 Uhr zum Laufen? Nimm eine Flasche mit, es wird warm.	¡Hola! ¿Nos vemos a las 18 para correr? Trae una botella, hará calor.	Salut ! On se voit à 18 h pour courir ? Prends une gourde, il va faire chaud.
 # live wallpaper presets (native/assets/live-presets.js: name, desc)
-Kolory nieba o tej porze: noc, niebieska godzina, złota godzina, dzień. Szarzeje, gdy pada.	The sky's colours at this hour: night, blue hour, golden hour, day. Turns grey when it rains.	Die Farben des Himmels zu dieser Stunde: Nacht, blaue Stunde, goldene Stunde, Tag. Grau, wenn es regnet.	Los colores del cielo a esta hora: noche, hora azul, hora dorada, día. Se vuelve gris cuando llueve.
-Pora dnia	Time of day	Tageszeit	Hora del día
-Morze i niebo. Słońce albo księżyc stoją tam, gdzie naprawdę są.	Sea and sky. The sun or the moon stand where they really are.	Meer und Himmel. Sonne oder Mond stehen dort, wo sie wirklich sind.	Mar y cielo. El sol o la luna están donde de verdad están.
-Horyzont	Horizon	Horizont	Horizonte
-Warstwy gór, mgła w dolinach, prawdziwe słońce i księżyc.	Layers of mountains, mist in the valleys, the real sun and moon.	Bergketten, Nebel in den Tälern, echte Sonne und echter Mond.	Capas de montañas, niebla en los valles, el sol y la luna reales.
-Góry	Mountains	Berge	Montañas
-To, co za oknem: deszcz na szybie, śnieg, mgła, gwiazdy albo góry.	What is outside: rain on the glass, snow, fog, stars or mountains.	Was draußen ist: Regen an der Scheibe, Schnee, Nebel, Sterne oder Berge.	Lo que hay fuera: lluvia en el cristal, nieve, niebla, estrellas o montañas.
-Za oknem	Out the window	Vor dem Fenster	Por la ventana
-Czarny kot na kalenicy, księżyc, dym z komina i światła miasta.	A black cat on the roof ridge, the moon, chimney smoke and city lights.	Eine schwarze Katze auf dem First, der Mond, Rauch aus dem Schornstein und Stadtlichter.	Un gato negro en el tejado, la luna, humo de chimenea y luces de la ciudad.
-Kot na dachu	Cat on the roof	Katze auf dem Dach	Gato en el tejado
-Wieloryby płyną powoli przez smugi światła w głębinie.	Whales swim slowly through shafts of light in the deep.	Wale schwimmen langsam durch Lichtstreifen in der Tiefe.	Ballenas nadan despacio entre rayos de luz en lo profundo.
-Wieloryby	Whales	Wale	Ballenas
-Świecące meduzy unoszą się w rytmie oddechu.	Glowing jellyfish drift to the rhythm of a breath.	Leuchtende Quallen schweben im Rhythmus des Atems.	Medusas brillantes flotan al ritmo de la respiración.
-Meduzy	Jellyfish	Quallen	Medusas
-Karpie krążą w stawie pod liśćmi lilii.	Carp circle in a pond under lily pads.	Karpfen kreisen im Teich unter Seerosenblättern.	Carpas dan vueltas en un estanque bajo nenúfares.
-Karpie koi	Koi carp	Koi-Karpfen	Carpas koi
-Mały astronauta macha zza planety z pierścieniem.	A little astronaut waves from behind a ringed planet.	Ein kleiner Astronaut winkt hinter einem Ringplaneten hervor.	Un pequeño astronauta saluda tras un planeta con anillos.
-Astronauta	Astronaut	Astronaut	Astronauta
-Latarnia morska omiata noc snopem światła.	A lighthouse sweeps the night with its beam.	Ein Leuchtturm streift mit seinem Strahl durch die Nacht.	Un faro barre la noche con su haz de luz.
-Latarnia	Lighthouse	Leuchtturm	Faro
-Lis siedzi na śniegu i patrzy na zorzę.	A fox sits in the snow, watching the aurora.	Ein Fuchs sitzt im Schnee und schaut zum Polarlicht.	Un zorro sentado en la nieve mira la aurora.
-Lis i zorza	Fox and aurora	Fuchs und Polarlicht	Zorro y aurora
-Balony dryfują nad morzem chmur o zachodzie.	Balloons drift over a sea of clouds at sunset.	Ballons treiben bei Sonnenuntergang über einem Wolkenmeer.	Globos flotan sobre un mar de nubes al atardecer.
-Balony	Balloons	Ballons	Globos
-Halloween: duszki, dynie z mrugającymi buziami i nietoperze.	Halloween: little ghosts, pumpkins with winking faces and bats.	Halloween: Gespenster, Kürbisse mit zwinkernden Gesichtern und Fledermäuse.	Halloween: fantasmitas, calabazas que guiñan y murciélagos.
-Duszki	Ghosts	Gespenster	Fantasmas
-Pingwiny na krze, jeden ciągle gdzieś drepcze.	Penguins on an ice floe, one always waddling somewhere.	Pinguine auf einer Eisscholle, einer watschelt immer irgendwohin.	Pingüinos en un témpano, uno siempre anda de un lado a otro.
-Pingwiny	Penguins	Pinguine	Pingüinos
-Rakieta pędzi w górę między planetami.	A rocket races upwards between the planets.	Eine Rakete rast zwischen den Planeten nach oben.	Un cohete sube a toda velocidad entre planetas.
-Rakieta	Rocket	Rakete	Cohete
-Sowa na gałęzi przed księżycem, rozgląda się i mruga.	An owl on a branch before the moon, looking around and blinking.	Eine Eule auf einem Ast vor dem Mond, schaut sich um und blinzelt.	Un búho en una rama ante la luna mira a su alrededor y parpadea.
-Sowa	Owl	Eule	Búho
-Pikselowe miasto nocą i przejeżdżający pociąg.	A pixel city at night and a passing train.	Eine Pixelstadt bei Nacht und ein vorbeifahrender Zug.	Una ciudad de píxeles de noche y un tren que pasa.
-Miasto 8-bit	8-bit city	8-Bit-Stadt	Ciudad 8 bits
-Papierowe łódki i lampiony unoszące się nad wodą.	Paper boats and lanterns floating over the water.	Papierboote und Laternen, die über dem Wasser schweben.	Barquitos de papel y farolillos flotando sobre el agua.
-Lampiony	Lanterns	Laternen	Farolillos
-Ławica kolorowych rybek, wodorosty i bąbelki.	A shoal of colourful fish, seaweed and bubbles.	Ein Schwarm bunter Fische, Seetang und Blasen.	Un banco de peces de colores, algas y burbujas.
-Akwarium	Aquarium	Aquarium	Acuario
-Królik na chmurce łowi gwiazdkę na wędkę.	A rabbit on a cloud fishes for a star.	Ein Hase auf einer Wolke angelt nach einem Stern.	Un conejo en una nube pesca una estrella.
-Królik i gwiazdka	Rabbit and star	Hase und Stern	Conejo y estrella
-Miękkie plamy koloru, które powoli się mieszają.	Soft patches of colour that slowly blend.	Weiche Farbflecken, die sich langsam mischen.	Manchas suaves de color que se mezclan despacio.
-Róż i bursztyn zachodu, płynnie przechodzące w granat.	The pink and amber of sunset, fading into navy.	Rosa und Bernstein des Sonnenuntergangs, fließend in Marineblau.	El rosa y ámbar del ocaso, fundiéndose en azul marino.
-Zmierzch	Dusk	Dämmerung	Crepúsculo
-Fiolet i błękit, bardzo spokojny gradient.	Violet and blue, a very calm gradient.	Violett und Blau, ein sehr ruhiger Verlauf.	Violeta y azul, un degradado muy tranquilo.
-Lawenda	Lavender	Lavendel	Lavanda
-Wstęga zorzy z falującymi kurtynami światła.	A ribbon of aurora with waving curtains of light.	Ein Polarlichtband mit wogenden Lichtvorhängen.	Una cinta de aurora con cortinas de luz ondulantes.
-Zorza	Aurora	Polarlicht	Aurora
-Turkusowe światło płynące przez ciemną wodę.	Turquoise light flowing through dark water.	Türkisfarbenes Licht, das durch dunkles Wasser fließt.	Luz turquesa que fluye por el agua oscura.
-Głębia	Deep sea	Tiefsee	Profundidad
-Fioletowa mgławica i migające gwiazdy.	A violet nebula and twinkling stars.	Ein violetter Nebel und funkelnde Sterne.	Una nebulosa violeta y estrellas titilantes.
-Mgławica	Nebula	Nebel	Nebulosa
-Fałdy światła jak przesuwająca się tkanina.	Folds of light like drifting fabric.	Lichtfalten wie gleitender Stoff.	Pliegues de luz como una tela que se desliza.
-Jedwab	Silk	Seide	Seda
-Poziomice mapy, które powoli płyną i zmieniają kształt.	Map contour lines that slowly flow and change shape.	Höhenlinien einer Karte, die langsam fließen und ihre Form ändern.	Curvas de nivel que fluyen despacio y cambian de forma.
-Topografia	Topography	Topografie	Topografía
-Poziomice w ciepłym bursztynie, jak stara mapa.	Contour lines in warm amber, like an old map.	Höhenlinien in warmem Bernstein, wie eine alte Karte.	Curvas de nivel en ámbar cálido, como un mapa antiguo.
-Mapa	Map	Karte	Mapa
-Kryształowe komórki ze świecącymi krawędziami.	Crystal cells with glowing edges.	Kristallzellen mit leuchtenden Kanten.	Celdas de cristal con bordes brillantes.
-Kryształy	Crystals	Kristalle	Cristales
-Siatka kropek, przez którą przechodzi fala światła.	A grid of dots crossed by a wave of light.	Ein Punktraster, durch das eine Lichtwelle läuft.	Una cuadrícula de puntos que cruza una ola de luz.
-Kropki	Dots	Punkte	Puntos
-Smugi dymu unoszące się w ciemności.	Wisps of smoke rising in the dark.	Rauchschwaden, die im Dunkeln aufsteigen.	Volutas de humo que se elevan en la oscuridad.
-Dym	Smoke	Rauch	Humo
-Krople spadają na taflę i rozchodzą się kręgami.	Drops fall on still water and spread in rings.	Tropfen fallen auf die Wasserfläche und breiten sich in Ringen aus.	Gotas caen sobre el agua y se expanden en círculos.
-Staw	Pond	Teich	Estanque
-Wydmy o zmierzchu, piasek wiejący z grzbietów.	Dunes at dusk, sand blowing off the crests.	Dünen in der Dämmerung, Sand weht von den Kämmen.	Dunas al anochecer, arena que vuela de las crestas.
-Wydmy	Dunes	Dünen	Dunas
-Padający śnieg w kilku warstwach głębi.	Falling snow in several layers of depth.	Fallender Schnee in mehreren Tiefenebenen.	Nieve que cae en varias capas de profundidad.
-Ciemny, ciepły żar.	Dark, warm embers.	Dunkle, warme Glut.	Brasas oscuras y cálidas.
-Żar	Embers	Glut	Brasas
-Prawie czarna, ledwo się porusza.	Almost black, barely moving.	Fast schwarz, bewegt sich kaum.	Casi negro, apenas se mueve.
-Otchłań	Abyss	Abgrund	Abismo
-Gwiazdy rozciągają się w smugi, lecisz w nadświetlnej.	Stars stretch into streaks: you are flying faster than light.	Sterne ziehen sich zu Streifen: Du fliegst mit Überlichtgeschwindigkeit.	Las estrellas se estiran en estelas: vuelas más rápido que la luz.
-Hiperprzestrzeń	Hyperspace	Hyperraum	Hiperespacio
-Skok w nadprzestrzeń w fiolecie i różu.	A jump to hyperspace in violet and pink.	Ein Sprung in den Hyperraum in Violett und Rosa.	Un salto al hiperespacio en violeta y rosa.
-Warp fiolet	Violet warp	Warp violett	Warp violeta
-Pędzisz przez tunel z neonowych pierścieni.	You race through a tunnel of neon rings.	Du rast durch einen Tunnel aus Neonringen.	Corres por un túnel de anillos de neón.
-Neonowy tunel	Neon tunnel	Neontunnel	Túnel de neón
-Ciepły, złoty tunel bez końca.	A warm, golden, endless tunnel.	Ein warmer, goldener Tunnel ohne Ende.	Un túnel dorado y cálido sin fin.
-Złoty tunel	Golden tunnel	Goldener Tunnel	Túnel dorado
-Spadające kolumny znaków jak w terminalu hakera.	Falling columns of characters, like a hacker's terminal.	Fallende Zeichenkolonnen wie im Terminal eines Hackers.	Columnas de caracteres que caen, como en la terminal de un hacker.
-Kod	Code	Code	Código
-Deszcz znaków w turkusie pod kolor widżetów.	A rain of characters in turquoise, matching the widgets.	Ein Zeichenregen in Türkis, passend zu den Widgets.	Una lluvia de caracteres en turquesa, a juego con los widgets.
-Kod turkus	Turquoise code	Code türkis	Código turquesa
-Płynąca, kolorowa plazma.	Flowing, colourful plasma.	Fließendes, buntes Plasma.	Plasma de colores que fluye.
-Plazma	Plasma	Plasma	Plasma
-Kłębiące się chmury, deszcz i rzadkie, łagodne błyski.	Billowing clouds, rain and rare, soft flashes.	Wogende Wolken, Regen und seltene, sanfte Blitze.	Nubes ondulantes, lluvia y relámpagos suaves y escasos.
-Trzaskające ognisko w lesie, iskry lecą w górę.	A crackling campfire in the forest, sparks flying up.	Ein knisterndes Lagerfeuer im Wald, Funken fliegen hoch.	Una hoguera crepitante en el bosque, chispas que suben.
-Ognisko	Campfire	Lagerfeuer	Hoguera
-Wybuchające fajerwerki nad miastem.	Fireworks bursting over the city.	Feuerwerk über der Stadt.	Fuegos artificiales sobre la ciudad.
-Fajerwerki	Fireworks	Feuerwerk	Fuegos artificiales
-Złote i błękitne fajerwerki.	Gold and blue fireworks.	Goldenes und blaues Feuerwerk.	Fuegos artificiales dorados y azules.
-Sylwester	New Year's Eve	Silvester	Nochevieja
-Obracająca się galaktyka spiralna.	A rotating spiral galaxy.	Eine sich drehende Spiralgalaxie.	Una galaxia espiral que gira.
-Galaktyka	Galaxy	Galaxie	Galaxia
-Wirujący dysk wokół czarnej dziury, zakrzywione światło gwiazd.	A swirling disc around a black hole, bent starlight.	Eine wirbelnde Scheibe um ein Schwarzes Loch, gekrümmtes Sternenlicht.	Un disco girando alrededor de un agujero negro, luz estelar curvada.
-Czarna dziura	Black hole	Schwarzes Loch	Agujero negro
-Toczące się fale z pianą pod księżycem.	Rolling, foaming waves under the moon.	Rollende Wellen mit Schaum unter dem Mond.	Olas que ruedan con espuma bajo la luna.
-Fale oceanu	Ocean waves	Meereswellen	Olas del océano
-Hipnotyczny, obracający się kalejdoskop.	A hypnotic, turning kaleidoscope.	Ein hypnotisches, sich drehendes Kaleidoskop.	Un caleidoscopio hipnótico que gira.
-Kalejdoskop	Kaleidoscope	Kaleidoskop	Caleidoscopio
-Punkty dryfują i łączą się liniami.	Points drift and join up with lines.	Punkte treiben und verbinden sich mit Linien.	Puntos que flotan y se unen con líneas.
-Sieć świecących punktów w lawendzie.	A web of glowing points in lavender.	Ein Netz leuchtender Punkte in Lavendel.	Una red de puntos brillantes en lavanda.
-Konstelacje	Constellations	Sternbilder	Constelaciones
-Słupki equalizera, z muzyką rosną.	Equalizer bars that grow with the music.	Equalizer-Balken, die mit der Musik wachsen.	Barras de ecualizador que crecen con la música.
-Equalizer w barwach starego wzmacniacza.	An equalizer in the colours of an old amplifier.	Ein Equalizer in den Farben eines alten Verstärkers.	Un ecualizador con los colores de un amplificador antiguo.
-Equalizer retro	Retro equalizer	Retro-Equalizer	Ecualizador retro
-Planety krążą po orbitach wokół słońca.	Planets circle the sun in their orbits.	Planeten kreisen auf ihren Bahnen um die Sonne.	Planetas orbitando alrededor del sol.
-Układ planet	Planets	Planetensystem	Sistema planetario
-Mieniące się bańki mydlane unoszą się w górę.	Shimmering soap bubbles float upwards.	Schillernde Seifenblasen steigen auf.	Pompas de jabón irisadas que suben.
-Bańki	Bubbles	Seifenblasen	Pompas
-Spadające gwiazdy co chwilę przecinają niebo.	Shooting stars cross the sky every few moments.	Sternschnuppen ziehen immer wieder über den Himmel.	Estrellas fugaces cruzan el cielo a cada momento.
-Deszcz meteorów	Meteor shower	Meteorschauer	Lluvia de meteoros
-Trawa faluje na wietrze o zachodzie, lecą ptaki.	Grass sways in the wind at sunset, birds fly by.	Gras wiegt sich im Wind bei Sonnenuntergang, Vögel fliegen vorbei.	La hierba se mece al viento al atardecer, pasan pájaros.
-Łąka	Meadow	Wiese	Pradera
-Smugi świateł aut na nocnej autostradzie.	Light trails of cars on a motorway at night.	Lichtspuren von Autos auf der nächtlichen Autobahn.	Estelas de luces de coches en una autopista de noche.
-Autostrada	Motorway	Autobahn	Autopista
-Kolory wciągane w wirujący lej.	Colours drawn into a spinning funnel.	Farben, die in einen wirbelnden Trichter gezogen werden.	Colores absorbidos por un embudo giratorio.
-Wir	Vortex	Wirbel	Remolino
-Skręcające się neonowe wstęgi.	Twisting neon ribbons.	Sich windende Neonbänder.	Cintas de neón que se retuercen.
-Neonowe wstęgi	Neon ribbons	Neonbänder	Cintas de neón
-Wstęgi w złocie i pomarańczu.	Ribbons in gold and orange.	Bänder in Gold und Orange.	Cintas en oro y naranja.
-Złote wstęgi	Golden ribbons	Goldene Bänder	Cintas doradas
-Obracający się holograficzny glob.	A rotating holographic globe.	Ein sich drehender holografischer Globus.	Un globo holográfico que gira.
-Hologram	Hologram	Hologramm	Holograma
-Podwójna helisa obraca się w przestrzeni.	A double helix turning in space.	Eine Doppelhelix dreht sich im Raum.	Una doble hélice que gira en el espacio.
-Krople spływają po szybie, za nią rozmyte światła miasta.	Drops run down the glass, blurred city lights behind it.	Tropfen laufen die Scheibe hinab, dahinter verschwommene Stadtlichter.	Gotas resbalan por el cristal, detrás las luces borrosas de la ciudad.
-Deszcz na szybie	Rain on the glass	Regen an der Scheibe	Lluvia en el cristal
-Deszcz na szybie i neony w tle.	Rain on the glass and neon behind it.	Regen an der Scheibe und Neonlicht dahinter.	Lluvia en el cristal y neones al fondo.
-Neonowy deszcz	Neon rain	Neonregen	Lluvia de neón
-Dryfujące gwiazdy, co jakiś czas spadająca gwiazda.	Drifting stars, now and then a shooting star.	Treibende Sterne, ab und zu eine Sternschnuppe.	Estrellas a la deriva, de vez en cuando una fugaz.
-Gwiazdy	Stars	Sterne	Estrellas
-Świetliki nad łąką pod nocnym niebem.	Fireflies over a meadow under the night sky.	Glühwürmchen über einer Wiese unter dem Nachthimmel.	Luciérnagas sobre una pradera bajo el cielo nocturno.
-Świetliki	Fireflies	Glühwürmchen	Luciérnagas
-Świetliste fale. Z muzyką delikatnie rosną.	Luminous waves. They grow gently with the music.	Leuchtende Wellen. Mit Musik wachsen sie sanft.	Ondas luminosas. Crecen suavemente con la música.
-Fale światła	Waves of light	Lichtwellen	Ondas de luz
-Paskowane słońce nad neonową siatką, lata 80.	A striped sun over a neon grid, the 80s.	Eine gestreifte Sonne über einem Neongitter, die 80er.	Un sol a rayas sobre una cuadrícula de neón, los 80.
-Kule wosku unoszą się i łączą jak w lampie.	Blobs of wax rise and merge like in a lava lamp.	Wachskugeln steigen auf und verschmelzen wie in einer Lavalampe.	Bolas de cera que suben y se unen como en una lámpara de lava.
-Lawa	Lava	Lava	Lava
-Refleksy światła na dnie basenu.	Light ripples on the bottom of a pool.	Lichtreflexe auf dem Grund eines Pools.	Reflejos de luz en el fondo de una piscina.
-Basen	Pool	Pool	Piscina
-Rozmyte światełka pływające w ciemności.	Blurred lights floating in the dark.	Verschwommene Lichter, die im Dunkeln schweben.	Luces borrosas que flotan en la oscuridad.
-Światła	Lights	Lichter	Luces
-Księżyc nad falami i jego srebrna droga na wodzie.	The moon over the waves and its silver path on the water.	Der Mond über den Wellen und sein silberner Pfad auf dem Wasser.	La luna sobre las olas y su camino plateado en el agua.
-Morze nocą	Sea at night	Meer bei Nacht	Mar de noche
-Szybki fiolet z różem.	Fast violet with pink.	Schnelles Violett mit Rosa.	Violeta rápido con rosa.
+Kolory nieba o tej porze: noc, niebieska godzina, złota godzina, dzień. Szarzeje, gdy pada.	The sky's colours at this hour: night, blue hour, golden hour, day. Turns grey when it rains.	Die Farben des Himmels zu dieser Stunde: Nacht, blaue Stunde, goldene Stunde, Tag. Grau, wenn es regnet.	Los colores del cielo a esta hora: noche, hora azul, hora dorada, día. Se vuelve gris cuando llueve.	Les couleurs du ciel à cette heure : nuit, heure bleue, heure dorée, jour. Grisonne quand il pleut.
+Pora dnia	Time of day	Tageszeit	Hora del día	Moment de la journée
+Morze i niebo. Słońce albo księżyc stoją tam, gdzie naprawdę są.	Sea and sky. The sun or the moon stand where they really are.	Meer und Himmel. Sonne oder Mond stehen dort, wo sie wirklich sind.	Mar y cielo. El sol o la luna están donde de verdad están.	La mer et le ciel. Le soleil ou la lune sont là où ils sont vraiment.
+Horyzont	Horizon	Horizont	Horizonte	Horizon
+Warstwy gór, mgła w dolinach, prawdziwe słońce i księżyc.	Layers of mountains, mist in the valleys, the real sun and moon.	Bergketten, Nebel in den Tälern, echte Sonne und echter Mond.	Capas de montañas, niebla en los valles, el sol y la luna reales.	Des couches de montagnes, la brume dans les vallées, le vrai soleil et la vraie lune.
+Góry	Mountains	Berge	Montañas	Montagnes
+To, co za oknem: deszcz na szybie, śnieg, mgła, gwiazdy albo góry.	What is outside: rain on the glass, snow, fog, stars or mountains.	Was draußen ist: Regen an der Scheibe, Schnee, Nebel, Sterne oder Berge.	Lo que hay fuera: lluvia en el cristal, nieve, niebla, estrellas o montañas.	Ce qu'il y a dehors : pluie sur la vitre, neige, brouillard, étoiles ou montagnes.
+Za oknem	Out the window	Vor dem Fenster	Por la ventana	Par la fenêtre
+Czarny kot na kalenicy, księżyc, dym z komina i światła miasta.	A black cat on the roof ridge, the moon, chimney smoke and city lights.	Eine schwarze Katze auf dem First, der Mond, Rauch aus dem Schornstein und Stadtlichter.	Un gato negro en el tejado, la luna, humo de chimenea y luces de la ciudad.	Un chat noir sur le faîte du toit, la lune, la fumée de cheminée et les lumières de la ville.
+Kot na dachu	Cat on the roof	Katze auf dem Dach	Gato en el tejado	Chat sur le toit
+Wieloryby płyną powoli przez smugi światła w głębinie.	Whales swim slowly through shafts of light in the deep.	Wale schwimmen langsam durch Lichtstreifen in der Tiefe.	Ballenas nadan despacio entre rayos de luz en lo profundo.	Des baleines nagent lentement à travers les rais de lumière des profondeurs.
+Wieloryby	Whales	Wale	Ballenas	Baleines
+Świecące meduzy unoszą się w rytmie oddechu.	Glowing jellyfish drift to the rhythm of a breath.	Leuchtende Quallen schweben im Rhythmus des Atems.	Medusas brillantes flotan al ritmo de la respiración.	Des méduses lumineuses flottent au rythme d'une respiration.
+Meduzy	Jellyfish	Quallen	Medusas	Méduses
+Karpie krążą w stawie pod liśćmi lilii.	Carp circle in a pond under lily pads.	Karpfen kreisen im Teich unter Seerosenblättern.	Carpas dan vueltas en un estanque bajo nenúfares.	Des carpes tournent dans un étang sous les feuilles de nénuphar.
+Karpie koi	Koi carp	Koi-Karpfen	Carpas koi	Carpes koï
+Mały astronauta macha zza planety z pierścieniem.	A little astronaut waves from behind a ringed planet.	Ein kleiner Astronaut winkt hinter einem Ringplaneten hervor.	Un pequeño astronauta saluda tras un planeta con anillos.	Un petit astronaute fait coucou derrière une planète à anneaux.
+Astronauta	Astronaut	Astronaut	Astronauta	Astronaute
+Latarnia morska omiata noc snopem światła.	A lighthouse sweeps the night with its beam.	Ein Leuchtturm streift mit seinem Strahl durch die Nacht.	Un faro barre la noche con su haz de luz.	Un phare balaie la nuit de son faisceau.
+Latarnia	Lighthouse	Leuchtturm	Faro	Phare
+Lis siedzi na śniegu i patrzy na zorzę.	A fox sits in the snow, watching the aurora.	Ein Fuchs sitzt im Schnee und schaut zum Polarlicht.	Un zorro sentado en la nieve mira la aurora.	Un renard assis dans la neige regarde l'aurore.
+Lis i zorza	Fox and aurora	Fuchs und Polarlicht	Zorro y aurora	Renard et aurore
+Balony dryfują nad morzem chmur o zachodzie.	Balloons drift over a sea of clouds at sunset.	Ballons treiben bei Sonnenuntergang über einem Wolkenmeer.	Globos flotan sobre un mar de nubes al atardecer.	Des montgolfières dérivent sur une mer de nuages au coucher du soleil.
+Balony	Balloons	Ballons	Globos	Montgolfières
+Halloween: duszki, dynie z mrugającymi buziami i nietoperze.	Halloween: little ghosts, pumpkins with winking faces and bats.	Halloween: Gespenster, Kürbisse mit zwinkernden Gesichtern und Fledermäuse.	Halloween: fantasmitas, calabazas que guiñan y murciélagos.	Halloween : petits fantômes, citrouilles qui font des clins d'œil et chauves-souris.
+Duszki	Ghosts	Gespenster	Fantasmas	Fantômes
+Pingwiny na krze, jeden ciągle gdzieś drepcze.	Penguins on an ice floe, one always waddling somewhere.	Pinguine auf einer Eisscholle, einer watschelt immer irgendwohin.	Pingüinos en un témpano, uno siempre anda de un lado a otro.	Des manchots sur la banquise, l'un d'eux trottine toujours quelque part.
+Pingwiny	Penguins	Pinguine	Pingüinos	Manchots
+Rakieta pędzi w górę między planetami.	A rocket races upwards between the planets.	Eine Rakete rast zwischen den Planeten nach oben.	Un cohete sube a toda velocidad entre planetas.	Une fusée file vers le haut entre les planètes.
+Rakieta	Rocket	Rakete	Cohete	Fusée
+Sowa na gałęzi przed księżycem, rozgląda się i mruga.	An owl on a branch before the moon, looking around and blinking.	Eine Eule auf einem Ast vor dem Mond, schaut sich um und blinzelt.	Un búho en una rama ante la luna mira a su alrededor y parpadea.	Une chouette sur une branche devant la lune, qui regarde autour d'elle et cligne des yeux.
+Sowa	Owl	Eule	Búho	Chouette
+Pikselowe miasto nocą i przejeżdżający pociąg.	A pixel city at night and a passing train.	Eine Pixelstadt bei Nacht und ein vorbeifahrender Zug.	Una ciudad de píxeles de noche y un tren que pasa.	Une ville en pixels la nuit et un train qui passe.
+Miasto 8-bit	8-bit city	8-Bit-Stadt	Ciudad 8 bits	Ville 8 bits
+Papierowe łódki i lampiony unoszące się nad wodą.	Paper boats and lanterns floating over the water.	Papierboote und Laternen, die über dem Wasser schweben.	Barquitos de papel y farolillos flotando sobre el agua.	Des bateaux en papier et des lanternes qui flottent sur l'eau.
+Lampiony	Lanterns	Laternen	Farolillos	Lanternes
+Ławica kolorowych rybek, wodorosty i bąbelki.	A shoal of colourful fish, seaweed and bubbles.	Ein Schwarm bunter Fische, Seetang und Blasen.	Un banco de peces de colores, algas y burbujas.	Un banc de poissons colorés, des algues et des bulles.
+Akwarium	Aquarium	Aquarium	Acuario	Aquarium
+Królik na chmurce łowi gwiazdkę na wędkę.	A rabbit on a cloud fishes for a star.	Ein Hase auf einer Wolke angelt nach einem Stern.	Un conejo en una nube pesca una estrella.	Un lapin sur un nuage pêche une étoile.
+Królik i gwiazdka	Rabbit and star	Hase und Stern	Conejo y estrella	Lapin et étoile
+Miękkie plamy koloru, które powoli się mieszają.	Soft patches of colour that slowly blend.	Weiche Farbflecken, die sich langsam mischen.	Manchas suaves de color que se mezclan despacio.	De douces taches de couleur qui se mélangent lentement.
+Róż i bursztyn zachodu, płynnie przechodzące w granat.	The pink and amber of sunset, fading into navy.	Rosa und Bernstein des Sonnenuntergangs, fließend in Marineblau.	El rosa y ámbar del ocaso, fundiéndose en azul marino.	Le rose et l'ambre du couchant, qui se fondent dans le bleu marine.
+Zmierzch	Dusk	Dämmerung	Crepúsculo	Crépuscule
+Fiolet i błękit, bardzo spokojny gradient.	Violet and blue, a very calm gradient.	Violett und Blau, ein sehr ruhiger Verlauf.	Violeta y azul, un degradado muy tranquilo.	Violet et bleu, un dégradé très calme.
+Lawenda	Lavender	Lavendel	Lavanda	Lavande
+Wstęga zorzy z falującymi kurtynami światła.	A ribbon of aurora with waving curtains of light.	Ein Polarlichtband mit wogenden Lichtvorhängen.	Una cinta de aurora con cortinas de luz ondulantes.	Un ruban d'aurore aux rideaux de lumière ondulants.
+Zorza	Aurora	Polarlicht	Aurora	Aurore
+Turkusowe światło płynące przez ciemną wodę.	Turquoise light flowing through dark water.	Türkisfarbenes Licht, das durch dunkles Wasser fließt.	Luz turquesa que fluye por el agua oscura.	Une lumière turquoise qui traverse l'eau sombre.
+Głębia	Deep sea	Tiefsee	Profundidad	Abysses
+Fioletowa mgławica i migające gwiazdy.	A violet nebula and twinkling stars.	Ein violetter Nebel und funkelnde Sterne.	Una nebulosa violeta y estrellas titilantes.	Une nébuleuse violette et des étoiles scintillantes.
+Mgławica	Nebula	Nebel	Nebulosa	Nébuleuse
+Fałdy światła jak przesuwająca się tkanina.	Folds of light like drifting fabric.	Lichtfalten wie gleitender Stoff.	Pliegues de luz como una tela que se desliza.	Des plis de lumière comme un tissu qui flotte.
+Jedwab	Silk	Seide	Seda	Soie
+Poziomice mapy, które powoli płyną i zmieniają kształt.	Map contour lines that slowly flow and change shape.	Höhenlinien einer Karte, die langsam fließen und ihre Form ändern.	Curvas de nivel que fluyen despacio y cambian de forma.	Des courbes de niveau qui coulent et changent lentement de forme.
+Topografia	Topography	Topografie	Topografía	Topographie
+Poziomice w ciepłym bursztynie, jak stara mapa.	Contour lines in warm amber, like an old map.	Höhenlinien in warmem Bernstein, wie eine alte Karte.	Curvas de nivel en ámbar cálido, como un mapa antiguo.	Des courbes de niveau d'un ambre chaud, comme une vieille carte.
+Mapa	Map	Karte	Mapa	Carte
+Kryształowe komórki ze świecącymi krawędziami.	Crystal cells with glowing edges.	Kristallzellen mit leuchtenden Kanten.	Celdas de cristal con bordes brillantes.	Des cellules de cristal aux bords lumineux.
+Kryształy	Crystals	Kristalle	Cristales	Cristaux
+Siatka kropek, przez którą przechodzi fala światła.	A grid of dots crossed by a wave of light.	Ein Punktraster, durch das eine Lichtwelle läuft.	Una cuadrícula de puntos que cruza una ola de luz.	Une grille de points traversée par une vague de lumière.
+Kropki	Dots	Punkte	Puntos	Points
+Smugi dymu unoszące się w ciemności.	Wisps of smoke rising in the dark.	Rauchschwaden, die im Dunkeln aufsteigen.	Volutas de humo que se elevan en la oscuridad.	Des volutes de fumée qui s'élèvent dans l'obscurité.
+Dym	Smoke	Rauch	Humo	Fumée
+Krople spadają na taflę i rozchodzą się kręgami.	Drops fall on still water and spread in rings.	Tropfen fallen auf die Wasserfläche und breiten sich in Ringen aus.	Gotas caen sobre el agua y se expanden en círculos.	Des gouttes tombent sur l'eau calme et forment des cercles.
+Staw	Pond	Teich	Estanque	Étang
+Wydmy o zmierzchu, piasek wiejący z grzbietów.	Dunes at dusk, sand blowing off the crests.	Dünen in der Dämmerung, Sand weht von den Kämmen.	Dunas al anochecer, arena que vuela de las crestas.	Des dunes au crépuscule, le sable soufflé des crêtes.
+Wydmy	Dunes	Dünen	Dunas	Dunes
+Padający śnieg w kilku warstwach głębi.	Falling snow in several layers of depth.	Fallender Schnee in mehreren Tiefenebenen.	Nieve que cae en varias capas de profundidad.	De la neige qui tombe sur plusieurs plans de profondeur.
+Ciemny, ciepły żar.	Dark, warm embers.	Dunkle, warme Glut.	Brasas oscuras y cálidas.	Des braises sombres et chaudes.
+Żar	Embers	Glut	Brasas	Braises
+Prawie czarna, ledwo się porusza.	Almost black, barely moving.	Fast schwarz, bewegt sich kaum.	Casi negro, apenas se mueve.	Presque noir, bouge à peine.
+Otchłań	Abyss	Abgrund	Abismo	Abîme
+Gwiazdy rozciągają się w smugi, lecisz w nadświetlnej.	Stars stretch into streaks: you are flying faster than light.	Sterne ziehen sich zu Streifen: Du fliegst mit Überlichtgeschwindigkeit.	Las estrellas se estiran en estelas: vuelas más rápido que la luz.	Les étoiles s'étirent en traînées : vous voyagez plus vite que la lumière.
+Hiperprzestrzeń	Hyperspace	Hyperraum	Hiperespacio	Hyperespace
+Skok w nadprzestrzeń w fiolecie i różu.	A jump to hyperspace in violet and pink.	Ein Sprung in den Hyperraum in Violett und Rosa.	Un salto al hiperespacio en violeta y rosa.	Un saut dans l'hyperespace en violet et rose.
+Warp fiolet	Violet warp	Warp violett	Warp violeta	Distorsion violette
+Pędzisz przez tunel z neonowych pierścieni.	You race through a tunnel of neon rings.	Du rast durch einen Tunnel aus Neonringen.	Corres por un túnel de anillos de neón.	Vous filez dans un tunnel d'anneaux néon.
+Neonowy tunel	Neon tunnel	Neontunnel	Túnel de neón	Tunnel néon
+Ciepły, złoty tunel bez końca.	A warm, golden, endless tunnel.	Ein warmer, goldener Tunnel ohne Ende.	Un túnel dorado y cálido sin fin.	Un tunnel doré, chaud et sans fin.
+Złoty tunel	Golden tunnel	Goldener Tunnel	Túnel dorado	Tunnel doré
+Spadające kolumny znaków jak w terminalu hakera.	Falling columns of characters, like a hacker's terminal.	Fallende Zeichenkolonnen wie im Terminal eines Hackers.	Columnas de caracteres que caen, como en la terminal de un hacker.	Des colonnes de caractères qui tombent, comme le terminal d'un hacker.
+Kod	Code	Code	Código	Code
+Deszcz znaków w turkusie pod kolor widżetów.	A rain of characters in turquoise, matching the widgets.	Ein Zeichenregen in Türkis, passend zu den Widgets.	Una lluvia de caracteres en turquesa, a juego con los widgets.	Une pluie de caractères turquoise, assortie aux widgets.
+Kod turkus	Turquoise code	Code türkis	Código turquesa	Code turquoise
+Płynąca, kolorowa plazma.	Flowing, colourful plasma.	Fließendes, buntes Plasma.	Plasma de colores que fluye.	Un plasma coloré et fluide.
+Plazma	Plasma	Plasma	Plasma	Plasma
+Kłębiące się chmury, deszcz i rzadkie, łagodne błyski.	Billowing clouds, rain and rare, soft flashes.	Wogende Wolken, Regen und seltene, sanfte Blitze.	Nubes ondulantes, lluvia y relámpagos suaves y escasos.	Des nuages qui bouillonnent, de la pluie et de rares éclairs doux.
+Trzaskające ognisko w lesie, iskry lecą w górę.	A crackling campfire in the forest, sparks flying up.	Ein knisterndes Lagerfeuer im Wald, Funken fliegen hoch.	Una hoguera crepitante en el bosque, chispas que suben.	Un feu de camp qui crépite dans la forêt, des étincelles s'envolent.
+Ognisko	Campfire	Lagerfeuer	Hoguera	Feu de camp
+Wybuchające fajerwerki nad miastem.	Fireworks bursting over the city.	Feuerwerk über der Stadt.	Fuegos artificiales sobre la ciudad.	Des feux d'artifice qui éclatent au-dessus de la ville.
+Fajerwerki	Fireworks	Feuerwerk	Fuegos artificiales	Feux d'artifice
+Złote i błękitne fajerwerki.	Gold and blue fireworks.	Goldenes und blaues Feuerwerk.	Fuegos artificiales dorados y azules.	Des feux d'artifice dorés et bleus.
+Sylwester	New Year's Eve	Silvester	Nochevieja	Réveillon du Nouvel An
+Obracająca się galaktyka spiralna.	A rotating spiral galaxy.	Eine sich drehende Spiralgalaxie.	Una galaxia espiral que gira.	Une galaxie spirale qui tourne.
+Galaktyka	Galaxy	Galaxie	Galaxia	Galaxie
+Wirujący dysk wokół czarnej dziury, zakrzywione światło gwiazd.	A swirling disc around a black hole, bent starlight.	Eine wirbelnde Scheibe um ein Schwarzes Loch, gekrümmtes Sternenlicht.	Un disco girando alrededor de un agujero negro, luz estelar curvada.	Un disque tourbillonnant autour d'un trou noir, la lumière des étoiles déviée.
+Czarna dziura	Black hole	Schwarzes Loch	Agujero negro	Trou noir
+Toczące się fale z pianą pod księżycem.	Rolling, foaming waves under the moon.	Rollende Wellen mit Schaum unter dem Mond.	Olas que ruedan con espuma bajo la luna.	Des vagues écumantes qui déferlent sous la lune.
+Fale oceanu	Ocean waves	Meereswellen	Olas del océano	Vagues de l'océan
+Hipnotyczny, obracający się kalejdoskop.	A hypnotic, turning kaleidoscope.	Ein hypnotisches, sich drehendes Kaleidoskop.	Un caleidoscopio hipnótico que gira.	Un kaléidoscope hypnotique qui tourne.
+Kalejdoskop	Kaleidoscope	Kaleidoskop	Caleidoscopio	Kaléidoscope
+Punkty dryfują i łączą się liniami.	Points drift and join up with lines.	Punkte treiben und verbinden sich mit Linien.	Puntos que flotan y se unen con líneas.	Des points dérivent et se relient par des lignes.
+Sieć świecących punktów w lawendzie.	A web of glowing points in lavender.	Ein Netz leuchtender Punkte in Lavendel.	Una red de puntos brillantes en lavanda.	Un réseau de points lumineux couleur lavande.
+Konstelacje	Constellations	Sternbilder	Constelaciones	Constellations
+Słupki equalizera, z muzyką rosną.	Equalizer bars that grow with the music.	Equalizer-Balken, die mit der Musik wachsen.	Barras de ecualizador que crecen con la música.	Des barres d'égaliseur qui grandissent avec la musique.
+Equalizer w barwach starego wzmacniacza.	An equalizer in the colours of an old amplifier.	Ein Equalizer in den Farben eines alten Verstärkers.	Un ecualizador con los colores de un amplificador antiguo.	Un égaliseur aux couleurs d'un vieil amplificateur.
+Equalizer retro	Retro equalizer	Retro-Equalizer	Ecualizador retro	Égaliseur rétro
+Planety krążą po orbitach wokół słońca.	Planets circle the sun in their orbits.	Planeten kreisen auf ihren Bahnen um die Sonne.	Planetas orbitando alrededor del sol.	Des planètes tournent en orbite autour du soleil.
+Układ planet	Planets	Planetensystem	Sistema planetario	Planètes
+Mieniące się bańki mydlane unoszą się w górę.	Shimmering soap bubbles float upwards.	Schillernde Seifenblasen steigen auf.	Pompas de jabón irisadas que suben.	Des bulles de savon irisées s'élèvent.
+Bańki	Bubbles	Seifenblasen	Pompas	Bulles
+Spadające gwiazdy co chwilę przecinają niebo.	Shooting stars cross the sky every few moments.	Sternschnuppen ziehen immer wieder über den Himmel.	Estrellas fugaces cruzan el cielo a cada momento.	Des étoiles filantes traversent le ciel à chaque instant.
+Deszcz meteorów	Meteor shower	Meteorschauer	Lluvia de meteoros	Pluie de météores
+Trawa faluje na wietrze o zachodzie, lecą ptaki.	Grass sways in the wind at sunset, birds fly by.	Gras wiegt sich im Wind bei Sonnenuntergang, Vögel fliegen vorbei.	La hierba se mece al viento al atardecer, pasan pájaros.	L'herbe ondule dans le vent au coucher du soleil, des oiseaux passent.
+Łąka	Meadow	Wiese	Pradera	Prairie
+Smugi świateł aut na nocnej autostradzie.	Light trails of cars on a motorway at night.	Lichtspuren von Autos auf der nächtlichen Autobahn.	Estelas de luces de coches en una autopista de noche.	Les traînées lumineuses des voitures sur une autoroute la nuit.
+Autostrada	Motorway	Autobahn	Autopista	Autoroute
+Kolory wciągane w wirujący lej.	Colours drawn into a spinning funnel.	Farben, die in einen wirbelnden Trichter gezogen werden.	Colores absorbidos por un embudo giratorio.	Des couleurs aspirées dans un entonnoir tournoyant.
+Wir	Vortex	Wirbel	Remolino	Vortex
+Skręcające się neonowe wstęgi.	Twisting neon ribbons.	Sich windende Neonbänder.	Cintas de neón que se retuercen.	Des rubans néon qui se tordent.
+Neonowe wstęgi	Neon ribbons	Neonbänder	Cintas de neón	Rubans néon
+Wstęgi w złocie i pomarańczu.	Ribbons in gold and orange.	Bänder in Gold und Orange.	Cintas en oro y naranja.	Des rubans d'or et d'orange.
+Złote wstęgi	Golden ribbons	Goldene Bänder	Cintas doradas	Rubans dorés
+Obracający się holograficzny glob.	A rotating holographic globe.	Ein sich drehender holografischer Globus.	Un globo holográfico que gira.	Un globe holographique qui tourne.
+Hologram	Hologram	Hologramm	Holograma	Hologramme
+Podwójna helisa obraca się w przestrzeni.	A double helix turning in space.	Eine Doppelhelix dreht sich im Raum.	Una doble hélice que gira en el espacio.	Une double hélice qui tourne dans l'espace.
+Krople spływają po szybie, za nią rozmyte światła miasta.	Drops run down the glass, blurred city lights behind it.	Tropfen laufen die Scheibe hinab, dahinter verschwommene Stadtlichter.	Gotas resbalan por el cristal, detrás las luces borrosas de la ciudad.	Des gouttes coulent sur la vitre, derrière elle les lumières floues de la ville.
+Deszcz na szybie	Rain on the glass	Regen an der Scheibe	Lluvia en el cristal	Pluie sur la vitre
+Deszcz na szybie i neony w tle.	Rain on the glass and neon behind it.	Regen an der Scheibe und Neonlicht dahinter.	Lluvia en el cristal y neones al fondo.	De la pluie sur la vitre et des néons derrière.
+Neonowy deszcz	Neon rain	Neonregen	Lluvia de neón	Pluie néon
+Dryfujące gwiazdy, co jakiś czas spadająca gwiazda.	Drifting stars, now and then a shooting star.	Treibende Sterne, ab und zu eine Sternschnuppe.	Estrellas a la deriva, de vez en cuando una fugaz.	Des étoiles qui dérivent, de temps en temps une étoile filante.
+Gwiazdy	Stars	Sterne	Estrellas	Étoiles
+Świetliki nad łąką pod nocnym niebem.	Fireflies over a meadow under the night sky.	Glühwürmchen über einer Wiese unter dem Nachthimmel.	Luciérnagas sobre una pradera bajo el cielo nocturno.	Des lucioles au-dessus d'une prairie sous le ciel nocturne.
+Świetliki	Fireflies	Glühwürmchen	Luciérnagas	Lucioles
+Świetliste fale. Z muzyką delikatnie rosną.	Luminous waves. They grow gently with the music.	Leuchtende Wellen. Mit Musik wachsen sie sanft.	Ondas luminosas. Crecen suavemente con la música.	Des vagues lumineuses. Elles grandissent doucement avec la musique.
+Fale światła	Waves of light	Lichtwellen	Ondas de luz	Vagues de lumière
+Paskowane słońce nad neonową siatką, lata 80.	A striped sun over a neon grid, the 80s.	Eine gestreifte Sonne über einem Neongitter, die 80er.	Un sol a rayas sobre una cuadrícula de neón, los 80.	Un soleil rayé au-dessus d'une grille néon, les années 80.
+Kule wosku unoszą się i łączą jak w lampie.	Blobs of wax rise and merge like in a lava lamp.	Wachskugeln steigen auf und verschmelzen wie in einer Lavalampe.	Bolas de cera que suben y se unen como en una lámpara de lava.	Des boules de cire montent et fusionnent comme dans une lampe à lave.
+Lawa	Lava	Lava	Lava	Lave
+Refleksy światła na dnie basenu.	Light ripples on the bottom of a pool.	Lichtreflexe auf dem Grund eines Pools.	Reflejos de luz en el fondo de una piscina.	Des reflets de lumière au fond d'une piscine.
+Basen	Pool	Pool	Piscina	Piscine
+Rozmyte światełka pływające w ciemności.	Blurred lights floating in the dark.	Verschwommene Lichter, die im Dunkeln schweben.	Luces borrosas que flotan en la oscuridad.	Des lumières floues qui flottent dans l'obscurité.
+Światła	Lights	Lichter	Luces	Lumières
+Księżyc nad falami i jego srebrna droga na wodzie.	The moon over the waves and its silver path on the water.	Der Mond über den Wellen und sein silberner Pfad auf dem Wasser.	La luna sobre las olas y su camino plateado en el agua.	La lune au-dessus des vagues et son chemin d'argent sur l'eau.
+Morze nocą	Sea at night	Meer bei Nacht	Mar de noche	La mer la nuit
+Szybki fiolet z różem.	Fast violet with pink.	Schnelles Violett mit Rosa.	Violeta rápido con rosa.	Violet rapide avec du rose.
 # Start: the footer hints (= > ?)
-licz	calc	rechnen	calc
+licz	calc	rechnen	calc	calc
 # the island timer demo
-Herbata	Tea	Tee	Té
-wycisz.	muted	stumm	silenc.
+Herbata	Tea	Tee	Té	Thé
+wycisz.	muted	stumm	silenc.	muet
+# built at run time from fragments (issue #2: what stayed Polish with MIST_LANG=en)
+Porywy do {} km/h ok. {} · z {}	Gusts up to {} km/h around {} · from {}	Böen bis {} km/h gegen {} · aus {}	Rachas de hasta {} km/h hacia las {} · del {}	Rafales jusqu'à {} km/h vers {} · du {}
+porywy do {} km/h	gusts up to {} km/h	Böen bis {} km/h	rachas de hasta {} km/h	rafales jusqu'à {} km/h
+Opad {}%, {} mm	Rain {}%, {} mm	Regen {}%, {} mm	Lluvia {}%, {} mm	Pluie {}%, {} mm
+Bez większych opadów	No significant rain	Kein nennenswerter Regen	Sin lluvia importante	Pas de pluie notable
+Zachód {}	Sunset {}	Untergang {}	Puesta {}	Coucher {}
+Wschód jutro {}	Sunrise tomorrow {}	Aufgang morgen {}	Salida mañana {}	Lever demain {}
+światła jeszcze {}	light for {}	noch {} hell	luz durante {}	encore {} de lumière
+jutro krótszy o {} min	tomorrow {} min shorter	morgen {} Min. kürzer	mañana {} min más corto	demain {} min de moins
+jutro dłuższy o {} min	tomorrow {} min longer	morgen {} Min. länger	mañana {} min más largo	demain {} min de plus
+do wschodu {}	{} to sunrise	{} bis Sonnenaufgang	{} para la salida	lever dans {}
+za {} h {} min	in {} h {} min	in {} h {} Min.	en {} h {} min	dans {} h {} min
+{} wydarzenie	{} event	{} Termin	{} evento	{} événement
+{} wydarzenia	{} events	{} Termine	{} eventos	{} événements
+{} wydarzeń	{} events	{} Termine	{} eventos	{} événements
+{} wydarzenie przed tobą	{} event ahead	noch {} Termin	{} evento por delante	encore {} événement
+{} wydarzenia przed tobą	{} events ahead	noch {} Termine	{} eventos por delante	encore {} événements
+{} wydarzeń przed tobą	{} events ahead	noch {} Termine	{} eventos por delante	encore {} événements
+następne {}	next {}	nächster {}	siguiente {}	prochain {}
+cały	all	ganzer	todo el	toute la
+Skopiowano: {}	Copied: {}	Kopiert: {}	Copiado: {}	Copié : {}
+Wycięto: {}	Cut: {}	Ausgeschnitten: {}	Cortado: {}	Coupé : {}
+{} elem.	{} items	{} Elemente	{} elementos	{} éléments
+nowy plik	new file	neue Datei	nuevo archivo	nouveau fichier
+Nazwa nie może zawierać znaku /	A name cannot contain the / character	Ein Name darf kein / enthalten	Un nombre no puede contener el carácter /	Un nom ne peut pas contenir le caractère /
+Na telefonie · {}	On the phone · {}	Auf dem Telefon · {}	En el teléfono · {}	Sur le téléphone · {}
+Wiadomości	Messages	Nachrichten	Mensajes	Messages
+Kontakty	Contacts	Kontakte	Contactos	Contacts
+Wybudź	Wake	Aufwecken	Activar	Réveiller
+Zakończ	End	Beenden	Colgar	Raccrocher
+wznów od {}	resume from {}	fortsetzen ab {}	reanudar desde {}	reprendre à {}
+Odtwarzaj / pauza	Play / pause	Wiedergabe / Pause	Reproducir / pausa	Lecture / pause
+Spacja / K	Space / K	Leertaste / K	Espacio / K	Espace / K
+↑ / ↓ / kółko	↑ / ↓ / wheel	↑ / ↓ / Mausrad	↑ / ↓ / rueda	↑ / ↓ / molette
+F / dwuklik	F / double click	F / Doppelklick	F / doble clic	F / double-clic
+Następny / poprzedni	Next / previous	Nächster / vorheriger	Siguiente / anterior	Suivant / précédent
+Wolniej / szybciej / normalnie	Slower / faster / normal	Langsamer / schneller / normal	Más lento / más rápido / normal	Plus lent / plus rapide / normal
+Napisy / ścieżka audio	Subtitles / audio track	Untertitel / Tonspur	Subtítulos / pista de audio	Sous-titres / piste audio
+Skok do 0–90%	Jump to 0–90%	Springen zu 0–90%	Saltar al 0–90%	Aller à 0–90%
+Klatka wstecz / dalej	Frame back / forward	Bild zurück / vor	Fotograma atrás / adelante	Image précédente / suivante
+Wypełnij okno / cały obraz	Fill window / whole picture	Fenster füllen / ganzes Bild	Llenar ventana / imagen completa	Remplir la fenêtre / image entière
+Wyłącz / uruchom ponownie…	Shut down / restart…	Ausschalten / neu starten…	Apagar / reiniciar…	Éteindre / redémarrer…
+otworzy link	opens the link	öffnet den Link	abrirá el enlace	ouvrira le lien
+trafi do schowka	goes to the clipboard	landet in der Zwischenablage	irá al portapapeles	ira dans le presse-papiers
+obszar specjalny	special workspace	Spezialbereich	espacio especial	espace spécial
+profil zasilania	power profile	Energieprofil	perfil de energía	profil d'énergie
+Na partycji {} zostało {}.	The {} partition has {} left.	Auf der Partition {} sind noch {} frei.	A la partición {} le quedan {}.	La partition {} n'a plus que {}.
+{} z {}	{} of {}	{} von {}	{} de {}	{} sur {}

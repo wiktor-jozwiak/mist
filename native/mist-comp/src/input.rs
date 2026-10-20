@@ -66,15 +66,9 @@ impl MistComp {
                 }
 
                 pos += event.delta();
-                // clamp to the outputs
-                let bounds = self
-                    .space
-                    .outputs()
-                    .filter_map(|o| self.space.output_geometry(o))
-                    .reduce(|a, b| a.merge(b))
-                    .unwrap_or_default();
-                pos.x = pos.x.clamp(bounds.loc.x as f64, (bounds.loc.x + bounds.size.w - 1) as f64);
-                pos.y = pos.y.clamp(bounds.loc.y as f64, (bounds.loc.y + bounds.size.h - 1) as f64);
+                // clamp to the nearest output (not their bounding box: monitors of different sizes or offsets leave
+                // corners no output shows, where the cursor would vanish)
+                pos = self.clamp_to_outputs(pos);
 
                 let new_under = self.surface_under(pos);
                 if confined && new_under.as_ref().map(|u| &u.0) != under.as_ref().map(|u| &u.0) {
@@ -86,7 +80,6 @@ impl MistComp {
                 pointer.frame(self);
                 self.bar_hover(pos);
                 self.edge_hover(pos);
-        self.bar_drag_motion(pos);
             }
             InputEvent::PointerMotionAbsolute { event, .. } => {
                 let output = self.space.outputs().next().unwrap();
@@ -240,6 +233,23 @@ impl MistComp {
         if let Some(a) = action {
             self.do_action(a);
         }
+    }
+
+    /// The point itself when an output shows it, else the closest point of the closest output.
+    pub fn clamp_to_outputs(&self, pos: Point<f64, Logical>) -> Point<f64, Logical> {
+        self.space
+            .outputs()
+            .filter_map(|o| self.space.output_geometry(o))
+            .map(|g| {
+                let x = pos.x.clamp(g.loc.x as f64, (g.loc.x + g.size.w - 1) as f64);
+                let y = pos.y.clamp(g.loc.y as f64, (g.loc.y + g.size.h - 1) as f64);
+                Point::from((x, y))
+            })
+            .min_by(|a, b| {
+                let d = |p: &Point<f64, Logical>| (p.x - pos.x).powi(2) + (p.y - pos.y).powi(2);
+                d(a).total_cmp(&d(b))
+            })
+            .unwrap_or(pos)
     }
 
     pub fn pointer_to(&mut self, pos: Point<f64, Logical>, time: u32) {

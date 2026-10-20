@@ -35,6 +35,8 @@ impl SessionLockHandler for MistComp {
         self.force_full = true;
         self.dirty = true;
         confirmation.lock();
+        // a cursor an app hid (a video, a game) must not stay hidden over the lock screen
+        self.cursor_status = smithay::input::pointer::CursorImageStatus::default_named();
         let kb = self.seat.get_keyboard().unwrap();
         kb.set_focus(self, None, SERIAL_COUNTER.next_serial());
     }

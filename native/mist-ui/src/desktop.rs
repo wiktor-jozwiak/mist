@@ -1070,7 +1070,7 @@ impl Desk {
                 let ccx = cx + i as f32 * cwid + cwid / 2.0;
                 let ls = st(11.0, if today { 700.0 } else { 550.0 });
                 // the weekday's initial in the UI language (N P W Ś C P S, S M T W T F S ...)
-                let l: String = crate::i18n::tr(crate::data::DAYS_SHORT[wd]).chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+                let l = crate::i18n::day_initial(wd);
                 let lw = width(t, &l, &ls);
                 text(c, t, (ccx - lw / 2.0).round(), sy, &l, &ls, if today { ACC } else if is_race { WARN } else { MUTED }, true, None);
                 let (rx, ry) = (ccx - 10.0, sy + 18.0);

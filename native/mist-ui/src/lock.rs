@@ -24,6 +24,7 @@ use smithay_client_toolkit::{
 use std::time::{Duration, Instant};
 use tiny_skia::{Pixmap, PixmapPaint, Transform};
 use wayland_client::{globals::registry_queue_init, protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_shm, wl_surface}, Connection, QueueHandle};
+use wayland_protocols::wp::cursor_shape::v1::client::{wp_cursor_shape_device_v1, wp_cursor_shape_manager_v1};
 
 use crate::paths::primary_monitor;
 
@@ -311,6 +312,9 @@ struct L {
     qh: QueueHandle<L>,
     keyboard: Option<wl_keyboard::WlKeyboard>,
     pointer: Option<wl_pointer::WlPointer>,
+    // the arrow on every lock surface (without it the compositor keeps the last app's cursor, hidden if a video hid it)
+    cursor_mgr: Option<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1>,
+    cursor_dev: Option<wp_cursor_shape_device_v1::WpCursorShapeDeviceV1>,
     // state
     user: String,
     full_name: String,
@@ -341,6 +345,10 @@ impl L {
         self.last_input = Instant::now();
         self.blink = Instant::now();
         self.dirty_all();
+    }
+    // the surface with the avatar and the password capsule: the primary monitor, else the first one
+    fn main_surf(&self) -> usize {
+        self.surfs.iter().position(|s| s.name == primary_monitor()).unwrap_or(0)
     }
     fn dirty_all(&mut self) {
         for s in &mut self.surfs {
@@ -441,6 +449,10 @@ impl L {
         self.surfs[i].dirty = false;
         if self.surfs[i].name.is_empty() {
             self.surfs[i].name = self.outputs.info(&self.surfs[i].output).and_then(|i| i.name.clone()).unwrap_or_default();
+            // a newly named monitor may take the capsule from the one drawing it now
+            if !self.surfs[i].name.is_empty() {
+                self.dirty_all();
+            }
         }
         if self.surfs[i].sharp.is_none() {
             let p = photo(&self.wall, w, h);
@@ -467,7 +479,7 @@ impl L {
         if let Some((_, pm)) = &s.clock {
             c.pm.draw_pixmap(0, (h as f32 * 0.075).round() as i32 - 60, pm.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
         }
-        if s.name == primary_monitor() || self.surfs.len() == 1 {
+        if i == self.main_surf() {
             self.who(&mut c, w as f32, h as f32);
         }
         let Ok((buf, data)) = self.pool.create_buffer(w as i32, h as i32, w as i32 * 4, wl_shm::Format::Argb8888) else { return };
@@ -685,6 +697,8 @@ pub fn run(args: &[String]) -> i32 {
         qh: qh.clone(),
         keyboard: None,
         pointer: None,
+        cursor_mgr: globals.bind::<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1, _, _>(&qh, 1..=1, ()).ok(),
+        cursor_dev: None,
         user,
         full_name,
         face,
@@ -755,14 +769,13 @@ pub fn run(args: &[String]) -> i32 {
         }
         l.update_anims();
         let anim = l.animating();
-        // the cursor blinks (primary only) and the minute turns: a slower beat when nothing moves
+        // the cursor blinks (main surface only) and the minute turns (every monitor): a slower beat when nothing moves
         let blink_due = l.blink.elapsed().as_millis() % 1000 < 520;
-        if anim || blink_due || l.surfs.iter().any(|s| s.clock.as_ref().map(|c| c.0 != crate::data::now() / 60).unwrap_or(false)) {
-            let one = l.surfs_len_one();
-            for s in &mut l.surfs {
-                if anim || s.name == primary_monitor() || one {
-                    s.dirty = true;
-                }
+        let (main, minute) = (l.main_surf(), crate::data::now() / 60);
+        for (i, s) in l.surfs.iter_mut().enumerate() {
+            let stale = s.clock.as_ref().map(|c| c.0 != minute).unwrap_or(false);
+            if anim || stale || (blink_due && i == main) {
+                s.dirty = true;
             }
         }
         for i in 0..l.surfs.len() {
@@ -785,9 +798,6 @@ pub fn run(args: &[String]) -> i32 {
 }
 
 impl L {
-    fn surfs_len_one(&self) -> bool {
-        self.surfs.len() == 1
-    }
     fn unlock(&mut self) {
         if self.unlocked {
             return;
@@ -897,17 +907,22 @@ impl PointerHandler for L {
     fn pointer_frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_pointer::WlPointer, events: &[PointerEvent]) {
         for e in events {
             match e.kind {
+                PointerEventKind::Enter { serial } => {
+                    if let (Some(mgr), Some(p)) = (&self.cursor_mgr, &self.pointer) {
+                        let d = self.cursor_dev.get_or_insert_with(|| mgr.get_pointer(p, &self.qh, ()));
+                        d.set_shape(serial, wp_cursor_shape_device_v1::Shape::Default);
+                    }
+                }
                 PointerEventKind::Motion { .. } => {
                     let (x, y) = e.position;
                     if (x - self.last_ptr.0).abs() + (y - self.last_ptr.1).abs() > 6.0 {
                         self.wake();
                     }
                     self.last_ptr = (x, y);
-                    // over the arrow button (primary)
-                    let on = self.surfs.iter().find(|s| s.surface.wl_surface() == &e.surface).map(|s| {
+                    // over the arrow button (only the main surface has it)
+                    let main = self.surfs.get(self.main_surf());
+                    let on = main.filter(|s| s.surface.wl_surface() == &e.surface).map(|s| {
                         let (w, h) = (s.w as f64, s.h as f64);
-                        let hh = 17.0; // close enough: the capsule row
-                        let _ = hh;
                         let cx = w / 2.0 + 116.0 - 17.0;
                         let by = h - (h * 0.09).round() - 30.0 - 34.0;
                         (x - cx).abs() < 14.0 && y > by - 10.0 && y < by + 40.0
@@ -942,6 +957,8 @@ delegate_keyboard!(L);
 delegate_pointer!(L);
 delegate_session_lock!(L);
 delegate_registry!(L);
+wayland_client::delegate_noop!(L: ignore wp_cursor_shape_manager_v1::WpCursorShapeManagerV1);
+wayland_client::delegate_noop!(L: ignore wp_cursor_shape_device_v1::WpCursorShapeDeviceV1);
 
 #[cfg(test)]
 mod wipe_tests {

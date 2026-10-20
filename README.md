@@ -128,7 +128,7 @@ caveats: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ### Languages and monitors
 
-The interface speaks **Polski, English, Deutsch and Español**. Pick one in *Customise desktop* (right click on
+The interface speaks **Polski, English, Deutsch, Español and Français**. Pick one in *Customise desktop* (right click on
 the desktop clock) → Appearance → Language, or set `MIST_LANG=en`. *Automatic* follows `$LANG` and falls back
 to English. Translations live in one table, [native/assets/i18n.tsv](native/assets/i18n.tsv): one row per
 string, one column per language. A new language is one more column.

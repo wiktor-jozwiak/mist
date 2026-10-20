@@ -650,14 +650,24 @@ fn call_watch() {
 }
 
 // ------------------------------------------------------------ runcommand: the phone controls the PC
+// mist-ui's IPC client: ~/.local/bin (install.sh) when it is there, else the packaged one on $PATH (/usr/bin).
+// Only the command text changes, the runcommand ids stay, so the phone keeps its buttons.
+fn mist_bin() -> String {
+    let local = format!("{}/.local/bin/mist-ui-bin", home());
+    if std::fs::metadata(&local).map(|m| m.is_file()).unwrap_or(false) {
+        return local;
+    }
+    which("mist-ui-bin").unwrap_or(local)
+}
+
 // the shell is native (native/mist-ui): its IPC client (lock lock, mist media ...)
 fn mist_cmd(a: &[&str]) -> String {
-    format!("{}/.local/bin/mist-ui-bin msg {}", home(), a.join(" "))
+    format!("{} msg {}", mist_bin(), a.join(" "))
 }
 
 // the island is native (native/mist-ui): its IPC client
 fn show(icon: &str, title: &str, sub: &str) -> String {
-    format!("{}/.local/bin/mist-ui-bin msg island show {} '{}' '{}'", home(), icon, title, sub)
+    format!("{} msg island show {} '{}' '{}'", mist_bin(), icon, title, sub)
 }
 
 fn pc_commands(did: &str) -> Vec<(&'static str, &'static str, String)> {

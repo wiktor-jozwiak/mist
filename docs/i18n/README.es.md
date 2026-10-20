@@ -137,7 +137,7 @@ salvedades: [docs/BENCHMARKS.md](../BENCHMARKS.md).
 
 ### Idiomas y monitores
 
-La interfaz habla **polaco, inglés, alemán y español**. Elígelo en *Personalizar escritorio* (clic derecho en el
+La interfaz habla **polaco, inglés, alemán, español y francés**. Elígelo en *Personalizar escritorio* (clic derecho en el
 reloj del escritorio) → Apariencia → Idioma, o con `MIST_LANG=es`. *Automático* sigue `$LANG` y si no, inglés.
 Las traducciones están en una tabla, [native/assets/i18n.tsv](../../native/assets/i18n.tsv): una fila por texto,
 una columna por idioma. Un idioma nuevo es una columna más.

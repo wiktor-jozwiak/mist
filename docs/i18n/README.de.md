@@ -138,7 +138,7 @@ Einschränkungen: [docs/BENCHMARKS.md](../BENCHMARKS.md).
 
 ### Sprachen und Monitore
 
-Die Oberfläche spricht **Polnisch, Englisch, Deutsch und Spanisch**. Auswahl unter *Desktop anpassen*
+Die Oberfläche spricht **Polnisch, Englisch, Deutsch, Spanisch und Französisch**. Auswahl unter *Desktop anpassen*
 (Rechtsklick auf die Desktop-Uhr) → Darstellung → Sprache oder `MIST_LANG=de`. *Automatisch* folgt `$LANG`,
 sonst Englisch. Die Übersetzungen stehen in einer Tabelle, [native/assets/i18n.tsv](../../native/assets/i18n.tsv):
 eine Zeile pro Text, eine Spalte pro Sprache. Eine neue Sprache ist eine Spalte mehr.

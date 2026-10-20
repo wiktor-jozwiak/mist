@@ -5,7 +5,18 @@ nothing is released yet.
 
 ## Unreleased
 
+### Fixed
+- Lock screen: the clock on every monitor turns with the minute, not only on the primary one.
+- Lock screen: sets the arrow cursor on each lock surface, so a cursor an app had hidden (a video, a game) does not stay hidden over the lock screen; `mist-comp` resets it when the session locks.
+- Lock screen: avatar and password field fall back to the first monitor when the configured primary is not connected; the arrow button only reacts on the monitor that shows it.
+- `mist-comp`: the pointer is clamped to the nearest monitor instead of the monitors' bounding box, so it cannot get lost in a corner no monitor shows.
+- Phone run commands use `mist-ui-bin` from `$PATH` (packaged `/usr/bin`) when `~/.local/bin/mist-ui-bin` is missing; command ids unchanged.
+- Screenshot file names follow `$LANG` like their folder (`Screenshot <date> at <time>.png`).
+- Text built from fragments that stayed Polish in other languages: weather insights (gusts, sunrise/sunset, rain), Start's day summary, copy/cut toasts, player shortcuts, phone tabs, island subtitles.
+
 ### Added
+- French UI (`fr` column in `native/assets/i18n.tsv`, *Français* in the language list).
+- Weekday initials on the running card listed per language (`i18n::day_initial`; Spanish writes Wednesday as *X*).
 - Repository prepared for publishing: README in six languages, GPL-3.0 license, benchmarks
   (`docs/BENCHMARKS.md`, `bench/measure.sh`), publishing checklist, contributing guide, CI, issue templates,
   Hyprland example config (`examples/hyprland/mist.lua`), the `mist-ui` guard in `native/dist/`.

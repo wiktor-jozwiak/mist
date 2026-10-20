@@ -128,7 +128,7 @@ zastrzeżenia: [docs/BENCHMARKS.md](../BENCHMARKS.md).
 
 ### Języki i monitory
 
-Interfejs mówi **po polsku, angielsku, niemiecku i hiszpańsku**. Wybór w *Dostosuj pulpit* (prawy klik na
+Interfejs mówi **po polsku, angielsku, niemiecku, hiszpańsku i francusku**. Wybór w *Dostosuj pulpit* (prawy klik na
 zegarze pulpitu) → Wygląd → Język albo `MIST_LANG=pl`. *Automatycznie* idzie za `$LANG`, w razie braku
 angielski. Tłumaczenia są w jednej tabeli, [native/assets/i18n.tsv](../../native/assets/i18n.tsv): wiersz na
 napis, kolumna na język. Nowy język to jedna kolumna więcej.
