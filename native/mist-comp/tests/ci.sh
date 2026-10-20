@@ -122,6 +122,14 @@ wait_for "[ \"\$(size)\" != \"$SZ\" ] && [ \"\$(geo)\" != \"$G\" ]" 50 # the cli
 G=$(geo); Y3=${G#*,}; SZ=$(size); H1=${SZ#*x}
 check "window: top edge stretched up, stops below the bar" "[ \"$H1\" -gt \"$H0\" ] && [ \"$Y3\" -ge \"${TOP:-0}\" ]" "y $Y -> $Y3, h $H0 -> $H1, top ${TOP:-?}"
 
+# ------------------------------------------------------------------ screencopy (grim, portals)
+if command -v grim >/dev/null; then
+    C shot "$OUT/shot-dp3.ppm" DP-3 >/dev/null
+    check "screencopy: grim works" "WAYLAND_DISPLAY=$S timeout 10 grim -o DP-3 -t ppm '$OUT/grim-dp3.ppm'"
+    check "screencopy: the same pixels as the compositor's own shot" "cmp -s '$OUT/shot-dp3.ppm' '$OUT/grim-dp3.ppm'"
+    check "screencopy: region" "WAYLAND_DISPLAY=$S timeout 10 grim -g '10,10 200x100' -t ppm '$OUT/grim-region.ppm' && head -c 20 '$OUT/grim-region.ppm' | grep -q '200 100'"
+fi
+
 # ------------------------------------------------------------------ workspaces
 C action workspace 2 >/dev/null
 check "workspaces: switch to 2" "C workspaces | grep -q ' 2$'"

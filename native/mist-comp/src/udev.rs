@@ -82,7 +82,7 @@ pub struct Udev {
     mgr: Mgr,
     pub renderer: GlesRenderer,
     surfaces: HashMap<crtc::Handle, Surf>,
-    cursors: Cursors,
+    pub cursors: Cursors,
     nvidia: bool,
     dpms_off: bool,
     /// night light: warm gamma ramp on every crtc (hardware LUT, no per-frame shader pass)
@@ -398,6 +398,47 @@ fn vblank(state: &mut MistComp, crtc: crtc::Handle) {
     }
 }
 
+/// The pointer's elements on an output (`og`: its geometry), empty when the pointer is elsewhere or hidden.
+/// Shared by the screen and screen casting (overlay_cursor).
+pub fn pointer_elements(
+    renderer: &mut GlesRenderer,
+    cursors: &mut Cursors,
+    cursor_status: &mut CursorImageStatus,
+    ptr: smithay::utils::Point<f64, smithay::utils::Logical>,
+    og: smithay::utils::Rectangle<i32, smithay::utils::Logical>,
+    scale: Scale<f64>,
+) -> Vec<OutElem> {
+    let mut elements: Vec<OutElem> = Vec::new();
+    if !og.to_f64().contains(ptr) {
+        return elements;
+    }
+    let at = ptr - og.loc.to_f64();
+    if let CursorImageStatus::Surface(ref surf) = *cursor_status {
+        if !surf.alive() {
+            *cursor_status = CursorImageStatus::default_named();
+        }
+    }
+    match cursor_status {
+        CursorImageStatus::Hidden => {}
+        CursorImageStatus::Named(icon) => {
+            if let Some((buf, hot)) = cursors.get_icon(*icon) {
+                let loc = (at - hot.to_f64()).to_physical(scale);
+                if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(renderer, loc, &buf, None, None, None, Kind::Cursor) {
+                    elements.push(OutElem::Pointer(e));
+                }
+            }
+        }
+        CursorImageStatus::Surface(surf) => {
+            let hot = with_states(surf, |st| {
+                st.data_map.get::<std::sync::Mutex<CursorImageAttributes>>().map(|a| a.lock().unwrap().hotspot).unwrap_or_default()
+            });
+            let loc = (at - hot.to_f64()).to_physical(scale).to_i32_round();
+            elements.extend(render_elements_from_surface_tree(renderer, surf, loc, scale, 1.0, Kind::Cursor).into_iter().map(OutElem::CursorSurface));
+        }
+    }
+    elements
+}
+
 /// Render every output that changed and is not waiting for a vblank.
 pub fn render_all(state: &mut MistComp) {
     state.redraw_after_vblank = false;
@@ -416,7 +457,7 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
     // Hyprland misc.vrr = 3: adaptive sync only while a fullscreen window (game / video) is on the output
     let out = state.udev.as_ref().and_then(|u| u.surfaces.get(&crtc)).map(|s| s.output.clone());
     let vrr_want = state.config.vrr && out.is_some_and(|o| state.fullscreen_on(&o));
-    let MistComp { udev, space, seat, cursor_status, start_time, force_full, redraw_after_vblank, locked, lock, frames, anim, .. } = state;
+    let MistComp { udev, space, seat, cursor_status, start_time, force_full, redraw_after_vblank, locked, lock, frames, anim, out_seq, .. } = state;
     let Some(udev) = udev.as_mut() else { return };
     let Some(s) = udev.surfaces.get_mut(&crtc) else { return };
     if s.pending {
@@ -428,38 +469,8 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
     let scale = Scale::from(output.current_scale().fractional_scale());
 
     // pointer on top
-    let mut elements: Vec<OutElem> = Vec::new();
     let ptr = seat.get_pointer().unwrap().current_location();
-    if og.to_f64().contains(ptr) {
-        let at = ptr - og.loc.to_f64();
-        if let CursorImageStatus::Surface(ref surf) = *cursor_status {
-            if !surf.alive() {
-                *cursor_status = CursorImageStatus::default_named();
-            }
-        }
-        match cursor_status {
-            CursorImageStatus::Hidden => {}
-            CursorImageStatus::Named(icon) => {
-                if let Some((buf, hot)) = udev.cursors.get_icon(*icon) {
-                    let loc = (at - hot.to_f64()).to_physical(scale);
-                    if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(&mut udev.renderer, loc, &buf, None, None, None, Kind::Cursor) {
-                        elements.push(OutElem::Pointer(e));
-                    }
-                }
-            }
-            CursorImageStatus::Surface(surf) => {
-                let hot = with_states(surf, |st| {
-                    st.data_map.get::<std::sync::Mutex<CursorImageAttributes>>().map(|a| a.lock().unwrap().hotspot).unwrap_or_default()
-                });
-                let loc = (at - hot.to_f64()).to_physical(scale).to_i32_round();
-                elements.extend(
-                    render_elements_from_surface_tree(&mut udev.renderer, surf, loc, scale, 1.0, Kind::Cursor)
-                        .into_iter()
-                        .map(OutElem::CursorSurface),
-                );
-            }
-        }
-    }
+    let mut elements = pointer_elements(&mut udev.renderer, &mut udev.cursors, cursor_status, ptr, og, scale);
     let scene = crate::scene::elements(&mut udev.renderer, space, lock.surfaces.get(&output.name()), *locked, &output, anim);
     elements.extend(scene.into_iter().map(OutElem::Scene));
 
@@ -486,6 +497,7 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
         }
     };
     if rendered {
+        *out_seq.entry(output.name()).or_insert(0) += 1;
         match s.drm_output.queue_frame(()) {
             Ok(()) => {
                 s.pending = true;

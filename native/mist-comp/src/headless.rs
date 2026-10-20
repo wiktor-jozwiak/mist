@@ -129,7 +129,7 @@ pub fn render(state: &mut MistComp) {
     }
     hl.last = Some(std::time::Instant::now());
     state.frames += 1;
-    let MistComp { headless, space, locked, lock, shot, shot_output: state_shot_output, force_full, start_time, anim, .. } = state;
+    let MistComp { headless, space, locked, lock, shot, shot_output: state_shot_output, force_full, start_time, anim, out_seq, .. } = state;
     let Some(hl) = headless.as_mut() else { return };
     let age = if std::mem::take(force_full) { 0 } else { 1 };
     let now = start_time.elapsed();
@@ -138,8 +138,10 @@ pub fn render(state: &mut MistComp) {
         let Ok(mut fb) = hl.renderer.bind(&mut o.buffer) else { continue };
         let elems = crate::scene::elements(&mut hl.renderer, space, lock.surfaces.get(&output.name()), *locked, &output, anim);
         let clear = if *locked { [0.0, 0.0, 0.0, 1.0] } else { [0.1, 0.1, 0.1, 1.0] };
-        if let Err(e) = o.damage.render_output(&mut hl.renderer, &mut fb, age, &elems, clear) {
-            tracing::warn!("headless render: {e:?}");
+        match o.damage.render_output(&mut hl.renderer, &mut fb, age, &elems, clear) {
+            Ok(r) if r.damage.is_some() => *out_seq.entry(output.name()).or_insert(0) += 1,
+            Ok(_) => {}
+            Err(e) => tracing::warn!("headless render: {e:?}"),
         }
         // IPC `shot`: the named output, else the first
         let want = state_shot_output.as_deref().map(|n| n == output.name()).unwrap_or(i == 0);

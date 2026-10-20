@@ -96,6 +96,12 @@ pub struct MistComp {
     pub inhibitors: Vec<WlSurface>,
     /// wlr-screencopy copies waiting for the next loop iteration
     pub screencopy: Vec<crate::screencopy::Pending>,
+    /// frames with damage shown per output (copy_with_damage waits for the next one)
+    pub out_seq: std::collections::HashMap<String, u64>,
+    /// screen casting: the last damage-driven copy served (mist-ui's island: "sharing your screen"), and
+    /// the output frame each client was last given
+    pub cast_last: Option<std::time::Instant>,
+    pub cast_seen: std::collections::HashMap<smithay::reexports::wayland_server::backend::ClientId, u64>,
     /// night light state (gamma ramp on DRM; nested/headless only remember it)
     pub night: bool,
     /// title bar text (loaded with the first server-side bar)
@@ -232,6 +238,9 @@ impl MistComp {
             suppressed: Default::default(),
             locked: false,
             screencopy: Vec::new(),
+            out_seq: Default::default(),
+            cast_last: None,
+            cast_seen: Default::default(),
             night: false,
             text: None,
             bar_hovered: None,

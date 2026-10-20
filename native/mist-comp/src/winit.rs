@@ -150,6 +150,9 @@ pub fn init_winit(
                 };
                 tracing::trace!("rendered, submit {}", damage.is_some());
                 if let Some(damage) = damage {
+                    if let Some(o) = state.space.outputs().next().map(|o| o.name()) {
+                        *state.out_seq.entry(o).or_insert(0) += 1;
+                    }
                     // NVIDIA nested: swap can fail (BadAlloc) while the host hides the window; skip the frame
                     if let Err(e) = backend.submit(Some(&damage)) {
                         tracing::warn!("submit: {e:?}");
