@@ -64,10 +64,17 @@ pub fn handle_commit(state: &mut MistComp, surface: &WlSurface) -> bool {
     let sent = with_states(surface, |s| {
         s.data_map.get::<LayerSurfaceData>().unwrap().lock().unwrap().initial_configure_sent
     });
-    let mut map = layer_map_for_output(output);
+    let output = output.clone();
+    let mut map = layer_map_for_output(&output);
+    let zone = map.non_exclusive_zone();
     map.arrange();
+    let moved = map.non_exclusive_zone().loc.y > zone.loc.y;
     let layer = map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL).unwrap().clone();
     drop(map);
+    // a bar that appeared (or grew) after windows were placed: push them out from under it
+    if moved {
+        state.keep_below_zone(&output);
+    }
     if !sent {
         layer.layer_surface().send_configure();
     }

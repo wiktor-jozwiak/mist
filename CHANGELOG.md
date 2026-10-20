@@ -9,6 +9,9 @@ nothing is released yet.
 - Explicit sync (linux-drm-syncobj-v1) where the GPU supports it; commits wait for the client's GPU work (acquire point, else the dmabuf fence).
 - Protocols: text-input-v3 + input-method-v2, virtual-keyboard, tablet-v2, ext-foreign-toplevel-list, ext-data-control, xdg-foreign, xdg-toplevel-icon / -tag, content-type, alpha-modifier, xdg-system-bell, security-context (sandboxed clients get no privileged globals), XWayland keyboard grabs; wlroots foreign-toplevel-management, output-management (wlr-randr, kanshi), output-power-management, virtual-pointer, gamma-control.
 - wp-fifo opt-in (`fifo on`): FIFO barriers are released on a real frame (vblank, headless tick, nested redraw), so Vulkan vsync clients run at the refresh rate.
+- wp-commit-timing (with `fifo on`) and xdg-dialog; dialogs open centred on their parent window.
+- A bar that appears or grows after windows were placed pushes them below it.
+- `stats` counts event-loop wakeups; ci.sh checks the compositor sleeps when idle.
 - A missing UI font no longer kills the compositor (window bars are drawn without titles); Debian/Fedora font paths added to the fallbacks.
 - Screen casting: `copy_with_damage` waits for a new frame (a still screen costs nothing), cursor overlay, BGRA readback without a per-pixel swap, dmabuf rendering opt-in (`screencopy_dmabuf on`), `screencast` events for the island.
 - Hyprland compatibility for mist-ui and scripts: `decorations`, `getoption`, window move / resize / close / fullscreen and monitor focus in `eval`, events fullscreen / urgent / focusedmon / activelayout / configreloaded / monitoradded / removed; `mist-comp hyprctl` (linked as `hyprctl` by start-mist when Hyprland is not installed); window drags stream the cursor instead of mist-ui polling it.

@@ -60,8 +60,11 @@ pub struct Extra {
     _bell: XdgSystemBellState,
     _xwayland_grab: XWaylandKeyboardGrabState,
     _security: SecurityContextState,
-    /// wp-fifo (Vulkan FIFO presentation in games); only with `fifo on` until tested per driver
-    pub fifo: Option<smithay::wayland::fifo::FifoManagerState>,
+    /// wp-fifo + wp-commit-timing (Vulkan FIFO presentation, Proton frame pacing); only with `fifo on`
+    pub fifo: Option<(smithay::wayland::fifo::FifoManagerState, smithay::wayland::commit_timing::CommitTimingManagerState)>,
+    _dialog: smithay::wayland::shell::xdg::dialog::XdgDialogState,
+    /// a commit-timing deadline later than the next frame has its wake-up armed
+    pub timer_armed: bool,
 }
 
 impl Extra {
@@ -82,7 +85,9 @@ impl Extra {
             _xwayland_grab: XWaylandKeyboardGrabState::new::<MistComp>(dh),
             // a sandbox inside a sandbox may not create more contexts
             _security: SecurityContextState::new::<MistComp, _>(dh, trusted),
-            fifo: fifo.then(|| smithay::wayland::fifo::FifoManagerState::new::<MistComp>(dh)),
+            fifo: fifo.then(|| (smithay::wayland::fifo::FifoManagerState::new::<MistComp>(dh), smithay::wayland::commit_timing::CommitTimingManagerState::new::<MistComp>(dh))),
+            _dialog: smithay::wayland::shell::xdg::dialog::XdgDialogState::new::<MistComp>(dh),
+            timer_armed: false,
         }
     }
 }
@@ -203,19 +208,40 @@ delegate_xdg_system_bell!(MistComp);
 
 // ------------------------------------------------------------------ fifo (`fifo on` in comp.conf)
 smithay::delegate_fifo!(MistComp);
+smithay::delegate_commit_timing!(MistComp);
+smithay::delegate_xdg_dialog!(MistComp);
+
+// dialogs are placed on their parent (rules.rs place_new); modality itself needs nothing more
+impl smithay::wayland::shell::xdg::dialog::XdgDialogHandler for MistComp {}
 
 impl MistComp {
     /// A refresh went by (vblank), or none is pending: every surface's FIFO barrier is signalled and the
     /// commits waiting on it go through.
+    /// A frame went out (or none is coming): release FIFO barriers and commit timers due by the next one.
     pub fn fifo_signal(&mut self) {
         if self.extra.fifo.is_none() {
             return;
         }
+        use smithay::utils::{Clock, Monotonic, Time};
+        use smithay::wayland::commit_timing::CommitTimerBarrierStateUserData;
+        let refresh = self.space.outputs().filter_map(|o| o.current_mode()).map(|m| m.refresh).max().filter(|r| *r > 0).unwrap_or(60_000);
+        let now: Time<Monotonic> = Clock::<Monotonic>::new().now();
+        let deadline = now + std::time::Duration::from_nanos(1_000_000_000_000 / refresh as u64);
         let mut clients = Vec::new();
+        let mut next: Option<Time<Monotonic>> = None;
         let mut signal = |surface: &WlSurface, states: &smithay::wayland::compositor::SurfaceData| {
-            let b = states.cached_state.get::<smithay::wayland::fifo::FifoBarrierCachedState>().current().barrier.take();
-            if let Some(b) = b {
+            let mut hit = false;
+            if let Some(b) = states.cached_state.get::<smithay::wayland::fifo::FifoBarrierCachedState>().current().barrier.take() {
                 b.signal();
+                hit = true;
+            }
+            if let Some(mut t) = states.data_map.get::<CommitTimerBarrierStateUserData>().map(|t| t.lock().unwrap()) {
+                hit |= t.signal_until(deadline);
+                if let Some(d) = t.next_deadline().map(Time::<Monotonic>::from) {
+                    next = Some(next.map_or(d, |n| n.min(d)));
+                }
+            }
+            if hit {
                 if let Some(c) = smithay::reexports::wayland_server::Resource::client(surface) {
                     if !clients.contains(&c) {
                         clients.push(c);
@@ -234,6 +260,17 @@ impl MistComp {
         let dh = self.display_handle.clone();
         for c in clients {
             smithay::wayland::compositor::CompositorHandler::client_compositor_state(self, &c).blocker_cleared(self, &dh);
+        }
+        // a timer further out than the next frame: wake up for it even if nothing redraws until then
+        if let Some(d) = next.filter(|_| !self.extra.timer_armed) {
+            self.extra.timer_armed = true;
+            let wait = Time::elapsed(&now, d).saturating_sub(std::time::Duration::from_nanos(1_000_000_000_000 / refresh as u64));
+            let timer = smithay::reexports::calloop::timer::Timer::from_duration(wait);
+            let _ = self.loop_handle.insert_source(timer, |_, _, st: &mut crate::CalloopData| {
+                st.extra.timer_armed = false;
+                st.fifo_signal();
+                smithay::reexports::calloop::timer::TimeoutAction::Drop
+            });
         }
     }
 }

@@ -132,7 +132,7 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
             if r.is_some() { "ok\n".into() } else { "usage: key CODE press|release | motion X Y | button left|right press|release\n".into() }
         }
         "locked" => format!("{} surfaces={}\n", state.locked, state.lock.surfaces.len()),
-        "stats" => format!("frames {} commits {} windows {} hidden {}\n", state.frames, state.commits, state.space.elements().count(), state.stash.len()),
+        "stats" => format!("frames {} commits {} windows {} hidden {} wakeups {}\n", state.frames, state.commits, state.space.elements().count(), state.stash.len(), state.wakeups),
         "night" => format!("{}\n", state.night),
         "workspaces" => state.ws_active.iter().map(|(o, w)| format!("{o} {w}\n")).collect(),
         "shot" => match it.next() {

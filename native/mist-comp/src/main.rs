@@ -138,6 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // no fixed tick: the loop sleeps until a client or input event; a frame is requested only when dirty
     tracing::trace!("run");
     event_loop.run(None, &mut data, move |data| {
+        data.wakeups += 1;
         if std::mem::take(&mut data.dirty) {
             data.sync_x11();
             data.update_bars();

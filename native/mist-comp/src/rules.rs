@@ -108,6 +108,35 @@ impl MistComp {
         true
     }
 
+    /// The mapped window an xdg toplevel says it belongs to (dialogs, file pickers).
+    pub fn parent_of(&self, w: &Window) -> Option<Window> {
+        let parent = w.toplevel()?.parent()?;
+        self.space.elements().find(|p| p.toplevel().is_some_and(|t| *t.wl_surface() == parent)).cloned()
+    }
+
+    /// Windows on `o` whose bar would sit above the usable area move down to its top.
+    pub fn keep_below_zone(&mut self, o: &smithay::output::Output) {
+        let Some(og) = self.space.output_geometry(o) else { return };
+        let top = og.loc.y + layer_map_for_output(o).non_exclusive_zone().loc.y;
+        let wins: Vec<Window> = self.space.elements().cloned().collect();
+        for w in wins {
+            let Some(loc) = self.space.element_location(&w) else { continue };
+            let full = w.toplevel().is_some_and(|t| t.current_state().states.contains(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Fullscreen))
+                || w.x11_surface().is_some_and(|x| x.is_fullscreen());
+            if full || !og.contains(loc) && !og.contains(loc - Point::from((0, self.bar_h(&w)))) {
+                continue;
+            }
+            let y = top + self.bar_h(&w);
+            if loc.y < y {
+                self.space.map_element(w.clone(), (loc.x, y), false);
+                if let Some(x) = w.x11_surface() {
+                    let _ = x.configure(Rectangle::new((loc.x, y).into(), x.geometry().size));
+                }
+                self.dirty = true;
+            }
+        }
+    }
+
     pub fn rule_of(&self, w: &Window) -> Rule {
         rule(&crate::hyprcompat::app_id(w).to_lowercase(), &crate::hyprcompat::title(w), w.x11_surface().is_some())
     }
@@ -139,6 +168,14 @@ impl MistComp {
         let (ow, oh) = (size.w, size.h + bar);
         if pip {
             return Point::from((area.loc.x + area.size.w - ow - GAP, area.loc.y + area.size.h - oh - GAP + bar));
+        }
+        // a dialog: centred on its parent, kept inside the usable area
+        if let Some((pl, pg)) = self.parent_of(w).and_then(|p| Some((self.space.element_location(&p)?, p.geometry()))) {
+            let pbar = self.bar_h(&self.parent_of(w).unwrap());
+            let (cx, cy) = (pl.x + pg.size.w / 2, pl.y - pbar + (pg.size.h + pbar) / 2);
+            let x = (cx - ow / 2).clamp(area.loc.x, (area.loc.x + area.size.w - ow).max(area.loc.x));
+            let y = (cy - oh / 2).clamp(area.loc.y, (area.loc.y + area.size.h - oh).max(area.loc.y)) + bar;
+            return Point::from((x, y));
         }
         let x = area.loc.x + ((area.size.w - ow) / 2).max(0);
         let y = area.loc.y + ((area.size.h - oh) / 2).max(0) + bar;

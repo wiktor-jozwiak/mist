@@ -91,6 +91,12 @@ spawn "$BIN/mist-ui" lock preview 2 >/dev/null
 check "lock: a new locker takes over and unlocks" "wait_for \"C locked | grep -q '^false'\" 80"
 
 # ------------------------------------------------------------------ shell surfaces
+# a window already at the very top before the bar exists: the bar pushes it down
+spawn "$BIN/mist-ui" files "$H" >/dev/null
+wait_for "C windows | grep -q '^mist-files ws'" 100
+A0=$(J j/clients | tr ',' '\n' | sed -n 's/.*"address":"\(0x[0-9a-f]*\)".*/\1/p' | head -1)
+J "eval hl.dispatch(hl.dsp.window.move({ x = 100, y = 0, window = \"address:$A0\" }))" >/dev/null
+Y0=$(C windows | awk '/^mist-files ws/ {print $3; exit}'); Y0=${Y0#*,}
 spawn "$BIN/mist-ui" >/dev/null
 check "shell: bar on DP-3" "wait_for \"C layers | grep -q '^DP-3 mist-bar'\" 100"
 check "shell: dock on DP-3" "C layers | grep -q '^DP-3 mist-dock'"
@@ -98,6 +104,10 @@ check "shell: island on DP-3" "C layers | grep -q '^DP-3 mist-island'"
 check "shell: bar on HDMI-A-1" "C layers | grep -q '^HDMI-A-1 mist-bar'"
 TOP=$(J j/monitors | tr -d ' \n' | sed -n 's/.*"reserved":\[\([0-9]*\),\([0-9]*\),.*/\2/p')
 check "shell: the bar reserves the top" "[ \"\${TOP:-0}\" -gt 0 ]" "reserved top ${TOP:-?}"
+Y1=$(C windows | awk '/^mist-files ws/ {print $3; exit}'); Y1=${Y1#*,}
+check "window placed before the bar is pushed below it" "[ \"$Y0\" -lt \"${TOP:-0}\" ] && [ \"$Y1\" -ge \"${TOP:-0}\" ]" "y $Y0 -> $Y1, top ${TOP:-?}"
+J "eval hl.dispatch(hl.dsp.window.close({ window = \"address:$A0\" }))" >/dev/null
+wait_for "! C windows | grep -q '^mist-files'" 50
 
 # ------------------------------------------------------------------ a window: kept below the bar
 spawn "$BIN/mist-ui" files "$H" >/dev/null
@@ -206,6 +216,11 @@ C action reload >/dev/null
 check "config: output line applied on reload (position, scale)" "J j/monitors | tr -d ' ' | grep -q '\"scale\":1.5' && J j/monitors | tr -d ' ' | grep -q '\"x\":1290'"
 rm -f "$H/.config/mist/comp.conf"
 check "event configreloaded" "wait_for \"grep -q '^configreloaded>>' '$OUT/events.log'\" 30"
+
+# ------------------------------------------------------------------ idle cost
+C motion 640 400 >/dev/null; sleep 2
+w0=$(C stats | awk '{print $10}'); sleep 3; w1=$(C stats | awk '{print $10}')
+check "idle: the compositor sleeps (< 10 wakeups/s with the shell up)" "[ \$((w1 - w0)) -lt 30 ]" "$((w1 - w0)) wakeups in 3 s"; echo "     idle wakeups in 3 s: $((w1 - w0))"
 
 # ------------------------------------------------------------------ health
 check "no panic in the compositor" "! grep -q panicked '$OUT/comp.log'"
