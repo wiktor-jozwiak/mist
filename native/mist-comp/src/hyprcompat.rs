@@ -283,6 +283,13 @@ fn answer(state: &mut MistComp, req: &str) -> String {
             o => json!({ "option": o, "set": false }),
         },
         "configerrors" => json!([]),
+        // shortcuts apps registered through the portal (bind them with `global APP_ID:ID`)
+        "globalshortcuts" => {
+            if !json_mode {
+                return state.shortcuts.iter().map(|s| format!("{}:{} -> {}\n", s.app_id, s.id, s.description)).collect();
+            }
+            Value::Array(state.shortcuts.iter().map(|s| json!({ "name": format!("{}:{}", s.app_id, s.id), "description": s.description })).collect())
+        }
         _ => return "unknown request\n".into(),
     };
     if json_mode {

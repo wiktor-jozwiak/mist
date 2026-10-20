@@ -288,6 +288,9 @@ impl MistComp {
                     if let Some(b) = st.config.find(m, sym, false) {
                         if !st.locked || b.locked {
                             st.suppressed.insert(kc);
+                            if let Action::Global(n) = &b.action {
+                                st.globals_held.insert(kc, n.clone());
+                            }
                             return FilterResult::Intercept(b.action.clone());
                         }
                     }
@@ -307,6 +310,10 @@ impl MistComp {
                         }
                     }
                     if st.suppressed.remove(&kc) {
+                        // a held `global` bind: its app hears the release (whatever modifiers are up by now)
+                        if let Some(n) = st.globals_held.remove(&kc) {
+                            return FilterResult::Intercept(Action::GlobalUp(n));
+                        }
                         return FilterResult::Intercept(Action::Nothing);
                     }
                 }

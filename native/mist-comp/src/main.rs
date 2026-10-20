@@ -15,6 +15,7 @@ mod headless;
 mod winit;
 mod cursor;
 mod screencopy;
+mod hyprproto;
 mod wlr;
 mod outman;
 mod migrate;
@@ -165,6 +166,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             data.fifo_signal();
         }
         crate::screencopy::process(data);
+        crate::hyprproto::process(data);
         data.ftm_sync();
         data.update_scales();
         let _ = data.display_handle.flush_clients();

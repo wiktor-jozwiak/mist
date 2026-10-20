@@ -109,6 +109,7 @@ The experimental compositor's key bindings, autostart, monitors and switches; fu
 | Line | |
 |---|---|
 | `bind` / `bindr` / `bindl COMBO ACTION` | key binding / on release / also while locked |
+| `bind COMBO global APP_ID:ID` | a shortcut an app registered through the portal (Discord push-to-talk): pressed and released with the key; `hyprctl globalshortcuts` lists them |
 | `output NAME X Y [scale S] [mode WxH[@Hz]] [transform T]` | a monitor (also in `outputs`, where comp.conf wins); applied at hotplug and on `reload` |
 | `exec CMD`, `env K V` | autostart, environment |
 | `keyboard LAYOUT[,LAYOUT2] [VARIANT] [OPTIONS]`, `numlock on`, `pointer flat` | input |

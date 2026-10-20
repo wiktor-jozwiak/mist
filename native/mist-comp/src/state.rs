@@ -91,6 +91,8 @@ pub struct MistComp {
     pub ev_mon: String,
     /// keys whose press a bind ate: eat their release too
     pub suppressed: std::collections::HashSet<u32>,
+    /// keys holding a `global` bind down (keycode -> APP_ID:ID), released with the key
+    pub globals_held: std::collections::HashMap<u32, String>,
     /// socket2 listeners (hyprcompat)
     pub hypr_listeners: Vec<std::os::unix::net::UnixStream>,
     /// window addresses, most recently focused first
@@ -104,6 +106,8 @@ pub struct MistComp {
     pub inhibitors: Vec<WlSurface>,
     /// wlr-screencopy copies waiting for the next loop iteration
     pub screencopy: Vec<crate::screencopy::Pending>,
+    pub window_copies: Vec<crate::hyprproto::Pending>,
+    pub shortcuts: Vec<crate::hyprproto::Shortcut>,
     /// frames with damage shown per output (copy_with_damage waits for the next one)
     pub out_seq: std::collections::HashMap<String, u64>,
     /// screen casting: the last damage-driven copy served (mist-ui's island: "sharing your screen"), and
@@ -160,6 +164,7 @@ impl MistComp {
         let idle = smithay::wayland::idle_notify::IdleNotifierState::new(&dh, event_loop.handle());
         let idle_inhibit = smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Self>(&dh);
         crate::screencopy::init(&dh);
+        crate::hyprproto::init(&dh);
         crate::wlr::init(&dh);
         crate::outman::init(&dh);
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
@@ -253,8 +258,11 @@ impl MistComp {
             ev_layout: String::new(),
             ev_mon: String::new(),
             suppressed: Default::default(),
+            globals_held: Default::default(),
             locked: false,
             screencopy: Vec::new(),
+            window_copies: Vec::new(),
+            shortcuts: Vec::new(),
             out_seq: Default::default(),
             cast_last: None,
             cast_seen: Default::default(),

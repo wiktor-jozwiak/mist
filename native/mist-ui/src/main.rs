@@ -47,6 +47,7 @@ mod snap;
 mod wallpapers;
 mod wxcard;
 mod wincap;
+mod devtools;
 mod winpick;
 mod desksettings;
 #[path = "../../common/astro.rs"]
@@ -78,6 +79,11 @@ fn main() {
             println!("{} {}", g.interface, g.version);
         }
         return;
+    }
+    match (args.get(1).map(|s| s.as_str()), args.get(2), args.get(3)) {
+        (Some("--wincap"), Some(a), Some(o)) => std::process::exit(devtools::wincap(a, o)),
+        (Some("--global-shortcut"), Some(a), Some(i)) => std::process::exit(devtools::global_shortcut(a, i)),
+        _ => {}
     }
     if args.get(1).map(|s| s.as_str()) == Some("msg") {
         // client of the running mist-ui: mist-ui-bin msg <target> <function> [args...]

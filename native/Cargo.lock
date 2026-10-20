@@ -1247,6 +1247,8 @@ dependencies = [
  "tiny-skia",
  "tracing",
  "tracing-subscriber",
+ "wayland-backend",
+ "wayland-scanner",
  "xcursor",
 ]
 

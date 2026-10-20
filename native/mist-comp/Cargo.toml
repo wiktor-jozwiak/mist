@@ -16,6 +16,9 @@ serde_json = "1"
 swash = "0.2"
 tiny-skia = { version = "0.11", default-features = false, features = ["std", "simd"] }
 libc = "0.2"
+# Hyprland protocols Smithay does not have (protocols/*.xml): window capture, global shortcuts
+wayland-scanner = "0.31"
+wayland-backend = "0.3"
 
 [dependencies.smithay]
 version = "0.7.0"

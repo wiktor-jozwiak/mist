@@ -44,7 +44,7 @@ use smithay::{
 
 use crate::{wm::MINIMIZED, MistComp};
 
-fn trusted(client: &Client) -> bool {
+pub fn trusted(client: &Client) -> bool {
     client.get_data::<crate::state::ClientState>().is_none_or(|c| c.security_context.is_none())
 }
 

@@ -9,6 +9,8 @@ nothing is released yet.
 - Explicit sync (linux-drm-syncobj-v1) where the GPU supports it; commits wait for the client's GPU work (acquire point, else the dmabuf fence).
 - Protocols: text-input-v3 + input-method-v2, virtual-keyboard, tablet-v2, ext-foreign-toplevel-list, ext-data-control, xdg-foreign, xdg-toplevel-icon / -tag, content-type, alpha-modifier, xdg-system-bell, security-context (sandboxed clients get no privileged globals), XWayland keyboard grabs; wlroots foreign-toplevel-management, output-management (wlr-randr, kanshi), output-power-management, virtual-pointer, gamma-control.
 - wp-fifo opt-in (`fifo on`): FIFO barriers are released on a real frame (vblank, headless tick, nested redraw), so Vulkan vsync clients run at the refresh rate.
+- hyprland-toplevel-export-v1: single-window capture (the dock's window picker thumbnails, window sharing through xdg-desktop-portal-hyprland), also for windows on hidden workspaces.
+- hyprland-global-shortcuts-v1 and the `global APP_ID:ID` bind action (press and release); `hyprctl globalshortcuts`.
 - wp-commit-timing (with `fifo on`) and xdg-dialog; dialogs open centred on their parent window.
 - A bar that appears or grows after windows were placed pushes them below it.
 - `stats` counts event-loop wakeups; ci.sh checks the compositor sleeps when idle.

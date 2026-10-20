@@ -605,6 +605,8 @@ impl MistComp {
             }
             Action::Vt(n) => self.change_vt(n),
             Action::Nothing => return,
+            Action::Global(n) => return self.global_shortcut(&n, true),
+            Action::GlobalUp(n) => return self.global_shortcut(&n, false),
         }
         self.dirty = true;
     }

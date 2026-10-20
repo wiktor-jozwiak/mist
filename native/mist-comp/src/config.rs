@@ -20,6 +20,7 @@
 //!
 //! Actions: exec CMD | close | kill | quit | reload | workspace N|+1|-1 | movetoworkspace N|+1|-1
 //!          | maximize | fullscreen | float | focus left|right|up|down | cycle | vt N
+//!          | global APP_ID:ID   (a shortcut registered through the portal, e.g. Discord push-to-talk)
 use smithay::input::keyboard::{keysyms, xkb, ModifiersState};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -45,6 +46,11 @@ pub enum Action {
     Snap(crate::snap::Key),
     /// move the focused window to the next output (-1 / +1)
     MoveToMonitor(i32),
+    /// a shortcut an app registered through the portal (`global APP_ID:ID`, or `:ID` for any app):
+    /// pressed on the key press, released with the key
+    Global(String),
+    /// the key of a held `global` bind went up
+    GlobalUp(String),
     /// swallow a key (the release of an intercepted press)
     Nothing,
 }
@@ -348,6 +354,7 @@ pub fn parse_action(s: &str) -> Option<Action> {
             _ => return None,
         }),
         "movetomonitor" => Action::MoveToMonitor(arg.parse().ok()?),
+        "global" if !arg.is_empty() => Action::Global(arg.into()),
         "focus" => Action::Focus(match arg {
             "left" => Dir::Left,
             "right" => Dir::Right,

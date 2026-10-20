@@ -202,6 +202,10 @@ G=$(geo); Y4=${G#*,}
 check "eval window.move: y not over the bar" "[ \"$Y4\" -ge \"${TOP:-0}\" ]" "y=$Y4"
 J "eval hl.dispatch(hl.dsp.window.resize({ x = 900, y = 600, window = \"address:$A\" }))" >/dev/null
 check "eval window.resize" "wait_for \"C windows | grep -q '^mist-files ws1 [0-9,]* 900x600'\" 50" "$(C windows | head -1)"
+WAYLAND_DISPLAY=$S "$BIN/mist-ui" --wincap "$A" "$OUT/wincap.ppm" >"$OUT/wincap.txt" 2>&1
+check "toplevel export: the window at its size (dock picker thumbnails)" "grep -qx '900x600' '$OUT/wincap.txt'" "$(cat "$OUT/wincap.txt")"
+check "toplevel export: real pixels, not blank" "[ \$(tail -c 100000 '$OUT/wincap.ppm' | od -An -tu1 -v | tr -s ' ' '\n' | sort -u | wc -l) -gt 8 ]"
+check "toplevel export: an unknown window fails" "! WAYLAND_DISPLAY=$S '$BIN/mist-ui' --wincap 0xdead '$OUT/none.ppm' >/dev/null 2>&1"
 C motion 1900 400 >/dev/null; C motion 300 400 >/dev/null
 check "event focusedmonv2 when the pointer changes output" "wait_for \"grep -q '^focusedmonv2>>HDMI-A-1' '$OUT/events.log'\" 30"
 J "eval hl.dispatch(hl.dsp.window.fullscreen({ window = \"address:$A\" }))" >/dev/null
@@ -211,6 +215,20 @@ check "fullscreen off + event" "wait_for \"grep -q '^fullscreen>>0' '$OUT/events
 J "eval hl.dispatch(hl.dsp.window.close({ window = \"address:$A\" }))" >/dev/null
 check "eval window.close of a given window" "wait_for \"! C windows | grep -q '^mist-files'\" 50"
 check "event closewindow" "grep -q '^closewindow>>' '$OUT/events.log'"
+# global shortcuts (portal / Discord push-to-talk): a `global` bind presses and releases what the app registered
+printf 'bind SUPER+F9 global mist.test:ptt\n' >"$H/.config/mist/comp.conf"
+C action reload >/dev/null
+WAYLAND_DISPLAY=$S "$BIN/mist-ui" --global-shortcut mist.test ptt >"$OUT/gs.txt" 2>&1 &
+GS=$!; pids="$pids $GS"
+wait_for "grep -q registered '$OUT/gs.txt'" 50
+check "global shortcuts: hyprctl globalshortcuts lists it" "wait_for \"J globalshortcuts | grep -q '^mist.test:ptt'\" 30"
+C key 125 press >/dev/null; C key 67 press >/dev/null
+check "global shortcuts: pressed on the key press" "wait_for \"grep -q '^pressed' '$OUT/gs.txt'\" 30"
+check "global shortcuts: not released while held" "! grep -q '^released' '$OUT/gs.txt'"
+C key 125 release >/dev/null; C key 67 release >/dev/null
+check "global shortcuts: released with the key" "wait_for \"grep -q '^released' '$OUT/gs.txt'\" 30"
+kill $GS 2>/dev/null; sleep 0.3
+check "global shortcuts: gone with its client" "! J globalshortcuts | grep -q mist.test"
 printf 'output HDMI-A-1 1290 0 scale 1.5\n' >"$H/.config/mist/comp.conf"
 C action reload >/dev/null
 check "config: output line applied on reload (position, scale)" "J j/monitors | tr -d ' ' | grep -q '\"scale\":1.5' && J j/monitors | tr -d ' ' | grep -q '\"x\":1290'"
