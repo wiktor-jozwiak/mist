@@ -57,7 +57,7 @@ for g in xdg_wm_base zwlr_layer_shell_v1 ext_session_lock_manager_v1 zwp_linux_d
          ext_foreign_toplevel_list_v1 ext_data_control_manager_v1 zwlr_data_control_manager_v1 zxdg_exporter_v2 zxdg_importer_v2 \
          xdg_toplevel_icon_manager_v1 xdg_toplevel_tag_manager_v1 wp_content_type_manager_v1 wp_alpha_modifier_v1 xdg_system_bell_v1 \
          wp_security_context_manager_v1 wp_cursor_shape_manager_v1 zwlr_screencopy_manager_v1 ext_idle_notifier_v1 zwp_idle_inhibit_manager_v1 \
-         zwlr_foreign_toplevel_manager_v1 zwlr_output_power_manager_v1 zwlr_virtual_pointer_manager_v1 zwlr_gamma_control_manager_v1; do
+         zwlr_foreign_toplevel_manager_v1 zwlr_output_power_manager_v1 zwlr_virtual_pointer_manager_v1 zwlr_gamma_control_manager_v1 zwlr_output_manager_v1; do
     grep -q "^$g " "$OUT/globals.txt" || bad "global $g"
 done
 ok "globals ($(wc -l <"$OUT/globals.txt") advertised)"
@@ -156,6 +156,15 @@ if command -v wlopm >/dev/null; then
     check "output-power: off" "WAYLAND_DISPLAY=$S timeout 5 wlopm | grep -q 'DP-3 off'"
     WAYLAND_DISPLAY=$S timeout 5 wlopm --on '*' >/dev/null 2>&1
     check "output-power: on" "WAYLAND_DISPLAY=$S timeout 5 wlopm | grep -q 'DP-3 on'"
+fi
+
+if command -v wlr-randr >/dev/null; then
+    R() { WAYLAND_DISPLAY=$S timeout 5 wlr-randr "$@" 2>/dev/null; }
+    check "output-management: wlr-randr lists both outputs" "R | grep -c '^[A-Z].*\"' | grep -qx 2"
+    R --output HDMI-A-1 --pos 1300,0 --scale 1.25
+    check "output-management: position and scale applied" "J j/monitors | tr -d ' ' | grep -q '\"scale\":1.25' && R | grep -q 'Position: 1300,0'"
+    R --output HDMI-A-1 --pos 1280,0 --scale 1
+    check "output-management: turning an output off is refused" "! R --output HDMI-A-1 --off"
 fi
 
 # ------------------------------------------------------------------ workspaces

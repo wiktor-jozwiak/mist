@@ -74,6 +74,8 @@ struct Surf {
     pending: bool,
     /// adaptive sync on now; None = the output refused it (never retried)
     vrr: Option<bool>,
+    /// the connector's modes (wlr-output-management picks among them)
+    modes: Vec<smithay::reexports::drm::control::Mode>,
 }
 
 pub struct Udev {
@@ -128,6 +130,23 @@ impl Udev {
 
     fn crtc_of(&self, output: &str) -> Option<crtc::Handle> {
         self.surfaces.iter().find(|(_, s)| s.output.name() == output).map(|(c, _)| *c)
+    }
+
+    /// wlr-output-management: switch an output to one of its connector's modes (size and refresh).
+    pub fn set_mode(&mut self, output: &str, mode: WlMode) -> bool {
+        let Some(c) = self.crtc_of(output) else { return false };
+        let Some(s) = self.surfaces.get_mut(&c) else { return false };
+        let Some(m) = s.modes.iter().find(|m| WlMode::from(**m) == mode).copied() else { return false };
+        match s.drm_output.use_mode::<_, OutElem>(m, &mut self.renderer, &DrmOutputRenderElements::default()) {
+            Ok(()) => {
+                s.output.change_current_state(Some(mode), None, None, None);
+                true
+            }
+            Err(e) => {
+                tracing::warn!("mode {output}: {e:?}");
+                false
+            }
+        }
     }
 
     /// wlr-gamma-control: the output's gamma ramp length (None: no such output / no LUT).
@@ -348,7 +367,10 @@ fn scan(state: &mut MistComp, dh: &smithay::reexports::wayland_server::DisplayHa
             let x = state.space.outputs().filter_map(|o| state.space.output_geometry(o)).map(|g| g.loc.x + g.size.w).max().unwrap_or(0);
             (x, 0)
         });
-        output.set_preferred(wl_mode);
+        for m in info.modes() {
+            output.add_mode(WlMode::from(*m));
+        }
+        output.set_preferred(WlMode::from(info.modes()[mode_i]));
         output.change_current_state(Some(wl_mode), Some(Transform::Normal), None, Some(pos.into()));
         state.space.map_output(&output, pos);
 
@@ -378,7 +400,7 @@ fn scan(state: &mut MistComp, dh: &smithay::reexports::wayland_server::DisplayHa
         };
         tracing::info!("output {name} {}x{}@{} at {pos:?}", wl_mode.size.w, wl_mode.size.h, wl_mode.refresh);
         events.push(("monitoraddedv2", format!("0,{name},{}", output.description())));
-        udev.surfaces.insert(crtc, Surf { output, drm_output, global, pending: false, vrr: Some(false) });
+        udev.surfaces.insert(crtc, Surf { output, drm_output, global, pending: false, vrr: Some(false), modes: info.modes().to_vec() });
         if udev.night {
             udev.apply_gamma(crtc);
         }
@@ -388,8 +410,12 @@ fn scan(state: &mut MistComp, dh: &smithay::reexports::wayland_server::DisplayHa
     }
     state.fix_ws();
     state.dirty = true;
+    let changed = !events.is_empty();
     for (e, d) in events {
         state.hypr_event(e, &d);
+    }
+    if changed {
+        state.outman_changed();
     }
 }
 

@@ -43,6 +43,7 @@ pub struct MistComp {
     pub protocols: crate::handlers::protocols::Protocols,
     pub extra: crate::handlers::extra::Extra,
     pub wlr: crate::wlr::Wlr,
+    pub outman: crate::outman::OutMan,
     /// monitors on (DPMS), as output-power clients are told
     pub dpms_on: bool,
     /// linux-drm-syncobj (explicit sync): only on a DRM device that supports syncobj eventfd
@@ -154,6 +155,7 @@ impl MistComp {
         let idle_inhibit = smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Self>(&dh);
         crate::screencopy::init(&dh);
         crate::wlr::init(&dh);
+        crate::outman::init(&dh);
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let mut seat_state = SeatState::new();
@@ -215,6 +217,7 @@ impl MistComp {
             protocols,
             extra,
             wlr: Default::default(),
+            outman: Default::default(),
             dpms_on: true,
             syncobj: None,
             shm_state,

@@ -16,6 +16,7 @@ mod winit;
 mod cursor;
 mod screencopy;
 mod wlr;
+mod outman;
 mod decor;
 mod scene;
 mod rounded;

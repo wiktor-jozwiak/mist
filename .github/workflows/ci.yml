@@ -18,7 +18,7 @@ jobs:
       - name: System packages
         run: |
           pacman -Syu --noconfirm --needed base-devel git rust cargo-deny pkgconf libxkbcommon tzdata pam wayland mesa \
-            libinput seatd libdrm systemd-libs noto-fonts adwaita-cursors socat wl-clipboard wtype grim
+            libinput seatd libdrm systemd-libs noto-fonts adwaita-cursors socat wl-clipboard wtype grim wlr-randr
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
         with:
