@@ -146,6 +146,7 @@ impl MistComp {
 
     /// Outputs changed (hotplug, a configuration): every manager gets the heads anew.
     pub fn outman_changed(&mut self) {
+        self.scales_dirty = true;
         self.outman.serial = self.outman.serial.wrapping_add(1).max(1);
         for (_, heads, modes) in std::mem::take(&mut self.outman.sent) {
             for md in modes {

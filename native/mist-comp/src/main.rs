@@ -153,6 +153,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         crate::screencopy::process(data);
         data.ftm_sync();
+        data.update_scales();
         let _ = data.display_handle.flush_clients();
         tracing::trace!("loop iteration");
     })?;

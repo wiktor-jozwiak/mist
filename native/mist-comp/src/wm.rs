@@ -113,6 +113,30 @@ impl MistComp {
         }
     }
 
+    /// Every window and layer surface prefers its output's scale and transform (wp-fractional-scale,
+    /// wl_surface.preferred_buffer_scale): sharp text on a 1.25 monitor next to a 1.0 one, after a move too.
+    pub fn update_scales(&mut self) {
+        if !std::mem::take(&mut self.scales_dirty) {
+            return;
+        }
+        let apply = |surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface, states: &smithay::wayland::compositor::SurfaceData, o: &Output| {
+            let s = o.current_scale();
+            smithay::wayland::fractional_scale::with_fractional_scale(states, |f| f.set_preferred_scale(s.fractional_scale()));
+            smithay::wayland::compositor::send_surface_state(surface, states, s.integer_scale(), o.current_transform());
+        };
+        let wins: Vec<Window> = self.space.elements().cloned().collect();
+        for w in wins {
+            if let Some(o) = self.output_of(&w) {
+                w.with_surfaces(|surface, states| apply(surface, states, &o));
+            }
+        }
+        for o in self.space.outputs() {
+            for l in smithay::desktop::layer_map_for_output(o).layers() {
+                l.with_surfaces(|surface, states| apply(surface, states, o));
+            }
+        }
+    }
+
     /// The configured monitor setup (position, scale, transform, mode) onto the outputs there now.
     pub fn apply_output_conf(&mut self) {
         let confs = crate::config::outputs(&self.config);

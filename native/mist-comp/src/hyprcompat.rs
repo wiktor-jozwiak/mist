@@ -111,6 +111,7 @@ impl MistComp {
         // (not for the drag / snap stream, pointer-rate events that change no window state)
         if !matches!(name, "mistdrag" | "mistsnap" | "focusedmon" | "focusedmonv2" | "activelayout" | "screencast" | "bell") {
             self.wlr.dirty = true;
+            self.scales_dirty = true;
         }
         if self.hypr_listeners.is_empty() {
             return;

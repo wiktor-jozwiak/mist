@@ -46,6 +46,8 @@ pub struct MistComp {
     pub outman: crate::outman::OutMan,
     /// monitors on (DPMS), as output-power clients are told
     pub dpms_on: bool,
+    /// windows or outputs changed: surfaces get their output's scale again (update_scales)
+    pub scales_dirty: bool,
     /// linux-drm-syncobj (explicit sync): only on a DRM device that supports syncobj eventfd
     pub syncobj: Option<smithay::wayland::drm_syncobj::DrmSyncobjState>,
     pub shm_state: ShmState,
@@ -221,6 +223,7 @@ impl MistComp {
             wlr: Default::default(),
             outman: Default::default(),
             dpms_on: true,
+            scales_dirty: true,
             syncobj: None,
             shm_state,
             output_manager_state,

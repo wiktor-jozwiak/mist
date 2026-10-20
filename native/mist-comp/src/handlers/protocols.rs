@@ -100,9 +100,11 @@ impl smithay::wayland::tablet_manager::TabletSeatHandler for MistComp {}
 delegate_cursor_shape!(MistComp);
 
 impl FractionalScaleHandler for MistComp {
+    // the output under the pointer until the surface is placed (update_scales then follows its own output)
     fn new_fractional_scale(&mut self, surface: WlSurface) {
-        let scale = self.space.outputs().next().map(|o| o.current_scale().fractional_scale()).unwrap_or(1.0);
+        let scale = self.active_output().map(|o| o.current_scale().fractional_scale()).unwrap_or(1.0);
         with_states(&surface, |states| with_fractional_scale(states, |f| f.set_preferred_scale(scale)));
+        self.scales_dirty = true;
     }
 }
 delegate_fractional_scale!(MistComp);
