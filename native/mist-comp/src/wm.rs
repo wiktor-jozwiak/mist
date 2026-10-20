@@ -113,6 +113,39 @@ impl MistComp {
         }
     }
 
+    /// The configured monitor setup (position, scale, transform, mode) onto the outputs there now.
+    pub fn apply_output_conf(&mut self) {
+        let confs = crate::config::outputs(&self.config);
+        let outputs: Vec<Output> = self.space.outputs().cloned().collect();
+        let mut changed = false;
+        for o in outputs {
+            let Some(c) = confs.iter().find(|c| c.name == o.name()) else { continue };
+            if let Some((w, h, hz)) = c.mode {
+                let best = o.modes().into_iter().filter(|m| m.size.w == w && m.size.h == h).min_by_key(|m| match hz {
+                    Some(hz) => (m.refresh - hz).abs(),
+                    None => -m.refresh,
+                });
+                if let Some(m) = best.filter(|m| o.current_mode() != Some(*m)) {
+                    let name = o.name();
+                    if !self.udev.as_mut().is_some_and(|u| u.set_mode(&name, m)) {
+                        tracing::warn!("output {name}: mode {w}x{h} not applied");
+                    }
+                }
+            }
+            let scale = c.scale.map(smithay::output::Scale::Fractional);
+            o.change_current_state(None, c.transform, scale, Some(c.pos.into()));
+            self.space.map_output(&o, c.pos);
+            smithay::desktop::layer_map_for_output(&o).arrange();
+            changed = true;
+        }
+        if changed {
+            self.fix_ws();
+            self.outman_changed();
+            self.force_full = true;
+            self.dirty = true;
+        }
+    }
+
     /// Ask a window to close (xdg close / X11 WM_DELETE).
     pub fn close_window(&mut self, w: &Window) {
         if let Some(t) = w.toplevel() {
@@ -486,6 +519,7 @@ impl MistComp {
             Action::Reload => {
                 self.config = crate::config::load();
                 tracing::info!("config reloaded: {} binds", self.config.binds.len());
+                self.apply_output_conf();
                 self.hypr_event("configreloaded", "");
             }
             Action::Workspace(arg) => {

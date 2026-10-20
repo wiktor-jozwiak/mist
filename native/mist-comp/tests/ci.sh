@@ -201,7 +201,10 @@ check "fullscreen off + event" "wait_for \"grep -q '^fullscreen>>0' '$OUT/events
 J "eval hl.dispatch(hl.dsp.window.close({ window = \"address:$A\" }))" >/dev/null
 check "eval window.close of a given window" "wait_for \"! C windows | grep -q '^mist-files'\" 50"
 check "event closewindow" "grep -q '^closewindow>>' '$OUT/events.log'"
+printf 'output HDMI-A-1 1290 0 scale 1.5\n' >"$H/.config/mist/comp.conf"
 C action reload >/dev/null
+check "config: output line applied on reload (position, scale)" "J j/monitors | tr -d ' ' | grep -q '\"scale\":1.5' && J j/monitors | tr -d ' ' | grep -q '\"x\":1290'"
+rm -f "$H/.config/mist/comp.conf"
 check "event configreloaded" "wait_for \"grep -q '^configreloaded>>' '$OUT/events.log'\" 30"
 
 # ------------------------------------------------------------------ health

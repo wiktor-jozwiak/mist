@@ -81,6 +81,8 @@ pub struct MistComp {
     pub special_on: Option<String>,
     /// Super went down and nothing else since (release binds)
     pub super_alone: bool,
+    /// a workspace swipe in progress: horizontal distance so far
+    pub swipe: Option<f64>,
     /// the xkb layout name in use and the output under the pointer, as last announced (activelayout,
     /// focusedmon events)
     pub ev_layout: String,
@@ -242,6 +244,7 @@ impl MistComp {
             special_on: None,
             ws_changed: false,
             super_alone: false,
+            swipe: None,
             ev_layout: String::new(),
             ev_mon: String::new(),
             suppressed: Default::default(),

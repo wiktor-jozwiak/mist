@@ -108,6 +108,8 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
             "ok".into()
         }
         "key" | "motion" | "button" => {
+            // synthetic input is activity like any other (idle lock / DPMS timers)
+            state.idle.notify_activity(&state.seat);
             let t = state.start_time.elapsed().as_millis() as u32;
             let args: Vec<&str> = it.collect();
             let press = |a: Option<&&str>| a.map(|a| *a == "press");

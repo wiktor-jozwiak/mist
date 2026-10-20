@@ -1,11 +1,16 @@
 use smithay::{
     backend::input::{
-        AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent, KeyState,
-        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
+        AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, GestureBeginEvent, GestureEndEvent,
+        GesturePinchUpdateEvent as GesturePinchUpdateEvent_, GestureSwipeUpdateEvent as GestureSwipeUpdateEvent_, InputBackend,
+        InputEvent, KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
     },
     input::{
         keyboard::{keysyms, FilterResult},
-        pointer::{AxisFrame, ButtonEvent, MotionEvent, RelativeMotionEvent},
+        pointer::{
+            AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent, GesturePinchEndEvent,
+            GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent, MotionEvent,
+            RelativeMotionEvent,
+        },
     },
     utils::{Logical, Point, SERIAL_COUNTER},
     wayland::pointer_constraints::{with_pointer_constraint, PointerConstraint},
@@ -133,6 +138,72 @@ impl MistComp {
                 let pointer = self.seat.get_pointer().unwrap();
                 pointer.axis(self, frame);
                 pointer.frame(self);
+            }
+            // touchpad gestures: an N-finger horizontal swipe switches workspaces (`swipe N` in comp.conf,
+            // default 3); everything else goes to the client under the pointer (pinch zoom, hold, 2-finger swipes)
+            InputEvent::GestureSwipeBegin { event, .. } => {
+                let fingers = GestureBeginEvent::fingers(&event);
+                if self.config.swipe_fingers != 0 && fingers == self.config.swipe_fingers && !self.locked {
+                    self.swipe = Some(0.0);
+                    return;
+                }
+                let p = self.seat.get_pointer().unwrap();
+                p.gesture_swipe_begin(self, &GestureSwipeBeginEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), fingers });
+                p.frame(self);
+            }
+            InputEvent::GestureSwipeUpdate { event, .. } => {
+                if let Some(dx) = self.swipe.as_mut() {
+                    *dx += GestureSwipeUpdateEvent_::delta_x(&event);
+                    return;
+                }
+                let p = self.seat.get_pointer().unwrap();
+                p.gesture_swipe_update(self, &GestureSwipeUpdateEvent { time: event.time_msec(), delta: GestureSwipeUpdateEvent_::delta(&event) });
+                p.frame(self);
+            }
+            InputEvent::GestureSwipeEnd { event, .. } => {
+                if let Some(dx) = self.swipe.take() {
+                    // fingers moving left bring the next workspace (macOS, Hyprland's default direction)
+                    if !GestureEndEvent::cancelled(&event) && dx.abs() > 120.0 {
+                        self.do_action(Action::Workspace(crate::config::WsArg::Rel(if dx < 0.0 { 1 } else { -1 })));
+                    }
+                    return;
+                }
+                let p = self.seat.get_pointer().unwrap();
+                p.gesture_swipe_end(self, &GestureSwipeEndEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), cancelled: GestureEndEvent::cancelled(&event) });
+                p.frame(self);
+            }
+            InputEvent::GesturePinchBegin { event, .. } => {
+                let p = self.seat.get_pointer().unwrap();
+                p.gesture_pinch_begin(self, &GesturePinchBeginEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), fingers: GestureBeginEvent::fingers(&event) });
+                p.frame(self);
+            }
+            InputEvent::GesturePinchUpdate { event, .. } => {
+                let p = self.seat.get_pointer().unwrap();
+                p.gesture_pinch_update(
+                    self,
+                    &GesturePinchUpdateEvent {
+                        time: event.time_msec(),
+                        delta: GesturePinchUpdateEvent_::delta(&event),
+                        scale: GesturePinchUpdateEvent_::scale(&event),
+                        rotation: GesturePinchUpdateEvent_::rotation(&event),
+                    },
+                );
+                p.frame(self);
+            }
+            InputEvent::GesturePinchEnd { event, .. } => {
+                let p = self.seat.get_pointer().unwrap();
+                p.gesture_pinch_end(self, &GesturePinchEndEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), cancelled: GestureEndEvent::cancelled(&event) });
+                p.frame(self);
+            }
+            InputEvent::GestureHoldBegin { event, .. } => {
+                let p = self.seat.get_pointer().unwrap();
+                p.gesture_hold_begin(self, &GestureHoldBeginEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), fingers: GestureBeginEvent::fingers(&event) });
+                p.frame(self);
+            }
+            InputEvent::GestureHoldEnd { event, .. } => {
+                let p = self.seat.get_pointer().unwrap();
+                p.gesture_hold_end(self, &GestureHoldEndEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), cancelled: GestureEndEvent::cancelled(&event) });
+                p.frame(self);
             }
             _ => {}
         }

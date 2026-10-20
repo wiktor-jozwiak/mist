@@ -313,6 +313,8 @@ impl Dispatch<ZwlrVirtualPointerManagerV1, ()> for MistComp {
 impl Dispatch<ZwlrVirtualPointerV1, VPointer> for MistComp {
     fn request(state: &mut Self, _: &Client, _: &ZwlrVirtualPointerV1, req: zwlr_virtual_pointer_v1::Request, vp: &VPointer, _: &DisplayHandle, _: &mut DataInit<'_, Self>) {
         use zwlr_virtual_pointer_v1::Request;
+        // remote input (wayvnc) keeps the session awake like a real mouse
+        state.idle.notify_activity(&state.seat);
         let axis_of = |a: smithay::reexports::wayland_server::WEnum<smithay::reexports::wayland_server::protocol::wl_pointer::Axis>| match a.into_result() {
             Ok(smithay::reexports::wayland_server::protocol::wl_pointer::Axis::HorizontalScroll) => Axis::Horizontal,
             _ => Axis::Vertical,

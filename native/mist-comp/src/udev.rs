@@ -339,21 +339,25 @@ fn scan(state: &mut MistComp, dh: &smithay::reexports::wayland_server::DisplayHa
     }
 
     // new
-    let layout = layout_config();
+    let layout = crate::config::outputs(&state.config);
     for (info, crtc) in wanted {
         if udev.surfaces.contains_key(&crtc) {
             continue;
         }
         let name = conn_name(&info);
+        let conf = layout.iter().find(|o| o.name == name).cloned();
         let mode_i = info.modes().iter().position(|m| m.mode_type().contains(ModeTypeFlags::PREFERRED)).unwrap_or(0);
         let mut drm_mode = info.modes()[mode_i];
-        // highest refresh at the preferred size (165 Hz panels prefer 60)
-        if let Some(m) = info
-            .modes()
-            .iter()
-            .filter(|m| m.size() == drm_mode.size())
-            .max_by_key(|m| m.vrefresh())
-        {
+        // the configured size (and refresh), else the preferred size; the highest refresh there (165 Hz panels
+        // prefer 60)
+        let want = conf.as_ref().and_then(|c| c.mode);
+        let size = want.map(|(w, h, _)| (w as u16, h as u16)).filter(|sz| info.modes().iter().any(|m| m.size() == *sz)).unwrap_or(drm_mode.size());
+        let refresh = |m: &smithay::reexports::drm::control::Mode| WlMode::from(*m).refresh;
+        let pick = info.modes().iter().filter(|m| m.size() == size).min_by_key(|m| match want.and_then(|w| w.2) {
+            Some(hz) => (refresh(m) - hz).abs(),
+            None => -refresh(m),
+        });
+        if let Some(m) = pick {
             drm_mode = *m;
         }
         let wl_mode = WlMode::from(drm_mode);
@@ -363,7 +367,7 @@ fn scan(state: &mut MistComp, dh: &smithay::reexports::wayland_server::DisplayHa
             PhysicalProperties { size: (pw as i32, ph as i32).into(), subpixel: info.subpixel().into(), make: "Unknown".into(), model: "Unknown".into() },
         );
         let global = output.create_global::<MistComp>(dh);
-        let pos = layout.get(&name).copied().unwrap_or_else(|| {
+        let pos = conf.as_ref().map(|c| c.pos).unwrap_or_else(|| {
             let x = state.space.outputs().filter_map(|o| state.space.output_geometry(o)).map(|g| g.loc.x + g.size.w).max().unwrap_or(0);
             (x, 0)
         });
@@ -371,7 +375,9 @@ fn scan(state: &mut MistComp, dh: &smithay::reexports::wayland_server::DisplayHa
             output.add_mode(WlMode::from(*m));
         }
         output.set_preferred(WlMode::from(info.modes()[mode_i]));
-        output.change_current_state(Some(wl_mode), Some(Transform::Normal), None, Some(pos.into()));
+        let scale = conf.as_ref().and_then(|c| c.scale).map(smithay::output::Scale::Fractional);
+        let transform = conf.as_ref().and_then(|c| c.transform).unwrap_or(Transform::Normal);
+        output.change_current_state(Some(wl_mode), Some(transform), scale, Some(pos.into()));
         state.space.map_output(&output, pos);
 
         let drm = udev.mgr.device();
@@ -424,18 +430,6 @@ fn conn_name(info: &connector::Info) -> String {
 }
 
 /// `~/.config/mist/outputs`: lines `NAME X Y` (e.g. `DP-3 0 0`, `HDMI-A-1 1920 0`).
-fn layout_config() -> HashMap<String, (i32, i32)> {
-    let home = std::env::var("HOME").unwrap_or_default();
-    std::fs::read_to_string(format!("{home}/.config/mist/outputs"))
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|l| {
-            let mut it = l.split_whitespace();
-            Some((it.next()?.to_string(), (it.next()?.parse().ok()?, it.next()?.parse().ok()?)))
-        })
-        .collect()
-}
-
 fn vblank(state: &mut MistComp, crtc: crtc::Handle) {
     let Some(udev) = state.udev.as_mut() else { return };
     let Some(s) = udev.surfaces.get_mut(&crtc) else { return };
@@ -590,7 +584,7 @@ pub fn probe() -> Result<(), Box<dyn std::error::Error>> {
     let drv = smithay::reexports::drm::Device::get_driver(&card)?;
     println!("{} driver={}", path.display(), drv.name().to_string_lossy());
     let res = card.resource_handles()?;
-    let layout = layout_config();
+    let layout = crate::config::outputs(&crate::config::load());
     for &c in res.connectors() {
         let info = card.get_connector(c, false)?;
         if info.state() != connector::State::Connected || info.modes().is_empty() {
@@ -611,7 +605,7 @@ pub fn probe() -> Result<(), Box<dyn std::error::Error>> {
             p.size().0, p.size().1, p.vrefresh(),
             best.size().0, best.size().1, best.vrefresh(),
             crtcs.len(),
-            layout.get(&conn_name(&info))
+            layout.iter().find(|o| o.name == conn_name(&info))
         );
     }
     Ok(())
