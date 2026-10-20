@@ -12,5 +12,23 @@ if ! command -v hyprctl >/dev/null 2>&1; then
     ln -sf "$HOME/.local/bin/mist-comp" "$HOME/.cache/mist/bin/hyprctl"
     export PATH="$HOME/.cache/mist/bin:$PATH"
 fi
-[ -f "$HOME/.cache/mist/comp.log" ] && mv -f "$HOME/.cache/mist/comp.log" "$HOME/.cache/mist/comp.log.old"
-RUST_LOG=${RUST_LOG:-warn,mist_comp=info} exec "$HOME/.local/bin/mist-comp" --tty >"$HOME/.cache/mist/comp.log" 2>&1
+LOG=$HOME/.cache/mist/comp.log
+[ -f "$LOG" ] && mv -f "$LOG" "$LOG.old"
+export RUST_LOG=${RUST_LOG:-warn,mist_comp=info} RUST_BACKTRACE=1
+# a crash restarts the compositor in safe mode (no blur, animations, VRR, explicit sync, dmabuf casting) so
+# the session survives a driver-specific failure; three crashes end it. A normal quit or logout ends it at once.
+crashes=0
+safe=${MIST_COMP_SAFE:-0}
+while :; do
+    echo "--- mist-comp start $(date '+%F %T') safe=$safe" >>"$LOG"
+    MIST_COMP_SAFE=$safe "$HOME/.local/bin/mist-comp" --tty >>"$LOG" 2>&1
+    rc=$?
+    echo "--- mist-comp exit $rc $(date '+%F %T')" >>"$LOG"
+    case $rc in
+        0 | 129 | 130 | 143) break ;; # quit, SIGHUP / SIGINT / SIGTERM (logout, shutdown)
+    esac
+    crashes=$((crashes + 1))
+    [ $crashes -ge 3 ] && break
+    safe=1
+    sleep 1
+done

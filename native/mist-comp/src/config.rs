@@ -126,7 +126,19 @@ pub fn path() -> std::path::PathBuf {
 
 pub fn load() -> Config {
     let text = std::fs::read_to_string(path()).unwrap_or_else(|_| DEFAULT.to_string());
-    parse(&text)
+    let mut c = parse(&text);
+    // safe mode (start-mist after a crash): none of the features that depend most on the driver
+    if safe_mode() {
+        c.vrr = false;
+        c.no_explicit_sync = true;
+        c.screencopy_dmabuf = false;
+    }
+    c
+}
+
+/// MIST_COMP_SAFE=1: start-mist restarts a crashed compositor this way (also no blur, no animations).
+pub fn safe_mode() -> bool {
+    std::env::var("MIST_COMP_SAFE").is_ok_and(|v| v == "1")
 }
 
 pub fn parse(text: &str) -> Config {

@@ -62,6 +62,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let rest = if as_hyprctl { &argv[1..] } else { &argv[2..] };
         std::process::exit(hyprcompat::cli(rest));
     }
+    if crate::config::safe_mode() {
+        // read by blur.rs / anim.rs on first use
+        std::env::set_var("MIST_COMP_BLUR", "0");
+        std::env::set_var("MIST_COMP_ANIM", "0");
+        tracing::warn!("safe mode: no blur, animations, VRR, explicit sync or dmabuf screen casting");
+    }
     if std::env::args().any(|a| a == "--probe") {
         return crate::udev::probe();
     }
