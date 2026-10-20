@@ -140,6 +140,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::trace!("run");
     event_loop.run(None, &mut data, move |data| {
         data.wakeups += 1;
+        data.prune_inhibitors();
         if std::mem::take(&mut data.dirty) {
             data.sync_x11();
             data.update_bars();

@@ -62,6 +62,8 @@ pub enum Msg {
     NmLine(String),
     Wall(String, String),
     Lock,
+    /// D-Bus idle inhibitors alive (idle::screensaver)
+    IdleInhibit(u32),
     IdleCfg,
     Polkit(crate::polkit::Ev),
     Shot(String),

@@ -100,3 +100,18 @@ impl smithay::wayland::idle_inhibit::IdleInhibitHandler for MistComp {
     }
 }
 smithay::delegate_idle_inhibit!(MistComp);
+
+impl MistComp {
+    /// Inhibitors whose surface is gone (the player crashed or closed without destroying its inhibitor)
+    /// stop holding idle off; Smithay only reports explicit removals.
+    pub fn prune_inhibitors(&mut self) {
+        let n = self.inhibitors.len();
+        if n == 0 {
+            return;
+        }
+        self.inhibitors.retain(|s| smithay::reexports::wayland_server::Resource::is_alive(s));
+        if self.inhibitors.len() != n {
+            self.idle.set_is_inhibited(!self.inhibitors.is_empty());
+        }
+    }
+}

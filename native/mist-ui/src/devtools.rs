@@ -1,6 +1,7 @@
 // Checks against the running compositor (mist-comp/tests/ci.sh, by hand on Hyprland):
 //   --wincap ADDR OUT.ppm          one window through hyprland_toplevel_export_v1 (what the dock's picker does)
 //   --global-shortcut APP ID       register a portal-style global shortcut, print `pressed` / `released`
+//   --inhibit [APP]                keep the screen on (org.freedesktop.ScreenSaver.Inhibit) until stopped
 use std::io::Write;
 use wayland_client::globals::{registry_queue_init, GlobalListContents};
 use wayland_client::protocol::wl_registry;
@@ -34,6 +35,21 @@ pub fn wincap(addr: &str, out: &str) -> i32 {
     }
     println!("{}x{}", pm.width(), pm.height());
     0
+}
+
+/// Hold a screensaver inhibit like a video player does, until killed (Ctrl+C).
+pub fn inhibit(app: &str) -> i32 {
+    let Ok(c) = zbus::blocking::Connection::session() else { return 1 };
+    let r = c.call_method(Some("org.freedesktop.ScreenSaver"), "/org/freedesktop/ScreenSaver", Some("org.freedesktop.ScreenSaver"), "Inhibit", &(app, "mist-ui --inhibit"));
+    let Ok(cookie) = r.and_then(|m| m.body().deserialize::<u32>().map_err(Into::into)) else {
+        eprintln!("no org.freedesktop.ScreenSaver");
+        return 1;
+    };
+    println!("inhibited ({cookie})");
+    let _ = std::io::stdout().flush();
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(3600));
+    }
 }
 
 struct St;

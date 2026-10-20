@@ -5,6 +5,10 @@ nothing is released yet.
 
 ## Unreleased
 
+### Fixed
+- The screen no longer locks or turns off during a video in apps that inhibit idle over D-Bus (Chromium, VLC, Spotify, Flatpak apps): mist-ui serves `org.freedesktop.ScreenSaver` and `org.freedesktop.PowerManagement.Inhibit` as hypridle did, dropping an app's inhibit when it exits; a fullscreen window while a player plays also holds idle off. `mist-ui-bin --inhibit` keeps the screen on by hand.
+- mist-comp: an idle inhibitor whose window died without removing it no longer keeps the screen on forever.
+
 ### mist-comp
 - Explicit sync (linux-drm-syncobj-v1) where the GPU supports it; commits wait for the client's GPU work (acquire point, else the dmabuf fence).
 - Protocols: text-input-v3 + input-method-v2, virtual-keyboard, tablet-v2, ext-foreign-toplevel-list, ext-data-control, xdg-foreign, xdg-toplevel-icon / -tag, content-type, alpha-modifier, xdg-system-bell, security-context (sandboxed clients get no privileged globals), XWayland keyboard grabs; wlroots foreign-toplevel-management, output-management (wlr-randr, kanshi), output-power-management, virtual-pointer, gamma-control.

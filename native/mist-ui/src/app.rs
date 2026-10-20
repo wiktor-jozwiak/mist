@@ -400,6 +400,7 @@ impl App {
 
     pub fn slow_tick(&mut self) {
         self.idle.reap();
+        self.idle_hold();
         // the screenshot thumbnail goes after 6 s (not while hovered)
         if self.thumb.as_ref().map(|t| t.0.ptr.0 < 0.0 && t.5.elapsed().as_secs() >= 6).unwrap_or(false) {
             self.thumb = None;
@@ -460,6 +461,12 @@ impl App {
                 self.island_dirty = true;
             }
         }
+    }
+    /// Idle held off: a D-Bus inhibitor, or a fullscreen window while a player plays.
+    fn idle_hold(&mut self) {
+        let held = self.idle.dbus > 0 || (self.island.fullscreen && self.island.playing());
+        let qh = self.qh.clone();
+        self.idle.set_held(held, &qh);
     }
     pub fn tick(&mut self) {
         self.snap_timers();
@@ -2496,6 +2503,7 @@ impl App {
             Msg::Cursor(..) => "Cursor",
             Msg::Wall(..) => "Wall",
             Msg::Lock => "Lock",
+            Msg::IdleInhibit(..) => "IdleInhibit",
             Msg::IdleCfg => "IdleCfg",
             Msg::Polkit(..) => "Polkit",
             Msg::Shot(..) => "Shot",
@@ -2550,6 +2558,10 @@ impl App {
                 }
             }
             Msg::Lock => self.idle.lock(None),
+            Msg::IdleInhibit(n) => {
+                self.idle.dbus = n;
+                self.idle_hold();
+            }
             Msg::Polkit(ev) => self.on_polkit(ev),
             Msg::Shot(f) => self.thumb_show(f),
             Msg::WinThumb(a, pm) => {

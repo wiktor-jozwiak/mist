@@ -83,6 +83,7 @@ fn main() {
     match (args.get(1).map(|s| s.as_str()), args.get(2), args.get(3)) {
         (Some("--wincap"), Some(a), Some(o)) => std::process::exit(devtools::wincap(a, o)),
         (Some("--global-shortcut"), Some(a), Some(i)) => std::process::exit(devtools::global_shortcut(a, i)),
+        (Some("--inhibit"), a, _) => std::process::exit(devtools::inhibit(a.map(|s| s.as_str()).unwrap_or("mist"))),
         _ => {}
     }
     if args.get(1).map(|s| s.as_str()) == Some("msg") {
@@ -377,6 +378,7 @@ fn main() {
         // the services Quickshell ran: notifications, players, data, phone, the island's event sources
         notif::spawn(tx.clone(), nrx);
         polkit::spawn(tx.clone());
+        idle::screensaver(tx.clone());
     }
     if native_services || std::env::var("MIST_UI_SOCK").is_ok() {
         if std::env::var("MIST_UI_DEBUG").is_ok() { eprintln!("dbg: ipc serve {}", ipc::path()); }

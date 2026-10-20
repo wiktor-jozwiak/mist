@@ -79,7 +79,10 @@ unpin or drag an app; `groups` are the pinned groups of Start (12 apps at most).
 ```
 
 Seconds without input before the session locks and before the monitors turn off; `0` = never. Apps that
-inhibit idle (video players, browsers playing a video, games) hold both off.
+inhibit idle hold both off, through Wayland idle-inhibit (Firefox, mpv, the Mist player) or D-Bus
+`org.freedesktop.ScreenSaver` / `PowerManagement.Inhibit` (Chromium, VLC, Spotify, Flatpak apps; Mist serves
+these, as hypridle did). A fullscreen window while a player plays counts too. When the hold ends, both timers
+start over. `mist-ui-bin --inhibit` keeps the screen on by hand until stopped (Ctrl+C).
 
 ### `feeds.json`: calendars
 
