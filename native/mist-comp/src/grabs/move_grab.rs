@@ -32,7 +32,11 @@ impl PointerGrab<MistComp> for MoveSurfaceGrab {
         self.last = event.location;
 
         let delta = event.location - self.start_data.location;
-        let new_location = self.initial_window_location.to_f64() + delta;
+        let mut new_location = self.initial_window_location.to_f64() + delta;
+        // not over the bar / under the island: the title bar stays below the usable area's top
+        if let Some(top) = data.usable_top(event.location) {
+            new_location.y = new_location.y.max((top + data.bar_h(&self.window)) as f64);
+        }
         data.space
             .map_element(self.window.clone(), new_location.to_i32_round(), true);
     }

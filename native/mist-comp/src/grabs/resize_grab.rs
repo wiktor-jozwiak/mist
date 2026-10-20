@@ -122,6 +122,17 @@ impl PointerGrab<MistComp> for ResizeSurfaceGrab {
         let max_width = if max_size.w == 0 { i32::MAX } else { max_size.w };
         let max_height = if max_size.h == 0 { i32::MAX } else { max_size.h };
 
+        // the top edge stops at the usable area's top (title bar included), not over the bar / under the island
+        if self.edges.intersects(ResizeEdge::TOP) {
+            let r = self.initial_rect;
+            let mid = Point::from(((r.loc.x + r.size.w / 2) as f64, r.loc.y as f64));
+            if let Some(top) = data.usable_top(mid) {
+                let room = r.loc.y + r.size.h - (top + data.bar_h(&self.window));
+                // already over it (placed there by the client): it may shrink, not grow further up
+                new_window_height = new_window_height.min(room.max(r.size.h));
+            }
+        }
+
         self.last_window_size = Size::from((
             new_window_width.max(min_width).min(max_width),
             new_window_height.max(min_height).min(max_height),

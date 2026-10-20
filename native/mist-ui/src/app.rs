@@ -1353,6 +1353,7 @@ impl App {
         let mode = self.island_mode();
         match e.kind {
             PointerEventKind::Enter { serial } => {
+                crate::snap::keep_below_bar();
                 let shape = if mode == "idle" || mode == "glance" || self.island.ev.as_ref().map(|e| e.act != crate::island::Act::None).unwrap_or(false) { wp_cursor_shape_device_v1::Shape::Pointer } else { wp_cursor_shape_device_v1::Shape::Default };
                 self.set_cursor(serial, shape);
                 self.island.set_hover(true, mode);
@@ -2157,6 +2158,7 @@ impl App {
         let (x, _y) = e.position;
         match e.kind {
             PointerEventKind::Enter { serial } => {
+                crate::snap::keep_below_bar();
                 self.set_cursor(serial, wp_cursor_shape_device_v1::Shape::Pointer);
                 let h = Self::hit_at(&self.bars[i], x);
                 self.set_hover(i, h);

@@ -325,6 +325,24 @@ impl MistComp {
         }
     }
 
+    /// The top of the usable area (below the bar's exclusive zone) of the output under a point, else of the
+    /// nearest one: windows are kept below it (title bar included) when they are moved or resized.
+    pub fn usable_top(&self, pos: Point<f64, Logical>) -> Option<i32> {
+        let o = self.space.outputs().min_by(|a, b| {
+            let d = |o: &smithay::output::Output| {
+                self.space.output_geometry(o).map(|g| {
+                    let g = g.to_f64();
+                    let dx = (g.loc.x - pos.x).max(pos.x - (g.loc.x + g.size.w)).max(0.0);
+                    let dy = (g.loc.y - pos.y).max(pos.y - (g.loc.y + g.size.h)).max(0.0);
+                    dx * dx + dy * dy
+                }).unwrap_or(f64::MAX)
+            };
+            d(a).total_cmp(&d(b))
+        })?;
+        let og = self.space.output_geometry(o)?;
+        Some(og.loc.y + layer_map_for_output(o).non_exclusive_zone().loc.y)
+    }
+
     /// The Overlay/Top layer surface under a point (these sit above windows).
     pub fn layer_at(&self, pos: Point<f64, Logical>) -> Option<LayerSurface> {
         let output = self.space.outputs().find(|o| {

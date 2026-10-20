@@ -9,6 +9,7 @@ nothing is released yet.
 - Lock screen: the clock on every monitor turns with the minute, not only on the primary one.
 - Lock screen: sets the arrow cursor on each lock surface, so a cursor an app had hidden (a video, a game) does not stay hidden over the lock screen; `mist-comp` resets it when the session locks.
 - Lock screen: avatar and password field fall back to the first monitor when the configured primary is not connected; the arrow button only reacts on the monitor that shows it.
+- Windows stay below the top bar: stretching the top edge or dragging a window no longer puts it over the bar or under the Dynamic Island. `mist-comp` stops the move / resize at the usable area; on Hyprland (which reports no resize) `mist-ui` puts the active floating window back below the bar when the pointer comes onto the bar or the island.
 - `mist-comp`: the pointer is clamped to the nearest monitor instead of the monitors' bounding box, so it cannot get lost in a corner no monitor shows.
 - Phone run commands use `mist-ui-bin` from `$PATH` (packaged `/usr/bin`) when `~/.local/bin/mist-ui-bin` is missing; command ids unchanged.
 - Screenshot file names follow `$LANG` like their folder (`Screenshot <date> at <time>.png`).

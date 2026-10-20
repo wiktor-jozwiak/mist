@@ -134,6 +134,44 @@ pub fn apply(addr: &str, z: &Z, grab: Option<[f32; 4]>, pre: &str, delay: u64) {
     });
 }
 
+// Hyprland lets a floating window be stretched or dragged over the top bar and under the island (reserved space
+// only binds tiled windows) and reports no resize. Once the pointer comes onto the bar or the island, which is
+// where it is let go after pulling an edge up, the active window is put back below the bar: its top edge, title
+// bar (hyprbars) included, on the reserved line, the bottom edge where it was.
+pub fn keep_below_bar() {
+    let _ = std::thread::Builder::new().name("keep-below-bar".into()).stack_size(128 * 1024).spawn(|| {
+        let Some(w) = crate::sys::hypr_request("j/activewindow") else { return };
+        if !w["floating"].as_bool().unwrap_or(false) || w["fullscreen"].as_i64().unwrap_or(0) != 0 || w["pinned"].as_bool().unwrap_or(false) {
+            return;
+        }
+        let (Some(at), Some(sz), Some(addr)) = (w["at"].as_array(), w["size"].as_array(), w["address"].as_str()) else { return };
+        let f = |v: &Value| v.as_f64().unwrap_or(0.0) as f32;
+        let (x, y, ww, wh) = (f(&at[0]), f(&at[1]), f(&sz[0]), f(&sz[1]));
+        let cx = x + ww / 2.0;
+        let mons = monitors();
+        let Some(m) = mons.iter().find(|m| cx >= m.x && cx < m.x + m.w && y + wh > m.y && y < m.y + m.h) else { return };
+        // `at` is below the hyprbars title bar
+        let addr = norm(addr);
+        let bars = crate::sys::hypr_request(&format!("j/decorations address:{addr}"))
+            .and_then(|d| d.as_array().map(|a| a.iter().any(|x| x["decorationName"].as_str().unwrap_or("").to_lowercase().contains("hyprbar"))))
+            .unwrap_or(false);
+        let bar = if bars {
+            crate::sys::hypr_request("j/getoption plugin:hyprbars:bar_height").and_then(|o| o["int"].as_f64()).map(|v| v as f32).unwrap_or(30.0)
+        } else {
+            0.0
+        };
+        let top = m.y + m.res[1] + bar;
+        if y >= top - 0.5 {
+            return;
+        }
+        // stretched: shorter by what is over the bar; dragged up (or too short to shrink): only moved down
+        let h = wh - (top - y);
+        let resize = if h >= 120.0 { format!("hl.dispatch(hl.dsp.window.resize({{ x = {}, y = {}, window = \"address:{addr}\" }})); ", ww.round(), h.round()) } else { String::new() };
+        let lua = format!("{resize}hl.dispatch(hl.dsp.window.move({{ x = {}, y = {}, window = \"address:{addr}\" }}))", x.round(), top.round());
+        let _ = std::process::Command::new("hyprctl").args(["eval", &lua]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
+    });
+}
+
 // what a snap pane asks the app for
 #[derive(Clone, Debug)]
 pub enum Cmd {
