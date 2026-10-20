@@ -49,10 +49,12 @@ pub use state::MistComp;
 pub type CalloopData = MistComp;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // colours only on a terminal (start-mist writes ~/.cache/mist/comp.log)
+    let ansi = std::io::IsTerminal::is_terminal(&std::io::stderr());
     if let Ok(env_filter) = tracing_subscriber::EnvFilter::try_from_default_env() {
-        tracing_subscriber::fmt().with_env_filter(env_filter).init();
+        tracing_subscriber::fmt().with_ansi(ansi).with_env_filter(env_filter).init();
     } else {
-        tracing_subscriber::fmt().init();
+        tracing_subscriber::fmt().with_ansi(ansi).init();
     }
 
     // `hyprctl` for scripts on a session without Hyprland (start-mist links it): `hyprctl [-j] cmd args…`
