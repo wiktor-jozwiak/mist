@@ -142,7 +142,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             data.sync_x11();
             data.update_bars();
             match &backend {
-                Some(b) => b.borrow().window().request_redraw(),
+                Some(b) => {
+                    data.redraw_pending = true;
+                    b.borrow().window().request_redraw()
+                }
                 None if data.headless.is_some() => crate::headless::render(data),
                 None => crate::udev::render_all(data),
             }
@@ -154,6 +157,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     crate::headless::render(data);
                 }
             }
+        }
+        // no refresh on its way (nothing changed on screen, headless, nested): FIFO waiters go now
+        let frame_on_its_way = data.udev.as_ref().is_some_and(|u| u.any_pending()) || data.redraw_pending || crate::headless::frame_pending(data);
+        if !data.dirty && !frame_on_its_way {
+            data.fifo_signal();
         }
         crate::screencopy::process(data);
         data.ftm_sync();

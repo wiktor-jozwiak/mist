@@ -171,6 +171,8 @@ pub fn init_winit(
                     smithay::desktop::utils::send_frames_surface_tree(l.wl_surface(), &output, now, Some(Duration::ZERO), |_, _| Some(output.clone()));
                 }
 
+                state.redraw_pending = false;
+                state.fifo_signal();
                 state.space.refresh();
                 state.popups.cleanup();
                 let _ = display.flush_clients();

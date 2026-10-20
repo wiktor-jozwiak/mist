@@ -169,6 +169,11 @@ impl Udev {
         }
     }
 
+    /// A frame is queued on some output (its vblank will come).
+    pub fn any_pending(&self) -> bool {
+        self.surfaces.values().any(|s| s.pending)
+    }
+
     pub fn import_dmabuf(&mut self, dmabuf: &Dmabuf) -> bool {
         self.renderer.import_dmabuf(dmabuf, None).is_ok()
     }
@@ -437,6 +442,7 @@ fn vblank(state: &mut MistComp, crtc: crtc::Handle) {
         tracing::warn!("frame_submitted: {e:?}");
     }
     s.pending = false;
+    state.fifo_signal();
     if state.redraw_after_vblank {
         render_all(state);
     }

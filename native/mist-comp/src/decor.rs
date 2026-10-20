@@ -138,8 +138,15 @@ impl MistComp {
             if d.deco.bar.borrow().as_ref().is_some_and(|b| b.key == key) {
                 continue;
             }
-            let text = self.text.get_or_insert_with(Text::new);
-            let pm = draw(text, &key.0, key.1, width, key.3);
+            // no usable font: bars without titles rather than a dead compositor
+            let text = self.text.get_or_insert_with(|| {
+                let t = Text::try_new();
+                if t.is_none() {
+                    tracing::warn!("no UI font found, window titles are not drawn");
+                }
+                t
+            });
+            let pm = draw(text.as_mut(), &key.0, key.1, width, key.3);
             let buf = MemoryRenderBuffer::from_slice(pm.data(), Fourcc::Abgr8888, (width, BAR), 1, Transform::Normal, None);
             *d.deco.bar.borrow_mut() = Some(Bar { key, buf });
         }
@@ -157,7 +164,7 @@ fn paint(c: tiny_skia::Color) -> Paint<'static> {
     p
 }
 
-fn draw(text: &mut Text, title: &str, active: bool, w: i32, hover: bool) -> Pixmap {
+fn draw(text: Option<&mut Text>, title: &str, active: bool, w: i32, hover: bool) -> Pixmap {
     let (wf, hf) = (w as f32, BAR as f32);
     let mut pm = Pixmap::new(w as u32, BAR as u32).unwrap();
     // rounded top corners, square bottom (the window continues below)
@@ -212,7 +219,7 @@ fn draw(text: &mut Text, title: &str, active: bool, w: i32, hover: bool) -> Pixm
     // centred title, cut with an ellipsis before it reaches the buttons
     let st = Style::ui(13.0, 510.0);
     let room = wf - 2.0 * (btn_cx(2) + DIAM / 2.0 + 12.0);
-    if room > 20.0 && !title.is_empty() {
+    if let Some(text) = text.filter(|_| room > 20.0 && !title.is_empty()) {
         let mut s = title.to_string();
         if text.width(&s, &st) > room {
             let mut chars: Vec<char> = title.chars().collect();
@@ -355,5 +362,16 @@ impl MistComp {
             }
             None => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn bar_without_font() {
+        // no font on the system: the bar is still drawn (buttons, no title)
+        let pm = super::draw(None, "a title", true, 400, false);
+        assert_eq!((pm.width(), pm.height()), (400, super::BAR as u32));
+        assert!(pm.data().chunks(4).any(|p| p[3] != 0));
     }
 }

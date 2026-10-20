@@ -116,6 +116,7 @@ The experimental compositor's key bindings, autostart, monitors and switches; fu
 | `vrr fullscreen\|off`, `swallow on`, `middle_click_paste off` | as Hyprland's misc options |
 | `explicit_sync off` | no linux-drm-syncobj (default: on where the GPU supports it) |
 | `screencopy_dmabuf on` | screen casting into the client's GPU buffer (opt-in) |
+| `fifo on` | wp-fifo: Vulkan FIFO (vsync) clients are paced by the display refresh instead of frame callbacks (opt-in; off in safe mode) |
 
 `mist-comp migrate [~/.config/hypr/hyprland.lua]` prints comp.conf lines for the binds (exec and common
 dispatchers), monitors, `hl.env` and autostart it understands; the rest is marked `# not converted:`.

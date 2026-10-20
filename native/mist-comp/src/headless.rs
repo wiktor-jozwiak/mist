@@ -164,4 +164,10 @@ pub fn render(state: &mut MistComp) {
         space.elements().for_each(|w| w.send_frame(&first, now, Some(Duration::ZERO), |_, _| Some(first.clone())));
     }
     space.refresh();
+    state.fifo_signal();
+}
+
+/// A frame tick is armed (FIFO waiters are released by it, not by the idle loop).
+pub fn frame_pending(state: &MistComp) -> bool {
+    state.headless.as_ref().is_some_and(|h| h.tick_armed)
 }

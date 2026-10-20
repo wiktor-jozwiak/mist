@@ -113,7 +113,8 @@ pub struct MistComp {
     /// night light state (gamma ramp on DRM; nested/headless only remember it)
     pub night: bool,
     /// title bar text (loaded with the first server-side bar)
-    pub text: Option<crate::text::Text>,
+    pub redraw_pending: bool, // nested: request_redraw sent, Redraw not yet handled
+    pub text: Option<Option<crate::text::Text>>, // looked up on first use, inner None = no font
     /// window whose bar buttons are under the pointer (shows their symbols)
     pub bar_hovered: Option<u64>,
     /// window whose green button is hovered (mistsnap>>maxhover sent)
@@ -153,7 +154,7 @@ impl MistComp {
         let layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let config = crate::config::load();
         let protocols = crate::handlers::protocols::Protocols::new(&dh, config.middle_click_paste);
-        let extra = crate::handlers::extra::Extra::new(&dh, config.middle_click_paste.then_some(&protocols.primary_selection));
+        let extra = crate::handlers::extra::Extra::new(&dh, config.middle_click_paste.then_some(&protocols.primary_selection), config.fifo);
         let lock_manager = smithay::wayland::session_lock::SessionLockManagerState::new::<Self, _>(&dh, |_| true);
         let idle = smithay::wayland::idle_notify::IdleNotifierState::new(&dh, event_loop.handle());
         let idle_inhibit = smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Self>(&dh);
@@ -257,6 +258,7 @@ impl MistComp {
             cast_last: None,
             cast_seen: Default::default(),
             night: false,
+            redraw_pending: false,
             text: None,
             bar_hovered: None,
             max_hovered: None,

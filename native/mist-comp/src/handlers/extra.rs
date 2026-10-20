@@ -60,10 +60,12 @@ pub struct Extra {
     _bell: XdgSystemBellState,
     _xwayland_grab: XWaylandKeyboardGrabState,
     _security: SecurityContextState,
+    /// wp-fifo (Vulkan FIFO presentation in games); only with `fifo on` until tested per driver
+    pub fifo: Option<smithay::wayland::fifo::FifoManagerState>,
 }
 
 impl Extra {
-    pub fn new(dh: &DisplayHandle, primary: Option<&PrimarySelectionState>) -> Self {
+    pub fn new(dh: &DisplayHandle, primary: Option<&PrimarySelectionState>, fifo: bool) -> Self {
         Self {
             foreign_toplevels: ForeignToplevelListState::new_with_filter::<MistComp>(dh, trusted),
             ext_data_control: ExtDataControlState::new::<MistComp, _>(dh, primary, trusted),
@@ -80,6 +82,7 @@ impl Extra {
             _xwayland_grab: XWaylandKeyboardGrabState::new::<MistComp>(dh),
             // a sandbox inside a sandbox may not create more contexts
             _security: SecurityContextState::new::<MistComp, _>(dh, trusted),
+            fifo: fifo.then(|| smithay::wayland::fifo::FifoManagerState::new::<MistComp>(dh)),
         }
     }
 }
@@ -197,6 +200,43 @@ impl XdgSystemBellHandler for MistComp {
     }
 }
 delegate_xdg_system_bell!(MistComp);
+
+// ------------------------------------------------------------------ fifo (`fifo on` in comp.conf)
+smithay::delegate_fifo!(MistComp);
+
+impl MistComp {
+    /// A refresh went by (vblank), or none is pending: every surface's FIFO barrier is signalled and the
+    /// commits waiting on it go through.
+    pub fn fifo_signal(&mut self) {
+        if self.extra.fifo.is_none() {
+            return;
+        }
+        let mut clients = Vec::new();
+        let mut signal = |surface: &WlSurface, states: &smithay::wayland::compositor::SurfaceData| {
+            let b = states.cached_state.get::<smithay::wayland::fifo::FifoBarrierCachedState>().current().barrier.take();
+            if let Some(b) = b {
+                b.signal();
+                if let Some(c) = smithay::reexports::wayland_server::Resource::client(surface) {
+                    if !clients.contains(&c) {
+                        clients.push(c);
+                    }
+                }
+            }
+        };
+        for w in self.space.elements().chain(self.stash.iter().map(|(w, _)| w)) {
+            w.with_surfaces(&mut signal);
+        }
+        for o in self.space.outputs() {
+            for l in smithay::desktop::layer_map_for_output(o).layers() {
+                l.with_surfaces(&mut signal);
+            }
+        }
+        let dh = self.display_handle.clone();
+        for c in clients {
+            smithay::wayland::compositor::CompositorHandler::client_compositor_state(self, &c).blocker_cleared(self, &dh);
+        }
+    }
+}
 
 // ------------------------------------------------------------------ sandboxes (security-context)
 impl SecurityContextHandler for MistComp {

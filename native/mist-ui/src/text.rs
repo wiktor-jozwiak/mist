@@ -102,26 +102,34 @@ pub struct Text {
 
 // SF Pro (variable, wght + opsz) is not shipped: without it the UI falls back to Inter, then Noto Sans
 pub const UI_FONT: &str = ".local/share/fonts/SF-Pro/SF-Pro.ttf";
-const UI_FALLBACKS: [&str; 4] = [
+const UI_FALLBACKS: [&str; 7] = [
     "/usr/share/fonts/OTF/SF-Pro.ttf",
     "/usr/share/fonts/inter/InterVariable.ttf",
     "/usr/share/fonts/TTF/InterVariable.ttf",
     "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+    // Debian / Ubuntu / Fedora layouts
+    "/usr/share/fonts/opentype/inter/Inter-Regular.otf",
+    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+    "/usr/share/fonts/google-noto/NotoSans-Regular.ttf",
 ];
 pub const ICON_FONT: &str = "/usr/share/noctalia/assets/fonts/noctalia-tabler.ttf";
 
 impl Text {
     pub fn new() -> Text {
+        Text::try_new().expect("UI font (SF Pro, Inter or Noto Sans) and the tabler icon font")
+    }
+    /// None when no UI or icon font can be found (the compositor then draws without text instead of dying).
+    pub fn try_new() -> Option<Text> {
         let home = std::env::var("HOME").unwrap_or_default();
         // MIST_FONT_DIR (the greeter: its user cannot read this home) holds SF-Pro.ttf + tabler-icons.ttf
         let dir = std::env::var("MIST_FONT_DIR").ok();
         let ui_path = dir.as_ref().map(|d| format!("{d}/SF-Pro.ttf")).unwrap_or_else(|| format!("{home}/{UI_FONT}"));
-        let ui = Mapped::open(&ui_path).or_else(|| UI_FALLBACKS.iter().find_map(|p| Mapped::open(p))).expect("UI font (SF Pro, Inter or Noto Sans)");
+        let ui = Mapped::open(&ui_path).or_else(|| UI_FALLBACKS.iter().find_map(|p| Mapped::open(p)))?;
         // the repo's copy (native/assets), else Noctalia's
         let icons_path = dir.map(|d| format!("{d}/tabler-icons.ttf")).unwrap_or_else(|| crate::paths::mist_path("native/assets/tabler-icons.ttf"));
-        let icons = Mapped::open(&icons_path).or_else(|| Mapped::open(ICON_FONT)).expect("tabler icon font");
+        let icons = Mapped::open(&icons_path).or_else(|| Mapped::open(ICON_FONT))?;
         let (ui, icons) = (ui.bytes(), icons.bytes());
-        Text { ui, icons, fb: vec![None; FALLBACKS.len()], fb_tried: vec![false; FALLBACKS.len()], scale: ScaleContext::new(), shape: ShapeContext::new(), cache: HashMap::new(), shaped: HashMap::new(), lang_gen: crate::i18n::generation() }
+        Some(Text { ui, icons, fb: vec![None; FALLBACKS.len()], fb_tried: vec![false; FALLBACKS.len()], scale: ScaleContext::new(), shape: ShapeContext::new(), cache: HashMap::new(), shaped: HashMap::new(), lang_gen: crate::i18n::generation() })
     }
     fn font(&self, f: Face) -> FontRef<'static> {
         match f {

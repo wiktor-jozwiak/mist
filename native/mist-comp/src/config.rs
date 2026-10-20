@@ -16,6 +16,7 @@
 //!   explicit_sync off                           no linux-drm-syncobj (default: on where the GPU supports it)
 //!   screencopy_dmabuf on                        screen casting straight into the client's GPU buffer
 //!   swipe 3|4|off                               touchpad: N-finger horizontal swipe switches workspaces (default 3)
+//!   fifo on                                     wp-fifo for Vulkan FIFO presentation (games); opt-in
 //!
 //! Actions: exec CMD | close | kill | quit | reload | workspace N|+1|-1 | movetoworkspace N|+1|-1
 //!          | maximize | fullscreen | float | focus left|right|up|down | cycle | vt N
@@ -173,6 +174,8 @@ pub struct Config {
     pub screencopy_dmabuf: bool,
     /// fingers of the horizontal touchpad swipe that switches workspaces (`swipe 3|4|off`, 0 = off)
     pub swipe_fingers: u32,
+    /// wp-fifo for Vulkan FIFO clients (`fifo on`; off until tested on each driver)
+    pub fifo: bool,
 }
 
 pub fn path() -> std::path::PathBuf {
@@ -192,6 +195,7 @@ pub fn load() -> Config {
         c.vrr = false;
         c.no_explicit_sync = true;
         c.screencopy_dmabuf = false;
+        c.fifo = false;
     }
     c
 }
@@ -233,6 +237,10 @@ pub fn parse(text: &str) -> Config {
             }
             "explicit_sync" => {
                 c.no_explicit_sync = rest == "off";
+                true
+            }
+            "fifo" => {
+                c.fifo = rest == "on";
                 true
             }
             "swipe" => {
