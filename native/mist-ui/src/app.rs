@@ -822,6 +822,16 @@ impl App {
                 self.pane_open_box(Box::new(DragPane(drag)), &scr);
                 self.snap_poll(true);
             }
+            // mist-comp sends the cursor while a window is dragged: no polling needed
+            ("mistdrag", "move") => {
+                if self.snap.poll.is_some() {
+                    self.snap_poll(false);
+                }
+                let (x, y) = (num(1), num(2));
+                if !x.is_nan() && !y.is_nan() {
+                    self.snap_cursor(x, y);
+                }
+            }
             ("mistdrag", "end") => {
                 self.snap_poll(false);
                 let Some(dr) = self.pane.as_mut().and_then(|p| p.p.as_drag()) else { return };

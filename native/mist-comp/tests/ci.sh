@@ -47,6 +47,9 @@ CP=$!
 wait_for "grep -q '^WAYLAND_DISPLAY=' '$OUT/comp.log'" 100 || { echo "FAIL compositor did not start"; cat "$OUT/comp.log"; exit 1; }
 S=$(grep -m1 '^WAYLAND_DISPLAY=' "$OUT/comp.log" | cut -d= -f2)
 wait_for "C stats | grep -q frames" 50
+SIG=$(grep -m1 '^HYPRLAND_INSTANCE_SIGNATURE=' "$OUT/comp.log" | cut -d= -f2)
+socat -u "UNIX-CONNECT:$RT/hypr/$SIG/.socket2.sock" - >"$OUT/events.log" 2>/dev/null &
+pids="$pids $!"
 check "compositor up, 2 outputs" "J j/monitors | grep -o '\"model\"' | wc -l | grep -qx 2"
 
 # ------------------------------------------------------------------ protocols a desktop needs
@@ -109,6 +112,7 @@ C key 125 press >/dev/null; C button left press >/dev/null
 C motion $((X + W / 2)) 0 >/dev/null; C motion $((X + W / 2)) 1 >/dev/null
 C button left release >/dev/null; C key 125 release >/dev/null
 sleep 0.3; G=$(geo); Y2=${G#*,}
+check "window drag: the cursor streamed to mist-ui (mistdrag move)" "grep -q '^mistdrag>>move,' '$OUT/events.log'"
 check "window: dragged up, stops below the bar" "[ \"$Y2\" -lt \"$Y\" ] && [ \"$Y2\" -ge \"${TOP:-0}\" ]" "y $Y -> $Y2, top ${TOP:-?}"
 # grab the top edge and pull it to the top
 C motion $((X + W / 2)) $((Y2 + 400)) >/dev/null
@@ -175,10 +179,6 @@ C action workspace 1 >/dev/null
 check "workspaces: back on 1, the window shown" "C windows | grep -q '^mist-files ws1 [0-9]'"
 
 # ------------------------------------------------------------------ Hyprland compatibility (mist-ui, scripts)
-SIG=$(grep -m1 '^HYPRLAND_INSTANCE_SIGNATURE=' "$OUT/comp.log" | cut -d= -f2)
-socat -u "UNIX-CONNECT:$RT/hypr/$SIG/.socket2.sock" - >"$OUT/events.log" 2>/dev/null &
-pids="$pids $!"
-sleep 0.3
 ln -sf "$BIN/mist-comp" "$RT/hyprctl"
 HY() { HYPRLAND_INSTANCE_SIGNATURE=$SIG "$RT/hyprctl" "$@" 2>/dev/null; }
 check "hyprctl shim: monitors -j" "HY -j monitors | grep -q '\"name\":\"HDMI-A-1\"'"

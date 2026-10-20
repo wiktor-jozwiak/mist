@@ -17,6 +17,8 @@ pub struct MoveSurfaceGrab {
     pub initial_window_location: Point<i32, Logical>,
     /// cursor at the last motion (mistdrag>>end reports it)
     pub last: Point<f64, Logical>,
+    /// when the last mistdrag>>move went out (one per 8 ms at most)
+    pub sent: Option<std::time::Instant>,
 }
 
 impl PointerGrab<MistComp> for MoveSurfaceGrab {
@@ -30,6 +32,11 @@ impl PointerGrab<MistComp> for MoveSurfaceGrab {
         // While the grab is active, no client has pointer focus
         handle.motion(data, None, event);
         self.last = event.location;
+        // mist-ui's snap overlay follows this instead of polling the cursor
+        if self.sent.is_none_or(|t| t.elapsed().as_millis() >= 8) {
+            self.sent = Some(std::time::Instant::now());
+            data.hypr_event("mistdrag", &format!("move,{},{}", event.location.x as i32, event.location.y as i32));
+        }
 
         let delta = event.location - self.start_data.location;
         let mut new_location = self.initial_window_location.to_f64() + delta;

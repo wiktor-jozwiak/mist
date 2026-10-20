@@ -351,7 +351,7 @@ impl MistComp {
         let addr = crate::hyprcompat::addr(&w);
         self.hypr_event("mistdrag", &format!("begin,{addr},{},{},{},{}", loc.x, loc.y, size.w, size.h));
         let start_data = smithay::input::pointer::GrabStartData { focus: None, button, location: m };
-        let grab = crate::grabs::MoveSurfaceGrab { start_data, window: w, initial_window_location: loc, last: m };
+        let grab = crate::grabs::MoveSurfaceGrab { start_data, window: w, initial_window_location: loc, last: m, sent: None };
         pointer.set_grab(self, grab, serial, smithay::input::pointer::Focus::Clear);
     }
 
