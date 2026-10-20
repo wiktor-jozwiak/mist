@@ -14,7 +14,7 @@ RT=$(mktemp -d /tmp/mci.XXXX) # short: unix socket paths are limited to 108 byte
 H=$OUT/home
 mkdir -p "$OUT" "$H/.config/mist" "$H/.cache/mist" "$H/.local/share/fonts/SF-Pro"
 chmod 700 "$RT"
-export XDG_RUNTIME_DIR=$RT HOME=$H MIST_DIR=$ROOT MIST_LANG=en LANG=en_US.UTF-8 MIST_PRIMARY=DP-3
+export XDG_RUNTIME_DIR=$RT HOME=$H MIST_DIR=$ROOT MIST_LANG=en LANG=C.UTF-8 MIST_PRIMARY=DP-3
 export MIST_UI_NO_SERVICES=1 MIST_UI_SOCK=$RT/ui.sock MIST_COMP_SOFTWARE=1
 unset WAYLAND_DISPLAY DISPLAY HYPRLAND_INSTANCE_SIGNATURE
 cp "$ROOT"/docs/demo/weather.json "$ROOT"/docs/demo/garmin.json "$ROOT"/docs/demo/running.json "$H/.cache/mist/" 2>/dev/null
@@ -56,7 +56,8 @@ for g in xdg_wm_base zwlr_layer_shell_v1 ext_session_lock_manager_v1 zwp_linux_d
          zwp_text_input_manager_v3 zwp_input_method_manager_v2 zwp_virtual_keyboard_manager_v1 zwp_tablet_manager_v2 \
          ext_foreign_toplevel_list_v1 ext_data_control_manager_v1 zwlr_data_control_manager_v1 zxdg_exporter_v2 zxdg_importer_v2 \
          xdg_toplevel_icon_manager_v1 xdg_toplevel_tag_manager_v1 wp_content_type_manager_v1 wp_alpha_modifier_v1 xdg_system_bell_v1 \
-         wp_security_context_manager_v1 wp_cursor_shape_manager_v1 zwlr_screencopy_manager_v1 ext_idle_notifier_v1 zwp_idle_inhibit_manager_v1; do
+         wp_security_context_manager_v1 wp_cursor_shape_manager_v1 zwlr_screencopy_manager_v1 ext_idle_notifier_v1 zwp_idle_inhibit_manager_v1 \
+         zwlr_foreign_toplevel_manager_v1 zwlr_output_power_manager_v1 zwlr_virtual_pointer_manager_v1 zwlr_gamma_control_manager_v1; do
     grep -q "^$g " "$OUT/globals.txt" || bad "global $g"
 done
 ok "globals ($(wc -l <"$OUT/globals.txt") advertised)"
@@ -124,10 +125,37 @@ check "window: top edge stretched up, stops below the bar" "[ \"$H1\" -gt \"$H0\
 
 # ------------------------------------------------------------------ screencopy (grim, portals)
 if command -v grim >/dev/null; then
-    C shot "$OUT/shot-dp3.ppm" DP-3 >/dev/null
     check "screencopy: grim works" "WAYLAND_DISPLAY=$S timeout 10 grim -o DP-3 -t ppm '$OUT/grim-dp3.ppm'"
-    check "screencopy: the same pixels as the compositor's own shot" "cmp -s '$OUT/shot-dp3.ppm' '$OUT/grim-dp3.ppm'"
+    # on a still screen (island / window animations over: the compositor's shot the same before and after)
+    same=1
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        C shot "$OUT/shot-a.ppm" DP-3 >/dev/null
+        WAYLAND_DISPLAY=$S timeout 10 grim -o DP-3 -t ppm "$OUT/grim-dp3.ppm"
+        C shot "$OUT/shot-b.ppm" DP-3 >/dev/null
+        cmp -s "$OUT/shot-a.ppm" "$OUT/shot-b.ppm" || { sleep 0.5; continue; }
+        cmp -s "$OUT/shot-a.ppm" "$OUT/grim-dp3.ppm" && same=0
+        break
+    done
+    check "screencopy: the same pixels as the compositor's own shot" "[ $same = 0 ]"
     check "screencopy: region" "WAYLAND_DISPLAY=$S timeout 10 grim -g '10,10 200x100' -t ppm '$OUT/grim-region.ppm' && head -c 20 '$OUT/grim-region.ppm' | grep -q '200 100'"
+fi
+
+# ------------------------------------------------------------------ wlroots tools (task bars, DPMS, remote input)
+if command -v wlrctl >/dev/null; then
+    W() { WAYLAND_DISPLAY=$S timeout 5 wlrctl "$@" 2>/dev/null; }
+    check "foreign-toplevel: wlrctl lists the window" "W toplevel list | grep -q '^mist-files:'"
+    W toplevel minimize app_id:mist-files
+    check "foreign-toplevel: minimize" "wait_for \"C windows | grep -q '^mist-files ws4294967295 hidden'\" 30"
+    W toplevel focus app_id:mist-files
+    check "foreign-toplevel: activate restores it" "wait_for \"C windows | grep -q '^mist-files ws1 [0-9]'\" 30"
+    C motion 100 100 >/dev/null; W pointer move 40 20
+    check "virtual-pointer: relative motion" "J j/cursorpos | grep -q '\"x\":140,\"y\":120'"
+fi
+if command -v wlopm >/dev/null; then
+    WAYLAND_DISPLAY=$S timeout 5 wlopm --off DP-3 >/dev/null 2>&1
+    check "output-power: off" "WAYLAND_DISPLAY=$S timeout 5 wlopm | grep -q 'DP-3 off'"
+    WAYLAND_DISPLAY=$S timeout 5 wlopm --on '*' >/dev/null 2>&1
+    check "output-power: on" "WAYLAND_DISPLAY=$S timeout 5 wlopm | grep -q 'DP-3 on'"
 fi
 
 # ------------------------------------------------------------------ workspaces

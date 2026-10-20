@@ -126,6 +126,30 @@ impl Udev {
         }
     }
 
+    fn crtc_of(&self, output: &str) -> Option<crtc::Handle> {
+        self.surfaces.iter().find(|(_, s)| s.output.name() == output).map(|(c, _)| *c)
+    }
+
+    /// wlr-gamma-control: the output's gamma ramp length (None: no such output / no LUT).
+    pub fn gamma_size(&self, output: &str) -> Option<u32> {
+        let c = self.crtc_of(output)?;
+        let n = self.mgr.device().get_crtc(c).ok()?.gamma_length();
+        (n >= 2).then_some(n)
+    }
+
+    /// A client's ramps (red, green, blue, each gamma_size long) replace the night light's on this output.
+    pub fn set_gamma(&self, output: &str, r: &[u16], g: &[u16], b: &[u16]) -> bool {
+        let Some(c) = self.crtc_of(output) else { return false };
+        self.mgr.device().set_gamma(c, r, g, b).is_ok()
+    }
+
+    /// The client is gone: back to Mist's own ramp (night light or linear).
+    pub fn reset_gamma(&self, output: &str) {
+        if let Some(c) = self.crtc_of(output) {
+            self.apply_gamma(c);
+        }
+    }
+
     pub fn import_dmabuf(&mut self, dmabuf: &Dmabuf) -> bool {
         self.renderer.import_dmabuf(dmabuf, None).is_ok()
     }

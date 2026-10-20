@@ -412,6 +412,8 @@ impl MistComp {
     /// Screens off / on (idle). Nested: nothing to switch.
     pub fn set_dpms(&mut self, on: bool) {
         tracing::info!("dpms {}", if on { "on" } else { "off" });
+        self.dpms_on = on;
+        self.power_note();
         if let Some(u) = self.udev.as_mut() {
             u.set_active(on);
         }

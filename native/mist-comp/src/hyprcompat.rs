@@ -107,6 +107,8 @@ pub fn serve(event_loop: &mut EventLoop<CalloopData>, socket: &str) {
 impl MistComp {
     /// Queue a socket2 event line (`name>>data`).
     pub fn hypr_event(&mut self, name: &str, data: &str) {
+        // every window change goes through here: task bars (wlr foreign toplevel) catch up after this loop turn
+        self.wlr.dirty = true;
         if self.hypr_listeners.is_empty() {
             return;
         }

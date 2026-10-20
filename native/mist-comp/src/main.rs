@@ -15,6 +15,7 @@ mod headless;
 mod winit;
 mod cursor;
 mod screencopy;
+mod wlr;
 mod decor;
 mod scene;
 mod rounded;
@@ -142,6 +143,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         crate::screencopy::process(data);
+        data.ftm_sync();
         let _ = data.display_handle.flush_clients();
         tracing::trace!("loop iteration");
     })?;

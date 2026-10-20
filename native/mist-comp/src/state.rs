@@ -42,6 +42,9 @@ pub struct MistComp {
     pub layer_shell_state: WlrLayerShellState,
     pub protocols: crate::handlers::protocols::Protocols,
     pub extra: crate::handlers::extra::Extra,
+    pub wlr: crate::wlr::Wlr,
+    /// monitors on (DPMS), as output-power clients are told
+    pub dpms_on: bool,
     /// linux-drm-syncobj (explicit sync): only on a DRM device that supports syncobj eventfd
     pub syncobj: Option<smithay::wayland::drm_syncobj::DrmSyncobjState>,
     pub shm_state: ShmState,
@@ -150,6 +153,7 @@ impl MistComp {
         let idle = smithay::wayland::idle_notify::IdleNotifierState::new(&dh, event_loop.handle());
         let idle_inhibit = smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Self>(&dh);
         crate::screencopy::init(&dh);
+        crate::wlr::init(&dh);
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let mut seat_state = SeatState::new();
@@ -210,6 +214,8 @@ impl MistComp {
             layer_shell_state,
             protocols,
             extra,
+            wlr: Default::default(),
+            dpms_on: true,
             syncobj: None,
             shm_state,
             output_manager_state,
