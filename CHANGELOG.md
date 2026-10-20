@@ -5,6 +5,19 @@ nothing is released yet.
 
 ## Unreleased
 
+### mist-comp
+- Explicit sync (linux-drm-syncobj-v1) where the GPU supports it; commits wait for the client's GPU work (acquire point, else the dmabuf fence).
+- Protocols: text-input-v3 + input-method-v2, virtual-keyboard, tablet-v2, ext-foreign-toplevel-list, ext-data-control, xdg-foreign, xdg-toplevel-icon / -tag, content-type, alpha-modifier, xdg-system-bell, security-context (sandboxed clients get no privileged globals), XWayland keyboard grabs; wlroots foreign-toplevel-management, output-management (wlr-randr, kanshi), output-power-management, virtual-pointer, gamma-control.
+- Screen casting: `copy_with_damage` waits for a new frame (a still screen costs nothing), cursor overlay, BGRA readback without a per-pixel swap, dmabuf rendering opt-in (`screencopy_dmabuf on`), `screencast` events for the island.
+- Hyprland compatibility for mist-ui and scripts: `decorations`, `getoption`, window move / resize / close / fullscreen and monitor focus in `eval`, events fullscreen / urgent / focusedmon / activelayout / configreloaded / monitoradded / removed; `mist-comp hyprctl` (linked as `hyprctl` by start-mist when Hyprland is not installed); window drags stream the cursor instead of mist-ui polling it.
+- Monitors: comp.conf `output` lines with scale, mode and transform (they were parsed and never used); each surface gets its own output's scale; touchpad gestures (workspace swipe, the rest forwarded to clients).
+- Windows stay below the bar when moved or stretched; stretching the top edge grows upward (it grew downwards for some clients).
+- Session: crash restart in safe mode, plain log lines, synthetic / remote input counts as activity for the idle lock; `mist-comp migrate` converts a Hyprland Lua config.
+- Tests: `native/mist-comp/tests/ci.sh` (headless on Mesa's software renderer, run in CI) and `tests/soak.sh`; `bench/comp.sh`.
+
+### Changed & Performance
+- mist-ui sends no frame when a surface's pixels did not change (idle compositor wakeups with the shell: 68.8/s → 0.8/s), talks to the compositor socket instead of starting `hyprctl` processes, and the lock screen redraws only the password band (idle lock CPU 31 % → 3.3 % of a core).
+
 ### Fixed
 - Lock screen: the clock on every monitor turns with the minute, not only on the primary one.
 - Lock screen: sets the arrow cursor on each lock surface, so a cursor an app had hidden (a video, a game) does not stay hidden over the lock screen; `mist-comp` resets it when the session locks.

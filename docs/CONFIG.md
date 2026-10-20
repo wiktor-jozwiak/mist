@@ -103,9 +103,27 @@ Player recents and volume). Safe to delete.
 
 ### `comp.conf`, `outputs`: mist-comp only
 
-The experimental compositor's key bindings, autostart and outputs; syntax at the top of
-[native/mist-comp/src/config.rs](../native/mist-comp/src/config.rs). `outputs`: one `NAME X Y` per line.
-Hyprland users do not need them.
+The experimental compositor's key bindings, autostart, monitors and switches; full syntax at the top of
+[native/mist-comp/src/config.rs](../native/mist-comp/src/config.rs). Hyprland users do not need them.
+
+| Line | |
+|---|---|
+| `bind` / `bindr` / `bindl COMBO ACTION` | key binding / on release / also while locked |
+| `output NAME X Y [scale S] [mode WxH[@Hz]] [transform T]` | a monitor (also in `outputs`, where comp.conf wins); applied at hotplug and on `reload` |
+| `exec CMD`, `env K V` | autostart, environment |
+| `keyboard LAYOUT[,LAYOUT2] [VARIANT] [OPTIONS]`, `numlock on`, `pointer flat` | input |
+| `swipe 3\|4\|off` | touchpad: N-finger horizontal swipe switches workspaces (default 3) |
+| `vrr fullscreen\|off`, `swallow on`, `middle_click_paste off` | as Hyprland's misc options |
+| `explicit_sync off` | no linux-drm-syncobj (default: on where the GPU supports it) |
+| `screencopy_dmabuf on` | screen casting into the client's GPU buffer (opt-in) |
+
+`mist-comp migrate [~/.config/hypr/hyprland.lua]` prints comp.conf lines for the binds (exec and common
+dispatchers), monitors, `hl.env` and autostart it understands; the rest is marked `# not converted:`.
+Monitors can also be set at run time with wlr-randr / kanshi (wlr-output-management).
+
+`start-mist` restarts a crashed compositor in safe mode (`MIST_COMP_SAFE=1`: no blur, animations, VRR,
+explicit sync or dmabuf casting), at most three times; the log is `~/.cache/mist/comp.log`. Without Hyprland
+installed it links `hyprctl` to mist-comp, which answers the requests scripts make.
 
 ## Optional integrations
 

@@ -17,6 +17,7 @@ mod cursor;
 mod screencopy;
 mod wlr;
 mod outman;
+mod migrate;
 mod decor;
 mod scene;
 mod rounded;
@@ -63,6 +64,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if as_hyprctl || argv.get(1).map(String::as_str) == Some("hyprctl") {
         let rest = if as_hyprctl { &argv[1..] } else { &argv[2..] };
         std::process::exit(hyprcompat::cli(rest));
+    }
+    if argv.get(1).map(String::as_str) == Some("migrate") {
+        std::process::exit(migrate::run(&argv[2..]));
     }
     if crate::config::safe_mode() {
         // read by blur.rs / anim.rs on first use
