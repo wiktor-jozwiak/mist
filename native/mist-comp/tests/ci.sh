@@ -236,9 +236,11 @@ rm -f "$H/.config/mist/comp.conf"
 check "event configreloaded" "wait_for \"grep -q '^configreloaded>>' '$OUT/events.log'\" 30"
 
 # ------------------------------------------------------------------ idle cost
+# not across a minute: the island animates its clock then (~250 ms of frames, real work)
+sec=$(date +%-S); [ "$sec" -ge 53 ] && sleep $((62 - sec))
 C motion 640 400 >/dev/null; sleep 2
-w0=$(C stats | awk '{print $10}'); sleep 3; w1=$(C stats | awk '{print $10}')
-check "idle: the compositor sleeps (< 10 wakeups/s with the shell up)" "[ \$((w1 - w0)) -lt 30 ]" "$((w1 - w0)) wakeups in 3 s"; echo "     idle wakeups in 3 s: $((w1 - w0))"
+S0=$(C stats); w0=$(echo "$S0" | awk '{print $10}'); sleep 3; S1=$(C stats); w1=$(echo "$S1" | awk '{print $10}')
+check "idle: the compositor sleeps (< 10 wakeups/s with the shell up)" "[ \$((w1 - w0)) -lt 30 ]" "$((w1 - w0)) wakeups in 3 s"; echo "     idle wakeups in 3 s: $((w1 - w0)) ($S0 -> $S1)"
 
 # ------------------------------------------------------------------ health
 check "no panic in the compositor" "! grep -q panicked '$OUT/comp.log'"
