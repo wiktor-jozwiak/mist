@@ -185,7 +185,7 @@ fn monitors_json(state: &mut MistComp) -> Value {
             "refreshRate": mode.map(|m| m.refresh as f64 / 1000.0).unwrap_or(60.0),
             "x": g.loc.x, "y": g.loc.y, "scale": o.current_scale().fractional_scale(), "transform": 0,
             "activeWorkspace": ws_json(ws), "specialWorkspace": { "id": 0, "name": "" },
-            "reserved": reserved, "focused": g.to_f64().contains(pointer), "dpmsStatus": true, "vrr": state.config.vrr && state.fullscreen_on(o), "disabled": false,
+            "reserved": reserved, "focused": g.to_f64().contains(pointer), "dpmsStatus": state.dpms_on, "vrr": state.config.vrr && state.fullscreen_on(o), "disabled": false,
         }));
     }
     Value::Array(out)
@@ -321,7 +321,7 @@ fn find_target(state: &MistComp, sel: &str) -> Option<Window> {
         return state.window_by_addr(a);
     }
     if let Some(c) = sel.strip_prefix("class:") {
-        let c = c.trim_start_matches("(?i)").to_lowercase();
+        let c = class_name(c);
         return state
             .space
             .elements()
@@ -330,6 +330,13 @@ fn find_target(state: &MistComp, sel: &str) -> Option<Window> {
             .cloned();
     }
     None
+}
+
+/// The literal app id in a Hyprland class regex as Mist writes them: `(?i)name`, `^(name)$`, `name`.
+fn class_name(re: &str) -> String {
+    let c = re.trim_start_matches("(?i)").trim_start_matches('^').trim_end_matches('$');
+    let c = c.strip_prefix('(').and_then(|c| c.strip_suffix(')')).unwrap_or(c);
+    c.to_lowercase()
 }
 
 /// The small Lua subset Mist sends through `hyprctl eval`; statements split on `;`.
@@ -467,6 +474,10 @@ mod tests {
     fn lua_bits() {
         assert_eq!(field(r#"hl.dispatch(hl.dsp.focus({ window = "address:0x1f" }))"#, "window"), Some("address:0x1f"));
         assert_eq!(field(r#"hl.dispatch(hl.dsp.dpms({ action = "off" }))"#, "action"), Some("off"));
+        // the class selectors mist-ui sends (start menu, player)
+        assert_eq!(class_name("(?i)Firefox"), "firefox");
+        assert_eq!(class_name("^(mist-player)$"), "mist-player");
+        assert_eq!(class_name("kitty"), "kitty");
         assert_eq!(call_args("MistRestore('0x12', 3)"), vec!["0x12", "3"]);
         assert_eq!(call_args(r#"MistSnapApply("0x5", 0, 0, 0.5, 1, 10, 20, 300, 400)"#).len(), 9);
     }
