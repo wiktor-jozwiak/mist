@@ -1776,10 +1776,28 @@ impl App {
         let (wi, hi) = (canvas.pm.width() as i32, canvas.pm.height() as i32);
         Self::commit_box(pool, layer, canvas, (0, 0, wi, hi));
     }
-    // the whole canvas into a new buffer, `damage` (buffer pixels) marked as changed
+    // the whole canvas into a new buffer, `damage` (buffer pixels) marked as changed. The same pixels as the
+    // buffer on screen: a bare commit (pending surface state still applies), no buffer, no damage, so the
+    // compositor has nothing to redraw (a poll that changed nothing shown costs no frame)
     fn commit_box(pool: &mut SlotPool, layer: &LayerSurface, canvas: &Canvas, damage: (i32, i32, i32, i32)) {
         let (wi, hi) = (canvas.pm.width() as i32, canvas.pm.height() as i32);
         let t0 = Instant::now();
+        // the object id, not the protocol number: a new surface reusing a number is a different key
+        let id = wayland_client::Proxy::id(layer.wl_surface());
+        let sum = (pixel_hash(canvas.pm.data()), wi, hi);
+        let same = SHOWN.with(|m| {
+            let mut m = m.borrow_mut();
+            // popups come and go: forget them all now and then (the next frame of each is simply sent)
+            if m.len() > 256 {
+                m.clear();
+            }
+            m.insert(id, sum) == Some(sum)
+        });
+        if same {
+            count("commits_same", 1);
+            layer.commit();
+            return;
+        }
         let Ok((buffer, data)) = pool.create_buffer(wi, hi, wi * 4, wl_shm::Format::Argb8888) else { return };
         canvas.to_bgra(data);
         count("commit_us", t0.elapsed().as_micros() as u64);
@@ -2829,6 +2847,23 @@ wayland_client::delegate_noop!(App: ignore wp_cursor_shape_manager_v1::WpCursorS
 wayland_client::delegate_noop!(App: ignore wp_cursor_shape_device_v1::WpCursorShapeDeviceV1);
 wayland_client::delegate_noop!(App: ignore wp_viewporter::WpViewporter);
 wayland_client::delegate_noop!(App: ignore wp_viewport::WpViewport);
+
+thread_local! {
+    // surface protocol id -> (pixel hash, size) of the buffer last attached
+    static SHOWN: std::cell::RefCell<std::collections::HashMap<wayland_client::backend::ObjectId, (u64, i32, i32)>> = Default::default();
+}
+// fast, not cryptographic: a changed frame differs in its sum (8 bytes at a time, ~10 GB/s)
+fn pixel_hash(d: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325 ^ d.len() as u64;
+    let mut it = d.chunks_exact(8);
+    for c in &mut it {
+        h = (h ^ u64::from_le_bytes(c.try_into().unwrap())).wrapping_mul(0x9e37_79b9_7f4a_7c15).rotate_left(29);
+    }
+    for &b in it.remainder() {
+        h = (h ^ b as u64).wrapping_mul(0x100_0000_01b3);
+    }
+    h
+}
 
 pub fn count(k: &'static str, v: u64) {
     DRAWS.with(|d| *d.borrow_mut().entry(k).or_insert(0) += v);
