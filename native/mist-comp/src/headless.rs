@@ -51,10 +51,21 @@ impl Headless {
 
 pub fn init(_event_loop: &mut EventLoop<'static, CalloopData>, state: &mut MistComp) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::var("MIST_COMP_RENDER_NODE").unwrap_or_else(|_| "/dev/dri/renderD128".into());
-    let fd = smithay::reexports::rustix::fs::open(path.as_str(), OFlags::RDWR | OFlags::CLOEXEC, smithay::reexports::rustix::fs::Mode::empty())?;
-    let fd = DrmDeviceFd::new(DeviceFd::from(fd));
-    let gbm = GbmDevice::new(fd)?;
-    let egl = unsafe { EGLDisplay::new(gbm)? };
+    let open = || -> Result<EGLDisplay, Box<dyn std::error::Error>> {
+        let fd = smithay::reexports::rustix::fs::open(path.as_str(), OFlags::RDWR | OFlags::CLOEXEC, smithay::reexports::rustix::fs::Mode::empty())?;
+        let gbm = GbmDevice::new(DrmDeviceFd::new(DeviceFd::from(fd)))?;
+        Ok(unsafe { EGLDisplay::new(gbm)? })
+    };
+    // no GPU (CI, containers) or MIST_COMP_SOFTWARE=1: Mesa's software device (llvmpipe), shm clients only
+    let soft = std::env::var_os("MIST_COMP_SOFTWARE").is_some();
+    let egl = match if soft { Err("software requested".into()) } else { open() } {
+        Ok(e) => e,
+        Err(e) => {
+            let dev = EGLDevice::enumerate()?.find(|d| d.is_software()).ok_or(e)?;
+            tracing::info!("headless: software rendering (llvmpipe)");
+            unsafe { EGLDisplay::new(dev)? }
+        }
+    };
     let node = EGLDevice::device_for_display(&egl).ok().and_then(|d| d.try_get_render_node().ok().flatten());
     let ctx = EGLContext::new(&egl)?;
     let mut renderer = unsafe { GlesRenderer::new(ctx)? };
@@ -118,7 +129,7 @@ pub fn render(state: &mut MistComp) {
     }
     hl.last = Some(std::time::Instant::now());
     state.frames += 1;
-    let MistComp { headless, space, locked, lock, shot, force_full, start_time, anim, .. } = state;
+    let MistComp { headless, space, locked, lock, shot, shot_output: state_shot_output, force_full, start_time, anim, .. } = state;
     let Some(hl) = headless.as_mut() else { return };
     let age = if std::mem::take(force_full) { 0 } else { 1 };
     let now = start_time.elapsed();
@@ -130,8 +141,9 @@ pub fn render(state: &mut MistComp) {
         if let Err(e) = o.damage.render_output(&mut hl.renderer, &mut fb, age, &elems, clear) {
             tracing::warn!("headless render: {e:?}");
         }
-        // IPC `shot`: the first output
-        if i == 0 {
+        // IPC `shot`: the named output, else the first
+        let want = state_shot_output.as_deref().map(|n| n == output.name()).unwrap_or(i == 0);
+        if want {
             if let Some((path, mut reply)) = shot.take() {
                 use std::io::Write;
                 let r = crate::winit::write_shot(&mut hl.renderer, &fb, o.size.into(), &path, false);

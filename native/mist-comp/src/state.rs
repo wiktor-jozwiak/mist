@@ -117,6 +117,8 @@ pub struct MistComp {
     pub force_full: bool,
     /// pending `shot` IPC request: written after the next frame
     pub shot: Option<(std::path::PathBuf, std::os::unix::net::UnixStream)>,
+    /// headless: the output `shot` captures (None: the first)
+    pub shot_output: Option<String>,
 }
 
 impl MistComp {
@@ -239,6 +241,7 @@ impl MistComp {
             next_addr: 0x5a0000,
             force_full: false,
             shot: None,
+            shot_output: None,
         }
     }
 

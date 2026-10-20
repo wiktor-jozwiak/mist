@@ -135,12 +135,13 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
         "workspaces" => state.ws_active.iter().map(|(o, w)| format!("{o} {w}\n")).collect(),
         "shot" => match it.next() {
             Some(p) => {
+                state.shot_output = it.next().map(String::from);
                 state.shot = Some((p.into(), stream));
                 state.dirty = true;
                 state.force_full = true;
                 return;
             }
-            None => "usage: shot <out.ppm>\n".into(),
+            None => "usage: shot <out.ppm> [output]\n".into(),
         },
         "focus" => {
             let f = state.seat.get_keyboard().unwrap().current_focus().and_then(|f| smithay::wayland::seat::WaylandFocus::wl_surface(&f).map(|c| c.into_owned()));
