@@ -11,7 +11,7 @@ use smithay::{
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel, wayland_server::protocol::wl_surface::WlSurface,
     },
-    utils::{Logical, Point, Rectangle, Size},
+    utils::{Logical, Point, Rectangle, Serial, Size},
     wayland::{compositor, shell::xdg::SurfaceCachedState},
 };
 use std::cell::RefCell;
@@ -194,12 +194,13 @@ impl PointerGrab<MistComp> for ResizeSurfaceGrab {
                 state.size = Some(self.last_window_size);
             });
 
-            xdg.send_pending_configure();
+            let serial = xdg.send_pending_configure();
 
             ResizeSurfaceState::with(xdg.wl_surface(), |state| {
                 *state = ResizeSurfaceState::WaitingForLastCommit {
                     edges: self.edges,
                     initial_rect: self.initial_rect,
+                    serial,
                 };
             });
         }
@@ -315,6 +316,8 @@ enum ResizeSurfaceState {
         edges: ResizeEdge,
         /// The initial window size and location.
         initial_rect: Rectangle<i32, Logical>,
+        /// the final configure (Resizing unset)
+        serial: Option<Serial>,
     },
 }
 
@@ -331,12 +334,14 @@ impl ResizeSurfaceState {
         })
     }
 
-    fn commit(&mut self) -> Option<(ResizeEdge, Rectangle<i32, Logical>)> {
+    fn commit(&mut self, acked: Option<Serial>) -> Option<(ResizeEdge, Rectangle<i32, Logical>)> {
         match *self {
             Self::Resizing { edges, initial_rect } => Some((edges, initial_rect)),
-            Self::WaitingForLastCommit { edges, initial_rect } => {
-                // The resize is done, let's go back to idle
-                *self = Self::Idle;
+            Self::WaitingForLastCommit { edges, initial_rect, serial } => {
+                // back to idle once the client committed the final configure (or none was sent)
+                if serial.is_none_or(|f| acked.is_some_and(|a| a.is_no_older_than(&f))) {
+                    *self = Self::Idle;
+                }
 
                 Some((edges, initial_rect))
             }
@@ -354,10 +359,15 @@ pub fn handle_commit(space: &mut Space<Window>, surface: &WlSurface) -> Option<(
 
     let mut window_loc = space.element_location(&window)?;
     let geometry = window.geometry();
+    // the client may commit a frame or two in the old size after the button is released: the resize ends
+    // with the commit of the final configure (its serial acked), the top / left edge anchored until then
+    let acked = compositor::with_states(surface, |st| {
+        st.data_map.get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>().and_then(|d| d.lock().unwrap().current_serial)
+    });
 
     let new_loc: Point<Option<i32>, Logical> = ResizeSurfaceState::with(surface, |state| {
         state
-            .commit()
+            .commit(acked)
             .and_then(|(edges, initial_rect)| {
                 // If the window is being resized by top or left, its location must be adjusted
                 // accordingly.
