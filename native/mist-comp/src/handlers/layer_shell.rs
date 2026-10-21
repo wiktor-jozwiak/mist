@@ -89,8 +89,16 @@ pub fn handle_commit(state: &mut MistComp, surface: &WlSurface) -> bool {
     let exclusive = layer.cached_state().keyboard_interactivity == KeyboardInteractivity::Exclusive;
     let keyboard = state.seat.get_keyboard().unwrap();
     let focused = keyboard.current_focus().is_some_and(|f| f.is(surface));
-    if exclusive && !focused && sent {
+    if exclusive && !focused && sent && has {
         keyboard.set_focus(state, Some(surface.clone().into()), SERIAL_COUNTER.next_serial());
+    }
+    // hidden (a null buffer) or no longer taking keys while it has them: back to the top window, else the
+    // keys would go to a surface nobody sees
+    let none = layer.cached_state().keyboard_interactivity == KeyboardInteractivity::None;
+    if focused && (!has || none) {
+        let top = state.space.elements().last().and_then(crate::focus::of_window);
+        tracing::info!("layer {} gave the keyboard back", layer.namespace());
+        keyboard.set_focus(state, top, SERIAL_COUNTER.next_serial());
     }
     true
 }

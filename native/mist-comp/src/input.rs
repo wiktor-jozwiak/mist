@@ -35,6 +35,11 @@ impl MistComp {
         self.idle.notify_activity(&self.seat);
         match event {
             InputEvent::Keyboard { event, .. } => {
+                // once: keys do reach the compositor (not which ones: comp.log must not hold passwords)
+                if !self.keys_seen {
+                    self.keys_seen = true;
+                    tracing::info!("keyboard input arrives");
+                }
                 self.handle_key(event.key_code(), event.state(), Event::time_msec(&event));
             }
             InputEvent::PointerMotion { event, .. } => {

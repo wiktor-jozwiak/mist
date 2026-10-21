@@ -117,6 +117,7 @@ pub struct MistComp {
     /// night light state (gamma ramp on DRM; nested/headless only remember it)
     pub night: bool,
     /// title bar text (loaded with the first server-side bar)
+    pub keys_seen: bool,
     pub wakeups: u64, // event-loop iterations (idle cost; `stats`)
     pub redraw_pending: bool, // nested: request_redraw sent, Redraw not yet handled
     pub text: Option<Option<crate::text::Text>>, // looked up on first use, inner None = no font
@@ -267,6 +268,7 @@ impl MistComp {
             cast_last: None,
             cast_seen: Default::default(),
             night: false,
+            keys_seen: false,
             wakeups: 0,
             redraw_pending: false,
             text: None,

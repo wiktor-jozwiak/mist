@@ -245,6 +245,16 @@ pub fn init(event_loop: &mut EventLoop<CalloopData>, data: &mut CalloopData) -> 
     event_loop.handle().insert_source(LibinputInputBackend::new(libinput.clone()), |event, _, data| {
         if let smithay::backend::input::InputEvent::DeviceAdded { device } = &event {
             let mut d = device.clone();
+            {
+                use smithay::reexports::input::DeviceCapability as Cap;
+                tracing::info!(
+                    "input device: {} (keyboard {}, pointer {}, touch {})",
+                    d.name(),
+                    d.has_capability(Cap::Keyboard),
+                    d.has_capability(Cap::Pointer),
+                    d.has_capability(Cap::Touch)
+                );
+            }
             if let Some(flat) = data.config.pointer_flat {
                 if d.config_accel_is_available() {
                     let p = if flat { smithay::reexports::input::AccelProfile::Flat } else { smithay::reexports::input::AccelProfile::Adaptive };

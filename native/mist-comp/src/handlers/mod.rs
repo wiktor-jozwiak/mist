@@ -38,6 +38,22 @@ impl SeatHandler for MistComp {
         use smithay::wayland::seat::WaylandFocus;
         let dh = &self.display_handle;
         let client = focused.and_then(|f| f.wl_surface()).and_then(|s| dh.get_client(s.id()).ok());
+        // where the keys go (comp.log; a session where typing reaches nothing shows it here)
+        let to = match focused.and_then(|f| f.wl_surface()) {
+            None => "nothing".to_string(),
+            Some(s) => {
+                let win = self.space.elements().chain(self.stash.iter().map(|(w, _)| w)).find(|w| w.wl_surface().is_some_and(|x| *x == *s));
+                match win {
+                    Some(w) => format!("window {}", crate::hyprcompat::app_id(w)),
+                    None => self
+                        .space
+                        .outputs()
+                        .find_map(|o| smithay::desktop::layer_map_for_output(o).layer_for_surface(&s, smithay::desktop::WindowSurfaceType::TOPLEVEL).map(|l| format!("layer {}", l.namespace())))
+                        .unwrap_or_else(|| if self.locked { "lock screen".into() } else { "a surface".into() }),
+                }
+            }
+        };
+        tracing::info!("keyboard focus: {to}");
         set_data_device_focus(dh, seat, client.clone());
         smithay::wayland::selection::primary_selection::set_primary_focus(dh, seat, client);
     }

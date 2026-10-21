@@ -137,6 +137,36 @@ wait_for "[ \"\$(size)\" != \"$SZ\" ] && [ \"\$(geo)\" != \"$G\" ]" 50 # the cli
 G=$(geo); Y3=${G#*,}; SZ=$(size); H1=${SZ#*x}
 check "window: top edge stretched up, stops below the bar" "[ \"$H1\" -gt \"$H0\" ] && [ \"$Y3\" -ge \"${TOP:-0}\" ]" "y $Y -> $Y3, h $H0 -> $H1, top ${TOP:-?}"
 
+# ------------------------------------------------------------------ typing reaches the window (wev, if installed)
+if command -v wev >/dev/null; then
+    WAYLAND_DISPLAY=$S stdbuf -oL wev >"$OUT/wev.log" 2>&1 &
+    pids="$pids $!"
+    wait_for "C windows | grep -q '^wev '" 100
+    WG=$(C windows | awk '/^wev / {print $3; exit}'); WX=${WG%,*}; WY=${WG#*,}
+    C motion $((WX + 60)) $((WY + 60)) >/dev/null; C button left press >/dev/null; C button left release >/dev/null
+    for k in 30 48; do C key $k press >/dev/null; C key $k release >/dev/null; done
+    check "typing: keys reach the focused window" "wait_for \"grep -q \\\"utf8: 'b'\\\" '$OUT/wev.log'\" 30"
+    check "typing: comp.log says where the keys go" "grep -q 'keyboard focus: window wev' '$OUT/comp.log'"
+    # another window takes the focus; a click on wev brings the keys back
+    NF=$(C windows | grep -c '^mist-files')
+    spawn "$BIN/mist-ui" files "$H" >/dev/null
+    wait_for "[ \$(C windows | grep -c '^mist-files') -gt $NF ]" 100
+    sleep 0.5
+    # every mist-files window (one is left from the checks above) off wev, onto the other monitor
+    for MF in $(J j/clients | tr '{' '\n' | grep '"class":"mist-files"' | sed -n 's/.*"address":"\(0x[0-9a-f]*\)".*/\1/p'); do
+        J "eval hl.dispatch(hl.dsp.window.move({ x = 1400, y = 100, window = \"address:$MF\" }))" >/dev/null
+    done
+    sleep 0.5
+    check "typing: the new window took the keys" "tail -3 '$OUT/comp.log' | grep -q 'keyboard focus: window mist-files'"
+    C motion $((WX + 60)) $((WY + 60)) >/dev/null; C button left press >/dev/null; C button left release >/dev/null
+    C key 46 press >/dev/null; C key 46 release >/dev/null
+    check "typing: a click gives the keys back" "wait_for \"grep -q \\\"utf8: 'c'\\\" '$OUT/wev.log'\" 30"
+    pkill -x wev; C action close >/dev/null
+    wait_for "! C windows | grep -q '^mist-files'" 50
+else
+    echo "skip typing checks (no wev)"
+fi
+
 # ------------------------------------------------------------------ screencopy (grim, portals)
 if command -v grim >/dev/null; then
     check "screencopy: grim works" "WAYLAND_DISPLAY=$S timeout 10 grim -o DP-3 -t ppm '$OUT/grim-dp3.ppm'"
