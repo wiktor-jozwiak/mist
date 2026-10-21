@@ -13,6 +13,7 @@ nothing is released yet.
 - mist-comp: client buffers are no longer put straight on a scanout plane unless `direct_scanout on` (Hyprland's default; on NVIDIA it showed torn or stale windows); the cursor plane stays.
 - mist-comp: the log names the NVIDIA driver and egl-wayland versions, an output whose vblank never comes, and a window whose frame waits over a second for its GPU fence; `mist-session log` prints that part of the log.
 - mist-ui exits cleanly when the compositor goes away instead of aborting.
+- mist-comp: a page flip the kernel refuses (the login screen still held the GPU when the session started) no longer leaves stale, garbled windows: the frame was lost while the damage tracking counted it as shown, so later frames only redrew what changed over it. Now everything is redrawn on the next refresh, and at start mist-comp waits up to 5 s for the GPU to be released.
 
 ### mist-comp
 - Explicit sync (linux-drm-syncobj-v1) where the GPU supports it; commits wait for the client's GPU work (acquire point, else the dmabuf fence).

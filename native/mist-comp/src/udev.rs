@@ -83,6 +83,8 @@ struct Surf {
     /// frames queued, and the vblank watchdog (one timer per output, armed while frames are queued)
     queued: u64,
     watchdog: bool,
+    /// page flips the kernel refused (logged first, then rarely)
+    flip_errors: u64,
     /// adaptive sync on now; None = the output refused it (never retried)
     vrr: Option<bool>,
     /// the connector's modes (wlr-output-management picks among them)
@@ -203,6 +205,7 @@ pub fn init(event_loop: &mut EventLoop<CalloopData>, data: &mut CalloopData) -> 
     tracing::info!("gpu {}", path.display());
     let mut session_c = session.clone();
     let fd = session_c.open(&path, OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK)?;
+    wait_for_master(&fd);
     let fd = DrmDeviceFd::new(DeviceFd::from(fd));
     let node = DrmNode::from_file(fd.clone())?;
     let (drm, drm_notifier) = DrmDevice::new(fd.clone(), true)?;
@@ -337,6 +340,35 @@ pub fn init(event_loop: &mut EventLoop<CalloopData>, data: &mut CalloopData) -> 
     Ok(())
 }
 
+/// Another compositor can still hold the GPU when the session starts (the greeter's, until it has exited):
+/// wait up to 5 s for DRM master instead of starting without it, when every page flip would be refused.
+fn wait_for_master(fd: &std::os::fd::OwnedFd) {
+    struct Card<'a>(std::os::fd::BorrowedFd<'a>);
+    impl std::os::fd::AsFd for Card<'_> {
+        fn as_fd(&self) -> std::os::fd::BorrowedFd<'_> {
+            self.0
+        }
+    }
+    impl smithay::reexports::drm::Device for Card<'_> {}
+    let card = Card(std::os::fd::AsFd::as_fd(fd));
+    let start = std::time::Instant::now();
+    loop {
+        match card.acquire_master_lock() {
+            Ok(()) => {
+                if start.elapsed() > Duration::from_millis(50) {
+                    tracing::info!("drm master after {} ms (another compositor held the GPU)", start.elapsed().as_millis());
+                }
+                return;
+            }
+            Err(e) if start.elapsed() > Duration::from_secs(5) => {
+                tracing::warn!("no drm master after 5 s ({e}): frames may be refused until it is released");
+                return;
+            }
+            Err(_) => std::thread::sleep(Duration::from_millis(50)),
+        }
+    }
+}
+
 /// Connected connectors <-> outputs.
 fn scan(state: &mut MistComp, dh: &smithay::reexports::wayland_server::DisplayHandle) {
     let Some(udev) = state.udev.as_mut() else { return };
@@ -445,7 +477,7 @@ fn scan(state: &mut MistComp, dh: &smithay::reexports::wayland_server::DisplayHa
         };
         tracing::info!("output {name} {}x{}@{} at {pos:?}", wl_mode.size.w, wl_mode.size.h, wl_mode.refresh);
         events.push(("monitoraddedv2", format!("0,{name},{}", output.description())));
-        udev.surfaces.insert(crtc, Surf { output, drm_output, global, pending: false, idle_tick: false, queued: 0, watchdog: false, vrr: Some(false), modes: info.modes().to_vec() });
+        udev.surfaces.insert(crtc, Surf { output, drm_output, global, pending: false, idle_tick: false, queued: 0, watchdog: false, flip_errors: 0, vrr: Some(false), modes: info.modes().to_vec() });
         if udev.night {
             udev.apply_gamma(crtc);
         }
@@ -625,7 +657,20 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
                 *frames += 1;
                 queued = true;
             }
-            Err(e) => tracing::warn!("queue {}: {e:?}", output.name()),
+            Err(e) => {
+                // the frame never reached the screen, but the damage tracking counts it as shown: the next
+                // frames would only redraw what changed since, over a screen that does not show it (stale,
+                // garbled windows). Draw everything again on the next refresh.
+                s.flip_errors += 1;
+                if s.flip_errors <= 5 || s.flip_errors % 1000 == 0 {
+                    tracing::warn!("queue {} (#{}): {e:?}; full redraw", output.name(), s.flip_errors);
+                }
+                s.drm_output.reset_buffers();
+                let _ = loop_handle.insert_source(Timer::from_duration(frame_period(&output)), |_, _, st: &mut MistComp| {
+                    st.dirty = true;
+                    TimeoutAction::Drop
+                });
+            }
         }
     }
 
