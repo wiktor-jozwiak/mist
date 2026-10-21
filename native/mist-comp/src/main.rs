@@ -59,6 +59,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing_subscriber::fmt().with_ansi(ansi).init();
     }
 
+    // Mist's own binaries (mist-ui-bin in the key bindings) live in ~/.local/bin, which a session started by
+    // greetd / a display manager may not have in PATH
+    if let Ok(home) = std::env::var("HOME") {
+        let bin = format!("{home}/.local/bin");
+        let path = std::env::var("PATH").unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin".into());
+        if !path.split(':').any(|p| p == bin) {
+            std::env::set_var("PATH", format!("{bin}:{path}"));
+        }
+    }
+
     // `hyprctl` for scripts on a session without Hyprland (start-mist links it): `hyprctl [-j] cmd args…`
     let argv: Vec<String> = std::env::args().collect();
     let as_hyprctl = argv.first().is_some_and(|a| a.rsplit('/').next() == Some("hyprctl"));

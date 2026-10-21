@@ -23,6 +23,8 @@ for b in mist-comp mist-ui; do
     [ -x "$SRC/target/release/$b" ] || { echo "brak $SRC/target/release/$b: najpierw cargo build --release"; exit 1; }
 done
 
+# `mist-session hyprland|mist|update|status` from any console
+ln -sf "$SRC/mist-comp/session/mist-session" /usr/local/bin/mist-session
 # binaries readable by the greeter user (the user's ~/.local is behind a 700 home)
 install -m755 "$SRC/target/release/mist-comp" /usr/local/bin/mist-greeter-comp
 install -m755 "$SRC/target/release/mist-ui" /usr/local/bin/mist-greeter-ui

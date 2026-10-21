@@ -39,6 +39,9 @@ if ! cmp -s native/mist-comp/session/mist.desktop "$SESS" 2>/dev/null; then
     sudo install -Dm644 native/mist-comp/session/mist.desktop "$SESS"
 fi
 echo "   $SESS"
+# `mist-session hyprland|mist|update|status` from any console
+sudo ln -sf "$ROOT/native/mist-comp/session/mist-session" /usr/local/bin/mist-session
+echo "   /usr/local/bin/mist-session"
 
 echo "== 4/4 greeter"
 if [ $GREETER = 1 ]; then
