@@ -1620,7 +1620,7 @@ impl Pane for Start {
                         // raise the player: its desktop entry's window
                         let p = cx.players.iter().find(|p| p.playing).or_else(|| cx.players.iter().find(|p| !p.title.is_empty())).cloned();
                         match p {
-                            Some(p) if !p.entry.is_empty() => Act::Run(crate::switcher::hypr(&format!("hl.dispatch(hl.dsp.focus({{ window = \"class:(?i){}\" }}))", p.entry))),
+                            Some(p) if crate::switcher::lua_name_ok(&p.entry) => Act::Run(crate::switcher::hypr(&format!("hl.dispatch(hl.dsp.focus({{ window = \"class:(?i){}\" }}))", p.entry))),
                             _ => Act::None,
                         }
                     }

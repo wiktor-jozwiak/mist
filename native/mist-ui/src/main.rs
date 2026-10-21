@@ -96,6 +96,22 @@ fn main() {
         d.weather = rd("weather");
         d.garmin = rd("garmin");
         d.running = rd("running");
+        // MIST_EDIT=garmin,running,weather: those cards turned to their settings (the backs settled)
+        if let Ok(e) = std::env::var("MIST_EDIT") {
+            for k in ["garmin", "running"] {
+                if e.split(',').any(|x| x == k) {
+                    d.editing.insert(k, true);
+                }
+            }
+            d.wx.editing = e.split(',').any(|x| x == "weather");
+            // MIST_SCROLL=px: the weather card's settings scrolled down by that much (clamped on paint)
+            d.wx.sheet.0 = std::env::var("MIST_SCROLL").ok().and_then(|s| s.parse().ok()).unwrap_or(0.0);
+            for _ in 0..30 {
+                d.dirty = true;
+                d.paint_stage(&mut t);
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
         let t0 = std::time::Instant::now();
         d.paint_stage(&mut t);
         eprintln!("stage {:?}", t0.elapsed());

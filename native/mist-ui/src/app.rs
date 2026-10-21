@@ -724,6 +724,8 @@ impl App {
                 // the language changed: app names and descriptions in the new one
                 if self.apps.lang != crate::i18n::lang() {
                     self.apps = Apps::load();
+                    self.mark_all();
+                    self.island_dirty = true;
                 }
                 self.desk.cfg = crate::desktop::Cfg::load();
                 self.desk_relayout();
@@ -1233,6 +1235,13 @@ impl App {
                     }
                 }
             }
+            // the stage: a card turned to its settings scrolls them (wheel notch 40 px, touchpad as it moves)
+            PointerEventKind::Axis { vertical, .. } => {
+                let dy = if vertical.discrete != 0 { vertical.discrete as f32 * 40.0 } else { vertical.absolute as f32 };
+                if dy != 0.0 && self.desk.sheet_wheel(dy) {
+                    self.desk.dirty = true;
+                }
+            }
             _ => {}
         }
         let _ = p;
@@ -1295,7 +1304,7 @@ impl App {
         let Some(isf) = self.island_surf.as_mut() else { return };
         let mut cx = crate::island::Ctx { t: &mut self.text, icons: &mut self.icons, imgs: &mut self.imgs, phone: &st, now: crate::data::now() };
         let t0 = Instant::now();
-        self.island.draw(&mut isf.canvas, &mut cx, ringing, call);
+        let damage = self.island.draw(&mut isf.canvas, &mut cx, ringing, call);
         let us = t0.elapsed().as_micros() as u64;
         DRAWS.with(|d| *d.borrow_mut().entry("island_us").or_insert(0) += us);
         drop(st);
@@ -1318,7 +1327,8 @@ impl App {
             isf.focus_kbd = self.island.replying;
             isf.layer.set_keyboard_interactivity(if self.island.replying { KeyboardInteractivity::OnDemand } else { KeyboardInteractivity::None });
         }
-        Self::commit(&mut self.pool, &isf.layer, &isf.canvas);
+        // only the shape's box (old and new) changed: the compositor recomposites that, not 560x240
+        Self::commit_box(&mut self.pool, &isf.layer, &isf.canvas, damage);
     }
 
     // a frame of the equalizer alone: its box repainted over the last frame, only that box damaged
@@ -2434,6 +2444,13 @@ pub fn launch(exec: &str) {
 // ---------------------------------------------------------------- messages from the data threads
 impl App {
     pub fn on_msg(&mut self, m: Msg) {
+        // the island draws none of these (its frame is ~0.1-0.5 ms): Stats alone came every 2 s, the same Audio
+        // state again on every pactl stream event; Hypr only for fullscreen (checked in its arm)
+        let island_too = match &m {
+            Msg::Stats(..) | Msg::Tray(..) | Msg::Pins | Msg::Cursor(..) | Msg::Wall(..) | Msg::WinThumb(..) | Msg::Lock | Msg::IdleCfg | Msg::Polkit(..) | Msg::Net(..) | Msg::Bt(..) | Msg::Hypr(..) => false,
+            Msg::Audio(a) => *a != self.island.audio,
+            _ => true,
+        };
         // the bars and the dock draw only st, hypr, the tray and the popup: these messages touch none of it
         // (with music on, Audio + Players alone redrew both bars and the dock ~8 times a second)
         let bars_too = !matches!(&m, Msg::Players(..) | Msg::Audio(..) | Msg::Data(..) | Msg::Cursor(..) | Msg::HyprEv(..) | Msg::Note(..) | Msg::Phone2(..) | Msg::Profile(..) | Msg::Sys(..) | Msg::NmLine(..) | Msg::BtDevs(..) | Msg::WinThumb(..));
@@ -2474,7 +2491,12 @@ impl App {
                 self.dock_rebuild();
                 // only real fullscreen (mode 2) on the island's monitor hides the idle pill
                 let mon = self.hypr.monitors.iter().find(|m| m.1 == primary_monitor()).map(|m| m.2);
-                self.island.fullscreen = self.hypr.clients.iter().any(|c| Some(c.ws_id) == mon && c.fullscreen == 2);
+                let fs = self.hypr.clients.iter().any(|c| Some(c.ws_id) == mon && c.fullscreen == 2);
+                if fs != self.island.fullscreen {
+                    self.island.fullscreen = fs;
+                    self.island_dirty = true;
+                }
+                self.island.focus_class = self.hypr.clients.iter().find(|c| c.focus == 0).map(|c| c.class.to_lowercase()).unwrap_or_default();
             }
             Msg::Net(n) => self.st.net = n,
             Msg::Bt(on, dev) => {
@@ -2601,7 +2623,9 @@ impl App {
         if bars_too {
             self.mark_all();
         }
-        self.island_dirty = true;
+        if island_too {
+            self.island_dirty = true;
+        }
     }
 }
 

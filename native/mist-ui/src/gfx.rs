@@ -103,11 +103,22 @@ impl Canvas {
 
     // BGRA (wl_shm Argb8888 little endian) copy of the premultiplied canvas
     pub fn to_bgra(&self, out: &mut [u8]) {
-        for (d, s) in out.chunks_exact_mut(4).zip(self.pm.data().chunks_exact(4)) {
-            d[0] = s[2];
-            d[1] = s[1];
-            d[2] = s[0];
-            d[3] = s[3];
+        let src = self.pm.data();
+        let len = out.len().min(src.len());
+        let (out_head, out_mid, out_tail) = unsafe { out[..len].align_to_mut::<u32>() };
+        let (src_head, src_mid, src_tail) = unsafe { src[..len].align_to::<u32>() };
+        if out_head.is_empty() && src_head.is_empty() && out_tail.is_empty() && src_tail.is_empty() {
+            for (d, s) in out_mid.iter_mut().zip(src_mid.iter()) {
+                let px = *s;
+                *d = (px & 0xFF00FF00) | ((px & 0x000000FF) << 16) | ((px & 0x00FF0000) >> 16);
+            }
+        } else {
+            for (d, s) in out[..len].chunks_exact_mut(4).zip(src[..len].chunks_exact(4)) {
+                d[0] = s[2];
+                d[1] = s[1];
+                d[2] = s[0];
+                d[3] = s[3];
+            }
         }
     }
 }
