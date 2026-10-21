@@ -286,6 +286,9 @@ fn glyph(c: &mut Canvas, t: &mut Text, cx: f32, cy: f32, cp: u32, size: f32, col
 }
 
 // ------------------------------------------------------------------ the locker
+// the password capsule
+const FIELD_W: f32 = 244.0;
+const FIELD_H: f32 = 36.0;
 struct LSurf {
     output: wl_output::WlOutput,
     name: String,
@@ -295,12 +298,12 @@ struct LSurf {
     sharp: Option<Pixmap>,
     blurred: Option<Pixmap>,
     clock: Option<(i64, Pixmap)>, // date + glass time, per minute
-    // (awake level, minute) of what is on screen, and on the main surface the capsule band as it is without
-    // the avatar / capsule (wallpaper, blur, vignette): a caret blink or a typed character restores the band
-    // in `frame` and draws the capsule again, nothing else
-    base: Option<(u32, i64, Pixmap)>,
-    // the main surface's frame, reused: no full-screen allocation per caret blink
-    frame: Option<Canvas>,
+    // (sharp, frosted), each with the vignette: a frame mixes the two by the awake level, then the clock and the
+    // field (was the whole screen of every monitor per key, ~27 ms each); sharp/blurred are dropped once built
+    base: Option<(Pixmap, Pixmap)>,
+    drawn_aw: u16, // the awake level (of 256) the last frame mixed
+    drawn_min: i64,
+    canvas: Canvas,
     dirty: bool,
 }
 
@@ -336,8 +339,7 @@ struct L {
     shake: Option<Instant>,
     spin: Instant,
     blink: Instant,
-    // the caret phase on screen: the next frame is due when it flips
-    blink_drawn: bool,
+    blink_on: bool, // the cursor's phase last drawn (hard on/off like macOS: a repaint only per flip)
     go_hover: bool,
     unlocked: bool,
     exit: bool,
@@ -349,22 +351,32 @@ struct L {
 
 impl L {
     fn wake(&mut self) {
+        let was = self.awake.target();
         self.awake.set(1.0, 450.0, crate::anim::Ease::OutCubic);
         self.last_input = Instant::now();
         self.blink = Instant::now();
-        self.dirty_all();
-    }
-    // the surface with the avatar and the password capsule: the primary monitor, else the first one
-    fn main_surf(&self) -> usize {
-        self.surfs.iter().position(|s| s.name == primary_monitor()).unwrap_or(0)
-    }
-    fn blink_on(&self) -> bool {
-        self.blink.elapsed().as_millis() % 1000 < 500
+        if was < 0.5 {
+            self.dirty_all();
+        } else {
+            self.dirty_field();
+        }
     }
     fn dirty_all(&mut self) {
         for s in &mut self.surfs {
             s.dirty = true;
         }
+    }
+    // only the monitor with the password field
+    fn dirty_field(&mut self) {
+        let m = self.main_surf();
+        if let Some(s) = self.surfs.get_mut(m) {
+            s.dirty = true;
+        }
+    }
+    // the surface with the avatar and the password field: the primary monitor, else the first one (a primary
+    // named in the config but not connected must not leave the lock without a field)
+    fn main_surf(&self) -> usize {
+        self.surfs.iter().position(|s| s.name == primary_monitor()).unwrap_or(0)
     }
     fn animating(&self) -> bool {
         self.awake.running() || self.hint.running() || self.go.running() || self.shake.map(|s| s.elapsed().as_millis() < 400).unwrap_or(false) || self.busy
@@ -397,7 +409,7 @@ impl L {
         }
         let surface = self.compositor.create_surface(&self.qh);
         let ls = lock.create_lock_surface(surface, &o, &self.qh);
-        self.surfs.push(LSurf { output: o, name, surface: ls, w: 0, h: 0, sharp: None, blurred: None, clock: None, base: None, frame: None, dirty: true });
+        self.surfs.push(LSurf { output: o, name, surface: ls, w: 0, h: 0, sharp: None, blurred: None, clock: None, base: None, drawn_aw: u16::MAX, drawn_min: 0, canvas: Canvas::new(1, 1), dirty: true });
     }
 
     // date + glass numerals (MacLock clock column), cached per minute
@@ -460,12 +472,12 @@ impl L {
         self.surfs[i].dirty = false;
         if self.surfs[i].name.is_empty() {
             self.surfs[i].name = self.outputs.info(&self.surfs[i].output).and_then(|i| i.name.clone()).unwrap_or_default();
-            // a newly named monitor may take the capsule from the one drawing it now
+            // a newly named monitor may take the field from the one drawing it now
             if !self.surfs[i].name.is_empty() {
                 self.dirty_all();
             }
         }
-        if self.surfs[i].sharp.is_none() {
+        if self.surfs[i].base.is_none() {
             let p = photo(&self.wall, w, h);
             self.surfs[i].blurred = Some(frosted(&p));
             self.surfs[i].sharp = Some(p);
@@ -475,92 +487,80 @@ impl L {
             let pm = self.clock(w);
             self.surfs[i].clock = Some((minute, pm));
         }
+        let t0 = Instant::now();
         let aw = self.awake.value();
-        let key = (aw * 1000.0).round() as u32;
-        let reuse = self.surfs[i].base.as_ref().is_some_and(|b| b.0 == key && b.1 == minute);
-        let main = i == self.main_surf();
-        let band = Self::band(h);
-        // nothing but the capsule band changed: no need to send another monitor a frame at all
-        if reuse && !main {
-            return;
-        }
-        let frame = self.surfs[i].frame.take().filter(|f| f.pm.width() == w && f.pm.height() == h);
-        let mut c = match (reuse, frame) {
-            (true, Some(mut f)) if self.surfs[i].base.as_ref().is_some_and(|b| b.2.height() == band) => {
-                let (_, _, b) = self.surfs[i].base.as_ref().unwrap();
-                let at = ((h - band) * w * 4) as usize;
-                f.pm.data_mut()[at..].copy_from_slice(b.data());
-                f
-            }
-            _ => {
+        let k = (aw.clamp(0.0, 1.0) * 256.0).round() as u16;
+        let s = &mut self.surfs[i];
+        let rebuilt = s.base.as_ref().map(|b| b.0.width() != w || b.0.height() != h).unwrap_or(true);
+        if rebuilt {
+            let layer = |bg: &Pixmap| {
                 let mut c = Canvas::new(w, h);
-                let s = &self.surfs[i];
-                c.pm.draw_pixmap(0, 0, s.sharp.as_ref().unwrap().as_ref(), &PixmapPaint::default(), Transform::identity(), None);
-                if aw > 0.0 {
-                    c.pm.draw_pixmap(0, 0, s.blurred.as_ref().unwrap().as_ref(), &PixmapPaint { opacity: aw, ..Default::default() }, Transform::identity(), None);
-                }
+                c.pm.draw_pixmap(0, 0, bg.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
                 // soft vignette top and bottom
                 if let Some(p) = crate::gfx::rrect_path(0.0, 0.0, w as f32, h as f32, 0.0) {
                     let k = Rgba(0.0, 0.0, 0.0, 1.0);
                     crate::desktop::fill_lin(&mut c, &p, (0.0, 0.0), (0.0, h as f32), &[(0.0, k.alpha(0.22)), (0.32, k.alpha(0.0)), (0.7, k.alpha(0.0)), (1.0, k.alpha(0.30))]);
                 }
-                if let Some((_, pm)) = &s.clock {
-                    c.pm.draw_pixmap(0, (h as f32 * 0.075).round() as i32 - 60, pm.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
-                }
-                // the band without the capsule, kept on the main surface only
-                let kept = if main {
-                    let at = ((h - band) * w * 4) as usize;
-                    let mut b = Pixmap::new(w, band).unwrap();
-                    b.data_mut().copy_from_slice(&c.pm.data()[at..]);
-                    b
-                } else {
-                    Pixmap::new(1, 1).unwrap()
-                };
-                self.surfs[i].base = Some((key, minute, kept));
-                c
-            }
+                c.pm
+            };
+            let (a, b) = (layer(s.sharp.as_ref().unwrap()), layer(s.blurred.as_ref().unwrap()));
+            s.base = Some((a, b));
+            s.sharp = None;
+            s.blurred = None;
+        }
+        let fresh = rebuilt || s.drawn_aw != k || s.drawn_min != minute;
+        s.drawn_min = minute;
+        s.drawn_aw = k;
+        let field = i == self.main_surf();
+        let s = &mut self.surfs[i];
+        if s.canvas.pm.width() != w || s.canvas.pm.height() != h {
+            s.canvas = Canvas::new(w, h);
+        }
+        let mut c = std::mem::replace(&mut s.canvas, Canvas::new(1, 1));
+        let (a, b) = s.base.as_ref().unwrap();
+        mix(c.pm.data_mut(), a.data(), b.data(), k);
+        if let Some((_, pm)) = &s.clock {
+            c.pm.draw_pixmap(0, (h as f32 * 0.075).round() as i32 - 60, pm.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+        }
+        if field {
+            // the frosted layer behind the field's glass
+            let bl = self.surfs[i].base.take();
+            self.who(&mut c, w as f32, h as f32, bl.as_ref().map(|b| &b.1));
+            self.surfs[i].base = bl;
+        }
+        let Ok((buf, data)) = self.pool.create_buffer(w as i32, h as i32, w as i32 * 4, wl_shm::Format::Argb8888) else {
+            self.surfs[i].canvas = c;
+            return;
         };
-        if main {
-            self.who(&mut c, w as f32, h as f32);
-            self.blink_drawn = self.blink_on();
-        }
-        self.commit_canvas(i, &c, reuse);
-        if main {
-            self.surfs[i].frame = Some(c);
-        }
-    }
-
-    // the bottom rows who() draws in: avatar (with its shadow), name, capsule, hint above 9 % of the height
-    fn band(h: u32) -> u32 {
-        (((h as f32) * 0.09).round() as u32 + 300).min(h)
-    }
-
-    // `band`: only the avatar / capsule / hint area changed
-    fn commit_canvas(&mut self, i: usize, c: &Canvas, band: bool) {
-        let (w, h) = (self.surfs[i].w, self.surfs[i].h);
-        let Ok((buf, data)) = self.pool.create_buffer(w as i32, h as i32, w as i32 * 4, wl_shm::Format::Argb8888) else { return };
         c.to_bgra(data);
+        self.surfs[i].canvas = c;
+        // the background unchanged: only the field's rows reach the compositor
+        let y0 = if fresh || !field { 0 } else { (self.field_top(h as f32) as i32 - 40).max(0) };
         let surf = self.surfs[i].surface.wl_surface();
-        if band {
-            let band = Self::band(h) as i32;
-            surf.damage_buffer(0, h as i32 - band, w as i32, band);
-        } else {
-            surf.damage_buffer(0, 0, w as i32, h as i32);
-        }
+        surf.damage_buffer(0, y0, w as i32, h as i32 - y0);
         let _ = buf.attach_to(surf);
         surf.commit();
+        if std::env::var_os("MIST_LOCK_MS").is_some() {
+            eprintln!("lock: draw {} {}x{} {} {:.2} ms", self.surfs[i].name, w, h, if fresh { "full" } else { "field" }, t0.elapsed().as_secs_f32() * 1000.0);
+        }
+    }
+    // the avatar's top (who)
+    fn field_top(&mut self, h: f32) -> f32 {
+        let t = &mut self.text;
+        let nh = crate::desktop::line_h(t, &Style::ui(17.0, 600.0));
+        let hh = crate::desktop::line_h(t, &Style::ui(13.0, 500.0));
+        h - (h * 0.09).round() - (72.0 + 12.0 + nh + 14.0 + FIELD_H + 12.0 + hh) - 30.0
     }
 
     // avatar, name, password capsule, hint
-    fn who(&mut self, c: &mut Canvas, w: f32, h: f32) {
+    fn who(&mut self, c: &mut Canvas, w: f32, h: f32, frost: Option<&Pixmap>) {
         let dx = self.shake_x();
-        let caret = !self.busy && self.blink_on();
         let t = &mut self.text;
         let raised = Rgba(0.0, 0.0, 0.0, 0.18);
         let ns = Style::ui(17.0, 600.0);
         let hs = Style::ui(13.0, 500.0);
         let (nh, hh) = (crate::desktop::line_h(t, &ns), crate::desktop::line_h(t, &hs));
-        let total = 72.0 + 12.0 + nh + 14.0 + 34.0 + 12.0 + hh;
+        let total = 72.0 + 12.0 + nh + 14.0 + FIELD_H + 12.0 + hh;
         let top = h - (h * 0.09).round() - total;
         let cx = w / 2.0;
         // avatar (picture or initials on the grey gradient), shadow .28 blur .6, 2 px down
@@ -590,6 +590,8 @@ impl L {
                 crate::desktop::text(&mut a, t, 66.0 - iw / 2.0, 66.0 - ih / 2.0, &ini, &is, Rgba(1.0, 1.0, 1.0, 1.0), false, None);
             }
         }
+        // hairline ring: the avatar stays apart from a light wallpaper
+        crate::desktop::border(&mut a, 30.0, 30.0, 72.0, 72.0, 36.0, 1.0, Rgba(1.0, 1.0, 1.0, 0.22));
         crate::desktop::put_with_shadow(c, &a.pm, (cx - 66.0) as i32, (top - 30.0) as i32, 7.7, Rgba(0.0, 0.0, 0.0, 1.0), 0.28, 2);
         // name
         let mut y = top + 72.0 + 12.0;
@@ -598,28 +600,38 @@ impl L {
         crate::desktop::text(c, t, (cx - nw / 2.0).round(), y, &self.full_name, &ns, Rgba(1.0, 1.0, 1.0, 1.0), false, None);
         y += nh + 14.0;
         // password capsule (shakes on a wrong password)
-        let (bx, by, bw, bh) = (cx - 116.0 + dx, y, 232.0, 34.0);
-        crate::desktop::rect(c, bx, by, bw, bh, 17.0, Rgba(1.0, 1.0, 1.0, 0.20));
-        crate::desktop::border(c, bx, by, bw, bh, 17.0, 1.0, Rgba(1.0, 1.0, 1.0, 0.34));
-        crate::desktop::rect(c, bx + 17.0, by + 1.0, bw - 34.0, 1.0, 0.0, Rgba(1.0, 1.0, 1.0, 0.22));
+        let (bx, by, bw, bh) = ((cx - FIELD_W / 2.0 + dx).round(), y.round(), FIELD_W, FIELD_H);
+        let rr = bh / 2.0;
+        // frosted glass: the blurred wallpaper inside the capsule (also while the screen behind is still sharp),
+        // a darker tint so white text reads on a light photo, a hairline and a top highlight
+        if let (Some(f), Some(p)) = (frost, crate::gfx::rrect_path(bx, by, bw, bh, rr)) {
+            let mut paint = tiny_skia::Paint::default();
+            paint.anti_alias = true;
+            paint.shader = tiny_skia::Pattern::new(f.as_ref(), tiny_skia::SpreadMode::Pad, tiny_skia::FilterQuality::Nearest, 1.0, Transform::identity());
+            c.pm.fill_path(&p, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        }
+        crate::desktop::rect(c, bx, by, bw, bh, rr, Rgba(0.0, 0.0, 0.0, 0.10));
+        crate::desktop::rect(c, bx, by, bw, bh, rr, Rgba(1.0, 1.0, 1.0, 0.16));
+        crate::desktop::border(c, bx, by, bw, bh, rr, 1.0, Rgba(1.0, 1.0, 1.0, 0.30));
+        crate::desktop::rect(c, bx + rr, by + 1.0, bw - 2.0 * rr, 1.0, 0.0, Rgba(1.0, 1.0, 1.0, 0.26));
         let n = if self.busy { self.pending_len } else { self.pw.chars().count() };
         let fx = bx + 16.0;
         if n == 0 {
             let ps = Style::ui(14.0, 450.0);
             let ph = crate::desktop::line_h(t, &ps);
-            crate::desktop::text(c, t, fx, by + (bh - ph) / 2.0, "Wpisz hasło", &ps, Rgba(1.0, 1.0, 1.0, 0.62), false, None);
+            crate::desktop::text(c, t, fx, by + (bh - ph) / 2.0, "Wpisz hasło", &ps, Rgba(1.0, 1.0, 1.0, 0.68), false, None);
         } else {
-            let ds = Style::ui(11.0, 500.0).spaced(2.5);
+            let ds = DOTS();
             let dots: String = "●".repeat(n.min(18));
             let dh = crate::desktop::line_h(t, &ds);
             let dw = crate::desktop::text(c, t, fx, by + (bh - dh) / 2.0, &dots, &ds, Rgba(1.0, 1.0, 1.0, 1.0), false, Some(bw - 16.0 - 35.0));
             let _ = dw;
         }
-        // blinking cursor: on / off every 500 ms (two frames a second, not a fade at 10 fps)
-        if caret {
-            let o = 1.0;
-            let tx = if n == 0 { fx } else { fx + t.width(&"●".repeat(n.min(18)), &Style::ui(11.0, 500.0).spaced(2.5)).min(bw - 51.0) };
-            crate::desktop::rect(c, tx, by + 9.0, 1.5, 16.0, 0.0, Rgba(1.0, 1.0, 1.0, 0.85 * o));
+        // blinking cursor: on / off (a repaint per flip, not a fade at 10 fps that stuttered)
+        self.blink_on = blink_phase(self.blink);
+        if !self.busy && self.blink_on {
+            let tx = if n == 0 { fx } else { fx + 2.0 + t.width(&"●".repeat(n.min(18)), &DOTS()).min(bw - 51.0) };
+            crate::desktop::rect(c, tx.round(), by + 10.0, 1.5, 16.0, 0.0, Rgba(1.0, 1.0, 1.0, 0.9));
         }
         // arrow / spinner on the right
         let (gx, gy) = (bx + bw - 5.0 - 12.0, by + bh / 2.0);
@@ -670,6 +682,29 @@ impl L {
         self.hint.set(hint_to, 300.0, crate::anim::Ease::Linear);
         self.go.set(if !self.pw.is_empty() && !self.busy { 1.0 } else { 0.0 }, 160.0, crate::anim::Ease::Linear);
     }
+}
+
+// out = a + (b - a) * k / 256 per byte (both premultiplied: the mix stays valid)
+fn mix(out: &mut [u8], a: &[u8], b: &[u8], k: u16) {
+    match k {
+        0 => out.copy_from_slice(a),
+        256.. => out.copy_from_slice(b),
+        _ => {
+            let (k, j) = (k as u16, 256 - k as u16);
+            for ((o, &x), &y) in out.iter_mut().zip(a).zip(b) {
+                *o = ((x as u16 * j + y as u16 * k) >> 8) as u8;
+            }
+        }
+    }
+}
+
+#[allow(non_snake_case)]
+fn DOTS() -> Style {
+    Style::ui(12.0, 500.0).spaced(3.0)
+}
+const BLINK_MS: u128 = 530;
+fn blink_phase(t: Instant) -> bool {
+    (t.elapsed().as_millis() / BLINK_MS) % 2 == 0
 }
 
 // `mist-ui-bin lock pam-check`: one deliberately wrong password through PAM (proves the conversation works)
@@ -774,7 +809,7 @@ pub fn run(args: &[String]) -> i32 {
         shake: None,
         spin: Instant::now(),
         blink: Instant::now(),
-        blink_drawn: true,
+        blink_on: true,
         go_hover: false,
         unlocked: false,
         exit: false,
@@ -818,10 +853,24 @@ pub fn run(args: &[String]) -> i32 {
     })
     .unwrap();
     let started = Instant::now();
+    let demo = std::env::var_os("MIST_LOCK_DEMO").is_some();
     lh.insert_source(Timer::from_duration(Duration::from_millis(16)), move |_, _, l: &mut L| {
         if let Some(p) = preview {
             if started.elapsed().as_secs() >= p && !l.unlocked {
                 l.unlock();
+            }
+            // MIST_LOCK_DEMO=1 (preview only): wakes at 1 s, then types a character every 120 ms (8 of them)
+            let ms = started.elapsed().as_millis();
+            if demo && ms >= 1000 {
+                if l.awake.target() < 0.5 {
+                    l.wake();
+                }
+                if ms >= 1600 && l.pw.chars().count() < ((ms - 1600) / 120).min(8) as usize {
+                    l.pw.push('x');
+                    l.wake();
+                    l.update_anims();
+                    l.dirty_field();
+                }
             }
         }
         // back to the sharp wallpaper after 30 s without input (empty field)
@@ -831,36 +880,26 @@ pub fn run(args: &[String]) -> i32 {
         }
         l.update_anims();
         let anim = l.animating();
-        // the caret flips (main surface only) and the minute turns (every monitor)
-        let blink_due = !l.busy && l.blink_on() != l.blink_drawn;
-        let (main, minute) = (l.main_surf(), crate::data::now() / 60);
-        for (i, s) in l.surfs.iter_mut().enumerate() {
-            let stale = s.clock.as_ref().map(|c| c.0 != minute).unwrap_or(false);
-            if anim || stale || (blink_due && i == main) {
-                s.dirty = true;
-            }
+        // the cursor flips (field only), the minute turns (all); drawn after dispatch (draw_dirty)
+        if l.awake.running() {
+            l.dirty_all();
+        } else if anim || blink_phase(l.blink) != l.blink_on {
+            l.dirty_field();
         }
-        for i in 0..l.surfs.len() {
-            if l.surfs[i].dirty {
-                l.draw(i);
-            }
+        if l.surfs.iter().any(|s| s.clock.as_ref().map(|c| c.0 != crate::data::now() / 60).unwrap_or(false)) {
+            l.dirty_all();
         }
-        // idle: sleep until the caret flips, the minute turns or the 30 s back to the sharp wallpaper
-        if anim {
-            return TimeoutAction::ToDuration(Duration::from_millis(16));
-        }
-        let flip = 500 - (l.blink.elapsed().as_millis() % 500) as u64;
-        let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
-        let next_min = 60_000 - now_ms % 60_000 + 5;
-        let sharp = if l.awake.target() > 0.5 { 30_000u64.saturating_sub(l.last_input.elapsed().as_millis() as u64) + 5 } else { u64::MAX };
-        let wait = flip.min(next_min).min(sharp).clamp(16, 1000);
-        TimeoutAction::ToDuration(Duration::from_millis(wait + if wait == flip { 2 } else { 0 }))
+        // wake at the next cursor flip (a fixed 100 ms beat made it uneven), at most 250 ms for the rest
+        let flip = (BLINK_MS - l.blink.elapsed().as_millis() % BLINK_MS) as u64 + 2;
+        TimeoutAction::ToDuration(Duration::from_millis(if anim { 16 } else { flip.min(250) }))
     })
     .unwrap();
     while !l.exit {
         if ev.dispatch(Some(Duration::from_millis(500)), &mut l).is_err() {
             break;
         }
+        // right after the event (a key used to wait for the timer: up to 100 ms per character)
+        l.draw_dirty();
         let _ = conn.flush();
     }
     let _ = conn.roundtrip();
@@ -869,6 +908,13 @@ pub fn run(args: &[String]) -> i32 {
 }
 
 impl L {
+    fn draw_dirty(&mut self) {
+        for i in 0..self.surfs.len() {
+            if self.surfs[i].dirty {
+                self.draw(i);
+            }
+        }
+    }
     fn unlock(&mut self) {
         if self.unlocked {
             return;
@@ -892,16 +938,11 @@ impl SessionLockHandler for L {
         let Some(i) = self.surfs.iter().position(|s| s.surface.wl_surface() == surface.wl_surface()) else { return };
         let (w, h) = c.new_size;
         if self.surfs[i].w != w || self.surfs[i].h != h {
-            self.surfs[i].sharp = None;
-            self.surfs[i].blurred = None;
-            self.surfs[i].clock = None;
             self.surfs[i].base = None;
-            self.surfs[i].frame = None;
+            self.surfs[i].clock = None;
         }
         self.surfs[i].w = w;
         self.surfs[i].h = h;
-        // a configure is answered with a full frame on every monitor
-        self.surfs[i].base = None;
         self.draw(i);
     }
 }
@@ -970,7 +1011,8 @@ impl KeyboardHandler for L {
                 }
             }
         }
-        self.dirty_all();
+        self.update_anims();
+        self.dirty_field();
     }
     fn repeat_key(&mut self, c: &Connection, q: &QueueHandle<Self>, k: &wl_keyboard::WlKeyboard, s: u32, ev: KeyEvent) {
         self.press_key(c, q, k, s, ev);
@@ -994,17 +1036,16 @@ impl PointerHandler for L {
                         self.wake();
                     }
                     self.last_ptr = (x, y);
-                    // over the arrow button (only the main surface has it)
-                    let main = self.surfs.get(self.main_surf());
-                    let on = main.filter(|s| s.surface.wl_surface() == &e.surface).map(|s| {
+                    // over the arrow button (only the monitor with the field has it)
+                    let on = self.surfs.get(self.main_surf()).filter(|s| s.surface.wl_surface() == &e.surface).map(|s| {
                         let (w, h) = (s.w as f64, s.h as f64);
-                        let cx = w / 2.0 + 116.0 - 17.0;
-                        let by = h - (h * 0.09).round() - 30.0 - 34.0;
+                        let cx = w / 2.0 + FIELD_W as f64 / 2.0 - 17.0;
+                        let by = h - (h * 0.09).round() - 30.0 - FIELD_H as f64;
                         (x - cx).abs() < 14.0 && y > by - 10.0 && y < by + 40.0
                     }).unwrap_or(false);
                     if on != self.go_hover {
                         self.go_hover = on;
-                        self.dirty_all();
+                        self.dirty_field();
                     }
                 }
                 PointerEventKind::Press { .. } => {

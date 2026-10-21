@@ -83,38 +83,64 @@ fn save_image(v: &ZV, id: u32) -> Option<(String, u32)> {
     if f.len() < 7 {
         return None;
     }
-    let w = i32::try_from(&f[0]).ok()? as u32;
-    let h = i32::try_from(&f[1]).ok()? as u32;
-    let stride = i32::try_from(&f[2]).ok()? as usize;
+    let w = i32::try_from(&f[0]).ok()?;
+    let h = i32::try_from(&f[1]).ok()?;
+    let stride = i32::try_from(&f[2]).ok()?;
     let alpha = bool::try_from(&f[3]).ok()?;
-    let ch = i32::try_from(&f[5]).ok()? as usize;
+    let ch = i32::try_from(&f[5]).ok()?;
     let ZV::Array(a) = &f[6] else { return None };
     let data: Vec<u8> = a.iter().filter_map(|x| u8::try_from(x).ok()).collect();
-    if w == 0 || h == 0 || w > 4096 || h > 4096 {
+    let pm = decode_image(w, h, stride, alpha, ch, &data)?;
+    let dir = format!("{}/notif-img", state_dir());
+    let _ = std::fs::create_dir_all(&dir);
+    let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    let path = format!("{dir}/n{ms}_{id}.png");
+    pm.save_png(&path).ok()?;
+    Some((path, w as u32))
+}
+
+// image-data (iiibiiay) -> premultiplied pixmap. Every field comes from any D-Bus client: a bad size,
+// stride or channel count is refused (with panic = "abort" an out-of-range index took the whole shell down).
+fn decode_image(w: i32, h: i32, stride: i32, alpha: bool, ch: i32, data: &[u8]) -> Option<tiny_skia::Pixmap> {
+    if !(1..=4096).contains(&w) || !(1..=4096).contains(&h) || !(3..=4).contains(&ch) || stride < w * ch {
         return None;
     }
-    let mut pm = tiny_skia::Pixmap::new(w, h)?;
+    let (w, h, stride, ch) = (w as usize, h as usize, stride as usize, ch as usize);
+    if data.len() < (h - 1) * stride + w * ch {
+        return None;
+    }
+    let mut pm = tiny_skia::Pixmap::new(w as u32, h as u32)?;
     let px = pm.data_mut();
-    for y in 0..h as usize {
-        for x in 0..w as usize {
+    for y in 0..h {
+        for x in 0..w {
             let i = y * stride + x * ch;
-            if i + ch > data.len() {
-                continue;
-            }
-            let a = if alpha && ch >= 4 { data[i + 3] as u32 } else { 255 };
-            let o = (y * w as usize + x) * 4;
+            let a = if alpha && ch == 4 { data[i + 3] as u32 } else { 255 };
+            let o = (y * w + x) * 4;
             px[o] = (data[i] as u32 * a / 255) as u8;
             px[o + 1] = (data[i + 1] as u32 * a / 255) as u8;
             px[o + 2] = (data[i + 2] as u32 * a / 255) as u8;
             px[o + 3] = a as u8;
         }
     }
+    Some(pm)
+}
+
+// notif-img/ files no history entry points at: pictures of replaced / transient notifications (never in the
+// history) piled up. Only ones older than max_age go, so a live notification's picture stays while shown.
+fn orphan_images(dir: &std::path::Path, history: &[Value], max_age: std::time::Duration) -> Vec<std::path::PathBuf> {
+    let keep: std::collections::HashSet<&str> = history.iter().filter_map(|e| e["image"].as_str()).map(|s| s.trim_start_matches("file://")).collect();
+    let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
+    rd.flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "png") && !p.to_str().is_some_and(|s| keep.contains(s)))
+        .filter(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|a| a > max_age))
+        .collect()
+}
+fn sweep_images(history: &[Value]) {
     let dir = format!("{}/notif-img", state_dir());
-    let _ = std::fs::create_dir_all(&dir);
-    let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
-    let path = format!("{dir}/n{ms}_{id}.png");
-    pm.save_png(&path).ok()?;
-    Some((path, w))
+    for p in orphan_images(std::path::Path::new(&dir), history, std::time::Duration::from_secs(900)) {
+        let _ = std::fs::remove_file(p);
+    }
 }
 
 #[zbus::interface(name = "org.freedesktop.Notifications")]
@@ -159,7 +185,7 @@ impl Server {
                 break;
             }
         }
-        let ip = hint_str(&hints, "image-path");
+        let ip = [hint_str(&hints, "image-path"), hint_str(&hints, "image_path")].into_iter().find(|s| !s.is_empty()).unwrap_or_default();
         n.icon = if !img.is_empty() { img.clone() } else if !ip.is_empty() { ip.clone() } else { app_icon.clone() };
         let resident = hint_bool(&hints, "resident");
         let transient = hint_bool(&hints, "transient");
@@ -225,6 +251,8 @@ pub fn spawn(tx: Sender<Msg>, cmds: std::sync::mpsc::Receiver<Cmd>) {
         let next = history.iter().filter_map(|e| e["id"].as_u64()).max().unwrap_or(0) as u32;
         let sh = Arc::new(Mutex::new(Shared { next, live: HashMap::new(), dnd: st["dnd"].as_bool().unwrap_or(false), history }));
         let _ = std::fs::create_dir_all(format!("{}/notif-img", state_dir()));
+        sweep_images(&sh.lock().unwrap().history);
+        let mut swept = std::time::Instant::now();
         let server = Server { sh: sh.clone(), tx: tx.clone() };
         let conn = zbus::blocking::connection::Builder::session()
             .and_then(|b| b.serve_at("/org/freedesktop/Notifications", server))
@@ -277,6 +305,10 @@ pub fn spawn(tx: Sender<Msg>, cmds: std::sync::mpsc::Receiver<Cmd>) {
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                 Err(_) => return,
             }
+            if swept.elapsed().as_secs() > 900 {
+                sweep_images(&sh.lock().unwrap().history);
+                swept = std::time::Instant::now();
+            }
             // expire the old ones (10 min), unless resident
             let old: Vec<u32> = sh.lock().unwrap().live.iter().filter(|(_, v)| !v.2 && v.1.elapsed().as_secs() > 600).map(|(k, _)| *k).collect();
             for id in old {
@@ -287,4 +319,41 @@ pub fn spawn(tx: Sender<Msg>, cmds: std::sync::mpsc::Receiver<Cmd>) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn image_data_bounds() {
+        // a 2x2 RGB picture with padded rows decodes
+        let ok = decode_image(2, 2, 8, false, 3, &[9; 14]).unwrap();
+        assert_eq!(ok.pixel(1, 1).unwrap().red(), 9);
+        // what used to index past the end (abort = the whole shell gone)
+        assert!(decode_image(1, 1, 1, false, 1, &[0]).is_none()); // 1 channel
+        assert!(decode_image(1, 1, 0, false, 0, &[0]).is_none()); // 0 channels
+        assert!(decode_image(2, 2, -1, true, 4, &[0; 16]).is_none()); // negative stride
+        assert!(decode_image(2, 2, 4, true, 4, &[0; 16]).is_none()); // stride < w * ch
+        assert!(decode_image(2, 2, 8, true, 4, &[0; 15]).is_none()); // short data
+        assert!(decode_image(-1, 2, 8, true, 4, &[0; 16]).is_none());
+        assert!(decode_image(5000, 1, 20000, true, 4, &[0; 20000]).is_none());
+    }
+
+    #[test]
+    fn orphans_spare_history_and_fresh() {
+        let d = std::env::temp_dir().join(format!("mist-notif-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        for f in ["kept.png", "orphan.png", "note.txt"] {
+            std::fs::write(d.join(f), b"x").unwrap();
+        }
+        let hist = vec![json!({ "image": format!("file://{}", d.join("kept.png").display()) })];
+        // all fresh: nothing goes
+        assert!(orphan_images(&d, &hist, std::time::Duration::from_secs(900)).is_empty());
+        // old enough: only the unreferenced PNG
+        let o = orphan_images(&d, &hist, std::time::Duration::ZERO);
+        assert_eq!(o, vec![d.join("orphan.png")]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
 }

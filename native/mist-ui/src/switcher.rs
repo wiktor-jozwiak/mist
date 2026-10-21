@@ -27,6 +27,26 @@ pub fn hypr(lua: &str) -> Vec<String> {
     vec!["hyprctl".into(), "eval".into(), lua.into()]
 }
 
+// a name from another program (MPRIS DesktopEntry, …) that goes into a Lua string: only desktop-file-id
+// characters, so `x" })) hl.exec_cmd("…") --` can never run (hyprctl eval is full Lua)
+pub fn lua_name_ok(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 255 && s.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn lua_names() {
+        assert!(super::lua_name_ok("org.mozilla.firefox"));
+        assert!(super::lua_name_ok("zen_browser-1"));
+        assert!(!super::lua_name_ok(""));
+        assert!(!super::lua_name_ok("x\" })) hl.exec_cmd(\"touch /tmp/pwn\") --"));
+        assert!(!super::lua_name_ok("a'b"));
+        assert!(!super::lua_name_ok("a\\b"));
+        assert!(!super::lua_name_ok("a]]b"));
+    }
+}
+
 impl Switcher {
     // the first press goes to the previous app, like macOS
     pub fn new(apps: Vec<App>, step: i32) -> Switcher {

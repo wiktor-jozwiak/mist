@@ -31,6 +31,7 @@ pub struct Wx {
     foot_cache: Option<(Pixmap, Pixmap, usize, usize)>, // + the rows that differ (start, end)
     foot_o: Option<f32>,
     pub intent: Intent,
+    pub sheet: (f32, f32),
 }
 
 const DAYS: [&str; 7] = ["niedziela", "poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota"];
@@ -114,7 +115,7 @@ struct Ins {
 
 impl Wx {
     pub fn new() -> Wx {
-        Wx { fx: Fx::new(), hits: Vec::new(), ptr: None, hovered: false, sel_day: 0, pinned: false, pin_hour: -1, ii: 0, editing: false, last_pop: "", away: None, turned: Instant::now(), cursor: "", last_n: 0, foot_fast: false, foot_cache: None, foot_o: None, intent: Intent::new() }
+        Wx { fx: Fx::new(), hits: Vec::new(), ptr: None, hovered: false, sel_day: 0, pinned: false, pin_hour: -1, ii: 0, editing: false, last_pop: "", away: None, turned: Instant::now(), cursor: "", last_n: 0, foot_fast: false, foot_cache: None, foot_o: None, intent: Intent::new(), sheet: (0.0, 0.0) }
     }
 
     fn hours(cfg: &Cfg) -> usize {
@@ -676,7 +677,7 @@ impl Wx {
         crate::desktop::Desk::card_rim(c, ox, oy, w, h);
         // the back of the card
         let mut sh: Hits = Vec::new();
-        edit_sheet(c, t, &mut self.fx, &mut sh, cfg, "weather", "Pogoda", ox, oy, w, h, self.editing, ptr.map(|p| (p.0 + ox, p.1 + oy)));
+        edit_sheet(c, t, &mut self.fx, &mut sh, cfg, "weather", "Pogoda", ox, oy, w, h, self.editing, &mut self.sheet, ptr.map(|p| (p.0 + ox, p.1 + oy)));
         for r in sh {
             lh.push((r.0 - ox, r.1 - oy, r.2, r.3, r.4));
         }
@@ -958,8 +959,12 @@ impl Wx {
     }
     // wheel: walk through the days
     pub fn wheel(&mut self, down: bool, wx: &Value) -> bool {
+        // turned to its settings: the wheel scrolls them
         if self.editing {
-            return false;
+            let s = (self.sheet.0 + if down { 40.0 } else { -40.0 }).clamp(0.0, self.sheet.1);
+            let moved = s != self.sheet.0;
+            self.sheet.0 = s;
+            return moved;
         }
         let nd = wx["days"].as_array().map(|a| a.len()).unwrap_or(0);
         let n = 4.min(nd.saturating_sub(1));
