@@ -166,6 +166,8 @@ pub struct Config {
     pub env: Vec<(String, String)>,
     /// layout, variant, options
     pub keyboard: (String, String, String),
+    /// a `keyboard` line was given
+    pub keyboard_set: bool,
     pub numlock: bool,
     pub middle_click_paste: bool,
     /// hide the terminal a window was started from (Hyprland misc.enable_swallow)
@@ -196,6 +198,12 @@ pub fn path() -> std::path::PathBuf {
 pub fn load() -> Config {
     let text = std::fs::read_to_string(path()).unwrap_or_else(|_| DEFAULT.to_string());
     let mut c = parse(&text);
+    // the session's own comp.conf: what it leaves out comes from the defaults, so a file with only monitors
+    // (or only a few binds) is not a session without shortcuts, shell or keyboard layout; and there is always
+    // a way out. The greeter (MIST_COMP_CONFIG) keeps exactly its file: no binds, no autostart.
+    if std::env::var_os("MIST_COMP_CONFIG").is_none() {
+        fill_defaults(&mut c, &parse(DEFAULT));
+    }
     // safe mode (start-mist after a crash): none of the features that depend most on the driver
     if safe_mode() {
         c.vrr = false;
@@ -204,6 +212,30 @@ pub fn load() -> Config {
         c.fifo = false;
     }
     c
+}
+
+/// Sections a user config does not have at all take the defaults' (binds, autostart, environment, keyboard);
+/// Ctrl+Alt+BackSpace quits unless something else is bound to quit.
+pub fn fill_defaults(c: &mut Config, d: &Config) {
+    if c.binds.is_empty() {
+        tracing::warn!("comp.conf has no bind lines: using the default key bindings");
+        c.binds = d.binds.clone();
+    }
+    if c.exec.is_empty() {
+        tracing::warn!("comp.conf has no exec lines: using the default autostart (the Mist shell)");
+        c.exec = d.exec.clone();
+    }
+    if c.env.is_empty() {
+        c.env = d.env.clone();
+    }
+    if !c.keyboard_set {
+        c.keyboard = d.keyboard.clone();
+    }
+    if !c.binds.iter().any(|b| b.action == Action::Quit) {
+        if let Some(b) = parse_bind("CTRL+ALT+BackSpace quit", false, true) {
+            c.binds.push(b);
+        }
+    }
 }
 
 /// MIST_COMP_SAFE=1: start-mist restarts a crashed compositor this way (also no blur, no animations).
@@ -229,6 +261,7 @@ pub fn parse(text: &str) -> Config {
             }
             "env" => rest.split_once(char::is_whitespace).map(|(k, v)| c.env.push((k.into(), v.trim().into()))).is_some(),
             "keyboard" => {
+                c.keyboard_set = true;
                 let mut it = rest.split_whitespace();
                 c.keyboard = (
                     it.next().unwrap_or("us").into(),
@@ -508,6 +541,23 @@ bind  CTRL+ALT+BackSpace quit
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn partial_config_keeps_defaults() {
+        let d = super::parse(super::DEFAULT);
+        // only monitors: the default binds, autostart, layout, and a way out
+        let mut c = super::parse("output DP-3 0 0\n");
+        super::fill_defaults(&mut c, &d);
+        assert_eq!(c.binds.len(), d.binds.len());
+        assert!(c.exec.iter().any(|e| e.contains("mist-ui")));
+        assert_eq!(c.keyboard.0, d.keyboard.0);
+        assert!(c.binds.iter().any(|b| b.action == super::Action::Quit));
+        // own binds stay the only binds, plus the escape
+        let mut c = super::parse("bind SUPER+Q close\nkeyboard us\n");
+        super::fill_defaults(&mut c, &d);
+        assert_eq!(c.binds.len(), 2);
+        assert_eq!(c.keyboard.0, "us");
+    }
+
     use super::*;
 
     #[test]
