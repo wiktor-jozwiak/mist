@@ -236,6 +236,9 @@ WAYLAND_DISPLAY=$S "$BIN/mist-ui" --wincap "$A" "$OUT/wincap.ppm" >"$OUT/wincap.
 check "toplevel export: the window at its size (dock picker thumbnails)" "grep -qx '900x600' '$OUT/wincap.txt'" "$(cat "$OUT/wincap.txt")"
 check "toplevel export: real pixels, not blank" "[ \$(tail -c 100000 '$OUT/wincap.ppm' | od -An -tu1 -v | tr -s ' ' '\n' | sort -u | wc -l) -gt 8 ]"
 check "toplevel export: an unknown window fails" "! WAYLAND_DISPLAY=$S '$BIN/mist-ui' --wincap 0xdead '$OUT/none.ppm' >/dev/null 2>&1"
+# wp_presentation: every frame gets its feedback (a client that waits for it before drawing on never hangs)
+WAYLAND_DISPLAY=$S timeout 20 "$BIN/mist-ui" --present 30 >"$OUT/present.txt" 2>&1
+check "presentation feedback: 30 frames, all presented" "grep -q '^presented 30 ' '$OUT/present.txt'" "$(cat "$OUT/present.txt")"
 C motion 1900 400 >/dev/null; C motion 300 400 >/dev/null
 check "event focusedmonv2 when the pointer changes output" "wait_for \"grep -q '^focusedmonv2>>HDMI-A-1' '$OUT/events.log'\" 30"
 J "eval hl.dispatch(hl.dsp.window.fullscreen({ window = \"address:$A\" }))" >/dev/null

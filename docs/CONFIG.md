@@ -118,7 +118,8 @@ The experimental compositor's key bindings, autostart, monitors and switches; fu
 | `keyboard LAYOUT[,LAYOUT2] [VARIANT] [OPTIONS]`, `numlock on`, `pointer flat` | input |
 | `swipe 3\|4\|off` | touchpad: N-finger horizontal swipe switches workspaces (default 3) |
 | `vrr fullscreen\|off`, `swallow on`, `middle_click_paste off` | as Hyprland's misc options |
-| `explicit_sync off` | no linux-drm-syncobj (default: on where the GPU supports it) |
+| `explicit_sync off` | no linux-drm-syncobj (default: on where the GPU supports it); try it when a window freezes and the log says a frame waits for its GPU fence |
+| `direct_scanout on` | a fullscreen window's buffer goes straight to the screen (Hyprland `render:direct_scanout`); off by default, everything is composited |
 | `screencopy_dmabuf on` | screen casting into the client's GPU buffer (opt-in) |
 | `fifo on` | wp-fifo + wp-commit-timing: Vulkan FIFO (vsync) and Proton-paced clients are paced by the display refresh instead of frame callbacks (opt-in; off in safe mode) |
 

@@ -129,7 +129,7 @@ pub fn render(state: &mut MistComp) {
     }
     hl.last = Some(std::time::Instant::now());
     state.frames += 1;
-    let MistComp { headless, space, locked, lock, shot, shot_output: state_shot_output, force_full, start_time, anim, out_seq, .. } = state;
+    let MistComp { headless, space, locked, lock, shot, shot_output: state_shot_output, force_full, start_time, anim, out_seq, frames, .. } = state;
     let Some(hl) = headless.as_mut() else { return };
     let age = if std::mem::take(force_full) { 0 } else { 1 };
     let now = start_time.elapsed();
@@ -153,6 +153,13 @@ pub fn render(state: &mut MistComp) {
             }
         }
         drop(fb);
+        // wp_presentation: shown at this tick (no vblank here)
+        crate::scene::take_feedback(space, lock.surfaces.get(&output.name()), &output).presented::<_, smithay::utils::Monotonic>(
+            smithay::utils::Clock::<smithay::utils::Monotonic>::new().now(),
+            smithay::wayland::presentation::Refresh::fixed(FRAME),
+            *frames,
+            smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback::Kind::empty(),
+        );
         for l in layer_map_for_output(&output).layers() {
             l.send_frame(&output, now, Some(Duration::ZERO), |_, _| Some(output.clone()));
         }

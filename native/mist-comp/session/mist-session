@@ -4,6 +4,7 @@
 #   mist-session mist       po zalogowaniu Mist (mist-comp); buduje i instaluje bieżący kod z checkoutu
 #   mist-session update     git pull + build + install (gałąź dev), sesja bez zmian
 #   mist-session status     co jest ustawione i co działa teraz
+#   mist-session log        najważniejsze z logu Mist (do wklejenia w zgłoszeniu)
 # Asks for sudo; offers a reboot at the end (the login screen restarts cleanly that way).
 set -eu
 SELF=$(readlink -f "$0")
@@ -54,12 +55,23 @@ case "${1:-}" in
         printf 'mist-comp:          %s\n' "$(ls -l --time-style=+%F\ %R "$HOME/.local/bin/mist-comp" 2>/dev/null | awk '{print $6, $7}')"
         printf 'Log Mist:           %s\n' "$HOME/.cache/mist/comp.log"
         ;;
+    log)
+        L="$HOME/.cache/mist/comp.log"
+        [ -f "$L" ] || L="$L.old"
+        [ -f "$L" ] || { echo "Brak logu: Mist jeszcze nie działał (~/.cache/mist/comp.log)"; exit 1; }
+        echo "== $L ($(date -r "$L" '+%F %R'))"
+        # start (GPU, driver, outputs, explicit sync), then warnings and errors, repeated lines once
+        grep -E 'INFO mist_comp::udev|explicit sync|safe mode' "$L" | head -20
+        echo "== ostrzeżenia i błędy"
+        grep -E ' (WARN|ERROR) |panicked' "$L" | sed -E 's/^[0-9T:.-]+Z +//' | sort | uniq -c | sort -rn | head -40
+        ;;
     *)
-        echo "mist-session hyprland | mist | update | status"
+        echo "mist-session hyprland | mist | update | status | log"
         echo "  hyprland  po zalogowaniu Hyprland"
         echo "  mist      po zalogowaniu Mist (buduje i instaluje bieżący kod)"
         echo "  update    pobierz najnowszy kod (dev) i zainstaluj"
         echo "  status    co jest ustawione"
+        echo "  log       najważniejsze z logu Mist (wklej mi to)"
         exit 1
         ;;
 esac

@@ -38,7 +38,10 @@ use smithay::{
     input::pointer::{CursorImageAttributes, CursorImageStatus},
     output::{Mode as WlMode, Output, PhysicalProperties},
     reexports::{
-        calloop::EventLoop,
+        calloop::{
+            timer::{TimeoutAction, Timer},
+            EventLoop,
+        },
         drm::{
             control::{connector, crtc, Device as _, ModeTypeFlags},
             Device as _,
@@ -63,8 +66,10 @@ smithay::backend::renderer::element::render_elements! {
     Scene = crate::scene::SceneElem,
 }
 
-type Mgr = DrmOutputManager<GbmAllocator<DrmDeviceFd>, GbmFramebufferExporter<DrmDeviceFd>, (), DrmDeviceFd>;
-type Out = DrmOutput<GbmAllocator<DrmDeviceFd>, GbmFramebufferExporter<DrmDeviceFd>, (), DrmDeviceFd>;
+/// a queued frame carries the wp_presentation feedback of what it shows (sent at its vblank)
+type Feedback = Option<smithay::desktop::utils::OutputPresentationFeedback>;
+type Mgr = DrmOutputManager<GbmAllocator<DrmDeviceFd>, GbmFramebufferExporter<DrmDeviceFd>, Feedback, DrmDeviceFd>;
+type Out = DrmOutput<GbmAllocator<DrmDeviceFd>, GbmFramebufferExporter<DrmDeviceFd>, Feedback, DrmDeviceFd>;
 
 struct Surf {
     output: Output,
@@ -72,6 +77,12 @@ struct Surf {
     global: GlobalId,
     /// a frame is queued: wait for its vblank before rendering again
     pending: bool,
+    /// nothing changed on screen: frame callbacks wait for the next (estimated) vblank, so a client that
+    /// commits every frame without damage (a browser) runs at the refresh rate, not in a busy loop
+    idle_tick: bool,
+    /// frames queued, and the vblank watchdog (one timer per output, armed while frames are queued)
+    queued: u64,
+    watchdog: bool,
     /// adaptive sync on now; None = the output refused it (never retried)
     vrr: Option<bool>,
     /// the connector's modes (wlr-output-management picks among them)
@@ -211,6 +222,19 @@ pub fn init(event_loop: &mut EventLoop<CalloopData>, data: &mut CalloopData) -> 
     let renderer = unsafe { GlesRenderer::new(ctx)? };
 
     let nvidia = drm.get_driver().map(|d| d.name().to_string_lossy().to_lowercase().contains("nvidia")).unwrap_or(false);
+    if nvidia {
+        // what bug reports need: the driver and the EGL Wayland platform the apps use (explicit sync lives there)
+        let ver = std::fs::read_to_string("/sys/module/nvidia/version").unwrap_or_default();
+        let eglw = ["/usr/lib", "/usr/lib64", "/usr/lib/x86_64-linux-gnu"]
+            .iter()
+            .filter_map(|d| std::fs::read_dir(d).ok())
+            .flatten()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .find(|n| n.starts_with("libnvidia-egl-wayland.so.") && n.matches('.').count() >= 4)
+            .unwrap_or_else(|| "?".into());
+        tracing::info!("nvidia {} ({eglw}); direct scan-out {}", ver.trim(), if data.config.direct_scanout { "on" } else { "off" });
+    }
     let render_formats = renderer.egl_context().dmabuf_render_formats().clone();
     let mgr = DrmOutputManager::new(
         drm,
@@ -234,8 +258,8 @@ pub fn init(event_loop: &mut EventLoop<CalloopData>, data: &mut CalloopData) -> 
     state.dmabuf = Some((dmabuf_state, global));
 
     // vblank: the queued frame is on screen
-    event_loop.handle().insert_source(drm_notifier, move |event, _, data| match event {
-        DrmEvent::VBlank(crtc) => vblank(data, crtc),
+    event_loop.handle().insert_source(drm_notifier, move |event, meta, data| match event {
+        DrmEvent::VBlank(crtc) => vblank(data, crtc, meta.take()),
         DrmEvent::Error(e) => tracing::error!("drm: {e:?}"),
     })?;
 
@@ -421,7 +445,7 @@ fn scan(state: &mut MistComp, dh: &smithay::reexports::wayland_server::DisplayHa
         };
         tracing::info!("output {name} {}x{}@{} at {pos:?}", wl_mode.size.w, wl_mode.size.h, wl_mode.refresh);
         events.push(("monitoraddedv2", format!("0,{name},{}", output.description())));
-        udev.surfaces.insert(crtc, Surf { output, drm_output, global, pending: false, vrr: Some(false), modes: info.modes().to_vec() });
+        udev.surfaces.insert(crtc, Surf { output, drm_output, global, pending: false, idle_tick: false, queued: 0, watchdog: false, vrr: Some(false), modes: info.modes().to_vec() });
         if udev.night {
             udev.apply_gamma(crtc);
         }
@@ -444,18 +468,49 @@ fn conn_name(info: &connector::Info) -> String {
     format!("{}-{}", info.interface().as_str(), info.interface_id())
 }
 
-/// `~/.config/mist/outputs`: lines `NAME X Y` (e.g. `DP-3 0 0`, `HDMI-A-1 1920 0`).
-fn vblank(state: &mut MistComp, crtc: crtc::Handle) {
+/// The queued frame is on screen: its presentation feedback, then the next frame if one waits.
+fn vblank(state: &mut MistComp, crtc: crtc::Handle, meta: Option<smithay::backend::drm::DrmEventMetadata>) {
+    use smithay::{backend::drm::DrmEventTime, reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback::Kind as Fk};
     let Some(udev) = state.udev.as_mut() else { return };
     let Some(s) = udev.surfaces.get_mut(&crtc) else { return };
-    if let Err(e) = s.drm_output.frame_submitted() {
-        tracing::warn!("frame_submitted: {e:?}");
-    }
+    let fb = match s.drm_output.frame_submitted() {
+        Ok(fb) => fb.flatten(),
+        Err(e) => {
+            tracing::warn!("frame_submitted: {e:?}");
+            None
+        }
+    };
     s.pending = false;
+    if let Some(mut fb) = fb {
+        let refresh = s.output.current_mode().map(|m| m.refresh).filter(|r| *r > 0);
+        let refresh = match refresh {
+            Some(mhz) if s.vrr == Some(true) => smithay::wayland::presentation::Refresh::variable(Duration::from_nanos(1_000_000_000_000 / mhz as u64)),
+            Some(mhz) => smithay::wayland::presentation::Refresh::fixed(Duration::from_nanos(1_000_000_000_000 / mhz as u64)),
+            None => smithay::wayland::presentation::Refresh::Unknown,
+        };
+        let (time, flags, seq) = match meta {
+            Some(m) => match m.time {
+                DrmEventTime::Monotonic(t) => (t, Fk::Vsync | Fk::HwClock | Fk::HwCompletion, m.sequence as u64),
+                DrmEventTime::Realtime(_) => (monotonic_now(), Fk::Vsync, m.sequence as u64),
+            },
+            None => (monotonic_now(), Fk::Vsync, 0),
+        };
+        fb.presented::<_, smithay::utils::Monotonic>(time, refresh, seq, flags);
+    }
     state.fifo_signal();
     if state.redraw_after_vblank {
         render_all(state);
     }
+}
+
+/// CLOCK_MONOTONIC now (the clock wp_presentation was bound with).
+fn monotonic_now() -> Duration {
+    smithay::utils::Clock::<smithay::utils::Monotonic>::new().now().into()
+}
+
+/// One refresh of the output (16.7 ms when the mode does not say).
+fn frame_period(o: &Output) -> Duration {
+    o.current_mode().map(|m| m.refresh).filter(|r| *r > 0).map(|mhz| Duration::from_nanos(1_000_000_000_000 / mhz as u64)).unwrap_or(Duration::from_micros(16_667))
 }
 
 /// The pointer's elements on an output (`og`: its geometry), empty when the pointer is elsewhere or hidden.
@@ -517,7 +572,8 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
     // Hyprland misc.vrr = 3: adaptive sync only while a fullscreen window (game / video) is on the output
     let out = state.udev.as_ref().and_then(|u| u.surfaces.get(&crtc)).map(|s| s.output.clone());
     let vrr_want = state.config.vrr && out.is_some_and(|o| state.fullscreen_on(&o));
-    let MistComp { udev, space, seat, cursor_status, start_time, force_full, redraw_after_vblank, locked, lock, frames, anim, out_seq, .. } = state;
+    let direct_scanout = state.config.direct_scanout;
+    let MistComp { udev, space, seat, cursor_status, start_time, force_full, redraw_after_vblank, locked, lock, frames, anim, out_seq, loop_handle, .. } = state;
     let Some(udev) = udev.as_mut() else { return };
     let Some(s) = udev.surfaces.get_mut(&crtc) else { return };
     if s.pending {
@@ -546,37 +602,66 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
             }
         };
     }
+    // the cursor on its plane; a client's buffer only with `direct_scanout on`
+    let flags = if direct_scanout { FrameFlags::DEFAULT } else { FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT };
     if *force_full {
         s.drm_output.reset_buffers();
     }
-    let rendered = match s.drm_output.render_frame(&mut udev.renderer, &elements, [0.0, 0.0, 0.0, 1.0], FrameFlags::DEFAULT) {
+    let rendered = match s.drm_output.render_frame(&mut udev.renderer, &elements, [0.0, 0.0, 0.0, 1.0], flags) {
         Ok(r) => !r.is_empty,
         Err(e) => {
             tracing::warn!("render {}: {e:?}", output.name());
             false
         }
     };
+    let mut queued = false;
     if rendered {
         *out_seq.entry(output.name()).or_insert(0) += 1;
-        match s.drm_output.queue_frame(()) {
+        let fb = crate::scene::take_feedback(space, lock.surfaces.get(&output.name()), &output);
+        match s.drm_output.queue_frame(Some(fb)) {
             Ok(()) => {
                 s.pending = true;
+                s.queued += 1;
                 *frames += 1;
+                queued = true;
             }
             Err(e) => tracing::warn!("queue {}: {e:?}", output.name()),
         }
     }
 
-    // frame callbacks for what is on this output
-    let now = start_time.elapsed();
-    for w in space.elements_for_output(&output) {
-        w.send_frame(&output, now, Some(Duration::ZERO), |_, _| Some(output.clone()));
-    }
-    for l in layer_map_for_output(&output).layers() {
-        l.send_frame(&output, now, Some(Duration::ZERO), |_, _| Some(output.clone()));
-    }
-    if let Some(l) = lock.surfaces.get(&output.name()) {
-        smithay::desktop::utils::send_frames_surface_tree(l.wl_surface(), &output, now, Some(Duration::ZERO), |_, _| Some(output.clone()));
+    if queued {
+        // frame callbacks for what is on this output: clients draw the next frame while this one scans out
+        crate::scene::send_frames(space, lock.surfaces.get(&output.name()), &output, start_time.elapsed());
+        // a vblank that never comes freezes the output: say so in the log
+        if !s.watchdog {
+            s.watchdog = true;
+            let q = s.queued;
+            let _ = loop_handle.insert_source(Timer::from_duration(Duration::from_secs(2)), move |_, _, st: &mut MistComp| {
+                if let Some(s) = st.udev.as_mut().and_then(|u| u.surfaces.get_mut(&crtc)) {
+                    s.watchdog = false;
+                    if s.pending && s.queued == q {
+                        tracing::warn!("{}: no vblank 2 s after a frame was queued (output stuck)", s.output.name());
+                    }
+                }
+                TimeoutAction::Drop
+            });
+        }
+    } else if !s.idle_tick {
+        // nothing new on screen: the callbacks go out at the next (estimated) vblank
+        s.idle_tick = true;
+        let _ = loop_handle.insert_source(Timer::from_duration(frame_period(&output)), move |_, _, st: &mut MistComp| {
+            let Some(o) = st.udev.as_mut().and_then(|u| u.surfaces.get_mut(&crtc)).map(|s| {
+                s.idle_tick = false;
+                s.output.clone()
+            }) else {
+                return TimeoutAction::Drop;
+            };
+            let lock = st.lock.surfaces.get(&o.name());
+            crate::scene::take_feedback(&st.space, lock, &o).discarded();
+            crate::scene::send_frames(&st.space, lock, &o, st.start_time.elapsed());
+            let _ = st.display_handle.flush_clients();
+            TimeoutAction::Drop
+        });
     }
 }
 

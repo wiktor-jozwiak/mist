@@ -126,3 +126,37 @@ pub fn elements(r: &mut GlesRenderer, space: &Space<Window>, lock: Option<&LockS
     }
     out
 }
+
+/// wp_presentation: the feedback requests of everything the output shows this frame (windows, layers, the
+/// lock surface). The backend marks them presented at the frame's vblank, or discarded when nothing changed.
+pub fn take_feedback(space: &Space<Window>, lock: Option<&LockSurface>, output: &Output) -> smithay::desktop::utils::OutputPresentationFeedback {
+    use smithay::{reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback::Kind as Fk, wayland::compositor::SurfaceData};
+    use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+    let mut fb = smithay::desktop::utils::OutputPresentationFeedback::new(output);
+    let on = |_: &WlSurface, _: &SurfaceData| Some(output.clone());
+    let flags = |_: &WlSurface, _: &SurfaceData| Fk::empty();
+    for w in space.elements_for_output(output) {
+        w.take_presentation_feedback(&mut fb, on, flags);
+    }
+    for l in layer_map_for_output(output).layers() {
+        l.take_presentation_feedback(&mut fb, on, flags);
+    }
+    if let Some(l) = lock {
+        smithay::desktop::utils::take_presentation_feedback_surface_tree(l.wl_surface(), &mut fb, on, flags);
+    }
+    fb
+}
+
+/// Frame callbacks for everything the output shows (windows, layers, the lock surface).
+pub fn send_frames(space: &Space<Window>, lock: Option<&LockSurface>, output: &Output, now: std::time::Duration) {
+    let zero = Some(std::time::Duration::ZERO);
+    for w in space.elements_for_output(output) {
+        w.send_frame(output, now, zero, |_, _| Some(output.clone()));
+    }
+    for l in layer_map_for_output(output).layers() {
+        l.send_frame(output, now, zero, |_, _| Some(output.clone()));
+    }
+    if let Some(l) = lock {
+        smithay::desktop::utils::send_frames_surface_tree(l.wl_surface(), output, now, zero, |_, _| Some(output.clone()));
+    }
+}

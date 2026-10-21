@@ -50,6 +50,9 @@ pub struct MistComp {
     pub scales_dirty: bool,
     /// linux-drm-syncobj (explicit sync): only on a DRM device that supports syncobj eventfd
     pub syncobj: Option<smithay::wayland::drm_syncobj::DrmSyncobjState>,
+    /// explicit-sync commits waiting for their GPU fence, checked once a second while there are some
+    pub fence_waits: crate::handlers::compositor::FenceWaits,
+    pub fence_timer: bool,
     pub shm_state: ShmState,
     pub output_manager_state: OutputManagerState,
     pub seat_state: SeatState<MistComp>,
@@ -233,6 +236,8 @@ impl MistComp {
             dpms_on: true,
             scales_dirty: true,
             syncobj: None,
+            fence_waits: Vec::new(),
+            fence_timer: false,
             shm_state,
             output_manager_state,
             seat_state,

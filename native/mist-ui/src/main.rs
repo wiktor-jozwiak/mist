@@ -83,6 +83,7 @@ fn main() {
     match (args.get(1).map(|s| s.as_str()), args.get(2), args.get(3)) {
         (Some("--wincap"), Some(a), Some(o)) => std::process::exit(devtools::wincap(a, o)),
         (Some("--global-shortcut"), Some(a), Some(i)) => std::process::exit(devtools::global_shortcut(a, i)),
+        (Some("--present"), n, _) => std::process::exit(devtools::present(n.and_then(|s| s.parse().ok()).unwrap_or(30))),
         (Some("--inhibit"), a, _) => std::process::exit(devtools::inhibit(a.map(|s| s.as_str()).unwrap_or("mist"))),
         _ => {}
     }
@@ -417,7 +418,11 @@ fn main() {
         let slow_left = app.slow_period().saturating_sub(last_slow.elapsed());
         let timeout = if app.animating() { slow_left.min(app::tick_interval().saturating_sub(last_tick.elapsed())) } else { slow_left };
         let timeout = app.intent_due().map(|d| timeout.min(d.saturating_duration_since(std::time::Instant::now()))).unwrap_or(timeout);
-        ev.dispatch(Some(timeout), &mut app).expect("dispatch");
+        if let Err(e) = ev.dispatch(Some(timeout), &mut app) {
+            // the compositor is gone (it quit or crashed): leave quietly, the session restarts us with it
+            eprintln!("mist-ui: wayland connection lost ({e}), exiting");
+            std::process::exit(1);
+        }
         app.intent_tick();
         if last_slow.elapsed() >= app.slow_period() {
             last_slow = std::time::Instant::now();

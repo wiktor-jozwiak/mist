@@ -20,7 +20,14 @@ use smithay::{
 };
 
 use super::xdg_shell;
-use smithay::reexports::{calloop::Interest, wayland_server::Resource};
+use smithay::reexports::{
+    calloop::{
+        timer::{TimeoutAction, Timer},
+        Interest,
+    },
+    wayland_server::Resource,
+};
+use std::time::Duration;
 
 impl CompositorHandler for MistComp {
     fn compositor_state(&mut self) -> &mut CompositorState {
@@ -54,8 +61,13 @@ impl CompositorHandler for MistComp {
             };
             if let Some((blocker, source)) = acquire.and_then(|p| p.generate_blocker().ok()) {
                 let c = cleared.clone();
-                if state.loop_handle.insert_source(source, move |_, _, data| { c(data); Ok(()) }).is_ok() {
+                // a GPU fence that never signals freezes the window: watch_fences says so in the log
+                let done = std::rc::Rc::new(std::cell::Cell::new(false));
+                let d = done.clone();
+                if state.loop_handle.insert_source(source, move |_, _, data| { d.set(true); c(data); Ok(()) }).is_ok() {
                     add_blocker(surface, blocker);
+                    state.fence_waits.push((surface.downgrade(), std::time::Instant::now(), done));
+                    state.watch_fences();
                     return;
                 }
             }
@@ -111,3 +123,60 @@ impl DrmSyncobjHandler for MistComp {
 }
 smithay::delegate_drm_syncobj!(MistComp);
 delegate_shm!(MistComp);
+
+impl MistComp {
+    /// Who a surface belongs to, for the log: the window's app id, the layer's namespace.
+    pub fn surface_name(&self, surface: &WlSurface) -> String {
+        let mut root = surface.clone();
+        while let Some(parent) = get_parent(&root) {
+            root = parent;
+        }
+        if let Some(w) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(&root)) {
+            return format!("window {}", crate::hyprcompat::app_id(w));
+        }
+        for o in self.space.outputs() {
+            if let Some(l) = smithay::desktop::layer_map_for_output(o).layer_for_surface(&root, smithay::desktop::WindowSurfaceType::TOPLEVEL) {
+                return format!("layer {}", l.namespace());
+            }
+        }
+        "a surface".into()
+    }
+}
+
+/// Explicit-sync commits waiting for their GPU fence: (surface, since, signalled).
+pub type FenceWaits = Vec<(smithay::reexports::wayland_server::Weak<WlSurface>, std::time::Instant, std::rc::Rc<std::cell::Cell<bool>>)>;
+
+impl MistComp {
+    /// Once a second while commits wait for a GPU fence: one that waits over a second is a window frozen by
+    /// the driver, logged once (`explicit_sync off` in comp.conf works around a driver that loses fences).
+    pub fn watch_fences(&mut self) {
+        if self.fence_timer {
+            return;
+        }
+        self.fence_timer = true;
+        let _ = self.loop_handle.insert_source(Timer::from_duration(Duration::from_secs(1)), |_, _, data: &mut MistComp| {
+            let mut stuck = Vec::new();
+            data.fence_waits.retain(|(s, since, done)| {
+                if done.get() {
+                    return false;
+                }
+                if since.elapsed() < Duration::from_secs(1) {
+                    return true;
+                }
+                if let Ok(s) = s.upgrade() {
+                    stuck.push((s, since.elapsed()));
+                }
+                false
+            });
+            for (s, t) in stuck {
+                tracing::warn!("{}: a frame waited {:.1} s for its GPU fence (explicit sync); still waiting", data.surface_name(&s), t.as_secs_f32());
+            }
+            if data.fence_waits.is_empty() {
+                data.fence_timer = false;
+                TimeoutAction::Drop
+            } else {
+                TimeoutAction::ToDuration(Duration::from_secs(1))
+            }
+        });
+    }
+}

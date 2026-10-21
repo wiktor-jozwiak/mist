@@ -17,6 +17,8 @@
 //!   screencopy_dmabuf on                        screen casting straight into the client's GPU buffer
 //!   swipe 3|4|off                               touchpad: N-finger horizontal swipe switches workspaces (default 3)
 //!   fifo on                                     wp-fifo for Vulkan FIFO presentation (games); opt-in
+//!   direct_scanout on                           a fullscreen window's buffer straight to the screen (Hyprland
+//!                                               render:direct_scanout); off by default: everything is composited
 //!
 //! Actions: exec CMD | close | kill | quit | reload | workspace N|+1|-1 | movetoworkspace N|+1|-1
 //!          | maximize | fullscreen | float | focus left|right|up|down | cycle | vt N
@@ -184,6 +186,9 @@ pub struct Config {
     pub swipe_fingers: u32,
     /// wp-fifo for Vulkan FIFO clients (`fifo on`; off until tested on each driver)
     pub fifo: bool,
+    /// client buffers straight to a scanout plane (`direct_scanout on`); off like Hyprland's default, since a
+    /// driver that mishandles it shows torn or stale windows
+    pub direct_scanout: bool,
 }
 
 pub fn path() -> std::path::PathBuf {
@@ -210,6 +215,7 @@ pub fn load() -> Config {
         c.no_explicit_sync = true;
         c.screencopy_dmabuf = false;
         c.fifo = false;
+        c.direct_scanout = false;
     }
     c
 }
@@ -280,6 +286,10 @@ pub fn parse(text: &str) -> Config {
             }
             "fifo" => {
                 c.fifo = rest == "on";
+                true
+            }
+            "direct_scanout" => {
+                c.direct_scanout = rest == "on";
                 true
             }
             "swipe" => {

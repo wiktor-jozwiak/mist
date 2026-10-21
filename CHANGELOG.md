@@ -8,6 +8,11 @@ nothing is released yet.
 ### Fixed
 - The screen no longer locks or turns off during a video in apps that inhibit idle over D-Bus (Chromium, VLC, Spotify, Flatpak apps): mist-ui serves `org.freedesktop.ScreenSaver` and `org.freedesktop.PowerManagement.Inhibit` as hypridle did, dropping an app's inhibit when it exits; a fullscreen window while a player plays also holds idle off. `mist-ui-bin --inhibit` keeps the screen on by hand.
 - mist-comp: an idle inhibitor whose window died without removing it no longer keeps the screen on forever.
+- mist-comp: wp_presentation feedback is sent (presented at the frame's vblank, discarded when nothing changed). It was advertised and never answered, so a client that paces its frames on it stopped drawing after a few frames.
+- mist-comp: a frame with nothing new on screen sends its frame callbacks at the next vblank instead of at once, so a browser that commits every frame runs at the refresh rate instead of a busy loop.
+- mist-comp: client buffers are no longer put straight on a scanout plane unless `direct_scanout on` (Hyprland's default; on NVIDIA it showed torn or stale windows); the cursor plane stays.
+- mist-comp: the log names the NVIDIA driver and egl-wayland versions, an output whose vblank never comes, and a window whose frame waits over a second for its GPU fence; `mist-session log` prints that part of the log.
+- mist-ui exits cleanly when the compositor goes away instead of aborting.
 
 ### mist-comp
 - Explicit sync (linux-drm-syncobj-v1) where the GPU supports it; commits wait for the client's GPU work (acquire point, else the dmabuf fence).

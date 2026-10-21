@@ -149,17 +149,29 @@ pub fn init_winit(
                     damage
                 };
                 tracing::trace!("rendered, submit {}", damage.is_some());
-                if let Some(damage) = damage {
+                if let Some(damage) = damage.as_ref() {
                     if let Some(o) = state.space.outputs().next().map(|o| o.name()) {
                         *state.out_seq.entry(o).or_insert(0) += 1;
                     }
                     // NVIDIA nested: swap can fail (BadAlloc) while the host hides the window; skip the frame
-                    if let Err(e) = backend.submit(Some(&damage)) {
+                    if let Err(e) = backend.submit(Some(damage)) {
                         tracing::warn!("submit: {e:?}");
                         state.force_full = true;
                     }
                 }
 
+                // wp_presentation: the host's vsync is not known here, shown = submitted
+                let mut fb = crate::scene::take_feedback(&state.space, state.lock.surfaces.get(&output.name()), &output);
+                if damage.is_some() {
+                    fb.presented::<_, smithay::utils::Monotonic>(
+                        smithay::utils::Clock::<smithay::utils::Monotonic>::new().now(),
+                        smithay::wayland::presentation::Refresh::Unknown,
+                        state.frames,
+                        smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback::Kind::empty(),
+                    );
+                } else {
+                    fb.discarded();
+                }
                 let now = state.start_time.elapsed();
                 state.space.elements().for_each(|window| {
                     window.send_frame(&output, now, Some(Duration::ZERO), |_, _| Some(output.clone()))
