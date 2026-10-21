@@ -108,7 +108,7 @@ fi
 if [ -n "$CLAUDE" ] && command -v foot >/dev/null; then
     C action exec "foot" >/dev/null
     wait_for "[ -n \"\$(win foot)\" ]" 200 && sleep 2 && click_win foot
-    type_line "$CLAUDE --version >$RT/claude 2>&1"
+    type_line "$CLAUDE --version >$RT/claude"
     check "claude: starts from a terminal" "wait_for \"grep -qi 'claude' $RT/claude 2>/dev/null\" 150" "$(cat $RT/claude 2>/dev/null)"
     C action close >/dev/null
 else
