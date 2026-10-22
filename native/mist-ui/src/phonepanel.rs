@@ -354,7 +354,7 @@ impl PhonePanel {
         if val.is_empty() {
             text_cy(c, t, x + 14.0, y + 21.0, hint, &st(13.5, 400.0), T4, Some(tw));
             if focused {
-                rect(c, x + 14.0, y + 12.0, 1.5, 18.0, 0.0, ACCENT);
+                rect(c, x + 14.0, y + 12.0, 1.5, 18.0, 0.0, accent());
             }
         } else {
             // the end of a long text stays visible
@@ -366,14 +366,14 @@ impl PhonePanel {
             }
             let ww = text_cy(c, t, x + 14.0, y + 21.0, shown, &sty, T1, None);
             if focused {
-                rect(c, x + 14.0 + ww + 1.0, y + 12.0, 1.5, 18.0, 0.0, ACCENT);
+                rect(c, x + 14.0 + ww + 1.0, y + 12.0, 1.5, 18.0, 0.0, accent());
             }
         }
         self.push_hit((x, y, w, 42.0), Hit::Field(f));
         if send_icon {
             let on = !val.trim().is_empty();
             let (bx, by) = (x + w - 5.0 - 32.0, y + 5.0);
-            rect(c, bx, by, 32.0, 32.0, 16.0, if on { ACCENT } else { FILL });
+            rect(c, bx, by, 32.0, 32.0, 16.0, if on { accent() } else { FILL });
             c.icon(t, bx + 16.0, by + 16.0, "send", 15.0, if on { WHITE } else { T3 });
             if on {
                 self.push_hit((bx, by, 32.0, 32.0), Hit::Send(f));
@@ -385,7 +385,7 @@ impl PhonePanel {
         let w = t.width(label, &sty) + if small { 20.0 } else { 26.0 };
         let (bh, r) = if small { (28.0, 9.0) } else { (32.0, 11.0) };
         let hov = self.hov(&h);
-        rect(c, x, y, w, bh, r, if primary { if hov { ACC_STRONG } else { ACCENT } } else if hov { FILL2 } else { FILL });
+        rect(c, x, y, w, bh, r, if primary { if hov { ACC_STRONG } else { accent() } } else if hov { FILL2 } else { FILL });
         if !primary {
             border(c, x, y, w, bh, r, 1.0, HAIR);
         }
@@ -396,7 +396,7 @@ impl PhonePanel {
     }
     fn round_btn(&mut self, c: &mut Canvas, t: &mut Text, x: f32, y: f32, size: f32, icon: &str, active: bool, clear: bool, h: Hit) {
         let hov = self.hov(&h);
-        let fill = if active { if hov { ACC_STRONG } else { ACCENT } } else if hov { FILL2 } else if clear { Rgba(0.0, 0.0, 0.0, 0.0) } else { FILL };
+        let fill = if active { if hov { ACC_STRONG } else { accent() } } else if hov { FILL2 } else if clear { Rgba(0.0, 0.0, 0.0, 0.0) } else { FILL };
         rect(c, x, y, size, size, size / 2.0, fill);
         c.icon(t, x + size / 2.0, y + size / 2.0, icon, size * 0.47, if active { WHITE } else { T1 });
         self.push_hit((x, y, size, size), h);
@@ -580,7 +580,7 @@ impl PhonePanel {
             let volt = adb["volt"].as_f64().map(|v| v.to_string().replace('.', ",")).unwrap_or_default();
             let stats = [
                 ("drive", "Pamięć", format!("{} / {} GB", gb(s1), gb(s0)), (s1 / s0.max(1.0)) as f32, YELLOW),
-                ("ram", "RAM", format!("{} / {} GB", gb(r0 - r1), gb(r0)), (1.0 - r1 / r0.max(1.0)) as f32, ACCENT),
+                ("ram", "RAM", format!("{} / {} GB", gb(r0 - r1), gb(r0)), (1.0 - r1 / r0.max(1.0)) as f32, accent()),
                 ("heart", "Bateria", format!("{health} · {volt} V"), bat as f32 / 100.0, bc),
             ];
             for (i, (icon, label, value, frac, col)) in stats.into_iter().enumerate() {
@@ -652,7 +652,7 @@ impl PhonePanel {
                 let a = if on { 1.0 } else { 0.35 };
                 rect(c, x, ty, tw, 62.0, 14.0, (if lit { ACC_SOFT } else if hov { FILL2 } else { FILL }).alpha_mul(a));
                 border(c, x, ty, tw, 62.0, 14.0, 1.0, (if lit { Rgba(169.0 / 255.0, 194.0 / 255.0, 238.0 / 255.0, 0.4) } else { HAIR }).alpha_mul(a));
-                c.icon(t, x + tw / 2.0, ty + 22.0, icon, 19.0, (if lit { ACCENT } else { T1 }).alpha_mul(a));
+                c.icon(t, x + tw / 2.0, ty + 22.0, icon, 19.0, (if lit { accent() } else { T1 }).alpha_mul(a));
                 let ls = st(11.0, 550.0);
                 let lw = t.width(label, &ls);
                 text_cy(c, t, x + (tw - lw) / 2.0, ty + 44.0, label, &ls, T2.alpha_mul(a), None);
@@ -821,7 +821,7 @@ impl PhonePanel {
                         let dw = t.width(&d, &ds);
                         text(&mut c, t, w - 12.0 - dw, y + 13.0, &d, &ds, T3, false, None);
                         if !read {
-                            circle(&mut c, w - 16.0, y + 38.0, 4.0, ACCENT);
+                            circle(&mut c, w - 16.0, y + 38.0, 4.0, accent());
                         }
                         self.push_hit((0.0, y.max(top), w, 58.0 - (top - y).max(0.0)), h);
                     }
@@ -884,7 +884,7 @@ impl PhonePanel {
                         let tw = lines.iter().map(|l| t.width(l, &ms)).fold(0.0f32, f32::max);
                         let bw = (tw + 26.0).min(bw_max);
                         let bx = if out { w - bw } else { 0.0 };
-                        rect(&mut c, bx, by, bw, lines.len() as f32 * 17.0 + 16.0, 16.0, if out { ACCENT } else { FILL2 });
+                        rect(&mut c, bx, by, bw, lines.len() as f32 * 17.0 + 16.0, 16.0, if out { accent() } else { FILL2 });
                         let mut ly = by + 8.0;
                         for l in &lines {
                             text(&mut c, t, bx + 13.0, ly, l, &ms, if out { INK } else { T1 }, false, None);

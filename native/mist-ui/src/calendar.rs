@@ -95,7 +95,7 @@ fn label(c: &mut Canvas, t: &mut crate::text::Text, x: f32, y: f32, s: &str) {
 }
 // a bar + title + when · where
 fn event_row(c: &mut Canvas, t: &mut crate::text::Text, x: f32, y: f32, w: f32, ev: &Value, rel: bool) -> f32 {
-    let col = if ev["holiday"].as_bool().unwrap_or(false) { DANGER } else { ACCENT };
+    let col = if ev["holiday"].as_bool().unwrap_or(false) { DANGER } else { accent() };
     crate::desktop::rect(c, x, y, 3.0, 34.0, 1.5, col);
     let tx = x + 13.0;
     let tw = w - 13.0;
@@ -185,12 +185,12 @@ impl Pane for Calendar {
             let busy = evs.iter().any(|e| !e["holiday"].as_bool().unwrap_or(false));
             let (ccx, ccy) = (gx + cw / 2.0, gy + 25.0 - 5.0);
             let hov = self.hov((gx, gy, cw, 50.0));
-            let fill = if sel { Some(ACCENT) } else if hov { Some(FILL2) } else if busy { Some(FILL) } else { None };
+            let fill = if sel { Some(accent()) } else if hov { Some(FILL2) } else if busy { Some(FILL) } else { None };
             if let Some(f) = fill {
                 crate::desktop::circle(c, ccx, ccy, 18.0, f);
             }
             if is_today && !sel {
-                crate::desktop::border(c, ccx - 18.0, ccy - 18.0, 36.0, 36.0, 18.0, 1.5, ACCENT);
+                crate::desktop::border(c, ccx - 18.0, ccy - 18.0, 36.0, 36.0, 18.0, 1.5, accent());
             }
             let col = if sel { INK } else if other { T4 } else if holiday { DANGER } else if d.wd == 0 || d.wd == 6 { T3 } else { T1 };
             let ns = Style::ui(14.0, if is_today || sel { 700.0 } else { 500.0 });
@@ -201,7 +201,7 @@ impl Pane for Calendar {
             let n = evs.iter().filter(|e| !e["holiday"].as_bool().unwrap_or(false)).count().min(3);
             let dots_w = n as f32 * 4.0 + (n as f32 - 1.0).max(0.0) * 3.0;
             for k in 0..n {
-                crate::desktop::circle(c, ccx - dots_w / 2.0 + k as f32 * 7.0 + 2.0, gy + 50.0 - 2.0 - 2.0, 2.0, if other { T4 } else { ACCENT });
+                crate::desktop::circle(c, ccx - dots_w / 2.0 + k as f32 * 7.0 + 2.0, gy + 50.0 - 2.0 - 2.0, 2.0, if other { T4 } else { accent() });
             }
             self.hits.push(((gx, gy, cw, 50.0), Hit::Cell(d)));
         }
@@ -213,7 +213,7 @@ impl Pane for Calendar {
         let pw = nw + 30.0;
         let nh = self.hov((lx, fy, pw, 36.0));
         crate::desktop::rect(c, lx, fy, pw, 36.0, 18.0, if nh { ACCENT_SOFT } else { FILL });
-        c.icon(t, lx + 15.0 + 7.5, fy + 18.0, "plus", 15.0, ACCENT);
+        c.icon(t, lx + 15.0 + 7.5, fy + 18.0, "plus", 15.0, accent());
         let th = crate::desktop::line_h(t, &ns);
         crate::desktop::text(c, t, lx + 15.0 + 21.0, fy + (36.0 - th) / 2.0, "Nowe wydarzenie", &ns, T1, false, None);
         self.hits.push(((lx, fy, pw, 36.0), Hit::New));

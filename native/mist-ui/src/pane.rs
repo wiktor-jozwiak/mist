@@ -125,11 +125,11 @@ pub trait Pane {
 
 // the popups that are native now (the rest are forwarded to Quickshell)
 pub fn native(name: &str) -> bool {
-    matches!(name, "desk" | "session" | "calendar" | "notifications" | "clipboard" | "spotlight" | "emoji" | "wallpaper" | "control" | "phone" | "start")
+    matches!(name, "settings" | "desk" | "session" | "calendar" | "notifications" | "clipboard" | "spotlight" | "emoji" | "wallpaper" | "control" | "phone" | "start")
 }
 pub fn make(name: &str, page: &str) -> Option<Box<dyn Pane>> {
     match name {
-        "desk" => Some(Box::new(crate::desksettings::DeskSettings::new(page))),
+        "settings" | "desk" => Some(Box::new(crate::settings::Settings::new(page))),
         "session" => Some(Box::new(crate::session::Session::new(page))),
         "calendar" => Some(Box::new(crate::calendar::Calendar::new())),
         "notifications" => Some(Box::new(crate::notifcenter::NotifCenter::new())),

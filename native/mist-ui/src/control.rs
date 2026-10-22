@@ -25,56 +25,56 @@ const BODY_MAX: f32 = 620.0;
 
 // ------------------------------------------------------------------ data (worker thread)
 #[derive(Clone, Default)]
-struct Dev {
-    name: String,
-    desc: String,
-    vol: f32,
-    mute: bool,
+pub(crate) struct Dev {
+    pub name: String,
+    pub desc: String,
+    pub vol: f32,
+    pub mute: bool,
 }
 #[derive(Clone, Default)]
-struct AppSnd {
-    name: String,
-    media: String,
-    icon: String,
-    inputs: Vec<u64>,
-    vol: f32,
-    mute: bool,
+pub(crate) struct AppSnd {
+    pub name: String,
+    pub media: String,
+    pub icon: String,
+    pub inputs: Vec<u64>,
+    pub vol: f32,
+    pub mute: bool,
 }
 #[derive(Clone, Default)]
-struct Snd {
-    sinks: Vec<Dev>,
-    sources: Vec<Dev>,
-    sink: String,
-    source: String,
-    apps: Vec<AppSnd>,
+pub(crate) struct Snd {
+    pub sinks: Vec<Dev>,
+    pub sources: Vec<Dev>,
+    pub sink: String,
+    pub source: String,
+    pub apps: Vec<AppSnd>,
 }
 #[derive(Clone, Default)]
-struct BtD {
-    path: String,
-    address: String,
-    name: String,
-    icon: String,
-    paired: bool,
-    connected: bool,
-    battery: Option<f32>,
+pub(crate) struct BtD {
+    pub path: String,
+    pub address: String,
+    pub name: String,
+    pub icon: String,
+    pub paired: bool,
+    pub connected: bool,
+    pub battery: Option<f32>,
 }
 #[derive(Clone, Default)]
-struct Bt {
-    on: bool,
-    discovering: bool,
-    devs: Vec<BtD>,
+pub(crate) struct Bt {
+    pub on: bool,
+    pub discovering: bool,
+    pub devs: Vec<BtD>,
 }
 #[derive(Clone, Default)]
-struct Net {
-    dev: String,
-    kind: String,
-    conn: String,
-    ip: String,
-    gw: String,
-    dns: String,
-    speed: i64,
-    up: bool,
-    has_wifi: bool,
+pub(crate) struct Net {
+    pub dev: String,
+    pub kind: String,
+    pub conn: String,
+    pub ip: String,
+    pub gw: String,
+    pub dns: String,
+    pub speed: i64,
+    pub up: bool,
+    pub has_wifi: bool,
 }
 
 enum Req {
@@ -96,14 +96,14 @@ enum Res {
     BtDone(String),
 }
 
-fn pactl_json(args: &[&str]) -> Value {
+pub(crate) fn pactl_json(args: &[&str]) -> Value {
     Command::new("pactl").arg("-f").arg("json").args(args).output().ok().and_then(|o| serde_json::from_slice(&o.stdout).ok()).unwrap_or(Value::Null)
 }
 fn vol_of(v: &Value) -> f32 {
     let ch: Vec<f32> = v["volume"].as_object().map(|o| o.values().filter_map(|c| c["value"].as_f64()).map(|x| x as f32 / 65536.0).collect()).unwrap_or_default();
     if ch.is_empty() { 0.0 } else { ch.iter().sum::<f32>() / ch.len() as f32 }
 }
-fn snd_state() -> Snd {
+pub(crate) fn snd_state() -> Snd {
     let info = pactl_json(&["info"]);
     // the Mist EQ filter-chain nodes (60-mist-eq.conf) have no description
     let desc = |v: &Value| -> String {
@@ -153,10 +153,10 @@ type Objs = HashMap<zbus::zvariant::OwnedObjectPath, HashMap<String, Props>>;
 fn bt_objs(c: &zbus::blocking::Connection) -> Objs {
     c.call_method(Some("org.bluez"), "/", Some("org.freedesktop.DBus.ObjectManager"), "GetManagedObjects", &()).ok().and_then(|m| m.body().deserialize::<Objs>().ok()).unwrap_or_default()
 }
-fn bt_adapter(c: &zbus::blocking::Connection) -> Option<String> {
+pub(crate) fn bt_adapter(c: &zbus::blocking::Connection) -> Option<String> {
     bt_objs(c).into_iter().find(|(_, i)| i.contains_key("org.bluez.Adapter1")).map(|(p, _)| p.to_string())
 }
-fn bt_state(c: &zbus::blocking::Connection) -> Bt {
+pub(crate) fn bt_state(c: &zbus::blocking::Connection) -> Bt {
     let objs = bt_objs(c);
     let b = |p: &Props, k: &str| p.get(k).and_then(|v| bool::try_from(v).ok()).unwrap_or(false);
     let s = |p: &Props, k: &str| p.get(k).and_then(|v| String::try_from(v.clone()).ok()).unwrap_or_default();
@@ -179,7 +179,7 @@ fn bt_state(c: &zbus::blocking::Connection) -> Bt {
     devs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     Bt { on: ad.map(|p| b(p, "Powered")).unwrap_or(false), discovering: ad.map(|p| b(p, "Discovering")).unwrap_or(false), devs }
 }
-fn net_state() -> Net {
+pub(crate) fn net_state() -> Net {
     let out = Command::new("sh")
         .args(["-c", "nmcli -t -f GENERAL.DEVICE,GENERAL.TYPE,GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS,IP4.GATEWAY,IP4.DNS device show"])
         .output()
@@ -379,7 +379,7 @@ fn uptime() -> String {
     let (d, h, mi) = (m / 1440, m / 60 % 24, m % 60);
     if d > 0 { format!("{d} d {h} godz.") } else if h > 0 { format!("{h} godz. {mi} min") } else { format!("{mi} min") }
 }
-fn night_path() -> String {
+pub(crate) fn night_path() -> String {
     format!("{}/.local/state/mist/nightlight", std::env::var("HOME").unwrap_or_default())
 }
 pub fn night_on() -> bool {
@@ -390,11 +390,11 @@ pub fn night_cmd(on: bool) -> Vec<String> {
     let sh = if on { crate::paths::mist_path("shaders/nightlight.glsl") } else { String::new() };
     vec!["hyprctl".into(), "eval".into(), format!("hl.config({{ decoration = {{ screen_shader = \"{sh}\" }} }})")]
 }
-fn sink_icon(d: &Dev) -> &'static str {
+pub(crate) fn sink_icon(d: &Dev) -> &'static str {
     let s = format!("{} {}", d.desc, d.name).to_lowercase();
     if s.contains("headphone") || s.contains("headset") || s.contains("słuchawk") { "headphones" } else if s.contains("hdmi") || s.contains("displayport") { "tv" } else { "speaker" }
 }
-fn bt_icon(d: &BtD) -> &'static str {
+pub(crate) fn bt_icon(d: &BtD) -> &'static str {
     let i = d.icon.as_str();
     if i.contains("headset") || i.contains("headphone") || i.contains("audio-card") { "headphones" } else if i.contains("keyboard") { "keyboard" } else if i.contains("mouse") { "mouse" } else if i.contains("gaming") || i.contains("joystick") { "gamepad" } else if i.contains("phone") { "mobile" } else if i.contains("speaker") || i.contains("audio") { "speaker" } else { "bluetooth" }
 }
@@ -592,7 +592,7 @@ impl Control {
         crate::glass::Glass { radius: 18.0, tint: 0.22, tone: Rgba::rgb8(4, 7, 14, 1.0), shine: 0.45, shadow: false, ..Default::default() }.paint(c, x, y, w, h);
     }
     fn orb(c: &mut Canvas, t: &mut crate::text::Text, x: f32, y: f32, icon: &str, on: bool, hover: bool) {
-        crate::desktop::rect(c, x, y, 34.0, 34.0, 17.0, if on { ACCENT } else if hover { WHITE.alpha(0.18) } else { FILL2 });
+        crate::desktop::rect(c, x, y, 34.0, 34.0, 17.0, if on { accent() } else if hover { WHITE.alpha(0.18) } else { FILL2 });
         c.icon(t, x + 17.0, y + 17.0, icon, 16.0, if on { WHITE } else { T1 });
     }
     fn label(c: &mut Canvas, t: &mut crate::text::Text, x: f32, y: f32, s: &str) -> f32 {
@@ -632,13 +632,13 @@ impl Control {
         if self.hov(hit) {
             crate::desktop::rect(c, x, y, w, 40.0, 12.0, FILL);
         }
-        crate::desktop::rect(c, x + 6.0, y + 6.0, 28.0, 28.0, 14.0, if current { ACCENT } else { FILL2 });
+        crate::desktop::rect(c, x + 6.0, y + 6.0, 28.0, 28.0, 14.0, if current { accent() } else { FILL2 });
         c.icon(t, x + 20.0, y + 20.0, icon, 14.0, if current { WHITE } else { T2 });
         let st = Style::ui(12.5, if current { 600.0 } else { 450.0 });
         let lh = crate::desktop::line_h(t, &st);
         crate::desktop::text(c, t, x + 44.0, y + (40.0 - lh) / 2.0, title, &st, T1, false, Some(w - 44.0 - 35.0));
         if current {
-            c.icon(t, x + w - 12.0 - 7.5, y + 20.0, "tick", 15.0, ACCENT);
+            c.icon(t, x + w - 12.0 - 7.5, y + 20.0, "tick", 15.0, accent());
         }
         self.hits.push(((o.0 + x, o.1 + y, w, 40.0), hit));
     }
@@ -648,7 +648,7 @@ impl Control {
         }
         // busy: the orb pulses (700 ms)
         let a = if busy { 0.7 + 0.3 * (self.born.elapsed().as_millis() as f32 / 1000.0 * std::f32::consts::PI).cos() } else { 1.0 };
-        crate::desktop::rect(c, x + 6.0, y + 8.0, 32.0, 32.0, 16.0, if on { ACCENT } else { FILL2 }.alpha(a * if on { 1.0 } else { FILL2.3 }));
+        crate::desktop::rect(c, x + 6.0, y + 8.0, 32.0, 32.0, 16.0, if on { accent() } else { FILL2 }.alpha(a * if on { 1.0 } else { FILL2.3 }));
         c.icon(t, x + 22.0, y + 24.0, bt_icon(d), 15.0, if on { WHITE } else { T2 }.alpha(a * if on { 1.0 } else { T2.3 }));
         Self::two_lines(c, t, x + 48.0, y + 24.0, w - 60.0, &d.name, Style::ui(12.5, if on { 600.0 } else { 500.0 }), T1, sub, Style::ui(11.0, 400.0), if on { GREEN } else { T3 });
         self.hits.push(((o.0 + x, o.1 + y, w, 48.0), hit));
@@ -824,7 +824,7 @@ impl Control {
                 y += 64.0 + 8.0 + 4.0 + 8.0;
                 y += Self::label(c, t, 0.0, y, "Ruch") + 8.0;
                 let tw = (w - 8.0) / 2.0;
-                for (i, (icon, label, v, col)) in [("down", "Pobieranie", self.rate.0, ACCENT), ("up", "Wysyłanie", self.rate.1, GREEN)].into_iter().enumerate() {
+                for (i, (icon, label, v, col)) in [("down", "Pobieranie", self.rate.0, accent()), ("up", "Wysyłanie", self.rate.1, GREEN)].into_iter().enumerate() {
                     let tx = i as f32 * (tw + 8.0);
                     Self::tile(c, tx, y, tw, 62.0, false);
                     let (ls, vs) = (Style::ui(11.0, 400.0), Style::ui(17.0, 600.0).tnum());
@@ -1117,7 +1117,7 @@ impl Pane for Control {
                     Some(Hit::Prev) => Act::Exec(vec![bin, "msg".into(), "mist".into(), "media".into(), "prev".into()]),
                     Some(Hit::Play) => Act::Exec(vec![bin, "msg".into(), "mist".into(), "media".into(), "toggle".into()]),
                     Some(Hit::Next) => Act::Exec(vec![bin, "msg".into(), "mist".into(), "media".into(), "next".into()]),
-                    Some(Hit::Wallpaper) => Act::Toggle("wallpaper"),
+                    Some(Hit::Wallpaper) => Act::Toggle("settings"),
                     Some(Hit::Lock) => Act::Run(vec![bin, "lock".into()]),
                     Some(Hit::Power) => Act::Toggle("session"),
                     Some(Hit::Back) => { self.go("", true); Act::Redraw }

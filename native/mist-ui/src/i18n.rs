@@ -9,7 +9,11 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock, RwLock};
 
 pub const LANGS: [(&str, &str); 5] = [("pl", "Polski"), ("en", "English"), ("de", "Deutsch"), ("es", "Español"), ("fr", "Français")];
-const TSV: &str = include_str!("../../assets/i18n.tsv");
+const PL_JSON: &str = include_str!("../../assets/i18n/pl.json");
+const EN_JSON: &str = include_str!("../../assets/i18n/en.json");
+const DE_JSON: &str = include_str!("../../assets/i18n/de.json");
+const ES_JSON: &str = include_str!("../../assets/i18n/es.json");
+const FR_JSON: &str = include_str!("../../assets/i18n/fr.json");
 
 struct Table {
     exact: HashMap<&'static str, &'static str>,
@@ -58,22 +62,76 @@ fn load(lang: &'static str) -> &'static Table {
     if let Some(t) = tables.read().unwrap().get(lang) {
         return t;
     }
-    let mut lines = TSV.lines();
-    let head: Vec<&str> = lines.next().unwrap_or("").split('\t').collect();
-    let col = head.iter().position(|h| *h == lang).unwrap_or(0);
-    let (mut exact, mut tpl) = (HashMap::new(), Vec::new());
-    for l in lines {
-        let c: Vec<&'static str> = l.split('\t').collect();
-        let (Some(k), Some(v)) = (c.first(), c.get(col)) else { continue };
-        if k.is_empty() || k.starts_with('#') || v.is_empty() || col == 0 {
-            continue;
-        }
-        if k.contains('{') {
-            tpl.push((wild(k), *v));
-        } else {
-            exact.insert(*k, *v);
+
+    let pl_cats: HashMap<&'static str, HashMap<&'static str, &'static str>> =
+        serde_json::from_str(PL_JSON).unwrap_or_default();
+
+    let raw = match lang {
+        "en" => EN_JSON,
+        "de" => DE_JSON,
+        "es" => ES_JSON,
+        "fr" => FR_JSON,
+        _ => PL_JSON,
+    };
+    let lang_cats: HashMap<&'static str, HashMap<&'static str, &'static str>> =
+        serde_json::from_str(raw).unwrap_or_default();
+
+    let mut exact: HashMap<&'static str, &'static str> = HashMap::new();
+    let mut tpl: Vec<(Vec<&'static str>, &'static str)> = Vec::new();
+
+    for (cat, entries) in &lang_cats {
+        for (k, &v) in entries {
+            if k.is_empty() || v.is_empty() {
+                continue;
+            }
+            let full_key: &'static str = Box::leak(format!("{cat}.{k}").into_boxed_str());
+            exact.insert(full_key, v);
+
+            let pl_val = pl_cats.get(cat).and_then(|m| m.get(k)).copied().unwrap_or(v);
+            if lang != "pl" {
+                if pl_val.contains('{') {
+                    tpl.push((wild(pl_val), v));
+                } else {
+                    exact.insert(pl_val, v);
+                }
+            } else {
+                exact.insert(pl_val, v);
+            }
         }
     }
+
+    // Optional user overrides from ~/.config/mist/i18n/<lang>.json
+    let user_path = format!("{}/.config/mist/i18n/{}.json", std::env::var("HOME").unwrap_or_default(), lang);
+    if let Ok(user_str) = std::fs::read_to_string(&user_path) {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&user_str) {
+            if let Some(obj) = val.as_object() {
+                for (cat_or_key, sub_val) in obj {
+                    if let Some(str_val) = sub_val.as_str() {
+                        let k_static: &'static str = Box::leak(cat_or_key.clone().into_boxed_str());
+                        let v_static: &'static str = Box::leak(str_val.to_string().into_boxed_str());
+                        if k_static.contains('{') {
+                            tpl.push((wild(k_static), v_static));
+                        } else {
+                            exact.insert(k_static, v_static);
+                        }
+                    } else if let Some(sub_obj) = sub_val.as_object() {
+                        for (sub_k, str_val) in sub_obj {
+                            if let Some(v_str) = str_val.as_str() {
+                                let full_key: &'static str = Box::leak(format!("{cat_or_key}.{sub_k}").into_boxed_str());
+                                let v_static: &'static str = Box::leak(v_str.to_string().into_boxed_str());
+                                if full_key.contains('{') {
+                                    tpl.push((wild(full_key), v_static));
+                                } else {
+                                    exact.insert(full_key, v_static);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     tpl.sort_by_key(|t| std::cmp::Reverse(t.0.iter().map(|p| p.len()).sum::<usize>()));
     let t: &'static Table = Box::leak(Box::new(Table { exact, tpl }));
     tables.write().unwrap().insert(lang, t);
@@ -98,6 +156,15 @@ fn current() -> (&'static str, &'static Table) {
 // bumped on a language change: Text drops its shaped cache
 pub fn generation() -> u32 {
     GEN.load(Ordering::Relaxed)
+}
+
+// the saved setting again (another process, Mist Settings, changed it)
+pub fn reload() {
+    let lang = resolve(&setting());
+    if CUR.read().unwrap().map(|c| c.0) != Some(lang) {
+        *CUR.write().unwrap() = Some((lang, load(lang)));
+        GEN.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 // save and apply ("auto" or a code from LANGS)
@@ -279,12 +346,15 @@ pub fn day_initial(wd: usize) -> String {
 
 // what to draw for `s`
 pub fn tr(s: &str) -> std::borrow::Cow<'_, str> {
-    let (lang, t) = current();
-    if lang == "pl" || s.len() < 2 || !s.chars().any(|c| c.is_alphabetic()) {
+    if s.len() < 2 || !s.chars().any(|c| c.is_alphabetic()) {
         return s.into();
     }
+    let (lang, t) = current();
     if let Some(v) = one(t, s) {
         return v.into();
+    }
+    if lang == "pl" {
+        return s.into();
     }
     if s.contains(" · ") {
         let segs: Vec<String> = s.split(" · ").map(|x| one(t, x).or_else(|| date(t, lang, x)).unwrap_or_else(|| x.to_string())).collect();
@@ -332,8 +402,17 @@ mod tests {
     }
     #[test]
     fn translates() {
+        // Polish source strings (msgid style)
         assert_eq!(with("en", "Nie przeszkadzać"), "Do not disturb");
         assert_eq!(with("en", "5 min temu"), "5 min ago");
+        // Semantic identifier keys
+        assert_eq!(with("en", "common.cancel"), "Cancel");
+        assert_eq!(with("pl", "common.cancel"), "Anuluj");
+        assert_eq!(with("de", "common.cancel"), "Abbrechen");
+        assert_eq!(with("es", "common.cancel"), "Cancelar");
+        assert_eq!(with("fr", "common.cancel"), "Annuler");
+        assert_eq!(with("en", "control_center.do_not_disturb"), "Do not disturb");
+        assert_eq!(with("pl", "control_center.do_not_disturb"), "Nie przeszkadzać");
         // composite strings: templates, segments split at " · ", headings in capitals
         assert_eq!(with("en", "3 wydarzenia przed tobą"), "3 events ahead");
         assert_eq!(with("en", "wolny dzień · następne jutro"), "free day · next tomorrow");
@@ -363,7 +442,8 @@ mod tests {
     // stays Polish in every other language)
     #[test]
     fn every_tr_literal_has_a_row() {
-        let keys: std::collections::HashSet<&str> = TSV.lines().filter(|l| !l.starts_with('#')).filter_map(|l| l.split('\t').next()).collect();
+        let t = load("en");
+        let pl_map: HashMap<&str, HashMap<&str, &str>> = serde_json::from_str(PL_JSON).unwrap();
         let root = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
         let mut missing = Vec::new();
         let mut dirs = vec![format!("{root}/mist-ui/src"), format!("{root}/mist-comp/src")];
@@ -381,30 +461,50 @@ mod tests {
                         let rest = &src[i + 4..];
                         let Some(end) = rest.find('"') else { continue };
                         let k = &rest[..end];
-                        if !k.contains('\\') && !keys.contains(k) {
+                        let found = t.exact.contains_key(k)
+                            || t.tpl.iter().any(|(parts, _)| capture(parts, k).is_some())
+                            || pl_map.values().any(|m| m.values().any(|&v| v == k));
+                        if !k.contains('\\') && !found {
                             missing.push(format!("{}: {k}", p.display()));
                         }
                     }
                 }
             }
         }
-        assert!(missing.is_empty(), "no i18n.tsv row for:\n{}", missing.join("\n"));
+        assert!(missing.is_empty(), "no translation in en.json for:\n{}", missing.join("\n"));
     }
 
     #[test]
     fn table_is_well_formed() {
-        let mut lines = TSV.lines();
-        let n = lines.next().unwrap().split('\t').count();
-        assert_eq!(n, LANGS.len());
-        for (i, l) in lines.enumerate() {
-            if l.is_empty() || l.starts_with('#') {
-                continue;
+        let pl_map: HashMap<&str, HashMap<&str, &str>> = serde_json::from_str(PL_JSON).expect("pl");
+        assert!(!pl_map.is_empty(), "pl is empty");
+
+        for (lang, raw) in [("en", EN_JSON), ("de", DE_JSON), ("es", ES_JSON), ("fr", FR_JSON)] {
+            let map: HashMap<&str, HashMap<&str, &str>> = serde_json::from_str(raw).expect(lang);
+            assert!(!map.is_empty(), "{lang} is empty");
+            for (cat, entries) in &pl_map {
+                let Some(lang_entries) = map.get(cat) else {
+                    panic!("language {lang} missing category {cat}");
+                };
+                for (k, pl_v) in entries {
+                    let Some(v) = lang_entries.get(k) else {
+                        panic!("language {lang} missing key {cat}.{k}");
+                    };
+                    let holes_k = wild(pl_v).len();
+                    let holes_v = wild(v).len();
+                    assert_eq!(
+                        holes_k, holes_v,
+                        "language {lang}: placeholders differ between key '{cat}.{k}' (pl: '{pl_v}') and value '{v}'"
+                    );
+                }
             }
-            let c: Vec<&str> = l.split('\t').collect();
-            assert_eq!(c.len(), n, "line {}: {l}", i + 2);
-            let holes = wild(c[0]).len();
-            for v in &c[1..] {
-                assert!(v.is_empty() || wild(v).len() == holes, "line {}: placeholders differ: {l}", i + 2);
+            for (cat, entries) in &map {
+                let Some(pl_entries) = pl_map.get(cat) else {
+                    panic!("language pl missing category {cat} present in {lang}");
+                };
+                for (k, _) in entries {
+                    assert!(pl_entries.contains_key(k), "language pl missing key {cat}.{k} present in {lang}");
+                }
             }
         }
     }

@@ -456,7 +456,7 @@ impl Pane for DragPane {
             let tw = t.width("Układy przyciągania", &ps);
             let rw = 13.0 + 7.0 + tw + 7.0 + 11.0;
             let rx = (w - rw) / 2.0;
-            l.icon(t, rx + 6.5, h / 2.0, "layoutGrid", 13.0, a(ACCENT, k));
+            l.icon(t, rx + 6.5, h / 2.0, "layoutGrid", 13.0, a(accent(), k));
             let lh = line_h(t, &ps);
             text(&mut l, t, rx + 20.0, h / 2.0 - lh / 2.0, "Układy przyciągania", &ps, a(M_FG, k), false, None);
             l.icon(t, rx + 20.0 + tw + 7.0 + 5.5, h / 2.0, "down", 11.0, a(T3, k));
@@ -467,7 +467,7 @@ impl Pane for DragPane {
             let hs = Style::ui(11.0, 500.0);
             let hw = 12.0 + 6.0 + t.width("Wybierz układ rozmieszczenia okna", &hs);
             let hx = ox + (BAR_W - hw) / 2.0;
-            l.icon(t, hx + 6.0, 5.0 + 7.0, "layoutGrid", 12.0, a(ACCENT, e));
+            l.icon(t, hx + 6.0, 5.0 + 7.0, "layoutGrid", 12.0, a(accent(), e));
             let hh = line_h(t, &hs);
             text(&mut l, t, hx + 18.0, 5.0 + 7.0 - hh / 2.0, "Wybierz układ rozmieszczenia okna", &hs, a(T2, e), false, None);
             for (i, lay) in LAYOUTS.iter().take(6).enumerate() {
@@ -477,7 +477,7 @@ impl Pane for DragPane {
                 for z in lay.iter() {
                     let hot = d.hot_layout == i as i32 && d.hot.map(|h| same(&h, z)).unwrap_or(false);
                     let (zx, zy, zw, zh) = (cx0 + 4.0 + z[0] * 98.0, cy0 + 4.0 + z[1] * 56.0, (z[2] * 98.0 - 3.0).max(4.0), (z[3] * 56.0 - 3.0).max(4.0));
-                    rect(&mut l, zx, zy, zw, zh, 4.0, if hot { a(ACCENT, e) } else { Rgba(1.0, 1.0, 1.0, 0.12 * e) });
+                    rect(&mut l, zx, zy, zw, zh, 4.0, if hot { a(accent(), e) } else { Rgba(1.0, 1.0, 1.0, 0.12 * e) });
                     border(&mut l, zx, zy, zw, zh, 4.0, 1.0, if hot { a(ACCENT_STRONG, e) } else { Rgba(1.0, 1.0, 1.0, 0.08 * e) });
                 }
             }
@@ -637,7 +637,7 @@ impl Pane for FlyPane {
                 let (x, y, w, h) = zone_box(li, z);
                 if is_hot {
                     rect(&mut l, PAD + x - 1.0, PAD + y - 1.0, w + 2.0, h + 2.0, 6.0, ACCENT_SOFT);
-                    rect(&mut l, PAD + x, PAD + y, w, h, 5.0, ACCENT);
+                    rect(&mut l, PAD + x, PAD + y, w, h, 5.0, accent());
                 } else {
                     rect(&mut l, PAD + x, PAD + y, w, h, 5.0, Rgba(1.0, 1.0, 1.0, if on { 0.2 } else { 0.13 }));
                     border(&mut l, PAD + x, PAD + y, w, h, 5.0, 1.0, Rgba(1.0, 1.0, 1.0, 0.06));
@@ -856,7 +856,7 @@ impl Pane for AssistPane {
             let hov = inside(self.ptr, (sx, sy, cw, ch));
             let sel = i == self.sel;
             rect(&mut page, x, y, cw, ch, 10.0, Rgba(1.0, 1.0, 1.0, if sel || hov { 0.1 } else { 0.03 }));
-            border(&mut page, x, y, cw, ch, 10.0, if sel { 2.0 } else { 1.0 }, if sel { ACCENT } else { HAIR });
+            border(&mut page, x, y, cw, ch, 10.0, if sel { 2.0 } else { 1.0 }, if sel { accent() } else { HAIR });
             let icon = cx.apps.lookup(&w.class).map(|e| e.icon.clone()).unwrap_or(w.class.to_lowercase());
             match cx.imgs.get(&icon, 36, cx.icons) {
                 Some(pm) => crate::img::draw(&mut page, &pm, x + 10.0, y + 8.0, 18.0, 18.0, 0.0, false, 1.0),

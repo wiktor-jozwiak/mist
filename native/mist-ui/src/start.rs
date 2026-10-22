@@ -28,7 +28,6 @@ const M_FG: Rgba = T1;
 const M_FG2: Rgba = Rgba(1.0, 1.0, 1.0, 0.8);
 const M_MUTED: Rgba = T2;
 const M_FAINT: Rgba = T3;
-const M_ACC: Rgba = ACCENT;
 const M_ACC_STRONG: Rgba = Rgba::rgb8(0x3d, 0x9b, 0xff, 1.0);
 const M_ACC_SOFT: Rgba = Rgba(10.0 / 255.0, 132.0 / 255.0, 1.0, 0.2);
 const M_BLUE: Rgba = Rgba::rgb8(0x64, 0xd2, 0xff, 1.0);
@@ -258,7 +257,7 @@ fn feed_color(e: &Value) -> Rgba {
     if e["holiday"].as_bool().unwrap_or(false) {
         return M_BAD;
     }
-    [M_ACC, GREEN, M_PURPLE, M_WARN][(e["feed"].as_i64().unwrap_or(0) % 4) as usize]
+    [accent(), GREEN, M_PURPLE, M_WARN][(e["feed"].as_i64().unwrap_or(0) % 4) as usize]
 }
 fn hsla(h: f32, s: f32, l: f32) -> Rgba {
     let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
@@ -347,7 +346,7 @@ impl Start {
             phone_said: (String::new(), None),
             phone_hint: String::new(),
             amb_key: String::new(),
-            amb: M_ACC,
+            amb: accent(),
             enter: { let mut a = Anim::new(0.0); a.set(1.0, 240.0, Ease::OutCubic); a },
             res_scroll: 0.0,
             az_scroll: 0.0,
@@ -493,7 +492,8 @@ impl Start {
         }
         let bin = crate::paths::self_bin();
         let sid = std::env::var("XDG_SESSION_ID").unwrap_or("self".into());
-        let cmds: [(&str, &str, Vec<String>, &str, bool); 7] = [
+        let cmds: [(&str, &str, Vec<String>, &str, bool); 8] = [
+            ("ustawienia settings preferencje mist pulpit widzety", "Ustawienia Mist", vec![bin.clone(), "msg".into(), "mist".into(), "toggle".into(), "settings".into()], "settings", false),
             ("zablokuj lock", "Zablokuj ekran", vec![bin.clone(), "lock".into()], "lock", false),
             ("ustawienia settings centrum sterowania", "Centrum sterowania", vec![bin.clone(), "msg".into(), "mist".into(), "toggle".into(), "control".into()], "settings", false),
             ("ustawienia settings wyglad qt motyw", "Wygląd aplikacji Qt", vec!["qt6ct".into()], "settings", false),
@@ -715,7 +715,7 @@ impl Start {
         border(c, 0.0, 0.0, LW, FH, 15.0, 1.0, Rgba(1.0, 1.0, 1.0, 0.09));
         let t = &mut *cx.t;
         let icon = match mode { "Terminal" => "terminal", "Kalkulator" => "calc", "Sieć" => "world", _ => "search" };
-        c.icon(t, 18.0 + 9.0, FH / 2.0, icon, 18.0, if mode.is_empty() { T2 } else { M_ACC });
+        c.icon(t, 18.0 + 9.0, FH / 2.0, icon, 18.0, if mode.is_empty() { T2 } else { accent() });
         let fs = st(16.5, 400.0);
         let mut hint_w = 0.0;
         if !mode.is_empty() {
@@ -738,7 +738,7 @@ impl Start {
         }
         let fw = LW - 50.0 - hint_w - 22.0;
         if self.field.text.is_empty() {
-            rect(c, 50.0, FH / 2.0 - 10.0, 2.0, 20.0, 1.0, M_ACC);
+            rect(c, 50.0, FH / 2.0 - 10.0, 2.0, 20.0, 1.0, accent());
             text_cy(c, t, 55.0, FH / 2.0, "Szukaj aplikacji, plików i poleceń…", &fs, T3, Some(fw));
         } else {
             let mut shown: &str = &self.field.text;
@@ -748,7 +748,7 @@ impl Start {
                 shown = it.next().map(|(i, _)| &shown[i..]).unwrap_or("");
             }
             let w = text_cy(c, t, 50.0, FH / 2.0, shown, &fs, M_FG, None);
-            rect(c, 50.0 + w + 1.0, FH / 2.0 - 10.0, 2.0, 20.0, 1.0, M_ACC);
+            rect(c, 50.0 + w + 1.0, FH / 2.0 - 10.0, 2.0, 20.0, 1.0, accent());
         }
         self.push_hit((0.0, 0.0, LW, FH), Hit::Field);
 
@@ -810,12 +810,12 @@ impl Start {
             let cur = i == self.sel;
             let warn = matches!(r.kind, Kind::Cmd(_, true)) && self.armed == r.title;
             if cur {
-                rect(&mut page, 0.0, y, LW, 58.0, 14.0, if warn { DANGER.mul_a(0.9) } else { M_ACC.mul_a(0.92) });
+                rect(&mut page, 0.0, y, LW, 58.0, 14.0, if warn { DANGER.mul_a(0.9) } else { accent().mul_a(0.92) });
             }
             match &r.kind {
                 Kind::App(_) => Self::app_icon(&mut page, cx, &r.icon, 14.0, y + 11.0, 36.0),
                 k => {
-                    let col = if cur { WHITE } else if warn { M_BAD } else if matches!(k, Kind::File(_)) { M_FG2 } else if matches!(k, Kind::Sh(_)) { M_WARN } else { M_ACC };
+                    let col = if cur { WHITE } else if warn { M_BAD } else if matches!(k, Kind::File(_)) { M_FG2 } else if matches!(k, Kind::Sh(_)) { M_WARN } else { accent() };
                     Self::chip(&mut page, cx.t, 14.0, y + 11.0, 36.0, &r.icon, col);
                 }
             }
@@ -869,7 +869,7 @@ impl Start {
                 let (hov, foc) = (self.hov(&h) && dragging.is_none(), i as i32 == self.gsel);
                 if dragging.is_some() && self.drop_at == Some(i) && dragging != Some(i) {
                     Self::lens(c, x, y, 99.0, 100.0, 20.0, 0.06);
-                    border(c, x, y, 99.0, 100.0, 20.0, 1.5, M_ACC.mul_a(0.8));
+                    border(c, x, y, 99.0, 100.0, 20.0, 1.5, accent().mul_a(0.8));
                 }
                 if dragging == Some(i) {
                     // the dragged one's slot: an outline, its icon follows the pointer
@@ -881,7 +881,7 @@ impl Start {
                     Self::lens(c, x, y, 99.0, 100.0, 20.0, 0.075);
                 }
                 if foc {
-                    border(c, x, y, 99.0, 100.0, 20.0, 1.5, M_ACC.mul_a(0.8));
+                    border(c, x, y, 99.0, 100.0, 20.0, 1.5, accent().mul_a(0.8));
                 }
                 let e = &cx.apps.entries[ai];
                 let (icon, name) = (e.icon.clone(), e.name.clone());
@@ -947,7 +947,7 @@ impl Start {
                     if hov {
                         let (bx, by) = (x + cw - 10.0 - 30.0, ry + 14.0);
                         let rh = Hit::Reveal(i);
-                        rect(c, bx, by, 30.0, 30.0, 15.0, if self.hov(&rh) { M_ACC } else { FILL2 });
+                        rect(c, bx, by, 30.0, 30.0, 15.0, if self.hov(&rh) { accent() } else { FILL2 });
                         c.icon(t, bx + 15.0, by + 15.0, "folderOpen", 14.0, M_FG);
                         self.push_hit((x, ry, cw, 58.0), h);
                         self.push_hit((bx, by, 30.0, 30.0), rh);
@@ -990,7 +990,7 @@ impl Start {
                 if hov || foc {
                     Self::lens(&mut page, x + 2.0, y + 2.0, cw - 4.0, 48.0, 14.0, 0.075);
                     if foc {
-                        border(&mut page, x + 2.0, y + 2.0, cw - 4.0, 48.0, 14.0, 1.5, M_ACC.mul_a(0.8));
+                        border(&mut page, x + 2.0, y + 2.0, cw - 4.0, 48.0, 14.0, 1.5, accent().mul_a(0.8));
                     }
                 }
                 let (icon, name, sub) = { let e = &cx.apps.entries[ai]; (e.icon.clone(), e.name.clone(), if !e.generic.is_empty() { e.generic.clone() } else { e.comment.clone() }) };
@@ -1084,7 +1084,7 @@ impl Start {
                 rect(&mut l, ox + x + 2.0, oy + y + 2.0, dw - 4.0, 50.0, 14.0, if on { FILL2 } else { FILL });
             }
             if i == 0 {
-                circle(&mut l, ox + x + dw / 2.0, oy + y + 27.5, 12.5, M_ACC);
+                circle(&mut l, ox + x + dw / 2.0, oy + y + 27.5, 12.5, accent());
             }
             let ds = st(9.0, 700.0).spaced(0.5);
             let dn = DAYS[d.wd as usize].to_uppercase();
@@ -1135,10 +1135,10 @@ impl Start {
             let first = self.pick == 0 && i == 0;
             let all_day = e["allDay"].as_bool().unwrap_or(false);
             if live || first {
-                rect(&mut l, ox, oy + y, iw, 42.0, 12.0, if live { M_ACC.mul_a(0.16) } else { FILL });
+                rect(&mut l, ox, oy + y, iw, 42.0, 12.0, if live { accent().mul_a(0.16) } else { FILL });
             }
             let other = if all_day { None } else { events_on(cal, picked).into_iter().find(|o| o != e && !o["allDay"].as_bool().unwrap_or(false) && o["start"].as_i64().unwrap_or(0) < en && o["end"].as_i64().unwrap_or(0) > s) };
-            rect(&mut l, ox + 8.0, oy + y + 8.0, 3.0, 26.0, 1.5, if other.is_some() { M_WARN } else if live { M_ACC } else { feed_color(e) });
+            rect(&mut l, ox + 8.0, oy + y + 8.0, 3.0, 26.0, 1.5, if other.is_some() { M_WARN } else if live { accent() } else { feed_color(e) });
             let (a, b) = if all_day { ("cały".to_string(), "dzień".to_string()) } else { (crate::data::hm(s), crate::data::hm(en)) };
             text(&mut l, t, ox + 20.0, oy + y + 6.0, &a, &st(12.0, 600.0).tnum(), M_FG, false, None);
             text(&mut l, t, ox + 20.0, oy + y + 22.0, &b, &st(10.0, 400.0).tnum(), M_FAINT, false, None);
@@ -1153,9 +1153,9 @@ impl Start {
             let (sub, col) = if let Some(o) = &other {
                 (format!("koliduje z: {}", o["title"].as_str().unwrap_or("")), M_WARN)
             } else if live {
-                (format!("trwa · zostało {}", dur(en - now)), M_ACC)
+                (format!("trwa · zostało {}", dur(en - now)), accent())
             } else if first && !all_day {
-                (format!("za {}{}", dur(s - now), if wh.is_empty() { String::new() } else { format!(" · {wh}") }), M_ACC)
+                (format!("za {}{}", dur(s - now), if wh.is_empty() { String::new() } else { format!(" · {wh}") }), accent())
             } else if !wh.is_empty() {
                 (wh.to_string(), M_MUTED)
             } else if e["holiday"].as_bool().unwrap_or(false) {
@@ -1166,7 +1166,7 @@ impl Start {
             text(&mut l, t, ox + 66.0, oy + y + 22.0, &sub, &st(10.5, 400.0), col, false, Some(tw));
             if live {
                 rect(&mut l, ox + 66.0, oy + y + 36.0, iw - 80.0, 2.0, 1.0, FILL2);
-                rect(&mut l, ox + 66.0, oy + y + 36.0, (iw - 80.0) * ((now - s) as f32 / (en - s).max(1) as f32).min(1.0), 2.0, 1.0, M_ACC);
+                rect(&mut l, ox + 66.0, oy + y + 36.0, (iw - 80.0) * ((now - s) as f32 / (en - s).max(1) as f32).min(1.0), 2.0, 1.0, accent());
             }
             y += 46.0;
         }
@@ -1298,10 +1298,10 @@ impl Start {
         if nn > 0 {
             let bw = nbw - 7.0;
             rect(c, tx + nw + 7.0, y + 1.0, bw, 18.0, 9.0, M_ACC_SOFT);
-            border(c, tx + nw + 7.0, y + 1.0, bw, 18.0, 9.0, 1.0, M_ACC.mul_a(0.3));
+            border(c, tx + nw + 7.0, y + 1.0, bw, 18.0, 9.0, 1.0, accent().mul_a(0.3));
             let s = nn.to_string();
             let sw = t.width(&s, &st(10.0, 700.0));
-            text_cy(c, t, tx + nw + 7.0 + (bw - sw) / 2.0, y + 10.0, &s, &st(10.0, 700.0), M_ACC, None);
+            text_cy(c, t, tx + nw + 7.0 + (bw - sw) / 2.0, y + 10.0, &s, &st(10.0, 700.0), accent(), None);
         }
         let key = main["key"].as_str().unwrap_or("");
         let status = if !ok {
@@ -1331,7 +1331,7 @@ impl Start {
         };
         let said = self.phone_said.1.filter(|a| a.elapsed().as_millis() < 2400).map(|_| self.phone_said.0.clone());
         let (line, col) = match (&said, self.phone_hint.is_empty()) {
-            (Some(s), _) => (s.clone(), M_ACC),
+            (Some(s), _) => (s.clone(), accent()),
             (None, false) => (self.phone_hint.clone(), M_FG2),
             _ => (status, if pair == 1 || pair == 2 { M_WARN } else { M_MUTED }),
         };
@@ -1361,7 +1361,7 @@ impl Start {
                 let ls = st(12.0, 600.0);
                 let bw = t.width(label, &ls) + 24.0;
                 let hov = me.hov(&h);
-                rect(c, bx, y, bw, 30.0, 15.0, if primary { if hov { M_ACC_STRONG } else { M_ACC } } else if hov { FILL2 } else { FILL });
+                rect(c, bx, y, bw, 30.0, 15.0, if primary { if hov { M_ACC_STRONG } else { accent() } } else if hov { FILL2 } else { FILL });
                 let lw = t.width(label, &ls);
                 text_cy(c, t, bx + (bw - lw) / 2.0, y + 15.0, label, &ls, if primary { WHITE } else { M_FG }, None);
                 me.push_hit((bx, y, bw, 30.0), h);
@@ -1408,7 +1408,7 @@ impl Start {
                 for (k, (icon, _, h, active)) in items.into_iter().enumerate() {
                     let bx = x0 + k as f32 * (bw + 6.0);
                     let hov = self.hov(&h);
-                    rect(c, bx, y, bw, 36.0, 18.0, if active { M_ACC } else if hov { FILL2 } else { FILL });
+                    rect(c, bx, y, bw, 36.0, 18.0, if active { accent() } else if hov { FILL2 } else { FILL });
                     c.icon(t, bx + bw / 2.0, y + 18.0, icon, 16.0, if active { WHITE } else { M_FG });
                     self.push_hit((bx, y, bw, 36.0), h);
                 }
@@ -1461,7 +1461,7 @@ impl Start {
         let art = cx.imgs.get(&p.art, 160, cx.icons).filter(|_| !p.art.is_empty());
         if self.amb_key != p.art {
             self.amb_key = p.art.clone();
-            self.amb = art.as_ref().map(|pm| ambient(pm)).unwrap_or(M_ACC);
+            self.amb = art.as_ref().map(|pm| ambient(pm)).unwrap_or(accent());
         }
         let amb = self.amb;
         let hov = inside(self.ptr, (self.origin.0, self.origin.1 + y, w, 146.0));
@@ -1755,7 +1755,7 @@ impl Pane for Start {
                 let h = Hit::Menu(k);
                 let hv = self.hov(&h);
                 if hv {
-                    rect(&mut l, ix, iy, mw - 12.0, rh, 9.0, M_ACC.mul_a(0.92));
+                    rect(&mut l, ix, iy, mw - 12.0, rh, 9.0, accent().mul_a(0.92));
                 }
                 l.icon(t, ix + 18.0, iy + rh / 2.0, icon, 15.0, if hv { WHITE } else { M_FG2 });
                 text_cy(&mut l, t, ix + 36.0, iy + rh / 2.0, label, &st(13.0, 500.0), if hv { WHITE } else { M_FG }, Some(mw - 56.0));

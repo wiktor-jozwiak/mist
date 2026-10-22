@@ -29,6 +29,7 @@ mod lock;
 mod appwin;
 mod edit;
 mod files;
+mod sysset;
 mod player;
 mod idle;
 mod polkit;
@@ -49,7 +50,8 @@ mod wxcard;
 mod wincap;
 mod devtools;
 mod winpick;
-mod desksettings;
+mod settings;
+mod deskwidgets;
 #[path = "../../common/astro.rs"]
 mod astro;
 #[path = "../../common/tokens.rs"]
@@ -96,6 +98,9 @@ fn main() {
     if args.get(1).map(|s| s.as_str()) == Some("player") {
         std::process::exit(player::run(&args[2..]));
     }
+    if args.get(1).map(|s| s.as_str()) == Some("settings") {
+        std::process::exit(sysset::run(&args[2..]));
+    }
     if args.get(1).map(|s| s.as_str()) == Some("files") {
         std::process::exit(files::run(&args[2..]));
     }
@@ -115,9 +120,14 @@ fn main() {
         d.weather = rd("weather");
         d.garmin = rd("garmin");
         d.running = rd("running");
+        d.cal = rd("calendar");
+        // the extra widgets: fixed stats and a demo player (cover = the first cached art), so checks are stable
+        d.stats = (23, 9.4, 31.2, 2.4 * 1048576.0);
+        let art = std::fs::read_dir(format!("{}/.cache/mist", std::env::var("HOME").unwrap_or_default())).ok().and_then(|mut r| r.find_map(|e| e.ok().map(|e| e.path()).filter(|p| p.file_name().map(|n| n.to_string_lossy().starts_with("art-")).unwrap_or(false)).map(|p| p.to_string_lossy().to_string()))).unwrap_or_default();
+        d.player = Some(media::Player { identity: "Spotify".into(), playing: true, title: "Midnight City".into(), artist: "M83".into(), album: "Hurry Up, We're Dreaming".into(), art, length: 243.0, position: 97.0, can_next: true, can_prev: true, can_toggle: true, ..Default::default() });
         // MIST_EDIT=garmin,running,weather: those cards turned to their settings (the backs settled)
         if let Ok(e) = std::env::var("MIST_EDIT") {
-            for k in ["garmin", "running"] {
+            for k in ["garmin", "running", "music", "calendar", "system", "clocks"] {
                 if e.split(',').any(|x| x == k) {
                     d.editing.insert(k, true);
                 }

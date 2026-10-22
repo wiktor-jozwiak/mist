@@ -107,6 +107,14 @@ impl Dock {
                 None => groups.push((key, e, vec![c.clone()])),
             }
         }
+        // the compositor lists clients in stacking order (focus / minimize reshuffle it): apps and their
+        // windows keep the place they had in the dock, new ones go last (Windows taskbar)
+        let old_pos = |k: &str| self.apps.iter().position(|a| a.key == k).unwrap_or(usize::MAX);
+        groups.sort_by_key(|g| old_pos(&g.0));
+        let old_wins: Vec<String> = self.apps.iter().flat_map(|a| a.wins.iter().map(|w| w.address.clone())).collect();
+        for g in &mut groups {
+            g.2.sort_by_key(|c| old_wins.iter().position(|a| *a == c.address).unwrap_or(usize::MAX));
+        }
         let mut out: Vec<App> = Vec::new();
         for id in &self.pins {
             let Some(e) = apps.lookup(id) else { continue };
@@ -399,5 +407,30 @@ fn box_blur(a: &mut [f32], w: i32, h: i32, r: i32) {
             a[(y * w + x) as usize] = s / n;
             s += t[((y + r + 1).min(h - 1) * w + x) as usize] - t[((y - r).max(0) * w + x) as usize];
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cl(addr: &str, class: &str) -> Client {
+        Client { address: addr.into(), class: class.into(), ..Default::default() }
+    }
+
+    #[test]
+    fn running_apps_keep_their_place() {
+        let apps = Apps { entries: Vec::new(), lang: "en" };
+        let mut d = Dock::new();
+        d.pins.clear();
+        let order = |d: &Dock| d.apps.iter().map(|a| a.key.clone()).collect::<Vec<_>>();
+        d.rebuild(&Hypr { clients: vec![cl("1", "a"), cl("2", "b"), cl("3", "c")], ..Default::default() }, &apps);
+        assert_eq!(order(&d), ["a", "b", "c"]);
+        // focus / minimize reorder the compositor's list, a new app appears
+        d.rebuild(&Hypr { clients: vec![cl("3", "c"), cl("4", "d"), cl("1", "a"), cl("2", "b")], ..Default::default() }, &apps);
+        assert_eq!(order(&d), ["a", "b", "c", "d"]);
+        d.rebuild(&Hypr { clients: vec![cl("5", "a"), cl("2", "b"), cl("1", "a")], ..Default::default() }, &apps);
+        assert_eq!(order(&d), ["a", "b"]);
+        assert_eq!(d.apps[0].wins.iter().map(|w| w.address.as_str()).collect::<Vec<_>>(), ["1", "5"]);
     }
 }

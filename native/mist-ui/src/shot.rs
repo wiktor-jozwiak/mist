@@ -88,7 +88,7 @@ impl Pane for Toolbar {
             } else if hov {
                 crate::desktop::rect(c, x, ty, 46.0, 42.0, 11.0, FILL2);
             }
-            c.icon(t, x + 23.0, ty + 21.0, icon, 21.0, if on { ACCENT } else { T1 });
+            c.icon(t, x + 23.0, ty + 21.0, icon, 21.0, if on { accent() } else { T1 });
             if hov {
                 let st = Style::ui(11.5, 450.0);
                 let tw = t.width(tip, &st) + 16.0;
@@ -123,7 +123,7 @@ impl Pane for Toolbar {
         crate::desktop::rect(c, x, py + 15.0, 1.0, 28.0, 0.0, HAIR);
         x += 1.0 + 6.0;
         let hov = inside(ptr, (x, py + 11.0, wc, 36.0));
-        crate::desktop::rect(c, x, py + 11.0, wc, 36.0, 18.0, if hov { ACCENT } else { Rgba::hex("#409CFF") });
+        crate::desktop::rect(c, x, py + 11.0, wc, 36.0, 18.0, if hov { accent() } else { Rgba::hex("#409CFF") });
         let th = crate::desktop::line_h(t, &caps);
         crate::desktop::text(c, t, x + 15.0, py + 11.0 + (36.0 - th) / 2.0, "Przechwyć", &caps, Rgba::hex("#0e1420"), false, None);
         hits.push(((x, py + 11.0, wc, 36.0), 6));

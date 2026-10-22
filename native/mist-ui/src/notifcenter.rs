@@ -186,7 +186,7 @@ impl Pane for NotifCenter {
         // DND orb
         rx -= 32.0;
         let oh = inside(lp, (rx, y + 1.0, 32.0, 32.0));
-        crate::desktop::rect(&mut l, rx, y + 1.0, 32.0, 32.0, 16.0, if self.dnd { ACCENT } else if oh { Rgba(1.0, 1.0, 1.0, 0.18) } else { FILL2 });
+        crate::desktop::rect(&mut l, rx, y + 1.0, 32.0, 32.0, 16.0, if self.dnd { accent() } else if oh { Rgba(1.0, 1.0, 1.0, 0.18) } else { FILL2 });
         l.icon(t, rx + 16.0, y + 17.0, if self.dnd { "bellZ" } else { "bell" }, 15.0, if self.dnd { Rgba(1.0, 1.0, 1.0, 1.0) } else { T1 });
         lh_.push(((rx, y + 1.0, 32.0, 32.0), Hit::Dnd));
         if total > 0 {
@@ -237,7 +237,7 @@ impl Pane for NotifCenter {
                 crate::desktop::text(&mut l, t, ax, ay + _h230_0, "Brak wydarzeń dziś i jutro", &s11, T2, false, Some(aw));
             }
             for ev in &evs {
-                crate::desktop::rect(&mut l, ax, ay + (row_h - 30.0) / 2.0, 3.0, 30.0, 2.0, ACCENT);
+                crate::desktop::rect(&mut l, ax, ay + (row_h - 30.0) / 2.0, 3.0, 30.0, 2.0, accent());
                 let title = ev["title"].as_str().or(ev["summary"].as_str()).unwrap_or("");
                 crate::desktop::text(&mut l, t, ax + 12.0, ay, title, &s125, T1, false, Some(aw - 12.0));
                 let sub = format!("{} · {}", crate::data::rel(ev["start"].as_i64().unwrap_or(0)), crate::data::when(ev));
@@ -322,7 +322,7 @@ impl Pane for NotifCenter {
                 match pm {
                     Some(pm) => crate::img::draw(&mut l, &pm, 12.0, y + 12.0, 34.0, 34.0, 34.0 * 0.24, false, 1.0),
                     None => {
-                        let pal = [ACCENT, Rgba::hex("#BF5AF2"), Rgba::hex("#FF9F0A"), Rgba::hex("#30D158"), Rgba::hex("#FF375F"), Rgba::hex("#64D2FF"), Rgba::hex("#5E5CE6")];
+                        let pal = [accent(), Rgba::hex("#BF5AF2"), Rgba::hex("#FF9F0A"), Rgba::hex("#30D158"), Rgba::hex("#FF375F"), Rgba::hex("#64D2FF"), Rgba::hex("#5E5CE6")];
                         let h = g.app.chars().fold(7i32, |h, ch| h.wrapping_mul(31).wrapping_add(ch as i32));
                         let tint = pal[(h.unsigned_abs() as usize) % pal.len()];
                         crate::desktop::rect(&mut l, 12.0, y + 12.0, 34.0, 34.0, 34.0 * 0.28, tint.alpha(0.22));

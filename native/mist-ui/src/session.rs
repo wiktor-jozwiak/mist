@@ -164,7 +164,7 @@ impl Pane for Session {
                 y += 10.0 + 6.0 + 10.0;
                 let (b1, b2) = (cxm - 155.0, cxm + 5.0);
                 pill(c, t, b1, y, 150.0, "Anuluj", if self.hover == Some(10) { FILL2 } else { FILL }, T1, 550.0);
-                pill(c, t, b2, y, 150.0, a.t, if self.hover == Some(11) { ACCENT } else { Rgba::hex("#409CFF") }, Rgba::hex("#0e1420"), 600.0);
+                pill(c, t, b2, y, 150.0, a.t, if self.hover == Some(11) { accent() } else { Rgba::hex("#409CFF") }, Rgba::hex("#0e1420"), 600.0);
                 self.hits.push(((b1, y, 150.0, 34.0), 10));
                 self.hits.push(((b2, y, 150.0, 34.0), 11));
             }

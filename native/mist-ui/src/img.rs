@@ -11,7 +11,7 @@ pub struct Images {
     order: Vec<(String, u32)>,
 }
 
-fn decode_file(path: &str, max: u32) -> Option<Pixmap> {
+pub fn decode_file(path: &str, max: u32) -> Option<Pixmap> {
     if path.ends_with(".svg") {
         return crate::apps::decode(path, max).and_then(|i| Pixmap::from_vec(i.rgba, tiny_skia::IntSize::from_wh(i.w, i.h)?));
     }

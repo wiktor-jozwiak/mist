@@ -4,7 +4,8 @@
 // mode 0 warp speed, 1 neon tunnel, 2 code rain, 3 plasma, 4 thunderstorm (soft, rare flashes),
 // 5 campfire, 6 fireworks, 7 spiral galaxy, 8 black hole, 9 ocean swell, 10 kaleidoscope, 11 plexus,
 // 12 equalizer (music lifts it), 13 orbits, 14 soap bubbles, 15 meteor shower, 16 meadow in the wind,
-// 17 highway light trails, 18 vortex, 19 neon ribbons, 20 hologram globe, 21 DNA helix.
+// 17 highway light trails, 18 vortex, 19 neon ribbons, 20 hologram globe, 21 DNA helix, 22 aurora over a
+// mountain lake, 23 liquid chrome, 24 neon city in the rain, 25 ringed planet, 26 layered waves.
 // c0 = base / shadow, c1..c3 = lights. opt = stars, vignette, brightness, music energy.
 // Nothing strobes: flashes are rare, soft and local.
 layout(location = 0) in vec2 qt_TexCoord0;
@@ -529,14 +530,21 @@ vec3 sHighway(vec2 q, float T) {
 
 // ---------------------------------------------------------------- 18: vortex
 vec3 sVortex(vec2 q, float T) {
-    float r = length(q), a = atan(q.y, q.x);
-    a += 1.2 / (r + 0.15) + T * 0.25;
-    vec2 p = vec2(cos(a), sin(a)) * r;
-    float f = fbm(p * 3.0 + vec2(log(r + 0.01) * 2.0 - T * 0.4, 0.0) + fbm(p * 4.0 - T * 0.1));
-    vec3 col = pal(fract(f + r * 0.5));
-    col *= smoothstep(0.2, 0.9, f) * 1.2;
-    col *= smoothstep(0.02, 0.2, r);
-    return c0.rgb + col * 0.85;
+    float r = length(q) + 1e-4, a = atan(q.y, q.x);
+    // logarithmic spiral arms, soft gaussian bands, a slow breathing drift; no noise blotches
+    float u = a / TAU * 3.0 + log(r) * 1.35 - T * 0.06;
+    float band = 0.5 + 0.5 * cos(u * TAU);
+    band = pow(band, 2.5);
+    float u2 = a / TAU * 5.0 - log(r) * 0.9 + T * 0.035;
+    float fine = pow(0.5 + 0.5 * cos(u2 * TAU), 6.0);
+    vec3 tint = pal(0.5 + 0.5 * sin(log(r) * 1.6 + 0.6 * sin(a + T * 0.05) - T * 0.03));
+    float fade = smoothstep(0.015, 0.25, r) * exp(-r * 1.6);
+    vec3 col = c0.rgb;
+    col += tint * band * fade * 1.05;
+    col += mix(c3.rgb, vec3(1.0), 0.3) * fine * fade * 0.35;
+    col += c3.rgb * 0.5 * exp(-r * 14.0);
+    col += vec3(1.0) * stars(q, 55.0, T) * 0.35 * (1.0 - fade);
+    return col;
 }
 
 // ---------------------------------------------------------------- 19: neon ribbons
@@ -613,6 +621,212 @@ vec3 sDNA(vec2 q, float T) {
     return col;
 }
 
+// ---------------------------------------------------------------- 22: aurora over a mountain lake
+// a mountain ridge: sharp peaks (folded noise), height h, amplitude a
+float ridge(float x, float s, float h, float a) {
+    float v = 0.0, amp = 0.55, f = 1.6;
+    for (int i = 0; i < 4; i++) { v += amp * (1.0 - abs(noise(vec2(x * f + s, s * 1.7)) * 2.0 - 1.0)); f *= 2.1; amp *= 0.45; }
+    return h + a * (v - 0.55);
+}
+vec3 auroraSky(vec2 q, float T) {
+    vec3 col = mix(c1.rgb, c0.rgb, smoothstep(-0.1, 0.5, q.y));
+    col += vec3(1.0) * stars(q + 3.0, 70.0, T) * 0.55 * smoothstep(-0.05, 0.25, q.y);
+    // curtains: bands along a wavy line, vertical rays, colour from green (low) to violet (high)
+    float acc = 0.0;
+    vec3 ac = vec3(0.0);
+    for (int i = 0; i < 3; i++) {
+        float fi = float(i);
+        float base = 0.04 + 0.07 * fi + 0.05 * sin(q.x * (1.6 + fi * 0.7) + T * (0.07 + 0.03 * fi) + fi * 2.0);
+        base += 0.03 * (fbm(vec2(q.x * 2.0 + fi * 7.0, T * 0.05)) - 0.5);
+        float d = q.y - base;
+        float rays = 0.55 + 0.45 * fbm(vec2(q.x * 24.0 + fi * 13.0, T * 0.25 + fi));
+        // a soft lower hem (no hard line that reads as a hill), rays fading upwards
+        float curtain = smoothstep(-0.06, 0.012, d) * smoothstep(-0.06, 0.0, d) * exp(-max(d, 0.0) * (7.0 - fi * 1.5)) * rays * rays;
+        vec3 cc = mix(c2.rgb, c3.rgb, clamp(d * 5.0 + fi * 0.3, 0.0, 1.0));
+        ac += cc * curtain * (0.85 - 0.2 * fi);
+        acc += curtain;
+    }
+    col += ac * 0.9;
+    return col;
+}
+vec3 sAuroraLake(vec2 q, float T) {
+    float hz = -0.24;
+    vec3 col;
+    vec3 farc = mix(c0.rgb, c1.rgb, 0.55);
+    if (q.y > hz) {
+        col = auroraSky(q, T);
+        // two mountain ranges, the far one hazy (lit by the aurora), the near one dark
+        float far = ridge(q.x, 1.3, -0.08, 0.2);
+        float near = ridge(q.x * 1.3 + 4.0, 7.1, -0.17, 0.12);
+        col = mix(col, farc + c2.rgb * 0.05 * smoothstep(far - 0.12, far, q.y), smoothstep(far + AA, far - AA, q.y));
+        col = mix(col, c0.rgb * 0.55, smoothstep(near + AA, near - AA, q.y));
+    } else {
+        // the lake mirrors the sky, rippled, darker with depth
+        float d = hz - q.y;
+        vec2 m = vec2(q.x + 0.004 * sin(q.y * 180.0 + T * 1.2) * (0.3 + d * 3.0), 2.0 * hz - q.y);
+        vec3 refl = auroraSky(m, T);
+        float far = ridge(m.x, 1.3, -0.08, 0.2);
+        float near = ridge(m.x * 1.3 + 4.0, 7.1, -0.17, 0.12);
+        if (m.y < far) refl = farc;
+        if (m.y < near) refl = c0.rgb * 0.55;
+        col = refl * (0.55 - 0.5 * d) + c0.rgb * 0.3;
+        col += vec3(0.8, 0.9, 1.0) * 0.06 * smoothstep(0.004, 0.0, abs(q.y - hz + 0.002));
+    }
+    return col;
+}
+
+// ---------------------------------------------------------------- 23: liquid chrome (glossy flowing folds)
+float chromeH(vec2 p, float T) {
+    vec2 w = p + 0.35 * vec2(sin(p.y * 2.3 + T * 0.21), cos(p.x * 1.9 - T * 0.17));
+    w += 0.18 * vec2(sin(w.y * 4.1 - T * 0.13), cos(w.x * 3.7 + T * 0.19));
+    return sin(w.x * 3.0 + sin(w.y * 2.0)) * 0.5 + sin(w.y * 2.6 - w.x * 1.3 + T * 0.1) * 0.5;
+}
+vec3 sChrome(vec2 q, float T) {
+    vec2 p = q * 2.2;
+    float e = 0.004;
+    float h = chromeH(p, T);
+    vec2 g = vec2(chromeH(p + vec2(e, 0.0), T) - h, chromeH(p + vec2(0.0, e), T) - h) / e;
+    vec3 n = normalize(vec3(-g * 0.35, 1.0));
+    vec3 l = normalize(vec3(-0.4, 0.6, 0.7));
+    float dif = clamp(dot(n, l), 0.0, 1.0);
+    float spec = pow(clamp(dot(reflect(-l, n), vec3(0.0, 0.0, 1.0)), 0.0, 1.0), 24.0);
+    float fres = pow(1.0 - n.z, 2.0);
+    vec3 base = pal(clamp(0.5 + 0.5 * h, 0.0, 1.0));
+    vec3 col = mix(c0.rgb, base, 0.25 + 0.6 * dif);
+    col += mix(c3.rgb, vec3(1.0), 0.6) * spec * 0.55;
+    col += c2.rgb * fres * 0.35;
+    return col;
+}
+
+// ---------------------------------------------------------------- 24: neon city in the rain
+float bldg(float x, float layer, out float id) {
+    float w = 0.05 + 0.03 * layer;
+    id = floor(x / w);
+    float hgt = 0.1 + 0.32 * hash(vec2(id, layer * 7.0)) * (1.0 - 0.3 * layer);
+    return hgt - 0.12 - 0.1 * layer;
+}
+vec3 cityLayer(vec2 q, float T, float layer, vec3 col) {
+    float id;
+    float x = q.x * (1.0 + 0.3 * layer) + layer * 3.7 + T * 0.003 * (2.0 - layer);
+    float top = bldg(x, layer, id);
+    if (q.y < top) {
+        float k = layer / 2.0;
+        vec3 wall = mix(c0.rgb * 1.4, c1.rgb * 0.6, 1.0 - k) * (0.6 + 0.4 * k);
+        col = wall;
+        // windows: a grid, some lit (warm or the neon tint), some flicker very slowly
+        float w = 0.05 + 0.03 * layer;
+        vec2 cell = vec2(fract(x / w) * 6.0, (top - q.y) * (70.0 - 15.0 * layer));
+        vec2 ci = floor(cell);
+        float lit = step(0.62, hash(ci + id * 13.0 + layer * 31.0 + floor(T * 0.02 + hash(ci + id) * 9.0)));
+        float inwin = step(0.25, fract(cell.x)) * step(fract(cell.x), 0.8) * step(0.3, fract(cell.y)) * step(fract(cell.y), 0.8) * step(1.0, ci.y) * step(ci.x, 4.5) * step(0.5, ci.x);
+        vec3 wc = hash(ci + id) > 0.7 ? c3.rgb : vec3(1.0, 0.82, 0.55);
+        col += wc * lit * inwin * (0.55 - 0.15 * k);
+        // a neon sign on some roofs
+        float sign = step(0.8, hash(vec2(id, layer + 4.0)));
+        float sy = top + 0.012;
+        col += mix(c2.rgb, c3.rgb, hash(vec2(id, 2.0))) * sign * exp(-abs(q.y - top + 0.03) * 60.0) * 0.25;
+    } else if (layer > 1.5) {
+        // glow of the signs into the haze above the near layer
+        col += mix(c2.rgb, c3.rgb, 0.5) * 0.04 * exp(-(q.y - top) * 8.0);
+    }
+    return col;
+}
+vec3 citySky(vec2 q, float T) {
+    vec3 col = mix(c1.rgb * 0.9, c0.rgb, smoothstep(-0.2, 0.5, q.y));
+    col += c2.rgb * 0.18 * exp(-(q.y + 0.1) * 4.0);
+    for (int i = 0; i < 3; i++) col = cityLayer(q, T, float(i), col);
+    return col;
+}
+vec3 sNeonCity(vec2 q, float T) {
+    float st = -0.27;
+    vec3 col;
+    if (q.y > st) {
+        col = citySky(q, T);
+    } else {
+        // the wet street: the city mirrored, smeared down, broken by ripples
+        float d = st - q.y;
+        vec2 m = vec2(q.x + 0.006 * sin(q.y * 140.0 + T * 2.0) + 0.004 * noise(vec2(q.x * 40.0, q.y * 400.0 - T)), 2.0 * st - q.y + d * d * 0.6);
+        col = citySky(m, T) * (0.45 - d * 0.6) + c0.rgb * 0.4;
+    }
+    // rain: thin slanted streaks, a few brighter ones
+    vec2 rp = vec2(q.x * 90.0 + q.y * 12.0, q.y * 6.0 + T * 3.5);
+    float rid = hash(vec2(floor(rp.x), 3.0));
+    float streak = smoothstep(0.08, 0.0, abs(fract(rp.x) - 0.5)) * step(0.85, fract(rp.y + rid * 7.0)) * step(0.55, rid);
+    col += vec3(0.75, 0.85, 1.0) * streak * 0.12;
+    return col;
+}
+
+// ---------------------------------------------------------------- 25: ringed planet
+vec3 sPlanet(vec2 q, float T) {
+    vec3 col = c0.rgb + vec3(1.0) * stars(q, 80.0, T) * 0.6 + c1.rgb * 0.15 * fbm(q * 2.0 + 3.0);
+    vec2 pc = vec2(0.12, -0.04);
+    float R = 0.24;
+    vec2 p = q - pc;
+    vec3 lightDir = normalize(vec3(-0.75, 0.45, 0.5));
+    // the rings: a tilted flat ellipse; behind the planet first, in front after
+    vec2 rp = rot(p, 0.32);
+    float rr = length(vec2(rp.x, rp.y / 0.22));
+    float ringBand = smoothstep(R * 1.32, R * 1.36, rr) * smoothstep(R * 2.25, R * 2.2, rr);
+    float gaps = 0.55 + 0.45 * sin(rr * 150.0) * sin(rr * 61.0 + 1.0);
+    gaps *= 1.0 - 0.85 * smoothstep(R * 1.83, R * 1.86, rr) * smoothstep(R * 1.93, R * 1.9, rr);
+    vec3 ringc = mix(c2.rgb, c3.rgb, smoothstep(R * 1.4, R * 2.2, rr)) * gaps * ringBand;
+    bool front = rp.y < 0.0;
+    float dp = length(p);
+    // rings behind
+    // the planet's shadow on the rings: behind it, seen from the light
+    vec2 L2 = normalize(lightDir.xy);
+    float along = dot(p, L2);
+    float perp = abs(p.x * L2.y - p.y * L2.x);
+    float pshadow = 1.0 - 0.92 * smoothstep(0.02, -0.02, along) * smoothstep(R * 1.02, R * 0.9, perp);
+    ringc *= pshadow;
+    if (!front) col = mix(col, ringc * 0.9, ringBand * 0.85);
+    // the planet: lit sphere with soft bands
+    if (dp < R) {
+        vec3 n = vec3(p / R, sqrt(max(0.0, 1.0 - dot(p, p) / (R * R))));
+        float lat = rot(p, 0.32).y / R;
+        float bands = fbm(vec2(lat * 7.0, T * 0.01)) * 0.6 + 0.4 * sin(lat * 18.0 + fbm(vec2(n.x * 3.0 + T * 0.02, lat * 4.0)) * 3.0);
+        vec3 surf = mix(c2.rgb, c3.rgb, 0.5 + 0.5 * bands);
+        float dif = clamp(dot(n, lightDir), 0.0, 1.0);
+        // the rings' shadow on the planet
+        float sh = 1.0 - 0.5 * smoothstep(0.022, 0.0, abs(rot(p, 0.32).y + 0.035)) * smoothstep(-0.2, 0.2, dif);
+        vec3 pcol = surf * (0.04 + 1.05 * pow(dif, 0.8)) * sh;
+        pcol += c3.rgb * 0.25 * pow(1.0 - n.z, 3.0) * dif;
+        col = mix(col, pcol, smoothstep(R, R - AA * 1.5, dp));
+    }
+    col += c3.rgb * 0.12 * exp(-max(dp - R, 0.0) * 30.0) * step(R, dp) * clamp(dot(normalize(vec3(p, 0.0)), lightDir) + 0.3, 0.0, 1.0);
+    // rings in front, the planet's shadow falls on them
+    if (front && ringBand > 0.0) {
+        col = mix(col, ringc, ringBand * 0.9);
+    }
+    return col;
+}
+
+// ---------------------------------------------------------------- 26: layered waves (soft hills of light)
+vec3 sLayers(vec2 q, float T) {
+    vec3 col = mix(c0.rgb, mix(c1.rgb, c0.rgb, 0.4), smoothstep(0.5, -0.5, q.y));
+    col += c3.rgb * 0.12 * exp(-length(q - vec2(-0.3, 0.35)) * 2.5);
+    for (int i = 0; i < 7; i++) {
+        float fi = float(i);
+        float k = fi / 6.0;
+        float y0 = 0.28 - k * 0.62;
+        float wv = y0 + 0.07 * sin(q.x * (1.6 + 0.4 * fi) + T * (0.08 + 0.02 * fi) + fi * 1.9)
+                      + 0.035 * sin(q.x * (3.3 - 0.2 * fi) - T * (0.06 + 0.015 * fi) + fi * 0.7);
+        float d = q.y - wv;
+        if (d < 0.0) {
+            vec3 lc = pal(clamp(0.15 + k * 0.85, 0.0, 1.0));
+            lc = mix(lc, c0.rgb, 0.15 + 0.55 * (1.0 - k) * 0.6);
+            // lit rim along the crest, shade going down
+            float rim = exp(d * 90.0);
+            float shade = 0.75 + 0.25 * exp(d * 6.0);
+            col = lc * shade + mix(c3.rgb, vec3(1.0), 0.4) * rim * (0.18 + 0.12 * k);
+        } else {
+            // a soft shadow the layer casts on the one behind
+            col *= 1.0 - 0.25 * exp(-d * 30.0) * step(0.5, fi);
+        }
+    }
+    return col;
+}
+
 void main() {
     vec2 uv = qt_TexCoord0;
     float asp = size.x / max(size.y, 1.0);
@@ -643,7 +857,12 @@ void main() {
     else if (m == 18) col = sVortex(q, T);
     else if (m == 19) col = sRibbons(q, T);
     else if (m == 20) col = sGlobe(q, T);
-    else col = sDNA(q, T);
+    else if (m == 21) col = sDNA(q, T);
+    else if (m == 22) col = sAuroraLake(q, T);
+    else if (m == 23) col = sChrome(q, T);
+    else if (m == 24) col = sNeonCity(q, T);
+    else if (m == 25) col = sPlanet(q, T);
+    else col = sLayers(q, T);
 
     col *= 1.0 + 0.1 * e;
     vec2 p = vec2(q.x / asp, q.y);

@@ -34,6 +34,7 @@ use wayland_client::{
 };
 use wayland_protocols::wp::cursor_shape::v1::client::{wp_cursor_shape_device_v1, wp_cursor_shape_manager_v1};
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
+use wayland_protocols::ext::background_effect::v1::client::{ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1, ext_background_effect_surface_v1::ExtBackgroundEffectSurfaceV1};
 
 const FADE: f32 = 120.0; // ms, BarItem opacity Behaviors
 pub use crate::paths::primary_monitor;
@@ -120,6 +121,8 @@ pub struct PaneSurf {
     dirty: bool,
     canvas: Canvas,
     swap: Swap,
+    /// the blur object and the box last sent (what is not fully transparent)
+    blur: Option<(ExtBackgroundEffectSurfaceV1, Option<(i32, i32, i32, i32)>)>,
 }
 
 /// Two buffers kept for one big surface (a full-monitor pane, 8 MB each) and used in turn: a frame converts
@@ -220,6 +223,8 @@ pub struct App {
     pub pool: SlotPool,
     pub cursor_mgr: Option<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1>,
     pub viewporter: Option<wp_viewporter::WpViewporter>,
+    /// ext-background-effect: a pane tells the compositor where its glass is (mist-comp blurs only there)
+    bg_effect: Option<ExtBackgroundEffectManagerV1>,
     pub pointer: Option<wl_pointer::WlPointer>,
     cursor_dev: Option<wp_cursor_shape_device_v1::WpCursorShapeDeviceV1>,
     pub bars: Vec<BarSurf>,
@@ -285,6 +290,7 @@ impl App {
         let pool = SlotPool::new(1920 * 40 * 4, &shm).expect("shm pool");
         let cursor_mgr = globals.bind::<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1, _, _>(qh, 1..=1, ()).ok();
         let viewporter = globals.bind::<wp_viewporter::WpViewporter, _, _>(qh, 1..=1, ()).ok();
+        let bg_effect = globals.bind::<ExtBackgroundEffectManagerV1, _, _>(qh, 1..=1, ()).ok();
         App {
             registry: RegistryState::new(globals),
             outputs: OutputState::new(globals, qh),
@@ -295,6 +301,7 @@ impl App {
             pool,
             cursor_mgr,
             viewporter,
+            bg_effect,
             pointer: None,
             cursor_dev: None,
             bars: Vec::new(),
@@ -480,6 +487,15 @@ impl App {
     }
     /// The weather card 85 % under windows of the shown workspace (mist-wall's rule for its sky): its
     /// carousel waits, nobody reads it through a window's blur
+    // windows on the main monitor's workspace (or mist-comp says the desktop is covered): live widgets wait
+    fn desk_covered(&self) -> bool {
+        if let Some(c) = self.card_cover {
+            return c;
+        }
+        let mon = primary_monitor();
+        let Some(ws) = self.hypr.monitors.iter().find(|m| m.1 == mon).map(|m| m.2) else { return false };
+        self.hypr.clients.iter().any(|c| c.ws_id == ws)
+    }
     fn card_covered(&mut self) -> bool {
         if let Some(c) = self.card_cover {
             return c;
@@ -789,7 +805,8 @@ impl App {
         layer.commit();
         let mut p = p;
         p.opened(&sname);
-        self.pane = Some(PaneSurf { p, layer, screen: sname, configured: false, dirty: true, canvas: Canvas::new(1, 1), swap: Swap::default() });
+        let blur = self.bg_effect.as_ref().map(|m| (m.get_background_effect(layer.wl_surface(), &self.qh, ()), None));
+        self.pane = Some(PaneSurf { p, layer, screen: sname, configured: false, dirty: true, canvas: Canvas::new(1, 1), swap: Swap::default(), blur });
         self.set_start_open(start);
         self.mark_all();
         self.dock_rebuild();
@@ -911,6 +928,25 @@ impl App {
             *d.entry("pane").or_insert(0) += 1;
             *d.entry("pane_ms").or_insert(0) += ms;
         });
+        // the glass is only where the pane drew something: the compositor blurs that box, not the monitor
+        if let Some((o, last)) = p.blur.as_mut() {
+            let b = c.alpha_bbox(2);
+            if *last != b {
+                match b {
+                    Some((x, y, w, h)) => {
+                        if let Ok(r) = Region::new(&self.compositor) {
+                            r.add(x, y, w, h);
+                            o.set_blur_region(Some(r.wl_region()));
+                            *last = b;
+                        }
+                    }
+                    None => {
+                        o.set_blur_region(None);
+                        *last = b;
+                    }
+                }
+            }
+        }
         if !p.swap.commit(&mut self.pool, &p.layer, &c) {
             // both buffers still held: a one-off buffer; the pair starts over (its idea of the shown frame is gone)
             p.swap = Swap::default();
@@ -1373,13 +1409,17 @@ impl App {
                 } else if self.desk.stage_click() {
                     self.desk.dirty = true;
                 }
+                // the music card's buttons: the player the card shows
+                if let (Some(cmd), Some(p)) = (self.desk.media_req.take(), self.desk.player.clone()) {
+                    let _ = self.media_tx.send(match cmd { "next" => crate::media::Cmd::Next(p.bus), "prev" => crate::media::Cmd::Prev(p.bus), _ => crate::media::Cmd::Toggle(p.bus) });
+                }
                 // the order may have changed: the weather card and its sky move
                 self.desk_relayout();
             }
             // right click on a card or the clock: Dostosuj pulpit, on that card's tab
             PointerEventKind::Release { button, .. } if button == BTN_RIGHT => {
                 let k = if card { "weather".to_string() } else { self.desk.zone() };
-                self.pane_open_box(Box::new(crate::desksettings::DeskSettings::new(&k)), primary_monitor());
+                self.pane_open_box(Box::new(crate::settings::Settings::new(&k)), primary_monitor());
             }
             PointerEventKind::Axis { vertical, .. } if card => {
                 let dy = if vertical.discrete != 0 { vertical.discrete as f64 } else { vertical.absolute };
@@ -1726,7 +1766,7 @@ impl App {
     fn on_ipc(&mut self, r: crate::ipc::Request) {
         let a = |i: usize| r.args.get(i).cloned().unwrap_or_default();
         let out: String = match (r.target.as_str(), r.func.as_str()) {
-            ("island", "show") => { self.island.push(crate::island::Ev { view: "info", prio: 2, dur: 3500, icon: a(0), color: Some(crate::theme::ACCENT), title: a(1), sub: a(2), value: -1, ..Default::default() }); String::new() }
+            ("island", "show") => { self.island.push(crate::island::Ev { view: "info", prio: 2, dur: 3500, icon: a(0), color: Some(crate::theme::accent()), title: a(1), sub: a(2), value: -1, ..Default::default() }); String::new() }
             ("island", "demo") => { self.island.demo(&a(0)); String::new() }
             // tests: a left click on the dock icon of app <key> (desktop id or class)
             ("dock", "click") => match self.dock.slots.iter().position(|s| matches!(s, Slot::App(k) if *k == a(0))) {
@@ -1762,6 +1802,17 @@ impl App {
                 String::new()
             }
             ("ui", "ping") => "pong".into(),
+            // Mist Settings saved settings.json: language, accent, contrast again, everything repainted
+            ("ui", "settings") => {
+                crate::i18n::reload();
+                crate::theme::reload_accent();
+                crate::theme::reload_contrast();
+                self.pane_act(crate::pane::Act::DeskCfg);
+                self.mark_all();
+                self.island_dirty = true;
+                "ok".into()
+            }
+            ("notif", "state") => serde_json::json!({ "dnd": self.st.dnd }).to_string(),
             // window snapping debug hooks (were Snap.qml's)
             ("snap", "state") => match self.pane.as_mut().and_then(|p| p.p.as_drag()) {
                 Some(d) => serde_json::json!([d.cx, d.cy, d.addr, d.grab, format!("{:?}", d.mode), d.zone(), true]).to_string(),
@@ -2177,7 +2228,9 @@ impl App {
                     Some(c) => (c + 1) % app.wins.len(),
                     None => app.wins.iter().enumerate().min_by_key(|(_, w)| w.focus).map(|(i, _)| i).unwrap_or(0),
                 };
-                focus_win(&app.wins[next].address);
+                // onto the shown workspace when it sits on another one (Windows taskbar: nothing else hides)
+                let w = &app.wins[next];
+                hypr(&format!("MistRestore('0x{}', {})", w.address.trim_start_matches("0x"), self.hypr.focused_ws));
             }
         }
     }
@@ -2717,6 +2770,13 @@ impl App {
                 self.st.mem = mu;
                 self.st.mem_total = mt;
                 self.st.rx = rx;
+                // System + the music card's progress follow the 2 s stats, only while the desktop is bare
+                self.desk.stats = (c, mu, mt, rx);
+                let shown = self.desk.cfg.shown();
+                let live = shown.iter().any(|k| k == "system") || (shown.iter().any(|k| k == "music") && self.desk.player.as_ref().map(|p| p.playing).unwrap_or(false));
+                if live && !self.desk_covered() {
+                    self.desk.dirty = true;
+                }
             }
             Msg::Phone(p) => self.st.phone = p,
             Msg::Ui(p, s) => {
@@ -2792,7 +2852,18 @@ impl App {
                     self.island.on_phone_event(&ev, bat);
                 }
             }
-            Msg::Players(ps) => self.island.set_players(ps),
+            Msg::Players(ps) => {
+                self.island.set_players(ps);
+                let p = self.island.player().cloned();
+                let key = |p: &Option<crate::media::Player>| p.as_ref().map(|p| (p.title.clone(), p.artist.clone(), p.art.clone(), p.playing, p.position as i64, p.can_next, p.can_prev));
+                if key(&p) != key(&self.desk.player) {
+                    let shown = self.desk.cfg.shown().iter().any(|k| k == "music");
+                    self.desk.player = p;
+                    if shown {
+                        self.desk.dirty = true;
+                    }
+                }
+            }
             Msg::Data(name, v) => match name.as_str() {
                 "weather" => {
                     self.desk.weather = v.clone();
@@ -2809,7 +2880,13 @@ impl App {
                     self.desk.running = v;
                     self.desk.dirty = true;
                 }
-                "calendar" => self.island.calendar = v,
+                "calendar" => {
+                    self.island.calendar = v.clone();
+                    self.desk.cal = v;
+                    if self.desk.cfg.shown().iter().any(|k| k == "calendar") {
+                        self.desk.dirty = true;
+                    }
+                }
                 _ => {}
             },
             Msg::Cursor(x, y) => self.snap_cursor(x, y),
@@ -3067,6 +3144,8 @@ wayland_client::delegate_noop!(App: ignore wp_cursor_shape_manager_v1::WpCursorS
 wayland_client::delegate_noop!(App: ignore wp_cursor_shape_device_v1::WpCursorShapeDeviceV1);
 wayland_client::delegate_noop!(App: ignore wp_viewporter::WpViewporter);
 wayland_client::delegate_noop!(App: ignore wp_viewport::WpViewport);
+wayland_client::delegate_noop!(App: ignore ExtBackgroundEffectManagerV1);
+wayland_client::delegate_noop!(App: ignore ExtBackgroundEffectSurfaceV1);
 
 thread_local! {
     // surface protocol id -> (pixel hash, size) of the buffer last attached

@@ -99,6 +99,7 @@ fn commands() -> Vec<(&'static str, &'static str, &'static str, Vec<String>)> {
         ("schowek clipboard historia", "Historia schowka", "clipboard", m(&["mist", "toggle", "clipboard"])),
         ("zrzut ekranu screenshot", "Zrzut ekranu", "screenshot", m(&["shot", "toolbar"])),
         ("powiadomienia notifications", "Centrum powiadomień", "bell", m(&["mist", "toggle", "notifications"])),
+        ("ustawienia settings preferencje mist pulpit widzety desktop widgets", "Ustawienia Mist", "settings", m(&["mist", "toggle", "settings"])),
         ("ustawienia settings centrum sterowania control", "Centrum sterowania", "settings", m(&["mist", "toggle", "control"])),
         ("ustawienia settings wyglad qt motyw theme", "Wygląd aplikacji Qt", "settings", vec!["qt6ct".into()]),
         ("ustawienia settings wyglad gtk motyw theme", "Wygląd aplikacji GTK", "settings", vec!["nwg-look".into()]),

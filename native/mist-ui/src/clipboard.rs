@@ -182,7 +182,7 @@ impl Pane for Clipboard {
             let dh = inside(self.ptr, (bx, by, 100.0, 34.0));
             pill(c, t, bx, by, 100.0, "Usuń  ⌦", if dh { Rgba(238.0 / 255.0, 154.0 / 255.0, 170.0 / 255.0, 0.24) } else { FILL }, T2, 550.0);
             let kh = inside(self.ptr, (bx + 108.0, by, 120.0, 34.0));
-            pill(c, t, bx + 108.0, by, 120.0, "Kopiuj  ↵", if kh { ACCENT } else { Rgba::hex("#409CFF") }, Rgba::hex("#0e1420"), 600.0);
+            pill(c, t, bx + 108.0, by, 120.0, "Kopiuj  ↵", if kh { accent() } else { Rgba::hex("#409CFF") }, Rgba::hex("#0e1420"), 600.0);
             self.btns.push(((bx, by, 100.0, 34.0), 0));
             self.btns.push(((bx + 108.0, by, 120.0, 34.0), 1));
         }

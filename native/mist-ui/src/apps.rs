@@ -19,7 +19,7 @@ pub struct Entry {
     pub terminal: bool,
 }
 
-fn data_dirs() -> Vec<String> {
+pub fn data_dirs() -> Vec<String> {
     let home = std::env::var("HOME").unwrap_or_default();
     let mut v = vec![std::env::var("XDG_DATA_HOME").unwrap_or(format!("{home}/.local/share"))];
     for d in std::env::var("XDG_DATA_DIRS").unwrap_or("/usr/local/share:/usr/share".into()).split(':') {

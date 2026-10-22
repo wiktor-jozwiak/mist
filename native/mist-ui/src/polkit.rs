@@ -284,7 +284,7 @@ impl Sheet {
         y += lb + 10.0;
         // the field
         crate::desktop::rect(c, lx, y, cw, 38.0, 19.0, FILL);
-        crate::desktop::border(c, lx, y, cw, 38.0, 19.0, 1.0, ACCENT);
+        crate::desktop::border(c, lx, y, cw, 38.0, 19.0, 1.0, accent());
         let fs = Style::ui(14.0, 450.0);
         let fh = crate::desktop::line_h(t, &fs);
         if self.pw.is_empty() {
@@ -315,7 +315,7 @@ impl Sheet {
         let w1 = t.width("Anuluj", &bs);
         crate::desktop::text(c, t, b1 + (150.0 - w1) / 2.0, y + (34.0 - bh) / 2.0, "Anuluj", &bs, T1, false, None);
         let strong = Rgba::hex("#409CFF");
-        crate::desktop::rect(c, b2, y, 150.0, 34.0, 17.0, if self.busy { FILL2 } else if self.hover == Some(1) { ACCENT } else { strong });
+        crate::desktop::rect(c, b2, y, 150.0, 34.0, 17.0, if self.busy { FILL2 } else if self.hover == Some(1) { accent() } else { strong });
         let ok = if self.busy { "Sprawdzanie…" } else { "Uwierzytelnij" };
         let os = Style::ui(13.5, 600.0);
         let w2 = t.width(ok, &os);

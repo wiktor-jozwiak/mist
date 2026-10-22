@@ -65,11 +65,8 @@ impl WinPick {
     fn activate(&self, i: usize) -> Act {
         let Some(w) = self.wins.get(i) else { return Act::Close };
         let a = Self::addr(&w.address);
-        if w.minimized {
-            // windows-like.lua: back from the minimized drawer onto the active workspace
-            return Act::Run(hypr(&format!("MistRestore('{a}', {})", self.focused_ws)));
-        }
-        Act::Run(hypr(&format!("hl.dispatch(hl.dsp.focus({{ window = \"address:{a}\" }})); hl.dispatch(hl.dsp.window.bring_to_top())")))
+        // windows-like.lua / mist-comp: back from the minimized drawer or another workspace onto the active one
+        Act::Run(hypr(&format!("MistRestore('{a}', {})", self.focused_ws)))
     }
     fn close_win(&mut self, i: usize) -> Act {
         if i >= self.wins.len() {

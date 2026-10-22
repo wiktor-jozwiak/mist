@@ -35,6 +35,27 @@ impl Canvas {
     pub fn w(&self) -> f32 {
         self.pm.width() as f32
     }
+    /// The box around every pixel with alpha > `min` (x, y, w, h), None: all transparent. Samples every second
+    /// pixel of every second row and pads by one sample, so a lone 1 px dot can be missed (glass is bigger).
+    pub fn alpha_bbox(&self, min: u8) -> Option<(i32, i32, i32, i32)> {
+        let (w, h) = (self.pm.width() as usize, self.pm.height() as usize);
+        let d = self.pm.data();
+        let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0, 0);
+        for y in (0..h).step_by(2) {
+            let row = &d[y * w * 4..(y + 1) * w * 4];
+            let Some(a) = row.chunks_exact(8).position(|p| p[3] > min) else { continue };
+            let b = row.chunks_exact(8).rposition(|p| p[3] > min).unwrap_or(a);
+            x0 = x0.min(a * 2);
+            x1 = x1.max(b * 2 + 2);
+            y0 = y0.min(y);
+            y1 = y1.max(y + 2);
+        }
+        (x0 != usize::MAX).then(|| {
+            let (x0, y0) = (x0.saturating_sub(2), y0.saturating_sub(2));
+            let (x1, y1) = ((x1 + 2).min(w), (y1 + 2).min(h));
+            (x0 as i32, y0 as i32, (x1 - x0) as i32, (y1 - y0) as i32)
+        })
+    }
     pub fn h(&self) -> f32 {
         self.pm.height() as f32
     }

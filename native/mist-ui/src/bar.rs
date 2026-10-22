@@ -181,7 +181,7 @@ pub fn draw_with(c: &mut Canvas, t: &mut Text, s: &BarState, hover: Option<&Hit>
     }
     if s.bt_on {
         let (icon, tint, text) = match s.bt_dev {
-            Some(b) => ("btOn", ACCENT, b.filter(|v| *v <= 0.3).map(|v| format!("{}%", (v * 100.0).round())).unwrap_or_default()),
+            Some(b) => ("btOn", accent(), b.filter(|v| *v <= 0.3).map(|v| format!("{}%", (v * 100.0).round())).unwrap_or_default()),
             None => ("bluetooth", T2, String::new()),
         };
         g.push(Btn { hit: Hit::Bluetooth, icon, text, tint, icon_size: 15.0, fixed_w: None });
@@ -203,7 +203,7 @@ pub fn draw_with(c: &mut Canvas, t: &mut Text, s: &BarState, hover: Option<&Hit>
         fixed_w: None,
     });
     g.push(Btn { hit: Hit::Bell, icon: if s.dnd { "bellOff" } else { "bell" }, text: String::new(), tint: if s.dnd { T3 } else { T1 }, icon_size: 15.0, fixed_w: None });
-    g.push(Btn { hit: Hit::Adjust, icon: "adjust", text: String::new(), tint: if s.control_open { ACCENT } else { T1 }, icon_size: 15.0, fixed_w: None });
+    g.push(Btn { hit: Hit::Adjust, icon: "adjust", text: String::new(), tint: if s.control_open { accent() } else { T1 }, icon_size: 15.0, fixed_w: None });
     groups.push(g);
     groups.push(vec![Btn { hit: Hit::Power, icon: "power", text: String::new(), tint: DANGER, icon_size: 15.0, fixed_w: Some(24.0) }]);
 

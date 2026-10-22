@@ -9,6 +9,8 @@ cd "$(dirname "$0")"
 data=${XDG_DATA_HOME:-$HOME/.local/share}
 [ -e "$data/mist/shell" ] || { mkdir -p "$data/mist"; ln -s "$(cd .. && pwd)" "$data/mist/shell"; }
 cargo build --release
+# a fresh account may have no ~/.local/bin yet
+mkdir -p "$HOME/.local/bin"
 for b in mist-ui mist-wall; do
     cp target/release/$b "$HOME/.local/bin/.$b-bin.new"
     mv -f "$HOME/.local/bin/.$b-bin.new" "$HOME/.local/bin/$b-bin"

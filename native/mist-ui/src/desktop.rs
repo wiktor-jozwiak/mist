@@ -242,6 +242,8 @@ pub enum Hit {
     Sun,
     Moon,
     Pop,
+    // the music card's buttons (prev / toggle / next)
+    Media(&'static str),
 }
 pub type Hits = Vec<(f32, f32, f32, f32, Hit)>;
 pub fn hit_at(h: &Hits, x: f32, y: f32) -> Option<Hit> {
@@ -249,6 +251,8 @@ pub fn hit_at(h: &Hits, x: f32, y: f32) -> Option<Hit> {
 }
 
 // ------------------------------------------------------------------ settings (widgets.json)
+// every widget that can take a place in the bento row (key, name); weather is the wide one
+pub const WIDGETS: [(&str, &str); 7] = [("weather", "Pogoda"), ("garmin", "Garmin"), ("running", "Bieganie"), ("music", "Muzyka"), ("calendar", "Kalendarz"), ("system", "System"), ("clocks", "Zegary")];
 pub struct Group {
     pub label: &'static str,
     pub key: &'static str,
@@ -269,7 +273,9 @@ pub fn groups(card: &str) -> Vec<Group> {
             g("Zegar", "clock", false, 0, 0, &[(s("big"), "Duży"), (s("small"), "Mały"), (s("hide"), "Ukryty")]),
             g("Data", "date", false, 0, 0, &[(s("show"), "Pokaż"), (s("hide"), "Ukryj")]),
             g("Wschód i zachód słońca", "sun", false, 0, 0, &[(s("show"), "Pokaż"), (s("hide"), "Ukryj")]),
-            g("Tło kart", "glass", false, 0, 0, &[(s("light"), "Jaśniejsze"), (s("normal"), "Standard"), (s("dark"), "Ciemniejsze")]),
+            g("Tło kart", "glass", false, 0, 0, &[(s("clear"), "Przejrzyste"), (s("light"), "Jaśniejsze"), (s("normal"), "Standard"), (s("dark"), "Ciemniejsze")]),
+            g("Grubość zegara", "clockw", false, 0, 0, &[(s("thin"), "Cienki"), (s("regular"), "Standard"), (s("bold"), "Gruby")]),
+            g("Kolor zegara", "clockc", false, 0, 0, &[(s("white"), "Biały"), (s("accent"), "Akcent"), (s("warm"), "Ciepły")]),
         ],
         "weather" => vec![
             g("Główna liczba", "hero", false, 0, 0, &[(s("temp"), "Temperatura"), (s("feels"), "Odczuwalna"), (s("rain"), "Szansa opadu"), (s("wind"), "Wiatr")]),
@@ -283,6 +289,23 @@ pub fn groups(card: &str) -> Vec<Group> {
             g("Wartości na dole", "vitals", true, 4, 1, &[(s("sleep"), "Sen"), (s("hrv"), "HRV"), (s("rhr"), "Tętno"), (s("stress"), "Stres"), (s("steps"), "Kroki"), (s("bb"), "Battery"), (s("ready"), "Gotowość")]),
             g("Stopka", "foot", false, 0, 0, &[(s("insight"), "Podpowiedź"), (s("hide"), "Tylko po najechaniu")]),
         ],
+        "music" => vec![
+            g("Styl", "style", false, 0, 0, &[(s("cover"), "Z okładką"), (s("minimal"), "Sam tytuł")]),
+            g("Pokaż", "show", true, 0, 0, &[(s("progress"), "Postęp"), (s("controls"), "Przyciski"), (s("source"), "Odtwarzacz")]),
+        ],
+        "calendar" => vec![
+            g("Widok", "view", false, 0, 0, &[(s("month"), "Miesiąc"), (s("agenda"), "Najbliższe")]),
+            g("Tydzień od", "week", false, 0, 0, &[(s("mon"), "Poniedziałku"), (s("sun"), "Niedzieli")]),
+            g("Następne wydarzenie", "next", false, 0, 0, &[(s("show"), "Pokaż"), (s("hide"), "Ukryj")]),
+        ],
+        "system" => vec![
+            g("Styl", "style", false, 0, 0, &[(s("rings"), "Pierścienie"), (s("bars"), "Paski")]),
+            g("Pokaż", "show", true, 4, 1, &[(s("cpu"), "Procesor"), (s("ram"), "Pamięć"), (s("disk"), "Dysk"), (s("net"), "Sieć")]),
+        ],
+        "clocks" => vec![
+            g("Zegar", "style", false, 0, 0, &[(s("analog"), "Wskazówkowy"), (s("digital"), "Cyfrowy")]),
+            g("Miasta", "cities", true, 3, 0, &crate::deskwidgets::CITIES.iter().map(|c| (s(c.0), c.1)).collect::<Vec<_>>()),
+        ],
         _ => vec![
             g("Główna liczba", "hero", false, 0, 0, &[(s("race"), "Do startu"), (s("week"), "Tydzień"), (s("year"), "Rok")]),
             g("Pokaż", "show", true, 0, 0, &[(s("strip"), "Dni do startu"), (s("workout"), "Trening dnia"), (s("p5"), "Prognoza 5 km")]),
@@ -294,7 +317,11 @@ fn defaults() -> Value {
     json!({
         // a new install shows only the weather: Garmin and running need their integrations (docs/guides)
         "order": ["weather", "garmin", "running"],
-        "desk": { "cards": 1, "clock": "big", "date": "show", "sun": "show", "glass": "normal" },
+        "desk": { "cards": 1, "clock": "big", "date": "show", "sun": "show", "glass": "normal", "clockw": "regular", "clockc": "white" },
+        "music": { "style": "cover", "show": ["progress", "controls", "source"] },
+        "calendar": { "view": "month", "week": "mon", "next": "show" },
+        "system": { "style": "rings", "show": ["cpu", "ram", "disk", "net"] },
+        "clocks": { "style": "analog", "cities": ["london", "newyork", "tokyo"] },
         "garmin": { "hero": "ready", "vitals": ["sleep", "hrv", "rhr", "stress"], "foot": "insight" },
         "weather": { "hero": "temp", "metric": "temp", "hours": 24, "days": "show", "insights": ["rain", "run", "wear", "wind", "light", "tomorrow"] },
         "running": { "hero": "race", "show": ["strip", "workout", "p5"], "foot": "last" }
@@ -322,12 +349,15 @@ impl Cfg {
         self.opt(card, key).as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default()
     }
     pub fn order(&self) -> Vec<String> {
-        let o: Vec<String> = self.v["order"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
-        let mut o = if o.len() == 3 && ["garmin", "weather", "running"].iter().all(|k| o.iter().any(|x| x == k)) {
-            o
-        } else {
-            vec!["garmin".into(), "weather".into(), "running".into()]
-        };
+        let saved: Vec<String> = self.v["order"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+        // the saved order (known widgets, once each), then the ones it does not name (older files had 3)
+        let mut o: Vec<String> = Vec::new();
+        let base = if saved.is_empty() { vec!["garmin".to_string(), "weather".into(), "running".into()] } else { saved };
+        for k in base.into_iter().chain(WIDGETS.iter().map(|w| w.0.to_string())) {
+            if WIDGETS.iter().any(|w| w.0 == k) && !o.contains(&k) {
+                o.push(k);
+            }
+        }
         // cards without a data source go last (in memory only), so the first `cards()` places are real ones
         o.sort_by_key(|k| !crate::data::available(k));
         o
@@ -349,7 +379,7 @@ impl Cfg {
     // how many places the bento row shows (the first n of the order)
     // (only cards with a data source: Garmin and running are optional, crate::data::available)
     pub fn cards(&self) -> usize {
-        let have = ["garmin", "weather", "running"].iter().filter(|k| crate::data::available(k)).count();
+        let have = WIDGETS.iter().filter(|k| crate::data::available(k.0)).count().min(3);
         (self.opt("desk", "cards").as_u64().unwrap_or(3) as usize).min(have)
     }
     pub fn shown(&self) -> Vec<String> {
@@ -401,6 +431,7 @@ pub fn glass_tint(cfg: &Cfg) -> f32 {
     match cfg.s("desk", "glass").as_str() {
         "light" => 0.2,
         "dark" => 0.52,
+        "clear" => 0.08,
         _ => 0.34,
     }
 }
@@ -697,6 +728,12 @@ pub struct Desk {
     bento_y: f32,
     pub intent: Intent,
     pub sheet_scroll: HashMap<&'static str, (f32, f32)>,
+    // the extra widgets' data (deskwidgets.rs), set by app.rs from what it already has
+    pub player: Option<crate::media::Player>,
+    pub art: Option<(String, Option<Pixmap>, Rgba)>,
+    pub cal: Value,
+    pub stats: (i32, f32, f32, f64),
+    pub media_req: Option<&'static str>,
 }
 
 pub fn stage_h(t: &mut Text) -> f32 {
@@ -734,6 +771,11 @@ impl Desk {
             bento_y: 0.0,
             intent: Intent::new(),
             sheet_scroll: HashMap::new(),
+            player: None,
+            art: None,
+            cal: Value::Null,
+            stats: (0, 0.0, 0.0, 0.0),
+            media_req: None,
         }
     }
     pub fn editing(&self, card: &str) -> bool {
@@ -742,7 +784,7 @@ impl Desk {
     // the wheel over a card turned to its settings: scroll them (false = nothing moved)
     pub fn sheet_wheel(&mut self, dy: f32) -> bool {
         let zone = self.zone();
-        let Some(k) = ["garmin", "running"].into_iter().find(|k| *k == zone && self.editing(k)) else { return false };
+        let Some(k) = WIDGETS.iter().map(|w| w.0).find(|k| *k != "weather" && *k == zone && self.editing(k)) else { return false };
         let s = self.sheet_scroll.entry(k).or_default();
         let n = (s.0 + dy).clamp(0.0, s.1);
         let moved = n != s.0;
@@ -808,7 +850,7 @@ impl Desk {
         let col_x = 40.0;
         // date, clock, sun path (cached per minute: their shadows are blurred)
         let minute = crate::data::now() / 60;
-        let key = format!("{minute}|{}|{}|{}|{}", self.weather["sunrise"].as_str().unwrap_or(""), self.cfg.s("desk", "clock"), self.cfg.s("desk", "date"), self.cfg.s("desk", "sun"));
+        let key = format!("{minute}|{}|{}|{}|{}|{}|{}", self.weather["sunrise"].as_str().unwrap_or(""), self.cfg.s("desk", "clock"), self.cfg.s("desk", "date"), self.cfg.s("desk", "sun"), self.cfg.s("desk", "clockw"), self.cfg.s("desk", "clockc"));
         if self.top.as_ref().map(|t| t.0 != key).unwrap_or(true) {
             self.top = Some((key, self.paint_top(t)));
         }
@@ -822,6 +864,10 @@ impl Desk {
             match k.as_str() {
                 "garmin" => self.garmin_card(&mut c, t, x, y, w),
                 "running" => self.running_card(&mut c, t, x, y, w),
+                "music" => self.music_card(&mut c, t, x, y, w),
+                "calendar" => self.calendar_card(&mut c, t, x, y, w),
+                "system" => self.system_card(&mut c, t, x, y, w),
+                "clocks" => self.clocks_card(&mut c, t, x, y, w),
                 _ => {}
             }
         }
@@ -855,11 +901,13 @@ impl Desk {
         }
         // clock: shadow rgb(2, 6, 16) .22, blur 1 (of 48), 6 px down
         if csz > 0.0 {
-            let cs = st(csz, 620.0).spaced(sp).tnum();
+            let wght = match self.cfg.s("desk", "clockw").as_str() { "thin" => 250.0, "bold" => 800.0, _ => 620.0 };
+            let ccol = match self.cfg.s("desk", "clockc").as_str() { "accent" => ACC.alpha(0.92), "warm" => Rgba::rgb8(0xf6, 0xd9, 0xb0, 0.92), _ => WHITE.alpha(0.86) };
+            let cs = st(csz, wght).spaced(sp).tnum();
             let s = crate::data::hm(now);
             let cw = width(t, &s, &cs);
             let mut l = Canvas::new(STAGE_W, (line_h(t, &cs) + 120.0) as u32);
-            text(&mut l, t, ((w - cw) / 2.0).round(), 60.0, &s, &cs, WHITE.alpha(0.86), false, None);
+            text(&mut l, t, ((w - cw) / 2.0).round(), 60.0, &s, &cs, ccol, false, None);
             put_with_shadow(&mut out, &l.pm, 0, (dy + date_h - pad_t - 60.0) as i32, 19.2 * csz / 150.0, Rgba(2.0 / 255.0, 6.0 / 255.0, 16.0 / 255.0, 1.0), 0.22, 6);
         }
         // the sun's path: rise · line with a dot for now · set (at night: set -> next rise)
@@ -908,7 +956,7 @@ impl Desk {
     }
 
     // the pointer once it rested on a card (hover intent): what changes the content follows this one
-    fn inside(&self, x: f32, y: f32, w: f32, h: f32) -> bool {
+    pub(crate) fn inside(&self, x: f32, y: f32, w: f32, h: f32) -> bool {
         self.ptr.filter(|_| self.intent.engaged).map(|p| p.0 >= x && p.0 < x + w && p.1 >= y && p.1 < y + h).unwrap_or(false)
     }
 
@@ -1246,6 +1294,10 @@ impl Desk {
                 self.editing.insert(card, false);
             }
             Some(Hit::Move(card, d)) => self.cfg.mv(card, d),
+            Some(Hit::Media(cmd)) => {
+                self.media_req = Some(cmd);
+                return false;
+            }
             Some(Hit::Opt(card, key, v)) => {
                 if let Some(gr) = groups(card).into_iter().find(|g| g.key == key) {
                     self.cfg.click(card, &gr, &v);

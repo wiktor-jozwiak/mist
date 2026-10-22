@@ -516,14 +516,14 @@ impl Island {
             if self.armed && !a.sink.is_empty() {
                 let hp = a.sink_desc.to_lowercase();
                 let icon = if ["head", "słuch", "buds", "airpods"].iter().any(|k| hp.contains(k)) { "headphones" } else { "volume" };
-                self.push(info("out", 2, 2600, icon, ACCENT, if a.sink_desc.is_empty() { &a.sink } else { &a.sink_desc }, "wyjście audio"));
+                self.push(info("out", 2, 2600, icon, accent(), if a.sink_desc.is_empty() { &a.sink } else { &a.sink_desc }, "wyjście audio"));
             }
             self.dev_armed_at = Some(Instant::now());
             return;
         }
         if a.source != old.source {
             if self.armed && !a.source.is_empty() {
-                self.push(info("in", 2, 2600, "mic", ACCENT, if a.src_desc.is_empty() { &a.source } else { &a.src_desc }, "wejście audio"));
+                self.push(info("in", 2, 2600, "mic", accent(), if a.src_desc.is_empty() { &a.source } else { &a.src_desc }, "wejście audio"));
             }
             self.dev_armed_at = Some(Instant::now());
             return;
@@ -563,7 +563,7 @@ impl Island {
                 let first = self.layout.is_empty();
                 self.layout = l.clone();
                 if !first && self.armed {
-                    self.push(info("kbd", 2, 1800, "keyboard", ACCENT, &l, "układ klawiatury"));
+                    self.push(info("kbd", 2, 1800, "keyboard", accent(), &l, "układ klawiatury"));
                 }
             }
             "screencast" => {
@@ -614,11 +614,11 @@ impl Island {
                 }
                 let errs: Vec<String> = crate::sys::hypr_request("j/configerrors").and_then(|v| serde_json::from_value::<Vec<String>>(v).ok()).unwrap_or_default().into_iter().filter(|x| !x.trim().is_empty()).collect();
                 if !errs.is_empty() {
-                    let mut e = info("cfg", 3, 7000, "alert", DANGER, &format!("Błędy konfiguracji Hyprland ({})", errs.len()), &errs[0].split_whitespace().collect::<Vec<_>>().join(" "));
+                    let mut e = info("cfg", 3, 7000, "alert", DANGER, &format!("Błędy konfiguracji {} ({})", comp_name(), errs.len()), &errs[0].split_whitespace().collect::<Vec<_>>().join(" "));
                     e.hold = true;
                     self.push(e);
                 } else {
-                    self.push(info("cfg", 1, 1800, "refresh", GREEN, "Konfiguracja przeładowana", "Hyprland"));
+                    self.push(info("cfg", 1, 1800, "refresh", GREEN, "Konfiguracja przeładowana", comp_name()));
                 }
             }
             "monitoraddedv2" | "monitorremovedv2" => {
@@ -628,14 +628,14 @@ impl Island {
                 let p: Vec<&str> = d.split(',').collect();
                 let add = n.starts_with("monitoradded");
                 let title = if p.len() > 2 { p[2..].join(",") } else { p.get(1).or(p.first()).unwrap_or(&"").to_string() };
-                self.push(info(&format!("mon{}", p.get(1).unwrap_or(&"")), 2, 3000, if add { "screenOn" } else { "screenOff" }, if add { ACCENT } else { T3 }, &title, if add { "monitor podłączony" } else { "monitor odłączony" }));
+                self.push(info(&format!("mon{}", p.get(1).unwrap_or(&"")), 2, 3000, if add { "screenOn" } else { "screenOff" }, if add { accent() } else { T3 }, &title, if add { "monitor podłączony" } else { "monitor odłączony" }));
             }
             "pin" => {
                 if !self.armed {
                     return;
                 }
                 let on = d.split(',').nth(1) == Some("1");
-                self.push(info("pin", 1, 1500, "pinned", if on { ACCENT } else { T3 }, if on { "Okno przypięte" } else { "Okno odpięte" }, ""));
+                self.push(info("pin", 1, 1500, "pinned", if on { accent() } else { T3 }, if on { "Okno przypięte" } else { "Okno odpięte" }, ""));
             }
             _ => {}
         }
@@ -644,7 +644,7 @@ impl Island {
     pub fn on_bt(&mut self, on: bool, devs: Option<Vec<BtDev>>) {
         if let Some(was) = self.bt_on {
             if self.armed && was != on {
-                self.push(info("btA", 2, 2000, if on { "bluetooth" } else { "btOff" }, if on { ACCENT } else { T3 }, if on { "Bluetooth włączony" } else { "Bluetooth wyłączony" }, ""));
+                self.push(info("btA", 2, 2000, if on { "bluetooth" } else { "btOff" }, if on { accent() } else { T3 }, if on { "Bluetooth włączony" } else { "Bluetooth wyłączony" }, ""));
             }
         }
         self.bt_on = Some(on);
@@ -654,7 +654,7 @@ impl Island {
             if let Some(o) = old {
                 if o.connected != d.connected && self.armed {
                     let sub = if d.connected { d.battery.map(|b| format!("połączono · {}%", (b * 100.0).round())).unwrap_or("połączono".into()) } else { "rozłączono".into() };
-                    self.push(info(&format!("bt{}", d.address), 2, 3000, if d.connected { "btOn" } else { "btOff" }, if d.connected { ACCENT } else { T3 }, &d.name, &sub));
+                    self.push(info(&format!("bt{}", d.address), 2, 3000, if d.connected { "btOn" } else { "btOff" }, if d.connected { accent() } else { T3 }, &d.name, &sub));
                 }
             }
             if let (Some(b), true) = (d.battery, d.connected) {
@@ -674,7 +674,7 @@ impl Island {
 
     pub fn on_profile(&mut self, p: String) {
         if !self.profile.is_empty() && p != self.profile && self.armed {
-            let (icon, col, t) = match p.as_str() { "performance" => ("rocket", ORANGE_I, "Wydajność"), "power-saver" => ("leaf", GREEN, "Oszczędzanie energii"), _ => ("gauge", ACCENT, "Zrównoważony") };
+            let (icon, col, t) = match p.as_str() { "performance" => ("rocket", ORANGE_I, "Wydajność"), "power-saver" => ("leaf", GREEN, "Oszczędzanie energii"), _ => ("gauge", accent(), "Zrównoważony") };
             self.push(info("profile", 2, 2000, icon, col, t, "profil zasilania"));
         }
         self.profile = p;
@@ -698,7 +698,7 @@ impl Island {
             if let Some(name) = rest.split("' is now the primary connection").next().filter(|_| rest.contains("' is now the primary connection")) {
                 let was = std::mem::replace(&mut self.primary, name.to_string());
                 if self.armed && !was.is_empty() && was != name && self.conn == "full" {
-                    self.push(info("net", 1, 2400, "network", ACCENT, name, "główne połączenie"));
+                    self.push(info("net", 1, 2400, "network", accent(), name, "główne połączenie"));
                 }
                 return;
             }
@@ -727,9 +727,9 @@ impl Island {
                 return;
             }
             if c {
-                self.push(info("lock", 2, 1400, "capsLock", if caps { ACCENT } else { T3 }, if caps { "Caps Lock włączony" } else { "Caps Lock wyłączony" }, ""));
+                self.push(info("lock", 2, 1400, "capsLock", if caps { accent() } else { T3 }, if caps { "Caps Lock włączony" } else { "Caps Lock wyłączony" }, ""));
             } else if n {
-                self.push(info("lock", 2, 1400, "numbers", if num { ACCENT } else { T3 }, if num { "Num Lock włączony" } else { "Num Lock wyłączony" }, ""));
+                self.push(info("lock", 2, 1400, "numbers", if num { accent() } else { T3 }, if num { "Num Lock włączony" } else { "Num Lock wyłączony" }, ""));
             }
             return;
         }
@@ -761,7 +761,7 @@ impl Island {
                     "secret" => ("lock", "Skopiowano hasło".into(), "ukryte · schowek".into()),
                     _ => return,
                 };
-                let mut e = info("clip", 1, if kind == "image" { 2800 } else { 2000 }, icon, if kind == "secret" { ORANGE_I } else { ACCENT }, &title, if private { "treść ukryta · udostępniasz ekran" } else { &sub });
+                let mut e = info("clip", 1, if kind == "image" { 2800 } else { 2000 }, icon, if kind == "secret" { ORANGE_I } else { accent() }, &title, if private { "treść ukryta · udostępniasz ekran" } else { &sub });
                 if kind == "image" && !self.sharing {
                     e.img = s("path");
                     e.photo = true;
@@ -774,13 +774,13 @@ impl Island {
             "usb" => {
                 let icon = match s("kind").as_str() { "keyboard" => "keyboard", "mouse" => "mouse", "storage" => "usb", "audio" => "headset", "video" => "camera", "phone" => "mobile", "pad" => "gamepad", "printer" => "printer", "net" => "network", _ => "usb" };
                 let on = o["on"].as_bool().unwrap_or(false);
-                self.push(info(&format!("usb{}", s("name")), 1, 2400, icon, if on { ACCENT } else { T3 }, &s("name"), if on { "podłączono" } else { "odłączono" }));
+                self.push(info(&format!("usb{}", s("name")), 1, 2400, icon, if on { accent() } else { T3 }, &s("name"), if on { "podłączono" } else { "odłączono" }));
             }
             "mount" => {
                 if o["on"].as_bool().unwrap_or(false) {
                     let free = o["free"].as_f64().unwrap_or(-1.0);
                     let sub = format!("zamontowano{} · otwórz", if free >= 0.0 { format!(" · wolne {}", gb(free)) } else { String::new() });
-                    let mut e = info(&format!("mnt{}", s("path")), 2, 4500, "drive", ACCENT, &s("name"), &sub);
+                    let mut e = info(&format!("mnt{}", s("path")), 2, 4500, "drive", accent(), &s("name"), &sub);
                     e.act = Act::Open(s("path"));
                     self.push(e);
                 } else {
@@ -886,7 +886,7 @@ impl Island {
         let clean_app = strip_tags(app_name);
         if raw_body.is_empty() || (!dev.is_empty() && clean_app == dev) {
             let body_clean = strip_tags(raw_body);
-            let mut e = info("phoneMsg", if urgent { 3 } else { 2 }, 4000, "mobile", if urgent { DANGER } else { ACCENT }, if dev.is_empty() { &clean_app } else { &dev }, if body_clean.is_empty() { &clean_app } else { &body_clean });
+            let mut e = info("phoneMsg", if urgent { 3 } else { 2 }, 4000, "mobile", if urgent { DANGER } else { accent() }, if dev.is_empty() { &clean_app } else { &dev }, if body_clean.is_empty() { &clean_app } else { &body_clean });
             e.act = Act::Popup("phone".into());
             self.push(e);
             return;
@@ -983,7 +983,7 @@ impl Island {
         }
         let ob = o["bat"].as_i64().unwrap_or(battery);
         let mut e = match k.as_str() {
-            "conn" => { let mut e = info("", 2, 2600, "mobile", ACCENT, &n, &format!("połączono{bat}")); e.act = Act::Popup("start".into()); e }
+            "conn" => { let mut e = info("", 2, 2600, "mobile", accent(), &n, &format!("połączono{bat}")); e.act = Act::Popup("start".into()); e }
             "disc" => info("", 1, 2200, "mobileOff", T3, &n, "rozłączono"),
             "pairreq" => { let mut e = info("", 3, 15000, "mobileShare", YELLOW, &format!("{n} chce się sparować"), &format!("klucz {} · kliknij, aby zaakceptować", s("key"))); e.hold = true; e.pulse = true; e.act = Act::Phone("accept".into()); e }
             "paired" => info("", 2, 3000, "check", GREEN, &n, "sparowano · telefon i komputer połączone"),
@@ -991,7 +991,7 @@ impl Island {
             "plug" => info("", 1, 2200, "charging", GREEN, &n, &format!("ładowanie · {ob}%")),
             "full" => info("", 1, 3000, "battery", GREEN, &n, "naładowany · 100%"),
             "photo" | "shot" => {
-                let mut e = info("", 2, if k == "photo" { 4500 } else { 4000 }, if k == "photo" { "camera" } else { "screenshot" }, ACCENT, if k == "photo" { "Zdjęcie z telefonu" } else { "Zrzut ekranu telefonu" }, if k == "photo" { "kliknij, aby otworzyć" } else { "w schowku · kliknij, aby otworzyć" });
+                let mut e = info("", 2, if k == "photo" { 4500 } else { 4000 }, if k == "photo" { "camera" } else { "screenshot" }, accent(), if k == "photo" { "Zdjęcie z telefonu" } else { "Zrzut ekranu telefonu" }, if k == "photo" { "kliknij, aby otworzyć" } else { "w schowku · kliknij, aby otworzyć" });
                 e.img = s("path");
                 e.photo = true;
                 e.act = Act::Open(s("path"));
@@ -1043,7 +1043,7 @@ impl Island {
         let wh = s["where"].as_str().map(|w| format!(" · {w}")).unwrap_or_default();
         if left <= 30 && left > -120 && self.reminded.get(&id) != Some(&2) {
             self.reminded.insert(id, 2);
-            let mut e = info("cal", 3, 9000, "calEvent", ACCENT, &title, &format!("zaczyna się teraz{wh}"));
+            let mut e = info("cal", 3, 9000, "calEvent", accent(), &title, &format!("zaczyna się teraz{wh}"));
             e.pulse = true;
             e.hold = true;
             e.act = Act::Popup("calendar".into());
@@ -1051,7 +1051,7 @@ impl Island {
             self.push(e);
         } else if left <= 300 && left > 30 && !self.reminded.contains_key(&id) {
             self.reminded.insert(id, 1);
-            let mut e = info("cal", 2, 7000, "calEvent", ACCENT, &title, &format!("{}{wh}", soon_text(start)));
+            let mut e = info("cal", 2, 7000, "calEvent", accent(), &title, &format!("{}{wh}", soon_text(start)));
             e.act = Act::Popup("calendar".into());
             self.push(e);
         }
@@ -1068,7 +1068,7 @@ impl Island {
         let snow = w["snow"].as_f64().unwrap_or(0.0) > 0.0;
         let t = if i == 0 { if snow { "Zaczyna padać śnieg".to_string() } else { "Zaczyna padać".into() } } else { format!("{} za ok. {} min", if snow { "Śnieg" } else { "Deszcz" }, i * 15) };
         let city = w["city"].as_str().unwrap_or("").to_string();
-        self.push(info("rain", 2, 6000, if snow { "snow" } else { "umbrella" }, ACCENT, &t, &city));
+        self.push(info("rain", 2, 6000, if snow { "snow" } else { "umbrella" }, accent(), &t, &city));
     }
 
     // minutnik
@@ -1116,7 +1116,7 @@ impl Island {
     }
 
     pub fn demo(&mut self, kind: &str) {
-        let a = ACCENT;
+        let a = accent();
         let e = match kind {
             "volume" => Ev { view: "osd", key: "vol".into(), prio: 3, dur: 2500, value: -1, ..Default::default() },
             "mic-volume" => Ev { view: "osd", key: "vol".into(), prio: 3, dur: 2500, mic: true, value: -1, ..Default::default() },
@@ -1153,7 +1153,7 @@ impl Island {
             "monitor" => info("mon", 2, 3000, "screenOn", a, "iiyama PL2770H", "monitor podłączony"),
             "urgent-window" => { let mut e = info("urg", 2, 4000, "", ORANGE_I, "kitty", "prosi o uwagę · kliknij"); e.img = "kitty".into(); e }
             "special" => info("special", 1, 1500, "layers", PURPLE, "magic", "obszar specjalny"),
-            "cfg" => info("cfg", 1, 1800, "refresh", GREEN, "Konfiguracja przeładowana", "Hyprland"),
+            "cfg" => info("cfg", 1, 1800, "refresh", GREEN, "Konfiguracja przeładowana", comp_name()),
             "cfg-err" => info("cfg", 3, 5000, "alert", DANGER, "Błędy konfiguracji Hyprland (2)", "binds.lua:42: unknown dispatcher 'focuswindw'"),
             "profile" => info("profile", 2, 2000, "rocket", ORANGE_I, "Wydajność", "profil zasilania"),
             "player" => { self.set_ev(None); self.expanded = !self.expanded; return; }
@@ -1519,12 +1519,12 @@ impl Island {
         }
         if soon.is_some() {
             let iw = Canvas::icon_w(cx.t, "calEvent", 15.0);
-            c.icon(cx.t, x + iw / 2.0, cy, "calEvent", 15.0, ACCENT);
+            c.icon(cx.t, x + iw / 2.0, cy, "calEvent", 15.0, accent());
             x += iw + 8.0;
         }
         let st = Style::ui(13.0, 600.0);
         let txt = crate::bar::elide(cx.t, &self.idle_text(&soon), &st, 240.0);
-        x += c.text(cx.t, x, cy, &txt, &st, if soon.is_some() { ACCENT } else { T1 }) + 8.0;
+        x += c.text(cx.t, x, cy, &txt, &st, if soon.is_some() { accent() } else { T1 }) + 8.0;
         x += c.text(cx.t, x, cy, "·", &Style::ui(13.0, 450.0), T3) + 8.0;
         x += c.text(cx.t, x, cy, &data::hm(cx.now), &st, T1) + 8.0;
         if self.timer_on() {
@@ -1545,7 +1545,7 @@ impl Island {
         }
         if self.caps {
             let iw = Canvas::icon_w(cx.t, "capsLock", 14.0);
-            c.icon(cx.t, x + iw / 2.0, cy, "capsLock", 14.0, ACCENT);
+            c.icon(cx.t, x + iw / 2.0, cy, "capsLock", 14.0, accent());
             x += iw + 8.0;
         }
         for (on, col) in [(self.cam_busy, GREEN), (self.mic_busy(), ORANGE_I), (self.sharing, PURPLE)] {
@@ -1572,7 +1572,7 @@ impl Island {
         }
         for (i, a) in self.eq.iter().enumerate() {
             let bh = a.value();
-            c.rrect(x + i as f32 * 5.0, y + 14.0 - bh, 3.0, bh, 1.5, ACCENT);
+            c.rrect(x + i as f32 * 5.0, y + 14.0 - bh, 3.0, bh, 1.5, accent());
         }
     }
 
@@ -1680,7 +1680,7 @@ impl Island {
             } else if h {
                 c.rrect(bx - d / 2.0, by - d / 2.0, d, d, d / 2.0, FILL2.alpha(op));
             }
-            c.icon(cx.t, bx, by, icon, if big { 17.0 } else { 16.0 }, if big { INK } else if lit { ACCENT.alpha(op) } else { T1.alpha(op) });
+            c.icon(cx.t, bx, by, icon, if big { 17.0 } else { 16.0 }, if big { INK } else if lit { accent().alpha(op) } else { T1.alpha(op) });
             if !off {
                 self.hit(x, 58.0, bw, 38.0, Hit::Ctl(id));
             }
@@ -1835,7 +1835,7 @@ impl Island {
         let iw = if icon.is_empty() { 0.0 } else { Canvas::icon_w(cx.t, icon, 12.0) + 5.0 };
         let w = iw + cx.t.width(text, &st) + 20.0;
         let hv = self.hov(&hit);
-        c.rrect(x, y, w, 26.0, 13.0, if primary { if hv { ACCENT.mix(Rgba(1.0, 1.0, 1.0, 1.0), 0.08) } else { ACCENT } } else if hv { FILL2 } else { FILL });
+        c.rrect(x, y, w, 26.0, 13.0, if primary { if hv { accent().mix(Rgba(1.0, 1.0, 1.0, 1.0), 0.08) } else { accent() } } else if hv { FILL2 } else { FILL });
         let mut tx = x + 10.0;
         if !icon.is_empty() {
             c.icon(cx.t, tx + (iw - 5.0) / 2.0, y + 13.0, icon, 12.0, if primary { INK } else { T2 });
@@ -1864,7 +1864,7 @@ impl Island {
         }
         if e.phone.is_some() {
             c.rrect(14.0 + 38.0 - 13.0, iy + 38.0 - 13.0, 17.0, 17.0, 8.5, Rgba(0.0, 0.0, 0.0, 1.0));
-            c.icon(cx.t, 14.0 + 38.0 - 4.5, iy + 38.0 - 4.5, "mobile", 10.0, ACCENT);
+            c.icon(cx.t, 14.0 + 38.0 - 4.5, iy + 38.0 - 4.5, "mobile", 10.0, accent());
         }
         let x = 14.0 + 38.0 + 12.0;
         let cw = w - x - 18.0;
@@ -1899,7 +1899,7 @@ impl Island {
             let bw = cw - pw - 8.0;
             self.note_bar.set(e.value.clamp(0, 100) as f32 / 100.0, 220.0, Ease::OutCubic);
             c.rrect(x, y + 3.5, bw, 5.0, 2.5, FILL2);
-            c.rrect(x, y + 3.5, bw * self.note_bar.value(), 5.0, 2.5, ACCENT);
+            c.rrect(x, y + 3.5, bw * self.note_bar.value(), 5.0, 2.5, accent());
             y += 13.0;
         }
         let pn_actions = pn.as_ref().and_then(|n| {
@@ -1936,7 +1936,7 @@ impl Island {
                     c.rrect(x + 13.0 + tw + 1.0, y + 8.0, 1.5, 16.0, 0.0, T1.alpha(0.85));
                 }
                 let can = !self.reply.trim().is_empty();
-                c.rrect(x + cw - 3.0 - 26.0, y + 3.0, 26.0, 26.0, 13.0, if can { ACCENT } else { FILL2 });
+                c.rrect(x + cw - 3.0 - 26.0, y + 3.0, 26.0, 26.0, 13.0, if can { accent() } else { FILL2 });
                 c.icon(cx.t, x + cw - 3.0 - 13.0, y + 16.0, "send", 13.0, if can { INK } else { T3 });
                 self.hit(x + cw - 29.0, y + 3.0, 26.0, 26.0, Hit::ReplySend);
             } else {
@@ -2042,13 +2042,13 @@ impl Island {
             let run = active && self.playing();
             self.eq_draw(c, w - 18.0 - 18.0, cy - 7.0, run);
         } else {
-            c.icon(cx.t, w - 16.0 - 9.0, cy, if st == "pause" { "pauseF" } else { "playF" }, 18.0, if st == "pause" { T2 } else { ACCENT });
+            c.icon(cx.t, w - 16.0 - 9.0, cy, if st == "pause" { "pauseF" } else { "playF" }, 18.0, if st == "pause" { T2 } else { accent() });
         }
     }
 
     fn v_info(&mut self, c: &mut Canvas, cx: &mut Ctx, w: f32, h: f32) {
         let e = self.last.get("info").cloned().unwrap_or_default();
-        let col = e.color.unwrap_or(ACCENT);
+        let col = e.color.unwrap_or(accent());
         let photo = e.photo && !e.img.is_empty();
         let stack = photo || e.title.chars().count() + e.sub.chars().count() > 38;
         let cy = h / 2.0;
@@ -2451,4 +2451,9 @@ mod special_tests {
         isl.on_hypr("activespecial", "special:scratch,DP-3", &apps, &[], "");
         assert_eq!(isl.ev.as_ref().map(|e| e.key.as_str()), Some("special"));
     }
+}
+
+// mist-comp speaks Hyprland's event socket, so configreloaded comes from either compositor
+fn comp_name() -> &'static str {
+    if std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default() == "mist" { "mist-comp" } else { "Hyprland" }
 }
