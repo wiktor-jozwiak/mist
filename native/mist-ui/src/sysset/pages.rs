@@ -4,7 +4,9 @@
 // search can read every row of every page.
 use super::backend::{self, MIME_CATS};
 use super::{Fid, Settings, Sl};
+use crate::desktop::{groups, widget_icon, widget_name, WIDGETS};
 use crate::gfx::Rgba;
+use serde_json::{json, Value};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Page {
@@ -23,6 +25,10 @@ pub enum Page {
     Network,
     Personal,
     Wallpaper,
+    Desktop,
+    Widgets,
+    // one desktop widget's settings (its key in desktop::WIDGETS)
+    Widget(&'static str),
     Colors,
     LockScreen,
     Apps,
@@ -38,7 +44,7 @@ pub enum Page {
 use Page::*;
 
 pub const SIDEBAR: [Page; 11] = [Home, System, Devices, Network, Personal, Apps, Accounts, Time, Access, Keys, Updates];
-pub const ALL: [Page; 26] = [Home, System, Display, Sound, Notif, Power, Storage, Multitask, About, Devices, Bluetooth, Mouse, Network, Personal, Wallpaper, Colors, LockScreen, Apps, Defaults, Installed, Accounts, Time, Lang, Access, Keys, Updates];
+pub const ALL: [Page; 28] = [Home, System, Display, Sound, Notif, Power, Storage, Multitask, About, Devices, Bluetooth, Mouse, Network, Personal, Wallpaper, Desktop, Widgets, Colors, LockScreen, Apps, Defaults, Installed, Accounts, Time, Lang, Access, Keys, Updates];
 
 impl Page {
     pub fn title(self) -> &'static str {
@@ -58,6 +64,9 @@ impl Page {
             Network => "Sieć i Internet",
             Personal => "Personalizacja",
             Wallpaper => "Tapeta",
+            Desktop => "Pulpit",
+            Widgets => "Widżety",
+            Widget(k) => widget_name(k),
             Colors => "Kolory",
             LockScreen => "Ekran blokady",
             Apps => "Aplikacje",
@@ -88,6 +97,9 @@ impl Page {
             Network => "network",
             Personal => "personalization",
             Wallpaper => "wallpaper",
+            Desktop => "desktop",
+            Widgets => "widgets",
+            Widget(k) => k,
             Colors => "colors",
             LockScreen => "lockscreen",
             Apps => "apps",
@@ -102,7 +114,7 @@ impl Page {
         }
     }
     pub fn from_id(s: &str) -> Option<Page> {
-        ALL.iter().copied().find(|p| p.id() == s)
+        ALL.iter().copied().find(|p| p.id() == s).or_else(|| WIDGETS.iter().find(|w| w.0 == s).map(|w| Widget(w.0)))
     }
     pub fn icon(self) -> &'static str {
         match self {
@@ -120,6 +132,9 @@ impl Page {
             Network => "world",
             Personal => "brush",
             Wallpaper => "photo",
+            Desktop => "layout-dashboard",
+            Widgets => "layout-grid",
+            Widget(k) => widget_icon(k),
             Colors => "palette",
             LockScreen => "lock",
             Apps | Installed => "apps",
@@ -154,7 +169,8 @@ impl Page {
         match self {
             Display | Sound | Notif | Power | Storage | Multitask | About => Some(System),
             Bluetooth | Mouse => Some(Devices),
-            Wallpaper | Colors | LockScreen => Some(Personal),
+            Wallpaper | Desktop | Widgets | Colors | LockScreen => Some(Personal),
+            Widget(_) => Some(Widgets),
             Defaults | Installed => Some(Apps),
             Lang => Some(Time),
             _ => None,
@@ -162,7 +178,7 @@ impl Page {
     }
     // the sidebar entry it belongs to
     pub fn top(self) -> Page {
-        self.parent().unwrap_or(self)
+        self.parent().map(Page::top).unwrap_or(self)
     }
 }
 
@@ -181,7 +197,15 @@ pub enum Act {
     WallMusic(bool),
     WallTempo(&'static str),
     Gallery,
-    DeskSheet,
+    // widgets.json: an option set, a chip of a multi-choice group flipped, a widget into a place, shown / hidden
+    Desk(&'static str, &'static str, Value),
+    DeskChip(&'static str, &'static str, Value),
+    DeskSlot(usize, &'static str),
+    WidgetShow(&'static str, bool),
+    // the weather place: a search result picked
+    Place(usize),
+    Primary(String),
+    Restart,
     Sink(String),
     Source(String),
     SinkMute,
@@ -288,6 +312,8 @@ pub enum Block {
     Hero { pic: String, initials: String, title: String, lines: Vec<String>, act: Option<(String, Act)> },
     Thumbs(Vec<Thumb>),
     Swatches(Vec<(u32, &'static str, bool)>),
+    // the desktop in small: wallpaper, date, clock and the cards as set
+    DeskPreview,
     Tiles(Vec<Tile>),
     Note(String),
 }
@@ -320,9 +346,70 @@ pub const ACCENTS: [(u32, &str); 10] = [
     (0x8e8e93, "Grafitowy"),
 ];
 
+const IDLE_OPTS: [u32; 8] = [60, 120, 300, 600, 900, 1800, 3600, 0];
+
 const KB_LAYOUTS: [(&str, &str); 10] = [("pl", "Polski"), ("us", "Angielski (USA)"), ("gb", "Angielski (UK)"), ("de", "Niemiecki"), ("fr", "Francuski"), ("es", "Hiszpański"), ("it", "Włoski"), ("ua", "Ukraiński"), ("cz", "Czeski"), ("ru", "Rosyjski")];
 
+// a widget option's row icon
+fn opt_icon(key: &str) -> &'static str {
+    match key {
+        "hero" => "numbers",
+        "metric" => "gauge",
+        "hours" | "clock" => "clock",
+        "days" | "week" | "view" => "calendar",
+        "insights" => "info-circle",
+        "vitals" | "show" => "eye",
+        "foot" => "layout-dashboard",
+        "style" => "palette",
+        "next" => "bell",
+        "cities" => "world",
+        _ => "circle-check",
+    }
+}
+pub fn place_label(v: &Value) -> String {
+    let mut s = v["city"].as_str().unwrap_or("").to_string();
+    for k in ["region", "country"] {
+        if let Some(x) = v[k].as_str().filter(|x| !x.is_empty() && *x != s) {
+            s.push_str(", ");
+            s.push_str(x);
+        }
+    }
+    s
+}
+
 impl Settings {
+    // a widgets.json group as one row: show / hide is a switch, a few short choices a segmented control,
+    // the rest (and every multi-choice group) chips
+    fn cfg_row(&self, card: &'static str, key: &'static str, icon: &'static str, title: &str, sub: &str) -> Row {
+        let Some(gr) = groups(card).into_iter().find(|g| g.key == key) else { return Row::new(icon, title, sub, Ctl::None) };
+        let cur = self.cfg.opt(card, key);
+        let short = gr.opts.len() <= 4 && gr.opts.iter().map(|o| o.1.chars().count()).sum::<usize>() <= 40;
+        let ctl = if gr.multi {
+            let on = cur.as_array().cloned().unwrap_or_default();
+            Ctl::Chips(gr.opts.iter().map(|(v, l)| (l.to_string(), on.contains(v), Act::DeskChip(card, key, v.clone()))).collect())
+        } else if gr.opts.len() == 2 && gr.opts.iter().any(|o| o.0 == "show") && gr.opts.iter().any(|o| o.0 == "hide") {
+            let on = cur == "show";
+            Ctl::Toggle(on, Act::Desk(card, key, json!(if on { "hide" } else { "show" })))
+        } else if short {
+            Ctl::Seg(gr.opts.iter().map(|(v, l)| (l.to_string(), *v == cur, Act::Desk(card, key, v.clone()))).collect())
+        } else {
+            Ctl::Chips(gr.opts.iter().map(|(v, l)| (l.to_string(), *v == cur, Act::Desk(card, key, v.clone()))).collect())
+        };
+        let sub = if sub.is_empty() && gr.multi && gr.max > 0 { format!("Najwyżej {}", gr.max) } else { sub.to_string() };
+        Row::new(icon, title, &sub, ctl)
+    }
+    // the weather place: the field, then what `mistd geo` found for it
+    fn place_blocks(&self, b: &mut Vec<Block>) {
+        let d = &self.d;
+        b.push(Block::Card(vec![Row::new("map-pin", "Miejsce pogody", if d.place.is_empty() { "Nie ustawiono" } else { &d.place }, Ctl::Field(Fid::Place, "Szukaj miasta…"))]));
+        if self.place_q.text.trim().chars().count() >= 2 {
+            if d.found.is_empty() {
+                b.push(Block::Note(if d.geo_busy { "Szukam…" } else { "Nic nie znaleziono" }.into()));
+            } else {
+                b.push(Block::Card(d.found.iter().enumerate().map(|(i, v)| Row::new("map-pin", &place_label(v), "", Ctl::Button("Wybierz".into(), Act::Place(i), Btn::Plain))).collect()));
+            }
+        }
+    }
     pub fn blocks(&self, p: Page) -> Vec<Block> {
         let d = &self.d;
         let mut b: Vec<Block> = Vec::new();
@@ -352,7 +439,7 @@ impl Settings {
                 b.push(Block::Swatches(ACCENTS.iter().map(|(c, n)| (*c, *n, *c == self.accent_now())).collect()));
                 b.push(Block::Card(vec![
                     Row::nav("photo", "Tapeta", "Zdjęcie lub żywa scena, rytm muzyki", Wallpaper),
-                    Row::new("layout-dashboard", "Pulpit i widżety", "Zegar, karty, widżety pulpitu", Ctl::Button("Dostosuj".into(), Act::DeskSheet, Btn::Plain)),
+                    Row::nav("layout-dashboard", "Pulpit i widżety", "Zegar, karty, widżety pulpitu", Desktop),
                     Row::new("moon", "Nocne światło", "Cieplejsze barwy ekranu wieczorem", Ctl::Toggle(d.night, Act::Night(!d.night))),
                 ]));
             }
@@ -381,6 +468,14 @@ impl Settings {
                         Row::new("zoom-in", "Skalowanie", if comp { "Rozmiar tekstu, aplikacji i elementów" } else { "Ustawiane w konfiguracji Hyprlanda" }, if comp { Ctl::Chips(scales) } else { Ctl::Text(format!("{}%", (m.scale * 100.0).round())) }),
                         Row::new("layout-grid", "Położenie", "Od lewej, w pikselach logicznych", Ctl::Text(format!("{}, {}", m.x, m.y))),
                     ]));
+                }
+                if d.mons.len() > 1 {
+                    let cur = crate::paths::primary_monitor();
+                    let saved = backend::read_json("settings.json")["primary"].as_str().unwrap_or(cur).to_string();
+                    b.push(Block::Card(vec![Row::new("star", "Monitor główny", "Pulpit, dok, wyspa i powiadomienia", Ctl::Chips(d.mons.iter().map(|m| (m.name.clone(), m.name == saved, Act::Primary(m.name.clone()))).collect()))]));
+                    if saved != cur {
+                        b.push(Block::Card(vec![Row::new("refresh", "Zmiana zadziała po ponownym uruchomieniu powłoki", "Pasek, dok i pulpit wstaną od nowa po sekundzie", Ctl::Button("Uruchom ponownie".into(), Act::Restart, Btn::Primary))]));
+                    }
                 }
                 b.push(Block::Caption("Jasność i kolor".into()));
                 let vrr = backend::comp_get("vrr");
@@ -421,7 +516,7 @@ impl Settings {
             }
             Power => {
                 let (lock, off) = (d.idle.0, d.idle.1);
-                let opts = [60, 120, 300, 600, 900, 1800, 3600, 0];
+                let opts = IDLE_OPTS;
                 b.push(Block::Caption("Ekran i blokada".into()));
                 b.push(Block::Card(vec![
                     Row::new("lock", "Zablokuj po bezczynności", &mins(lock), Ctl::Chips(opts.iter().map(|s| (mins(*s), *s == lock, Act::Idle("lock", *s))).collect())),
@@ -485,6 +580,8 @@ impl Settings {
                 b.push(Block::Card(vec![
                     Row::new("heart", "Wesprzyj projekt", "github.com/sponsors/wiktor-jozwiak", Ctl::Button("Sponsoruj".into(), Act::Url("https://github.com/sponsors/wiktor-jozwiak".into()), Btn::Plain)),
                     Row::new("copy", "Specyfikacja", "Kopiuj wszystkie dane do schowka", Ctl::Button("Kopiuj".into(), Act::CopyInfo, Btn::Plain)),
+                    Row::new("brand-github", "Kod źródłowy", "github.com/wiktor-jozwiak/mist", Ctl::Button("Otwórz".into(), Act::Url("https://github.com/wiktor-jozwiak/mist".into()), Btn::Plain)),
+                    Row::new("refresh", "Uruchom ponownie powłokę", "Pasek, dok i pulpit wstaną od nowa po sekundzie", Ctl::Button("Uruchom ponownie".into(), Act::Restart, Btn::Plain)),
                 ]));
             }
             Devices => {
@@ -579,7 +676,8 @@ impl Settings {
                     Row::nav("photo", "Tapeta", "Zdjęcia i żywe sceny, rytm muzyki, tempo", Wallpaper),
                     Row::nav("palette", "Kolory", "Kolor akcentu, wysoki kontrast", Colors),
                     Row::nav("lock", "Ekran blokady", "Podgląd, blokada po bezczynności", LockScreen),
-                    Row::new("layout-dashboard", "Pulpit i widżety", "Zegar, karty pogody i treningów, muzyka, kalendarz", Ctl::Button("Dostosuj".into(), Act::DeskSheet, Btn::Plain)),
+                    Row::nav("layout-dashboard", "Pulpit", "Zegar, data, ile kart i co w nich stoi", Desktop),
+                    Row::nav("layout-grid", "Widżety", "Pogoda, Garmin, bieganie, muzyka, kalendarz, system, zegary", Widgets),
                 ]));
             }
             Wallpaper => {
@@ -615,6 +713,66 @@ impl Settings {
                         .collect(),
                 ));
             }
+            Desktop => {
+                let cfg = &self.cfg;
+                let have: Vec<&'static str> = WIDGETS.iter().map(|w| w.0).filter(|k| crate::data::available(k)).collect();
+                let n = cfg.cards();
+                let shown = cfg.shown();
+                b.push(Block::DeskPreview);
+                b.push(Block::Caption("Karty".into()));
+                let mut rows = vec![Row::new("layout-dashboard", "Liczba kart", "Ile widżetów stoi pod zegarem", Ctl::Seg((0..=have.len().min(3)).map(|i| (if i == 0 { "Brak".to_string() } else { i.to_string() }, i == n, Act::Desk("desk", "cards", json!(i)))).collect()))];
+                for (i, k) in shown.iter().enumerate() {
+                    let icon = WIDGETS.iter().find(|w| w.0 == k).map(|w| widget_icon(w.0)).unwrap_or("layout-grid");
+                    rows.push(Row::new(icon, &format!("Miejsce {}", i + 1), "", Ctl::Chips(have.iter().map(|w| (widget_name(w).to_string(), *w == k.as_str(), Act::DeskSlot(i, w))).collect())));
+                }
+                rows.push(self.cfg_row("desk", "glass", "contrast", "Tło kart", "Jak mocno karty przyciemniają tapetę"));
+                rows.push(Row::nav("layout-grid", "Widżety", "Co pokazują i w jakiej kolejności", Widgets));
+                b.push(Block::Card(rows));
+                b.push(Block::Caption("Zegar".into()));
+                b.push(Block::Card(vec![
+                    self.cfg_row("desk", "clock", "clock", "Rozmiar", ""),
+                    self.cfg_row("desk", "clockw", "typography", "Grubość", ""),
+                    self.cfg_row("desk", "clockc", "palette", "Kolor", ""),
+                    self.cfg_row("desk", "date", "calendar", "Data nad zegarem", ""),
+                    self.cfg_row("desk", "sun", "sun", "Wschód i zachód słońca", "Linia dnia pod zegarem"),
+                ]));
+                b.push(Block::Note("Prawy klik na karcie albo zegarze pulpitu otwiera tę stronę.".into()));
+            }
+            Widgets => {
+                let shown = self.cfg.shown();
+                let on: Vec<Row> = shown.iter().enumerate().filter_map(|(i, k)| WIDGETS.iter().find(|w| w.0 == k).map(|w| Row::nav(widget_icon(w.0), w.1, &format!("Miejsce {}", i + 1), Widget(w.0)))).collect();
+                let off: Vec<Row> = WIDGETS.iter().filter(|w| crate::data::available(w.0) && !shown.iter().any(|k| k == w.0)).map(|w| Row::nav(widget_icon(w.0), w.1, "Ukryty", Widget(w.0))).collect();
+                if !on.is_empty() {
+                    b.push(Block::Caption("Na pulpicie".into()));
+                    b.push(Block::Card(on));
+                }
+                if !off.is_empty() {
+                    b.push(Block::Caption("Dostępne".into()));
+                    b.push(Block::Card(off));
+                }
+                if WIDGETS.iter().any(|w| !crate::data::available(w.0)) {
+                    b.push(Block::Note("Garmin i Bieganie pojawią się po podłączeniu danych (docs/guides/garmin.md).".into()));
+                }
+            }
+            Widget(k) => {
+                let shown = self.cfg.shown();
+                let pos = shown.iter().position(|x| x == k);
+                let mut top = vec![Row::new("eye", "Pokaż na pulpicie", "", Ctl::Toggle(pos.is_some(), Act::WidgetShow(k, pos.is_none())))];
+                let n = self.cfg.cards();
+                if let Some(p) = pos.filter(|_| n > 1) {
+                    top.push(Row::new("layout-dashboard", "Miejsce", "Od lewej", Ctl::Seg((0..n).map(|i| ((i + 1).to_string(), i == p, Act::DeskSlot(i, k))).collect())));
+                }
+                b.push(Block::Card(top));
+                if k == "weather" {
+                    self.place_blocks(&mut b);
+                }
+                let rows: Vec<Row> = groups(k).iter().map(|g| self.cfg_row(k, g.key, opt_icon(g.key), g.label, "")).collect();
+                if !rows.is_empty() {
+                    b.push(Block::Caption("Co pokazuje".into()));
+                    b.push(Block::Card(rows));
+                }
+                b.push(Block::Note("Zmiany widać od razu na pulpicie.".into()));
+            }
             Colors => {
                 b.push(Block::Caption("Kolor akcentu".into()));
                 b.push(Block::Swatches(ACCENTS.iter().map(|(c, n)| (*c, *n, *c == self.accent_now())).collect()));
@@ -622,12 +780,14 @@ impl Settings {
                 b.push(Block::Card(vec![Row::new("contrast", "Wysoki kontrast", "Nieprzezroczyste panele i wyraźniejszy tekst", Ctl::Toggle(d.contrast, Act::Contrast(!d.contrast)))]));
             }
             LockScreen => {
-                let opts = [60, 120, 300, 600, 900, 1800, 0];
+                let opts = IDLE_OPTS;
                 b.push(Block::Card(vec![
                     Row::new("eye", "Podgląd ekranu blokady", "Pokazuje go na kilka sekund, bez blokowania", Ctl::Button("Podgląd".into(), Act::LockPreview, Btn::Plain)),
                     Row::new("lock", "Zablokuj teraz", "Super+L", Ctl::Button("Zablokuj".into(), Act::Lock, Btn::Plain)),
                     Row::new("clock", "Zablokuj po bezczynności", &mins(d.idle.0), Ctl::Chips(opts.iter().map(|s| (mins(*s), *s == d.idle.0, Act::Idle("lock", *s))).collect())),
+                    Row::new("device-desktop", "Wyłącz ekran po", &mins(d.idle.1), Ctl::Chips(opts.iter().map(|s| (mins(*s), *s == d.idle.1, Act::Idle("off", *s))).collect())),
                 ]));
+                b.push(Block::Note("Filmy i muzyka w przeglądarce wstrzymują blokadę.".into()));
             }
             Apps => {
                 b.push(Block::Card(vec![
@@ -681,8 +841,8 @@ impl Settings {
                 }
                 b.push(Block::Card(vec![
                     Row::nav("language", "Język i klawiatura", "Język interfejsu, układ klawiatury", Lang),
-                    Row::new("map-pin", "Miejsce pogody", &d.place, Ctl::Button("Zmień".into(), Act::DeskSheet, Btn::Plain)),
                 ]));
+                self.place_blocks(&mut b);
             }
             Lang => {
                 let cur = crate::i18n::setting();

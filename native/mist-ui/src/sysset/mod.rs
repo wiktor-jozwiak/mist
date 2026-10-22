@@ -28,6 +28,7 @@ pub enum Fid {
     Search,
     WifiPwd,
     Tz,
+    Place,
     Keys,
 }
 
@@ -47,6 +48,8 @@ pub enum Hit {
     Light(u8),
     Drag,
     Content,
+    // the content's scroll bar: its track (y, height) and the thumb's height
+    Scroll(f32, f32, f32),
 }
 
 #[derive(Default)]
@@ -79,6 +82,9 @@ pub struct Data {
     pub wall: Value,
     pub contrast: bool,
     pub place: String,
+    // `mistd geo` answers for the place field, and whether one is on its way
+    pub found: Vec<Value>,
+    pub geo_busy: bool,
 }
 
 pub struct Settings {
@@ -94,11 +100,18 @@ pub struct Settings {
     pub hover: Option<Hit>,
     pub mouse: (f32, f32),
     drag: Option<(Sl, f32, f32)>,
+    // the scroll bar's thumb held: where in it (px from its top), the track (y, height), the thumb's height
+    pub sb_drag: Option<(f32, f32, f32, f32)>,
     pub field: Option<Fid>,
     pub search: LineEdit,
     pub wifi_pwd: LineEdit,
     pub tz_q: LineEdit,
     pub keys_q: LineEdit,
+    pub place_q: LineEdit,
+    // when the typed place is searched (a short pause after the last key)
+    geo_at: Option<Instant>,
+    // widgets.json (the desktop and its widgets)
+    pub cfg: crate::desktop::Cfg,
     pub wifi_ask: Option<String>,
     pub text: crate::text::Text,
     pub icons: crate::apps::Icons,
@@ -130,11 +143,15 @@ impl Settings {
             hover: None,
             mouse: (-1.0, -1.0),
             drag: None,
+            sb_drag: None,
             field: None,
             search: LineEdit::default(),
             wifi_pwd: LineEdit::default(),
             tz_q: LineEdit::default(),
             keys_q: LineEdit::default(),
+            place_q: LineEdit::default(),
+            geo_at: None,
+            cfg: crate::desktop::Cfg::load(),
             wifi_ask: None,
             text: crate::text::Text::new(),
             icons: crate::apps::Icons::new(),
@@ -156,6 +173,7 @@ impl Settings {
 
     // the small local state: config files, the user, the disks (all quick reads)
     fn read_local(&mut self) {
+        self.cfg = crate::desktop::Cfg::load();
         let d = &mut self.d;
         let st = backend::read_json("settings.json");
         d.contrast = st["contrast"] == "high";
@@ -238,7 +256,7 @@ impl Settings {
             }
             _ => {}
         }
-        if p != Wallpaper && !self.thumbs.is_empty() {
+        if !matches!(p, Wallpaper | Desktop) && !self.thumbs.is_empty() {
             // ~110 kB per decoded thumbnail: only while the page shows them
             self.thumbs.clear();
             unsafe { libc::malloc_trim(0) };
@@ -359,10 +377,59 @@ impl Settings {
             Act::WallMusic(on) => self.d.wall = backend::patch_json("wallpaper.json", json!({ "music": on })),
             Act::WallTempo(t) => self.d.wall = backend::patch_json("wallpaper.json", json!({ "tempo": t })),
             Act::Gallery => backend::shell_msg(&["mist", "toggle", "wallpaper"]),
-            Act::DeskSheet => {
-                let scr = backend::read_json("settings.json")["primary"].as_str().unwrap_or("").to_string();
-                backend::shell_msg(&["mist", "toggleOn", "desk", &scr]);
+            Act::Desk(card, key, v) => {
+                self.cfg.set(card, key, v);
+                self.tell_shell();
             }
+            Act::DeskChip(card, key, v) => {
+                if let Some(gr) = crate::desktop::groups(card).into_iter().find(|g| g.key == key) {
+                    self.cfg.click(card, &gr, &v);
+                }
+                self.tell_shell();
+            }
+            Act::DeskSlot(i, k) => {
+                self.cfg.put_slot(i, k);
+                self.tell_shell();
+            }
+            Act::WidgetShow(k, on) => {
+                let n = self.cfg.cards();
+                if on {
+                    // one more place, the widget into the last one
+                    if n < 3 {
+                        self.cfg.set("desk", "cards", json!(n + 1));
+                    }
+                    let n = self.cfg.cards();
+                    if n > 0 {
+                        self.cfg.put_slot(n - 1, k);
+                    }
+                } else {
+                    // out of the shown places, one place less
+                    let mut o = self.cfg.order();
+                    if let Some(p) = o.iter().position(|x| x == k).filter(|p| *p < n) {
+                        let x = o.remove(p);
+                        o.push(x);
+                        self.cfg.set("order", "", json!(o));
+                        self.cfg.set("desk", "cards", json!(n.saturating_sub(1)));
+                    }
+                }
+                self.tell_shell();
+            }
+            Act::Place(i) => {
+                if let Some(v) = self.d.found.get(i).cloned() {
+                    backend::write_atomic(&backend::cfg("location.json"), &json!({"city": v["city"], "lat": v["lat"], "lon": v["lon"]}).to_string());
+                    self.d.place = v["city"].as_str().unwrap_or("").to_string();
+                    self.d.found.clear();
+                    self.place_q.set("");
+                    self.field = None;
+                    // the shell's weather thread asks for the new place now
+                    self.tell_shell();
+                    self.say(&format!("Pogoda dla: {}", self.d.place), cx);
+                }
+            }
+            Act::Primary(name) => {
+                backend::patch_json("settings.json", json!({ "primary": name }));
+            }
+            Act::Restart => backend::restart_shell(),
             Act::Sink(n) => self.send(run(&["pactl", "set-default-sink", &n], "snd")),
             Act::Source(n) => self.send(run(&["pactl", "set-default-source", &n], "snd")),
             Act::SinkMute => self.send(run(&["pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle"], "snd")),
@@ -504,6 +571,7 @@ impl Settings {
             Fid::WifiPwd => &mut self.wifi_pwd,
             Fid::Tz => &mut self.tz_q,
             Fid::Keys => &mut self.keys_q,
+            Fid::Place => &mut self.place_q,
         }
     }
 
@@ -551,6 +619,14 @@ impl Settings {
                         }
                     }
                     Fid::Keys => self.field = None,
+                    Fid::Place => {
+                        if self.d.found.is_empty() {
+                            self.geo_at = Some(Instant::now());
+                            self.tick(cx);
+                        } else {
+                            return self.act(Act::Place(0), cx);
+                        }
+                    }
                 },
                 EditResult::Cancel => {
                     if f == Fid::WifiPwd {
@@ -562,6 +638,12 @@ impl Settings {
                 EditResult::Used => {
                     if f == Fid::Search {
                         self.scroll = 0.0;
+                    }
+                    if f == Fid::Place {
+                        // searched once typing pauses, not on every key
+                        let at = Instant::now() + Duration::from_millis(350);
+                        self.geo_at = Some(at);
+                        cx.wake_at(at);
                     }
                 }
                 EditResult::Ignored => {}
@@ -585,6 +667,16 @@ impl Settings {
                 }
             }
         }
+    }
+    // the held scroll bar thumb follows the pointer
+    fn sb_to(&mut self, y: f32, cx: &mut Cx) {
+        let Some((grab, ty, th, tbh)) = self.sb_drag else { return };
+        let k = ((y - grab - ty) / (th - tbh).max(1.0)).clamp(0.0, 1.0);
+        let s = (k * self.max_scroll).round();
+        if s != self.scroll {
+            self.scroll = s;
+        }
+        self.redraw(cx);
     }
     fn scroll_by(&mut self, dy: f32, cx: &mut Cx) {
         let s = (self.scroll + dy).clamp(0.0, self.max_scroll.max(0.0));
@@ -620,6 +712,13 @@ impl Settings {
                 self.set_slider(s, (x - x0) / w);
                 self.redraw(cx);
             }
+            Some(Hit::Scroll(ty, th, tbh)) => {
+                // on the thumb: hold it where it was taken; on the track: the thumb's middle jumps there
+                let at = ty + self.scroll / self.max_scroll.max(1.0) * (th - tbh);
+                let grab = if y >= at && y <= at + tbh { y - at } else { tbh / 2.0 };
+                self.sb_drag = Some((grab, ty, th, tbh));
+                self.sb_to(y, cx);
+            }
             Some(Hit::Field(f)) => {
                 self.field = Some(f);
                 if f == Fid::Tz && self.d.tzs.is_empty() {
@@ -639,10 +738,13 @@ impl Settings {
                     self.set_slider(s, (x - x0) / w);
                     return self.redraw(cx);
                 }
+                if self.sb_drag.is_some() {
+                    return self.sb_to(y, cx);
+                }
                 let h = self.hit_at(x, y);
                 if h != self.hover {
                     let c = match &h {
-                        Some(Hit::A(_)) | Some(Hit::Slider(..)) | Some(Hit::Light(_)) => CursorIcon::Pointer,
+                        Some(Hit::A(_)) | Some(Hit::Slider(..)) | Some(Hit::Light(_)) | Some(Hit::Scroll(..)) => CursorIcon::Pointer,
                         Some(Hit::Field(_)) => CursorIcon::Text,
                         _ => CursorIcon::Default,
                     };
@@ -659,13 +761,17 @@ impl Settings {
             }
             Ev::Press(x, y, b, _) => self.press(x, y, b, cx),
             Ev::Release(..) => {
+                if self.sb_drag.take().is_some() {
+                    self.redraw(cx);
+                }
                 if self.drag.take().is_some() {
                     self.send(Req::Snd);
                 }
             }
             Ev::Scroll(x, _, dy) => {
+                // a wheel notch comes as 15 px: 60 px per notch (like the arrow keys), Mist Files takes 3x
                 if x > paint::SIDE_X + paint::SIDE_W {
-                    self.scroll_by(dy, cx);
+                    self.scroll_by(dy * 4.0, cx);
                 }
             }
             _ => {}
@@ -704,6 +810,13 @@ impl Settings {
                 d.ntp = ntp;
             }
             Res::Tzs(t) => d.tzs = t,
+            Res::Geo(q, v) => {
+                // only the answer for what the field holds now
+                if q == self.place_q.text.trim() {
+                    d.found = v;
+                    d.geo_busy = false;
+                }
+            }
             Res::Profile(p, all) => {
                 d.profile = p;
                 d.profiles = all;
@@ -773,6 +886,21 @@ impl Logic for Settings {
         }
         if self.pending.take().is_some() {
             self.send(Req::Mons);
+        }
+        if let Some(t) = self.geo_at {
+            if t <= now {
+                self.geo_at = None;
+                let q = self.place_q.text.trim().to_string();
+                if q.chars().count() >= 2 {
+                    self.d.geo_busy = true;
+                    self.send(Req::Geo(q));
+                } else {
+                    self.d.found.clear();
+                }
+                self.redraw(cx);
+            } else {
+                cx.wake_at(t);
+            }
         }
         // a Bluetooth scan: new devices every 2 s while the page shows them
         if let Some(t) = self.scan_at {
@@ -871,6 +999,19 @@ fn apply_plain(s: &mut Settings, r: Res) {
         Res::Mons(m) => d.mons = m,
         _ => {}
     }
+}
+
+// a page of Mist Settings from the shell: the old Ustawienia panel's names map to their pages here
+pub fn open(page: &str) {
+    let id = match page {
+        "" | "desk" => "desktop",
+        "general" => "home",
+        "lock" => "lockscreen",
+        "notif" => "notifications",
+        p => p,
+    };
+    let id = if Page::from_id(id).is_some() { id } else { "desktop" };
+    appwin::spawn(&[&backend::bin(), "settings", id]);
 }
 
 pub fn run(args: &[String]) -> i32 {

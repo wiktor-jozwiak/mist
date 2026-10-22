@@ -1505,6 +1505,14 @@
     "support_project": "Wesprzyj projekt",
     "sponsor_on_github": "Sponsoruj na GitHubie",
     "sponsor": "Sponsoruj",
-    "support": "Wesprzyj"
+    "support": "Wesprzyj",
+    "weather_for": "Pogoda dla: {}",
+    "widgets_list": "Pogoda, Garmin, bieganie, muzyka, kalendarz, system, zegary",
+    "right_click_opens_page": "Prawy klik na karcie albo zegarze pulpitu otwiera tę stronę.",
+    "primary_monitor_sub": "Pulpit, dok, wyspa i powiadomienia",
+    "search_city": "Szukaj miasta…",
+    "restart_shell": "Uruchom ponownie powłokę",
+    "desktop_page_sub": "Zegar, data, ile kart i co w nich stoi",
+    "takes_effect_after_restart": "Zmiana zadziała po ponownym uruchomieniu powłoki"
   }
 }

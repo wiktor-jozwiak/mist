@@ -253,6 +253,31 @@ pub fn hit_at(h: &Hits, x: f32, y: f32) -> Option<Hit> {
 // ------------------------------------------------------------------ settings (widgets.json)
 // every widget that can take a place in the bento row (key, name); weather is the wide one
 pub const WIDGETS: [(&str, &str); 7] = [("weather", "Pogoda"), ("garmin", "Garmin"), ("running", "Bieganie"), ("music", "Muzyka"), ("calendar", "Kalendarz"), ("system", "System"), ("clocks", "Zegary")];
+pub fn widget_name(k: &str) -> &'static str {
+    WIDGETS.iter().find(|w| w.0 == k).map(|w| w.1).unwrap_or("")
+}
+pub fn widget_icon(k: &str) -> &'static str {
+    match k {
+        "weather" => "cloudSun",
+        "garmin" => "watch",
+        "running" => "run",
+        "music" => "music",
+        "calendar" => "calendar",
+        "system" => "cpu",
+        _ => "clock",
+    }
+}
+pub fn widget_color(k: &str) -> Rgba {
+    match k {
+        "weather" => Rgba::rgb8(0x32, 0xad, 0xe6, 1.0),
+        "garmin" => Rgba::rgb8(0x30, 0xd1, 0x58, 1.0),
+        "running" => Rgba::rgb8(0xff, 0x9f, 0x0a, 1.0),
+        "music" => Rgba::rgb8(0xff, 0x37, 0x5f, 1.0),
+        "calendar" => Rgba::rgb8(0xff, 0x45, 0x3a, 1.0),
+        "system" => Rgba::rgb8(0x8e, 0x8e, 0x93, 1.0),
+        _ => Rgba::rgb8(0xff, 0xcc, 0x00, 1.0),
+    }
+}
 pub struct Group {
     pub label: &'static str,
     pub key: &'static str,

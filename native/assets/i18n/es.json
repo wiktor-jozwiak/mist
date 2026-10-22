@@ -1505,6 +1505,14 @@
     "support_project": "Apoyar proyecto",
     "sponsor_on_github": "Patrocinar en GitHub",
     "sponsor": "Patrocinar",
-    "support": "Apoyar"
+    "support": "Apoyar",
+    "weather_for": "Tiempo para: {}",
+    "widgets_list": "Tiempo, Garmin, correr, música, calendario, sistema, relojes",
+    "right_click_opens_page": "Un clic derecho en una tarjeta o en el reloj del escritorio abre esta página.",
+    "primary_monitor_sub": "Escritorio, dock, isla y notificaciones",
+    "search_city": "Buscar ciudad…",
+    "restart_shell": "Reiniciar el shell",
+    "desktop_page_sub": "Reloj, fecha, cuántas tarjetas y qué muestran",
+    "takes_effect_after_restart": "Se aplica al reiniciar el shell"
   }
 }

@@ -27,6 +27,8 @@ pub enum Req {
     BtPair(String),
     // join a network: a saved one by name, a new one with the password on nmcli's stdin (--ask), never in argv
     Wifi(String, Option<String>),
+    // places matching the text (`mistd geo`)
+    Geo(String),
 }
 
 pub enum Res {
@@ -43,6 +45,8 @@ pub enum Res {
     BtDone,
     // the join failed: nmcli's message
     WifiErr(String),
+    // the asked text, the places found
+    Geo(String, Vec<Value>),
 }
 
 #[derive(Clone, Default, Debug)]
@@ -162,6 +166,16 @@ fn worker(rx: Receiver<Req>, out: Out) {
                         }
                     }
                     "net"
+                }
+                Req::Geo(q) => {
+                    let out = out.clone();
+                    let _ = std::thread::Builder::new().name("geo".into()).spawn(move || {
+                        let lang = if crate::i18n::setting() == "pl" || std::env::var("LANG").unwrap_or_default().starts_with("pl") { "pl" } else { "en" };
+                        let o = Command::new(crate::paths::mistd()).args(["geo", &q, lang]).stderr(std::process::Stdio::null()).output();
+                        let v: Vec<Value> = o.ok().and_then(|o| serde_json::from_slice(&o.stdout).ok()).unwrap_or_default();
+                        let _ = out(Box::new(Res::Geo(q, v)));
+                    });
+                    ""
                 }
                 Req::BtPair(path) => {
                     if let Some(c) = bus.clone() {
@@ -378,6 +392,23 @@ pub fn shell_msg(args: &[&str]) {
     let mut v: Vec<&str> = vec![&b, "msg"];
     v.extend_from_slice(args);
     crate::appwin::spawn(&v);
+}
+// the shell (the bare `mist-ui-bin`, not this window or Mist Files) ends; its guard starts it again
+pub fn restart_shell() {
+    let me = std::process::id().to_string();
+    for e in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
+        let pid = e.file_name().to_string_lossy().to_string();
+        if pid == me || !pid.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        if std::fs::read_to_string(e.path().join("comm")).unwrap_or_default().trim() != "mist-ui-bin" {
+            continue;
+        }
+        let cmd = std::fs::read(e.path().join("cmdline")).unwrap_or_default();
+        if cmd.split(|b| *b == 0).filter(|a| !a.is_empty()).count() == 1 {
+            let _ = Command::new("kill").arg(&pid).status();
+        }
+    }
 }
 pub fn under_mist_comp() -> bool {
     std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default() == "mist"

@@ -2,6 +2,19 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [SemVer](https://semver.org).
 
+## [Unreleased]
+
+### Changed
+- Settings: one window instead of two. The Ustawienia panel is gone; Mist Settings (`mist-ui-bin settings`)
+  now has Personalization → Desktop (live preview, cards, clock), Widgets with a page per widget, and the
+  weather place search. Right click on the desktop, Start, Spotlight and the control centre open it.
+- Mist Settings: the window is translucent over mist-comp's blur (opaque with high contrast), a scroll bar
+  that can be dragged or clicked, 60 px per mouse wheel notch.
+
+### Fixed
+- Settings: the main monitor can be chosen, the lock screen page sets when the screen turns off, restarting
+  the shell no longer closes Mist Settings and Mist Files.
+
 ## [0.2.0] - 2026-10-23
 
 ### Added

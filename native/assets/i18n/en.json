@@ -1505,6 +1505,14 @@
     "support_project": "Support project",
     "sponsor_on_github": "Sponsor on GitHub",
     "sponsor": "Sponsor",
-    "support": "Support"
+    "support": "Support",
+    "weather_for": "Weather for: {}",
+    "widgets_list": "Weather, Garmin, running, music, calendar, system, clocks",
+    "right_click_opens_page": "Right-clicking a card or the clock on the desktop opens this page.",
+    "primary_monitor_sub": "Desktop, dock, island and notifications",
+    "search_city": "Search for a city…",
+    "restart_shell": "Restart the shell",
+    "desktop_page_sub": "Clock, date, how many cards and what they show",
+    "takes_effect_after_restart": "Takes effect after the shell restarts"
   }
 }

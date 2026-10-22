@@ -129,7 +129,6 @@ pub fn native(name: &str) -> bool {
 }
 pub fn make(name: &str, page: &str) -> Option<Box<dyn Pane>> {
     match name {
-        "settings" | "desk" => Some(Box::new(crate::settings::Settings::new(page))),
         "session" => Some(Box::new(crate::session::Session::new(page))),
         "calendar" => Some(Box::new(crate::calendar::Calendar::new())),
         "notifications" => Some(Box::new(crate::notifcenter::NotifCenter::new())),

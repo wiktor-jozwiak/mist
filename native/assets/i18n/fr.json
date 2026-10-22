@@ -1505,6 +1505,14 @@
     "support_project": "Soutenir le projet",
     "sponsor_on_github": "Sponsoriser sur GitHub",
     "sponsor": "Sponsoriser",
-    "support": "Soutenir"
+    "support": "Soutenir",
+    "weather_for": "Météo pour : {}",
+    "widgets_list": "Météo, Garmin, course, musique, calendrier, système, horloges",
+    "right_click_opens_page": "Un clic droit sur une carte ou l'horloge du bureau ouvre cette page.",
+    "primary_monitor_sub": "Bureau, dock, île et notifications",
+    "search_city": "Rechercher une ville…",
+    "restart_shell": "Redémarrer le shell",
+    "desktop_page_sub": "Horloge, date, combien de cartes et ce qu'elles affichent",
+    "takes_effect_after_restart": "Prend effet après le redémarrage du shell"
   }
 }

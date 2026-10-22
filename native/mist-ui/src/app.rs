@@ -738,6 +738,9 @@ impl App {
             Box::new(crate::phonepanel::PhonePanel::new(self.phone.clone()))
         } else if name == "start" {
             Box::new(crate::start::Start::new(self.phone.clone()))
+        } else if matches!(name, "settings" | "desk") {
+            // Mist Settings is its own window now (sysset): the old names open its page
+            return crate::sysset::open(page);
         } else {
             let Some(p) = crate::pane::make(name, page) else { return };
             p
@@ -1416,10 +1419,10 @@ impl App {
                 // the order may have changed: the weather card and its sky move
                 self.desk_relayout();
             }
-            // right click on a card or the clock: Dostosuj pulpit, on that card's tab
+            // right click on a card or the clock: Mist Settings on that widget's page (the desktop page for the clock)
             PointerEventKind::Release { button, .. } if button == BTN_RIGHT => {
                 let k = if card { "weather".to_string() } else { self.desk.zone() };
-                self.pane_open_box(Box::new(crate::settings::Settings::new(&k)), primary_monitor());
+                crate::sysset::open(&k);
             }
             PointerEventKind::Axis { vertical, .. } if card => {
                 let dy = if vertical.discrete != 0 { vertical.discrete as f64 } else { vertical.absolute };
@@ -1808,6 +1811,8 @@ impl App {
                 crate::theme::reload_accent();
                 crate::theme::reload_contrast();
                 self.pane_act(crate::pane::Act::DeskCfg);
+                // the weather place may have changed (location.json)
+                crate::data::refresh("weather");
                 self.mark_all();
                 self.island_dirty = true;
                 "ok".into()

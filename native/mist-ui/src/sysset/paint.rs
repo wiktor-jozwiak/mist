@@ -31,6 +31,7 @@ fn glyph(name: &str) -> Option<char> {
         "app-window" => 0xefe6,
         "arrows-maximize" => 0xea28,
         "bell-off" => 0xece9,
+        "brand-github" => 0xec1c,
         "brush" => 0xebb8,
         "circle-check" => 0xea67,
         "chevron-right" => 0xea61,
@@ -59,6 +60,8 @@ fn glyph(name: &str) -> Option<char> {
         "router" => 0xeb18,
         "server" => 0xeb1f,
         "speakerphone" => 0xed61,
+        "star" => 0xeb2e,
+        "typography" => 0xebc5,
         "user-circle" => 0xef68,
         "user-shield" => 0xf7d0,
         "volume-off" => 0xf1c3,
@@ -74,10 +77,12 @@ fn gl(c: &mut Canvas, t: &mut Text, cx: f32, cy: f32, name: &str, size: f32, col
     let w = t.width(&s, &st);
     c.text(t, cx - w / 2.0, cy, &s, &st, col);
 }
-// the window tokens are translucent for a blurred backdrop; mostly opaque here, readable with or without blur
+// the window tokens over a blurred backdrop (mist-comp blurs app id mist-settings): translucent enough for the
+// wallpaper's colours to come through, opaque with high contrast
 fn win_bg() -> [(f32, Rgba); 2] {
     let (t, b) = (crate::tokens::WINDOW_TOP, crate::tokens::WINDOW_BOTTOM);
-    [(0.0, Rgba::rgb8(t.0, t.1, t.2, 0.95)), (1.0, Rgba::rgb8(b.0, b.1, b.2, 0.97))]
+    let (a0, a1) = if crate::theme::high_contrast() { (0.97, 0.98) } else { (0.78, 0.86) };
+    [(0.0, Rgba::rgb8(t.0, t.1, t.2, a0)), (1.0, Rgba::rgb8(b.0, b.1, b.2, a1))]
 }
 fn rgb(v: u32) -> Rgba {
     Rgba::rgb8((v >> 16) as u8, (v >> 8) as u8, v as u8, 1.0)
@@ -196,6 +201,24 @@ impl Settings {
         }
         self.hit(hx, 0.0, ww - hx, HEAD, Hit::Drag);
         self.header(c, x0, cw, searching);
+
+        // ---- the scroll bar: always there while the page is longer than the window, wider under the pointer,
+        // the accent while held; the track takes clicks too
+        if self.max_scroll > 0.5 {
+            let (ty, th) = (HEAD + 6.0, wh - HEAD - 18.0);
+            let view = wh - top;
+            let tbh = (th * view / (view + self.max_scroll)).clamp(40.0, th);
+            let at = ty + self.scroll / self.max_scroll * (th - tbh);
+            let held = self.sb_drag.is_some();
+            let hov = self.hit(ww - 18.0, ty, 18.0, th, Hit::Scroll(ty, th, tbh)) || held;
+            let bw = if hov { 9.0 } else { 6.0 };
+            let bx = ww - 6.0 - bw;
+            if hov {
+                c.rrect(bx, ty, bw, th, bw / 2.0, WHITE.alpha(0.06));
+            }
+            let col = if held { crate::theme::accent() } else { WHITE.alpha(if hov { 0.48 } else { 0.26 }) };
+            c.rrect(bx, at, bw, tbh, bw / 2.0, col);
+        }
 
         // ---- sidebar on top
         self.sidebar(c);
@@ -464,6 +487,100 @@ impl Settings {
                 }
                 y + h + 10.0
             }
+            Block::DeskPreview => {
+                // the desktop in small: the wallpaper, the date + clock as set, the cards in their places
+                let (pw, ph) = (cw, (cw * 0.46).round().min(340.0));
+                if vis(y, ph, wh) {
+                    let (pic, _) = self.wall_now();
+                    match self.thumb(&pic, 960) {
+                        Some(pm) => crate::img::draw(c, &pm, x0, y, pw, ph, 14.0, true, 1.0),
+                        None => {
+                            if let Some(p) = crate::gfx::rrect_path(x0, y, pw, ph, 14.0) {
+                                crate::desktop::fill_lin(c, &p, (x0, y), (x0 + pw, y + ph), &[(0.0, Rgba::hex("#26324a")), (1.0, Rgba::hex("#141a26"))]);
+                            }
+                        }
+                    }
+                    if let Some(p) = crate::gfx::rrect_path(x0, y, pw, ph, 14.0) {
+                        crate::desktop::fill_lin(c, &p, (x0, y), (x0, y + ph), &[(0.0, Rgba(0.0, 0.0, 0.0, 0.1)), (1.0, Rgba(0.0, 0.0, 0.0, 0.35))]);
+                    }
+                    stroke_rrect(c, x0, y, pw, ph, 14.0, WHITE.alpha(0.14));
+                    // one scale for all: the date, the clock and the cards fit the preview's height
+                    let k = (pw / 1920.0 * 1.6).min((ph - 52.0) / 600.0);
+                    let mid = x0 + pw / 2.0;
+                    let mut ty = y + 26.0;
+                    if self.cfg.s("desk", "date") != "hide" {
+                        let ds = st((22.0 * k).max(9.0), 600.0);
+                        const DAYS: [&str; 7] = ["Niedziela", "Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota"];
+                        let tm = crate::data::local(crate::data::now());
+                        let s = format!("{}, {} {}", DAYS[tm.tm_wday as usize], tm.tm_mday, crate::data::MONTHS_GEN[tm.tm_mon as usize]);
+                        let w = self.text.width(&s, &ds);
+                        c.text(&mut self.text, mid - w / 2.0, ty, &s, &ds, WHITE.alpha(0.8));
+                        ty += (22.0 * k).max(9.0) * 1.3;
+                    }
+                    let csz = match self.cfg.s("desk", "clock").as_str() {
+                        "small" => 96.0,
+                        "hide" => 0.0,
+                        _ => 150.0,
+                    } * k;
+                    if csz > 0.0 {
+                        let wght = match self.cfg.s("desk", "clockw").as_str() {
+                            "thin" => 250.0,
+                            "bold" => 800.0,
+                            _ => 620.0,
+                        };
+                        let col = match self.cfg.s("desk", "clockc").as_str() {
+                            "accent" => crate::theme::accent(),
+                            "warm" => Rgba::rgb8(0xf6, 0xd9, 0xb0, 1.0),
+                            _ => WHITE.alpha(0.9),
+                        };
+                        let cs = st(csz, wght).spaced(-4.0 * k).tnum();
+                        let s = crate::data::hm(crate::data::now());
+                        let w = self.text.width(&s, &cs);
+                        c.text(&mut self.text, mid - w / 2.0, ty + csz * 0.38, &s, &cs, col);
+                        ty += csz * 0.9;
+                    }
+                    if self.cfg.s("desk", "sun") != "hide" {
+                        c.rrect(mid - 40.0, ty + 4.0, 80.0, 1.0, 0.0, WHITE.alpha(0.3));
+                        c.rrect(mid - 12.5, ty + 2.0, 5.0, 5.0, 2.5, WHITE);
+                    }
+                    // the cards: a click opens that widget's page
+                    let shown = self.cfg.shown();
+                    let ch = (312.0 * k).round();
+                    let unit = 308.0 * k;
+                    let gap = 16.0 * k;
+                    let wfor = |s: &str| if s == "weather" { 548.0 * k } else { unit };
+                    let row_w: f32 = shown.iter().map(|s| wfor(s)).sum::<f32>() + gap * (shown.len() as f32 - 1.0).max(0.0);
+                    let mut sx = mid - row_w / 2.0;
+                    let sy = (ty + 22.0 * k + 10.0).max(y + ph - ch - 22.0).min(y + ph - ch - 14.0);
+                    if shown.is_empty() {
+                        let ns = st(12.0, 550.0);
+                        let w = self.text.width("Bez kart", &ns);
+                        c.text(&mut self.text, mid - w / 2.0, y + ph - 40.0, "Bez kart", &ns, WHITE.alpha(0.6));
+                    }
+                    for s in &shown {
+                        let Some(key) = crate::desktop::WIDGETS.iter().find(|w| w.0 == s).map(|w| w.0) else { continue };
+                        let w = wfor(s);
+                        let hot = self.hit(sx, sy, w, ch, Hit::A(Act::Nav(Page::Widget(key))));
+                        c.rrect(sx, sy, w, ch, 12.0, Rgba(0.04, 0.06, 0.1, if hot { 0.55 } else { 0.42 }));
+                        stroke_rrect(c, sx, sy, w, ch, 12.0, if hot { crate::theme::accent() } else { WHITE.alpha(0.22) });
+                        let icx = sx + w / 2.0;
+                        let icy = sy + ch / 2.0 - 12.0;
+                        c.rrect(icx - 18.0, icy - 18.0, 36.0, 36.0, 18.0, crate::desktop::widget_color(key).alpha(0.9));
+                        c.icon(&mut self.text, icx, icy, crate::desktop::widget_icon(key), 18.0, WHITE);
+                        let ns = st(12.5, 650.0);
+                        let name = crate::desktop::widget_name(key);
+                        let nw = self.text.width(name, &ns);
+                        c.text(&mut self.text, icx - nw / 2.0, sy + ch / 2.0 + 16.0, name, &ns, FG);
+                        if hot {
+                            let hs = st(10.5, 560.0);
+                            let hw = self.text.width("Ustawienia", &hs);
+                            c.text(&mut self.text, icx - hw / 2.0, sy + ch / 2.0 + 33.0, "Ustawienia", &hs, crate::theme::accent());
+                        }
+                        sx += w + gap;
+                    }
+                }
+                y + ph + 14.0
+            }
             Block::Thumbs(items) => {
                 let gap = 12.0;
                 let n = (((cw + gap) / 212.0).floor() as usize).max(2);
@@ -725,12 +842,14 @@ impl Settings {
                     let mut e = std::mem::take(match f {
                         Fid::Tz => &mut self.tz_q,
                         Fid::Keys => &mut self.keys_q,
+                        Fid::Place => &mut self.place_q,
                         _ => &mut self.search,
                     });
                     e.paint(c, &mut self.text, fx + 12.0, fy, fw - 24.0, fh, &fs, FG, ph, on, false);
                     *match f {
                         Fid::Tz => &mut self.tz_q,
                         Fid::Keys => &mut self.keys_q,
+                        Fid::Place => &mut self.place_q,
                         _ => &mut self.search,
                     } = e;
                 }

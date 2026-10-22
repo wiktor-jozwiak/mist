@@ -1505,6 +1505,14 @@
     "support_project": "Projekt unterstützen",
     "sponsor_on_github": "Auf GitHub sponsern",
     "sponsor": "Sponsern",
-    "support": "Unterstützen"
+    "support": "Unterstützen",
+    "weather_for": "Wetter für: {}",
+    "widgets_list": "Wetter, Garmin, Laufen, Musik, Kalender, System, Uhren",
+    "right_click_opens_page": "Ein Rechtsklick auf eine Karte oder die Uhr auf dem Schreibtisch öffnet diese Seite.",
+    "primary_monitor_sub": "Schreibtisch, Dock, Insel und Mitteilungen",
+    "search_city": "Stadt suchen…",
+    "restart_shell": "Shell neu starten",
+    "desktop_page_sub": "Uhr, Datum, wie viele Karten und was sie zeigen",
+    "takes_effect_after_restart": "Wirkt nach einem Neustart der Shell"
   }
 }

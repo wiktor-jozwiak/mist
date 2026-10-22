@@ -50,7 +50,6 @@ mod wxcard;
 mod wincap;
 mod devtools;
 mod winpick;
-mod settings;
 mod deskwidgets;
 #[path = "../../common/astro.rs"]
 mod astro;

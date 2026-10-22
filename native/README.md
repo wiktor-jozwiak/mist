@@ -17,9 +17,9 @@ Data comes from event sources only: the Hyprland socket, D-Bus, `pactl subscribe
 | Area | Files |
 |---|---|
 | Surfaces | `bar.rs`, `dock.rs`, `island.rs`, `desktop.rs` + `wxcard.rs` + `deskwidgets.rs` (cards), `wall.rs` (wallpaper: draws a photo, starts `mist-wall` for live ones) |
-| Panels | `pane.rs` (one popup at a time), `spotlight.rs`, `start.rs`, `switcher.rs`, `control.rs`, `notifcenter.rs`, `clipboard.rs`, `calendar.rs`, `session.rs`, `wallpapers.rs`, `shot.rs`, `phonepanel.rs`, `winpick.rs` + `wincap.rs` (dock window thumbnails), `settings.rs` (Mist's own settings) |
+| Panels | `pane.rs` (one popup at a time), `spotlight.rs`, `start.rs`, `switcher.rs`, `control.rs`, `notifcenter.rs`, `clipboard.rs`, `calendar.rs`, `session.rs`, `wallpapers.rs`, `shot.rs`, `phonepanel.rs`, `winpick.rs` + `wincap.rs` (dock window thumbnails) |
 | System | `notif.rs` (notification server), `polkit.rs`, `lock.rs` (`ext-session-lock-v1` + PAM), `idle.rs`, `tray.rs` (SNI host + dbusmenu), `snap.rs`, `sys.rs` (audio, network, Bluetooth, power), `media.rs` (MPRIS), `phone.rs` |
-| Apps | `files/` (Mist Files + FileChooser portal backend), `player/` (libmpv on an EGL subsurface), `sysset/` (system settings: display, sound, Bluetooth, power, input, apps, accounts), `appwin.rs` + `edit.rs` (their windows, text fields) |
+| Apps | `files/` (Mist Files + FileChooser portal backend), `player/` (libmpv on an EGL subsurface), `sysset/` (Mist Settings, the only settings window: display, sound, Bluetooth, power, input, apps, accounts, desktop + widgets, wallpaper), `appwin.rs` + `edit.rs` (their windows, text fields) |
 | Drawing | `gfx.rs`, `glass.rs`, `text.rs`, `img.rs`, `icons.rs`, `theme.rs`, `anim.rs` |
 | Glue | `app.rs` (event loop), `ipc.rs` (`mist-ui-bin msg`), `apps.rs` (.desktop entries, icon themes), `i18n.rs` (`assets/i18n/*.json`), `data.rs` |
 
