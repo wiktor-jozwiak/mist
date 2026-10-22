@@ -39,11 +39,14 @@ pub fn text_colour(c: Rgba) -> Rgba {
 
 #[cfg(test)]
 mod tests {
-    // the Zen theme copies the tokens by hand: keep them equal
+    // the Zen theme copies the tokens by hand: keep them equal (the theme is local only, not in the repo:
+    // without it there is nothing to compare)
     #[test]
     fn tokens_match_zen_css() {
         use crate::tokens as t;
-        let css = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../integrations/zen/chrome/mist/tokens.css")).unwrap();
+        let Ok(css) = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../integrations/zen/chrome/mist/tokens.css")) else {
+            return eprintln!("no local integrations/zen: skipped");
+        };
         let has = |s: String| assert!(css.contains(&s), "tokens.css lacks `{s}`");
         let hex = |c: (u8, u8, u8)| format!("#{:02x}{:02x}{:02x}", c.0, c.1, c.2);
         let rgba = |c: (u8, u8, u8, f32)| format!("rgba({}, {}, {}, {})", c.0, c.1, c.2, c.3);

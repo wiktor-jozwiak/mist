@@ -1,5 +1,5 @@
 // Mist design tokens shared by mist-comp, mist-ui and mist-wall (plain numbers, no crate types). The Zen theme
-// (integrations/zen/chrome/mist/tokens.css) mirrors them; mist-ui's test `tokens_match_zen_css` checks it.
+// (integrations/zen/chrome/mist/tokens.css, local only, not in the repo) mirrors them; mist-ui's test `tokens_match_zen_css` checks it.
 #![allow(dead_code)]
 
 /// Window corner radius (logical px): mist-comp's bars, rounded windows and shadow, mist-ui app windows, Zen.

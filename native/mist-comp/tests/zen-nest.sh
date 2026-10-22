@@ -16,7 +16,8 @@ up)
   timeout 10 sh -c "until ./cc.sh layers | grep -qi wall && ./cc.sh layers | grep -q mist-bar; do sleep 0.2; done"; ./cc.sh layers ;;
 zen)
   [ -f zen.pid ] && kill $(cat zen.pid) 2>/dev/null && sleep 1
-  mkdir -p "$PROF"; [ -n "$NOINST" ] || ../../../integrations/zen/install.sh "$PROF" >/dev/null
+  mkdir -p "$PROF"; # the Mist theme for Zen is local only (integrations/zen, not in the repo): without it Zen runs stock
+  [ -n "$NOINST" ] || [ ! -x ../../../integrations/zen/install.sh ] || ../../../integrations/zen/install.sh "$PROF" >/dev/null
   # ZEN_FROM=<profile>: start from a copy of its prefs + window state, else a clean first run
   if [ -n "$ZEN_FROM" ]; then cp "$ZEN_FROM/prefs.js" "$ZEN_FROM/xulstore.json" "$PROF/"; else rm -f "$PROF/xulstore.json"; fi
   [ -n "$ZEN_HOME" ] && echo "user_pref(\"browser.startup.homepage\", \"$ZEN_HOME\");" >> "$PROF/user.js"
