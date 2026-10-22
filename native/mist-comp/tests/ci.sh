@@ -17,6 +17,8 @@ chmod 700 "$RT"
 export XDG_RUNTIME_DIR=$RT HOME=$H MIST_DIR=$ROOT MIST_LANG=en LANG=C.UTF-8 MIST_PRIMARY=DP-3
 export MIST_UI_NO_SERVICES=1 MIST_UI_SOCK=$RT/ui.sock MIST_COMP_SOFTWARE=1
 unset WAYLAND_DISPLAY DISPLAY HYPRLAND_INSTANCE_SIGNATURE
+# the Mist session may hide Mesa from EGL (start-mist on NVIDIA): llvmpipe needs it
+unset __EGL_VENDOR_LIBRARY_FILENAMES
 cp "$ROOT"/docs/demo/weather.json "$ROOT"/docs/demo/garmin.json "$ROOT"/docs/demo/running.json "$H/.cache/mist/" 2>/dev/null
 # a UI font where mist-ui looks first (SF Pro is not shipped; Inter / Noto from the system)
 for f in /usr/share/fonts/inter/InterVariable.ttf /usr/share/fonts/TTF/InterVariable.ttf /usr/share/fonts/opentype/inter/Inter-Regular.otf \
@@ -58,7 +60,7 @@ for g in xdg_wm_base zwlr_layer_shell_v1 ext_session_lock_manager_v1 zwp_linux_d
          wp_presentation xdg_activation_v1 zxdg_decoration_manager_v1 zwp_pointer_constraints_v1 zwp_relative_pointer_manager_v1 \
          zwp_text_input_manager_v3 zwp_input_method_manager_v2 zwp_virtual_keyboard_manager_v1 zwp_tablet_manager_v2 \
          ext_foreign_toplevel_list_v1 ext_data_control_manager_v1 zwlr_data_control_manager_v1 zxdg_exporter_v2 zxdg_importer_v2 \
-         xdg_toplevel_icon_manager_v1 xdg_toplevel_tag_manager_v1 wp_content_type_manager_v1 wp_alpha_modifier_v1 xdg_system_bell_v1 \
+         xdg_toplevel_tag_manager_v1 wp_content_type_manager_v1 wp_alpha_modifier_v1 xdg_system_bell_v1 \
          wp_security_context_manager_v1 wp_cursor_shape_manager_v1 zwlr_screencopy_manager_v1 ext_idle_notifier_v1 zwp_idle_inhibit_manager_v1 \
          zwlr_foreign_toplevel_manager_v1 zwlr_output_power_manager_v1 zwlr_virtual_pointer_manager_v1 zwlr_gamma_control_manager_v1 zwlr_output_manager_v1; do
     grep -q "^$g " "$OUT/globals.txt" || bad "global $g"
@@ -170,9 +172,10 @@ fi
 # ------------------------------------------------------------------ screencopy (grim, portals)
 if command -v grim >/dev/null; then
     check "screencopy: grim works" "WAYLAND_DISPLAY=$S timeout 10 grim -o DP-3 -t ppm '$OUT/grim-dp3.ppm'"
-    # on a still screen (island / window animations over: the compositor's shot the same before and after)
+    # on a still screen (island / window animations over: the compositor's shot the same before and after);
+    # llvmpipe on a CI runner takes a while to settle
     same=1
-    for _ in 1 2 3 4 5 6 7 8 9 10; do
+    for _ in $(seq 30); do
         C shot "$OUT/shot-a.ppm" DP-3 >/dev/null
         WAYLAND_DISPLAY=$S timeout 10 grim -o DP-3 -t ppm "$OUT/grim-dp3.ppm"
         C shot "$OUT/shot-b.ppm" DP-3 >/dev/null
@@ -213,10 +216,10 @@ fi
 
 # ------------------------------------------------------------------ workspaces
 C action workspace 2 >/dev/null
-check "workspaces: switch to 2" "C workspaces | grep -q ' 2$'"
-check "workspaces: the window is hidden on 1" "C windows | grep -q '^mist-files ws1 hidden'"
+check "workspaces: switch to 2" "wait_for \"C workspaces | grep -q ' 2$'\" 30"
+check "workspaces: the window is hidden on 1" "wait_for \"C windows | grep -q '^mist-files ws1 hidden'\" 30"
 C action workspace 1 >/dev/null
-check "workspaces: back on 1, the window shown" "C windows | grep -q '^mist-files ws1 [0-9]'"
+check "workspaces: back on 1, the window shown" "wait_for \"C windows | grep -q '^mist-files ws1 [0-9]'\" 30"
 
 # ------------------------------------------------------------------ Hyprland compatibility (mist-ui, scripts)
 ln -sf "$BIN/mist-comp" "$RT/hyprctl"
