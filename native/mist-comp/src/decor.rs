@@ -23,9 +23,28 @@ const DIAM: f32 = 13.0;
 const GAP: f32 = 8.0;
 /// own title bars: Zen (macOS dots in its tab bar), Mist Files / Player (hyprbars:no_bar in windowrules.lua),
 /// and apps that always draw theirs even when given a server-side one (Claude, Spotify: no double bar)
-const NO_BAR: [&str; 7] = ["zen", "zen-browser", "zen-beta", "mist-files", "mist-player", "com.anthropic.claude", "spotify"];
+const NO_BAR: [&str; 8] = ["zen", "zen-browser", "zen-beta", "mist-files", "mist-player", "mist-settings", "com.anthropic.claude", "spotify"];
 /// of those, the ones with a square window: mist-comp rounds its corners and gives it the window shadow
 const ROUND: [&str; 2] = ["com.anthropic.claude", "spotify"];
+
+/// Chromium apps that move themselves only in client-side mode: given server-side decorations they hand the
+/// title bar to the compositor and never send xdg_toplevel.move for their own (Spotify could not be dragged)
+const CSD: [&str; 1] = ["spotify"];
+
+/// Apps that never move themselves from their own title bar (Spotify on Wayland and X11 sends neither
+/// xdg_toplevel.move nor _NET_WM_MOVERESIZE): a drag starting in this top strip (px) moves the window,
+/// a click without movement stays theirs
+const DRAG_TOP: [(&str, i32); 1] = [("spotify", 64)];
+
+pub fn drag_top(app: &str) -> i32 {
+    let app = app.to_lowercase();
+    DRAG_TOP.iter().find(|(a, _)| *a == app).map_or(0, |(_, h)| *h)
+}
+
+/// Decoration mode for a client's request: everything gets the Mist bar except the CSD apps above.
+pub fn wants_csd(app: &str) -> bool {
+    CSD.contains(&app.to_lowercase().as_str())
+}
 
 /// A window drawing its own title bar on a square window (lowercased app id / X11 class).
 pub fn rounds(app: &str) -> bool {

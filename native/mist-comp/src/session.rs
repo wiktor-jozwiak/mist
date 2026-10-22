@@ -23,8 +23,18 @@ fn path() -> String {
 
 /// A process's command line, each argument single-quoted for sh.
 fn cmdline(pid: i32) -> Option<String> {
-    let raw = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
-    let args: Vec<String> = raw.split(|b| *b == 0).filter(|a| !a.is_empty()).map(|a| format!("'{}'", String::from_utf8_lossy(a).replace('\'', "'\\''"))).collect();
+    quote_args(&std::fs::read(format!("/proc/{pid}/cmdline")).ok()?)
+}
+
+/// NUL-separated argv as one sh command line.
+fn quote_args(raw: &[u8]) -> Option<String> {
+    let mut args: Vec<String> = raw.split(|b| *b == 0).filter(|a| !a.is_empty()).map(|a| String::from_utf8_lossy(a).into_owned()).collect();
+    // Chromium apps (Spotify, Electron) rewrite argv into one space-joined string: split it back unless it is a
+    // real path with spaces
+    if args.len() == 1 && args[0].contains(' ') && !std::path::Path::new(&args[0]).exists() {
+        args = args[0].split_whitespace().map(String::from).collect();
+    }
+    let args: Vec<String> = args.iter().map(|a| format!("'{}'", a.replace('\'', "'\\''"))).collect();
     (!args.is_empty()).then(|| args.join(" "))
 }
 
@@ -101,5 +111,15 @@ impl MistComp {
         let s = self.restore.remove(i);
         let on = self.space.outputs().any(|o| self.space.output_geometry(o).is_some_and(|g| g.contains(s.rect.loc + Point::from((s.rect.size.w / 2, s.rect.size.h / 2)))));
         on.then_some(s)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn chromium_argv_split_back() {
+        let raw = b"/opt/spotify/spotify --ozone-platform=wayland --uri=%u\0";
+        assert_eq!(super::quote_args(raw).unwrap(), "'/opt/spotify/spotify' '--ozone-platform=wayland' '--uri=%u'");
+        assert_eq!(super::quote_args(b"/usr/bin/kitty\0--class\0it's\0").unwrap(), "'/usr/bin/kitty' '--class' 'it'\\''s'");
     }
 }

@@ -11,3 +11,4 @@ child.pid
 *.ppm
 fake.pid
 fonts/
+ev.txt

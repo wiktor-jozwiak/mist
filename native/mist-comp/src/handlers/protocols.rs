@@ -176,8 +176,14 @@ impl XdgDecorationHandler for MistComp {
         self.dirty = true;
     }
     fn request_mode(&mut self, toplevel: ToplevelSurface, _mode: DecorationMode) {
-        // like Hyprland + hyprbars: every window that negotiates gets the Mist bar (kitty asks client-side)
-        toplevel.with_pending_state(|s| s.decoration_mode = Some(DecorationMode::ServerSide));
+        // like Hyprland + hyprbars: every window that negotiates gets the Mist bar (kitty asks client-side),
+        // except the Chromium apps that drag their own title bar only in client-side mode (decor.rs CSD)
+        let app = with_states(toplevel.wl_surface(), |s| {
+            s.data_map.get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>().and_then(|d| d.lock().unwrap().app_id.clone())
+        })
+        .unwrap_or_default();
+        let mode = if crate::decor::wants_csd(&app) { DecorationMode::ClientSide } else { DecorationMode::ServerSide };
+        toplevel.with_pending_state(|s| s.decoration_mode = Some(mode));
         if toplevel.is_initial_configure_sent() {
             toplevel.send_pending_configure();
         }

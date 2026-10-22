@@ -207,12 +207,23 @@ pub fn elements(r: &mut GlesRenderer, space: &Space<Window>, lock: Option<&LockS
             let Some(g) = map.layer_geometry(l) else { continue };
             let alpha = anim.layer_alpha(&smithay::reexports::wayland_server::Resource::id(l.wl_surface()), now);
             let v: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = l.render_elements(r, g.loc.to_physical_precise_round(scale), scale, alpha);
-            // Mist glass panels: the main surface blurs what is behind it
-            let glass = crate::blur::rule(l.namespace()).map(|ignore| (ignore, Id::from_wayland_resource(l.wl_surface())));
+            // Mist glass panels: the main surface blurs what is behind it; a blur region (ext-background-effect)
+            // keeps it to that box (Mist's panels: their cards), or asks for it on any other layer
+            let region = crate::bgeffect::region(l.wl_surface());
+            let ignore = match region {
+                Some(None) => None,
+                Some(Some(_)) => Some(crate::blur::rule(l.namespace()).unwrap_or(0.0)),
+                None => crate::blur::rule(l.namespace()),
+            };
+            let clip = region.flatten().map(|b| Rectangle::new(b.loc + g.loc, b.size).to_physical_precise_round(scale));
+            let glass = ignore.map(|ignore| (ignore, Id::from_wayland_resource(l.wl_surface())));
             for e in v {
                 match glass.as_ref().filter(|(_, id)| e.id() == id) {
                     Some((ignore, _)) => match crate::blur::Glass::new(r, e, &output.name(), *ignore, None, scale) {
-                        Ok(Some(gl)) => out.push(SceneElem::Glass(gl)),
+                        Ok(Some(gl)) => out.push(SceneElem::Glass(match clip {
+                            Some(c) => gl.clipped(c),
+                            None => gl,
+                        })),
                         Ok(None) => {}
                         Err(e) => out.push(SceneElem::Surface(e)),
                     },

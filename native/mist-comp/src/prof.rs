@@ -2,9 +2,9 @@
 //! (count, average and total since the last `prof`). A clock read per stage; nothing else.
 use std::{cell::RefCell, time::Duration};
 
-pub const STAGES: [&str; 7] = ["scene", "render", "queue", "frames", "turn", "sync", "clients"];
+pub const STAGES: [&str; 8] = ["scene", "render", "queue", "frames", "turn", "sync", "clients", "blur"];
 
-thread_local!(static T: RefCell<[(u64, Duration); 7]> = const { RefCell::new([(0, Duration::ZERO); 7]) });
+thread_local!(static T: RefCell<[(u64, Duration); 8]> = const { RefCell::new([(0, Duration::ZERO); 8]) });
 
 pub fn add(stage: usize, d: Duration) {
     T.with(|t| {

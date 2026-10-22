@@ -392,8 +392,35 @@ impl MistComp {
         self.focus_top_on(&o);
     }
 
-    /// Bring a window back and focus it: from another workspace (switches to it) or minimized (onto `ws`,
-    /// else the active one).
+    /// Win+D: windows on screen (all outputs) go down; with none left on screen, the ones it hid come back
+    /// onto their workspaces, the top one focused last (Windows "Show desktop").
+    pub fn show_desktop(&mut self) {
+        let shown: Vec<Window> = self
+            .space
+            .elements()
+            .filter(|w| !data(w).pinned.get() && data(w).ws.get() != SPECIAL && !w.x11_surface().is_some_and(|x| x.is_override_redirect()))
+            .cloned()
+            .collect();
+        // still down (restored by hand or closed since: left out)
+        let mut hidden: Vec<(Window, u32)> =
+            std::mem::take(&mut self.desk_hidden).into_iter().filter(|(w, _)| data(w).ws.get() == MINIMIZED && self.stash.iter().any(|(x, _)| x == w)).collect();
+        if shown.is_empty() {
+            // bottom first: the window that was on top is focused last
+            for (w, ws) in hidden {
+                self.restore(&w, Some(ws));
+            }
+            return;
+        }
+        for w in shown {
+            let ws = data(&w).ws.get();
+            self.minimize(&w);
+            hidden.push((w, ws));
+        }
+        self.desk_hidden = hidden;
+    }
+
+    /// Bring a window back and focus it: minimized (onto `ws`, else the active one) or from a hidden
+    /// workspace (onto `ws` when that one is shown, like a Windows taskbar click; else switches to it).
     pub fn restore(&mut self, w: &Window, ws: Option<u32>) {
         let cur = data(w).ws.get();
         let output = self.active_output();
@@ -411,10 +438,20 @@ impl MistComp {
                     self.switch_ws(&o, target);
                 }
             }
-        } else if self.stash.iter().any(|(x, _)| x == w) {
-            // on a hidden workspace: show it where it was last shown
-            if let Some(o) = output {
-                self.switch_ws(&o, cur);
+        } else if let Some(i) = self.stash.iter().position(|(x, _)| x == w) {
+            match (ws, output) {
+                // the dock asks for the shown workspace: the window comes here, nothing else hides
+                (Some(t), Some(o)) if t != cur && self.active_ws(&o) == t => {
+                    let (w2, loc) = self.stash.remove(i);
+                    data(&w2).ws.set(t);
+                    let og = self.space.output_geometry(&o).unwrap_or_default();
+                    self.space.map_element(w2, og.loc + loc, true);
+                    self.ws_changed = true;
+                    self.hypr_event("movewindowv2", &format!("{},{t},{t}", crate::hyprcompat::addr(w).trim_start_matches("0x")));
+                }
+                // on a hidden workspace: show it where it was last shown
+                (_, Some(o)) => self.switch_ws(&o, cur),
+                _ => {}
             }
         }
         self.focus_window(Some(w));
@@ -583,6 +620,14 @@ impl MistComp {
                 self.config = crate::config::load();
                 tracing::info!("config reloaded: {} binds", self.config.binds.len());
                 self.apply_output_conf();
+                // the keyboard layout (Mist Settings > Czas i język) applies at once
+                if let Some(kb) = self.seat.get_keyboard() {
+                    let (layout, variant, options) = self.config.keyboard.clone();
+                    let xkb = smithay::input::keyboard::XkbConfig { layout: &layout, variant: &variant, options: (!options.is_empty()).then(|| options.clone()), ..Default::default() };
+                    if let Err(e) = kb.set_xkb_config(self, xkb) {
+                        tracing::warn!("keyboard {layout}: {e:?}");
+                    }
+                }
                 self.hypr_event("configreloaded", "");
             }
             Action::Workspace(arg) => {
@@ -655,6 +700,7 @@ impl MistComp {
                 let w = self.space.elements().find(|w| self.output_of(w) == o).cloned();
                 self.focus_window(w.as_ref());
             }
+            Action::ShowDesktop => self.show_desktop(),
             Action::Vt(n) => self.change_vt(n),
             Action::Nothing => return,
             Action::Global(n) => return self.global_shortcut(&n, true),

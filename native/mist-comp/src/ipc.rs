@@ -164,6 +164,10 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
         }
         "locked" => format!("{} surfaces={}\n", state.locked, state.lock.surfaces.len()),
         "blurs" => crate::blur::per_cache(),
+        "blur-reset" => {
+            crate::blur::reset();
+            "ok\n".into()
+        }
         // the open overview's grid: one line per window, its place (output-relative, bar included)
         "overview" => match state.anim.overview.as_ref() {
             Some(o) => o

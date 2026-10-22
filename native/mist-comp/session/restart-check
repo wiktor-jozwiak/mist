@@ -1,0 +1,61 @@
+#!/bin/sh
+# mist-comp restart with a safety net, run OUTSIDE the graphical session (survives the compositor):
+#   systemd-run --user --unit mist-restart-check sh restart-check
+# IPC `restart` (exit 75, start-mist starts the new binary with the session restored), then checks that the new
+# compositor lights its outputs and answers IPC. Not within 25 s: SIGKILL, so start-mist takes its crash path
+# (safe mode). Then a Spotify title-strip drag (decor.rs DRAG_TOP) is checked. Report: ~/.cache/mist/restart-check.log
+R=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+S=$R/mist-comp/wayland-1.sock
+LOG=$HOME/.cache/mist/comp.log
+OUT=$HOME/.cache/mist/restart-check.log
+: >"$OUT"
+say() { echo "$(date +%T) $*" >>"$OUT"; }
+cc() { echo "$*" | socat -t3 - "UNIX:$S" 2>/dev/null; }
+
+up() { # the newest compositor drew its outputs and answers IPC
+    p=$(pgrep -x mist-comp | head -1)
+    [ -n "$p" ] && [ "$p" != "$OLD" ] && tail -n +"$FROM" "$LOG" | grep -q "INFO mist_comp::udev: output" && cc workspaces | grep -q .
+}
+wait_up() {
+    i=0
+    while [ $i -lt 50 ]; do up && return 0; sleep 0.5; i=$((i + 1)); done
+    return 1
+}
+
+OLD=$(pgrep -x mist-comp | head -1)
+FROM=$(($(wc -l <"$LOG") + 1))
+say "old mist-comp $OLD ($(readlink /proc/$OLD/exe)), restart"
+cc restart >/dev/null
+if wait_up; then
+    say "OK: new mist-comp $(pgrep -x mist-comp) $(grep -c 'INFO mist_comp::udev: output' "$LOG") outputs"
+else
+    say "FAIL: no picture after 25 s; last log lines:"
+    tail -n 15 "$LOG" >>"$OUT"
+    N=$(pgrep -x mist-comp | head -1)
+    [ -n "$N" ] && [ "$N" != "$OLD" ] && { say "kill -9 $N: start-mist restarts in safe mode"; kill -9 "$N"; OLD=$N; FROM=$(($(wc -l <"$LOG") + 1)); }
+    if wait_up; then say "OK in safe mode"; else say "FAIL in safe mode too: Ctrl+Alt+F2, then mist-session log"; fi
+fi
+notify-send "Mist" "Restart kompozytora: $(grep -c OK "$OUT") OK, $(grep -c FAIL "$OUT") FAIL (log: ~/.cache/mist/restart-check.log)" 2>/dev/null
+
+# Spotify (restored from session.json) drag test
+i=0
+while [ $i -lt 60 ] && ! cc windows | grep -q '^spotify ws.* [0-9]*,[0-9]* [0-9]*x'; do
+    # session.json from an older mist-comp kept Chromium's one-string argv: not restorable, start it here
+    [ $i = 30 ] && ! pgrep -f '^/opt/spotify/spotify' >/dev/null && { say "spotify not restored: starting it"; WAYLAND_DISPLAY=wayland-1 setsid /opt/spotify/spotify --enable-features=UseOzonePlatform,WaylandWindowDecorations --ozone-platform=wayland >/dev/null 2>&1 & }
+    sleep 0.5; i=$((i + 1))
+done
+w=$(cc windows | grep '^spotify ' | grep -v hidden | head -1)
+[ -z "$w" ] && { say "spotify: no window shown (not restored?): $(cc windows | tr '\n' ';')"; exit 0; }
+sleep 3
+at=$(echo "$w" | awk '{print $3}'); x=${at%,*}; y=${at#*,}
+drag() {
+    cc motion "$1" "$2" >/dev/null; cc button left press >/dev/null
+    for k in 1 2 3 4 5; do cc motion $(($1 + $3 * k / 5)) $(($2 + $4 * k / 5)) >/dev/null; sleep 0.03; done
+    cc button left release >/dev/null
+}
+drag $((x + 250)) $((y + 20)) 40 30
+sleep 0.3
+after=$(cc windows | grep '^spotify ' | awk '{print $3}')
+say "spotify drag: $at -> $after (want $((x + 40)),$((y + 30)))"
+drag $((x + 290)) $((y + 50)) -40 -30
+say "spotify back: $(cc windows | grep '^spotify ' | awk '{print $3}')"

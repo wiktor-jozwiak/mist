@@ -30,6 +30,7 @@ mod blur;
 mod shadow;
 mod anim;
 mod overview;
+mod bgeffect;
 mod extws;
 mod rules;
 mod swallow;

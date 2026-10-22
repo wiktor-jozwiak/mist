@@ -86,6 +86,8 @@ pub struct MistComp {
     pub ws_active: std::collections::HashMap<String, u32>,
     /// windows of hidden workspaces, position relative to their output
     pub stash: Vec<(Window, Point<i32, Logical>)>,
+    /// windows Win+D minimized, with their workspace: the next Win+D on an empty desktop brings them back
+    pub desk_hidden: Vec<(Window, u32)>,
     /// xdg toplevels before their first buffer (rules.rs)
     pub pending: Vec<Window>,
     /// last size per app id (windowrules.lua persistent_size), this session only
@@ -197,6 +199,7 @@ impl MistComp {
         crate::screencopy::init(&dh);
         crate::hyprproto::init(&dh);
         crate::extws::init(&dh);
+        crate::bgeffect::init(&dh);
         crate::wlr::init(&dh);
         crate::outman::init(&dh);
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
@@ -289,6 +292,7 @@ impl MistComp {
             config,
             ws_active: Default::default(),
             stash: Vec::new(),
+            desk_hidden: Vec::new(),
             pending: Vec::new(),
             sizes: Default::default(),
             special_on: None,

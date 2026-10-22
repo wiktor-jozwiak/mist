@@ -517,6 +517,26 @@ impl MistComp {
             }
         }
 
+        // the top strip of an app that cannot move itself (decor.rs DRAG_TOP): the press goes to the app, moving
+        // past the bar_drag threshold before the release moves the window. The release clears it even while
+        // the client's click grab is held
+        if button == BTN_LEFT && button_state == ButtonState::Released {
+            self.bar_drag = None;
+        }
+        if !self.locked && button == BTN_LEFT && button_state == ButtonState::Pressed && !pointer.is_grabbed() {
+            let loc = pointer.current_location();
+            if self.layer_at(loc).is_none() {
+                let hit = self.space.element_under(loc).map(|(w, _)| w.clone()).and_then(|w| Some((self.space.element_location(&w)?, w)));
+                if let Some((wl, w)) = hit {
+                    let top = crate::decor::drag_top(&crate::hyprcompat::app_id(&w)) as f64;
+                    let y = loc.y - wl.y as f64;
+                    if (0.0..top).contains(&y) {
+                        self.bar_drag = Some((w, loc, button));
+                    }
+                }
+            }
+        }
+
         let layer_hit = (ButtonState::Pressed == button_state && !pointer.is_grabbed())
             .then(|| self.layer_at(pointer.current_location()))
             .flatten();

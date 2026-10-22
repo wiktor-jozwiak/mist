@@ -4,7 +4,10 @@
 //! contrast/brightness on the last pass) and paints that where the surface's alpha > ignore_alpha, then the
 //! surface itself on top.
 //! GPU: the blur runs only when something behind the panel changed (hash of the elements under it); a
-//! frame that only damages the panel reuses the cached texture. VRAM: ~1/3 of the panel's area x 4 B per
+//! frame that only damages the panel reuses the cached texture. When only part of what is behind changed
+//! (layout the same, a client's damage), only that part plus the kernels' reach is blurred again (scissored
+//! on every level) and only that part of the glass is damaged: a 64x64 change under full-screen glass
+//! re-blurs ~320x320, not the screen. VRAM: ~1/3 of the panel's area x 4 B per
 //! level. CPU: one hash per glass layer per frame.
 use std::{
     cell::{Cell, RefCell},
@@ -43,12 +46,20 @@ pub fn rule(namespace: &str) -> Option<f32> {
 /// client-side shadow around it).
 pub fn window_rule(app_id: &str) -> bool {
     thread_local!(static OFF: bool = std::env::var("MIST_COMP_BLUR").is_ok_and(|v| v == "0"));
-    !OFF.with(|o| *o) && matches!(app_id, "zen" | "zen-browser" | "zen-beta" | "mist-files")
+    !OFF.with(|o| *o) && matches!(app_id, "zen" | "zen-browser" | "zen-beta" | "mist-files" | "mist-settings")
 }
 
 const PASSES: usize = 4;
 const OFFSET: f32 = 2.0;
 const CONTRAST: f32 = 0.8916;
+/// Partial re-blur: how far (full-resolution px) a changed pixel behind can move the blurred result. A down
+/// pass reads 2 texels of the level above, an up pass 3 of the level below (bilinear taps at +-1 / +-2
+/// texels); a level-k texel is 2^(k+1) px. 4 levels: 28 + 84, the blit and the mask taps: < 128.
+const REACH: i32 = 128;
+/// The glass damage around a change: REACH, plus the alignment to the smallest level (<= 16), plus slack.
+/// What a partial run re-reads from the framebuffer must lie inside this frame's damage (fresh pixels,
+/// not the last frame's glass).
+const DAMAGE_REACH: i32 = REACH + 32;
 const BRIGHTNESS: f32 = 0.8172;
 
 const MASK: &str = r#"
@@ -156,8 +167,14 @@ struct Passes {
 struct Cache {
     region: (i32, i32),
     sizes: Vec<(i32, i32)>,
+    /// the down chain (level 0: the blitted half-size copy of what is behind)
     tex: Vec<u32>,
     fbo: Vec<u32>,
+    /// the up chain, levels 0..n-1 (level 0 holds the result); apart from the down chain, so a partial run
+    /// finds every down level as the last run left it
+    up_tex: Vec<u32>,
+    up_fbo: Vec<u32>,
+    partial: u64,
     behind: Option<u64>,
     /// last drawn: a surface gone (closed panel, hidden workspace) frees its textures a second later
     seen: std::time::Instant,
@@ -177,6 +194,9 @@ struct Track {
     /// (our counter, the client's commit then, the blur version then)
     hist: Vec<(CommitCounter, CommitCounter, u64)>,
     blur: u64,
+    /// per blur version: the part of this surface it changed (surface-local, change + DAMAGE_REACH; empty
+    /// when the change was elsewhere), None: all of it
+    bdirty: Vec<(u64, Option<Rectangle<i32, Physical>>)>,
     /// the scene build it was last in (closed panels' entries go)
     frame: u64,
 }
@@ -188,9 +208,23 @@ thread_local! {
     /// per glass surface: its commit counter and what it stands for
     static STATE: RefCell<HashMap<(String, Id), Track>> = RefCell::new(HashMap::new());
     static FRAME: Cell<u64> = const { Cell::new(0) };
-    /// per blur (window or panel): the layout behind it (hash), a version bumped whenever pixels behind it
-    /// change, the commit of each element behind it last seen, and the scene build it was last used in
-    static BEHIND: RefCell<HashMap<(String, Id), (u64, u64, HashMap<Id, CommitCounter>, u64)>> = RefCell::new(HashMap::new());
+    static BEHIND: RefCell<HashMap<(String, Id), Behind>> = RefCell::new(HashMap::new());
+}
+
+/// Per blur (window or panel): what is behind it.
+struct Behind {
+    /// the layout behind (which elements, where, how opaque), hashed
+    layout: u64,
+    /// bumped whenever pixels behind change
+    version: u64,
+    /// the commit of each element behind, last seen
+    commits: HashMap<Id, CommitCounter>,
+    /// the scene build it was last used in
+    frame: u64,
+    /// what changed in this scene build (output-physical), None: everything (or nothing changed)
+    dirty: Option<Rectangle<i32, Physical>>,
+    /// what changed since the blur last ran: None nothing, Some(None) all of it, Some(Some(r)) inside r
+    pending: Option<Option<Rectangle<i32, Physical>>>,
 }
 
 fn mask_program(r: &mut GlesRenderer) -> Option<GlesTexProgram> {
@@ -285,34 +319,50 @@ impl Cache {
                 break;
             }
         }
-        let n = sizes.len();
-        let mut tex = vec![0u32; n];
-        let mut fbo = vec![0u32; n];
-        gl.GenTextures(n as i32, tex.as_mut_ptr());
-        gl.GenFramebuffers(n as i32, fbo.as_mut_ptr());
-        for i in 0..n {
-            gl.BindTexture(ffi::TEXTURE_2D, tex[i]);
-            gl.TexImage2D(ffi::TEXTURE_2D, 0, ffi::RGBA as i32, sizes[i].0, sizes[i].1, 0, ffi::RGBA, ffi::UNSIGNED_BYTE, std::ptr::null());
-            for (k, v) in [(ffi::TEXTURE_MIN_FILTER, ffi::LINEAR), (ffi::TEXTURE_MAG_FILTER, ffi::LINEAR), (ffi::TEXTURE_WRAP_S, ffi::CLAMP_TO_EDGE), (ffi::TEXTURE_WRAP_T, ffi::CLAMP_TO_EDGE)] {
-                gl.TexParameteri(ffi::TEXTURE_2D, k, v as i32);
+        let make = |sz: &[(i32, i32)]| {
+            let n = sz.len();
+            let mut tex = vec![0u32; n];
+            let mut fbo = vec![0u32; n];
+            gl.GenTextures(n as i32, tex.as_mut_ptr());
+            gl.GenFramebuffers(n as i32, fbo.as_mut_ptr());
+            for i in 0..n {
+                gl.BindTexture(ffi::TEXTURE_2D, tex[i]);
+                gl.TexImage2D(ffi::TEXTURE_2D, 0, ffi::RGBA as i32, sz[i].0, sz[i].1, 0, ffi::RGBA, ffi::UNSIGNED_BYTE, std::ptr::null());
+                for (k, v) in [(ffi::TEXTURE_MIN_FILTER, ffi::LINEAR), (ffi::TEXTURE_MAG_FILTER, ffi::LINEAR), (ffi::TEXTURE_WRAP_S, ffi::CLAMP_TO_EDGE), (ffi::TEXTURE_WRAP_T, ffi::CLAMP_TO_EDGE)] {
+                    gl.TexParameteri(ffi::TEXTURE_2D, k, v as i32);
+                }
+                gl.BindFramebuffer(ffi::FRAMEBUFFER, fbo[i]);
+                gl.FramebufferTexture2D(ffi::FRAMEBUFFER, ffi::COLOR_ATTACHMENT0, ffi::TEXTURE_2D, tex[i], 0);
             }
-            gl.BindFramebuffer(ffi::FRAMEBUFFER, fbo[i]);
-            gl.FramebufferTexture2D(ffi::FRAMEBUFFER, ffi::COLOR_ATTACHMENT0, ffi::TEXTURE_2D, tex[i], 0);
-        }
+            (tex, fbo)
+        };
+        let (tex, fbo) = make(&sizes);
+        let (up_tex, up_fbo) = make(&sizes[..sizes.len() - 1]);
         gl.BindTexture(ffi::TEXTURE_2D, 0);
-        Cache { region, sizes, tex, fbo, behind: None, seen: std::time::Instant::now(), calls: 0, runs: 0 }
+        Cache { region, sizes, tex, fbo, up_tex, up_fbo, partial: 0, behind: None, seen: std::time::Instant::now(), calls: 0, runs: 0 }
+    }
+
+    /// the blurred result
+    fn result(&self) -> u32 {
+        self.up_tex.first().copied().unwrap_or(self.tex[0])
     }
 
     unsafe fn free(&self, gl: &ffi::Gles2) {
         gl.DeleteTextures(self.tex.len() as i32, self.tex.as_ptr());
         gl.DeleteFramebuffers(self.fbo.len() as i32, self.fbo.as_ptr());
+        gl.DeleteTextures(self.up_tex.len() as i32, self.up_tex.as_ptr());
+        gl.DeleteFramebuffers(self.up_fbo.len() as i32, self.up_fbo.as_ptr());
     }
 }
 
 /// Blur the framebuffer region (GL window coords) into the cache (unless what is behind is unchanged).
-/// Leaves the frame's GL state as Smithay set it. Returns the result texture.
-unsafe fn blur(gl: &ffi::Gles2, key: &(String, Id), region: Rectangle<i32, Physical>, behind: u64) -> Option<u32> {
+/// `flip`: the viewport height when GL y runs opposite to physical y (winit). Leaves the frame's GL state as
+/// Smithay set it. Returns the result texture and the region size it covers (whole level-0 texels: the
+/// region rounded down to even).
+unsafe fn blur(gl: &ffi::Gles2, key: &(String, Id), region: Rectangle<i32, Physical>, behind: u64, flip: Option<i32>) -> Option<(u32, (i32, i32))> {
     passes(gl)?;
+    // what changed behind since this blur last ran (taken now: a run brings it up to date)
+    let pending = BEHIND.with(|b| b.borrow_mut().get_mut(key).map(|e| e.pending.take()));
     CACHE.with(|c| {
         let mut c = c.borrow_mut();
         // surfaces gone for a second: free their textures (every panel opening is a new surface, so a frame
@@ -333,31 +383,69 @@ unsafe fn blur(gl: &ffi::Gles2, key: &(String, Id), region: Rectangle<i32, Physi
         gl.GetIntegerv(ffi::FRAMEBUFFER_BINDING, &mut prev_fbo);
         let mut vp = [0i32; 4];
         gl.GetIntegerv(ffi::VIEWPORT, vp.as_mut_ptr());
-        if !c.contains_key(key) {
+        let fresh = !c.contains_key(key);
+        if fresh {
             let e = Cache::new(gl, size);
             c.insert(key.clone(), e);
             gl.BindFramebuffer(ffi::FRAMEBUFFER, prev_fbo as u32);
         }
         let e = c.get_mut(key).unwrap();
         e.seen = now;
+        let covered = (e.sizes[0].0 * 2, e.sizes[0].1 * 2);
         let hit = e.behind == Some(behind);
         COUNTS.with(|n| n.set((n.get().0 + 1, n.get().1 + !hit as u64)));
         e.calls += 1;
         e.runs += !hit as u64;
         if hit {
-            return Some(e.tex[0]);
+            return Some((e.result(), covered));
         }
         e.behind = Some(behind);
+        // the part to blur again, region-local and aligned to the smallest level's texels; None: all of it
+        // (a new chain, a changed layout, or a change over most of the region)
+        let n = e.sizes.len();
+        let align = 1i32 << n;
+        let (cw, ch) = covered;
+        let part = pending.flatten().flatten().filter(|_| !fresh).and_then(|p| {
+            let y = match flip {
+                Some(h) => h - p.loc.y - p.size.h,
+                None => p.loc.y,
+            };
+            let (lx, ly) = (p.loc.x - region.loc.x, y - region.loc.y);
+            let x0 = (lx - REACH).max(0) / align * align;
+            let y0 = (ly - REACH).max(0) / align * align;
+            let x1 = ((lx + p.size.w + REACH + align - 1).max(0) / align * align).min(cw);
+            let y1 = ((ly + p.size.h + REACH + align - 1).max(0) / align * align).min(ch);
+            (x1 > x0 && y1 > y0).then(|| Rectangle::<i32, Physical>::new((x0, y0).into(), (x1 - x0, y1 - y0).into()))
+        });
+        // MIST_COMP_BLUR_FULL=1: always all of it (A/B against partial runs)
+        thread_local!(static FULL: bool = std::env::var("MIST_COMP_BLUR_FULL").is_ok_and(|v| v == "1"));
+        let part = part.filter(|r| !FULL.with(|f| *f) && (r.size.w as i64 * r.size.h as i64) * 10 < cw as i64 * ch as i64 * 7);
+        e.partial += part.is_some() as u64;
+        tracing::trace!("blur {:?} pending {:?} part {:?} of {cw}x{ch}", key.1, pending, part);
+        // prof stage "blur": the CPU side of a run; MIST_COMP_BLUR_SYNC=1 waits for the GPU around it, so the
+        // stage is the GPU time too (diagnostics only: a glFinish stalls the frame)
+        thread_local!(static SYNC: bool = std::env::var("MIST_COMP_BLUR_SYNC").is_ok_and(|v| v == "1"));
+        let sync = SYNC.with(|s| *s);
+        if sync {
+            gl.Finish();
+        }
+        let t0 = std::time::Instant::now();
         let p = PASSES_PROGRAM.with(|p| p.borrow().as_ref().map(|p| (p.down, p.up, p.down_t, p.down_hp, p.up_t, p.up_hp, p.up_last, p.up_contrast, p.up_brightness)))?;
         let (down, up, down_t, down_hp, up_t, up_hp, up_last, up_contrast, up_brightness) = p;
 
+        let mut sc = [0i32; 4];
+        gl.GetIntegerv(ffi::SCISSOR_BOX, sc.as_mut_ptr());
         gl.Disable(ffi::SCISSOR_TEST);
         gl.Disable(ffi::BLEND);
-        // what is behind, straight to half size
+        // what is behind, straight to half size (exactly 2:1, so a part maps onto the same texels as the whole)
         gl.BindFramebuffer(ffi::READ_FRAMEBUFFER, prev_fbo as u32);
         gl.BindFramebuffer(ffi::DRAW_FRAMEBUFFER, e.fbo[0]);
         let r = region;
-        gl.BlitFramebuffer(r.loc.x, r.loc.y, r.loc.x + r.size.w, r.loc.y + r.size.h, 0, 0, e.sizes[0].0, e.sizes[0].1, ffi::COLOR_BUFFER_BIT, ffi::LINEAR);
+        let (sx, sy, sw, sh) = match part {
+            Some(q) => (q.loc.x, q.loc.y, q.size.w, q.size.h),
+            None => (0, 0, cw, ch),
+        };
+        gl.BlitFramebuffer(r.loc.x + sx, r.loc.y + sy, r.loc.x + sx + sw, r.loc.y + sy + sh, sx / 2, sy / 2, (sx + sw) / 2, (sy + sh) / 2, ffi::COLOR_BUFFER_BIT, ffi::LINEAR);
 
         static QUAD: [f32; 8] = [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0];
         gl.BindBuffer(ffi::ARRAY_BUFFER, 0);
@@ -367,21 +455,35 @@ unsafe fn blur(gl: &ffi::Gles2, key: &(String, Id), region: Rectangle<i32, Physi
         }
         gl.VertexAttribPointer(0, 2, ffi::FLOAT, ffi::FALSE, 0, QUAD.as_ptr() as *const _);
         gl.ActiveTexture(ffi::TEXTURE0);
-        let n = e.sizes.len();
-        let pass = |from: usize, to: usize, prog: u32, t: i32, hp: i32| {
-            gl.BindFramebuffer(ffi::FRAMEBUFFER, e.fbo[to]);
-            gl.Viewport(0, 0, e.sizes[to].0, e.sizes[to].1);
+        // a part: each level only inside it (mapped with the level's real size, a texel of slack each side)
+        let scissor = |to: (i32, i32)| match part {
+            Some(q) => {
+                let x0 = (q.loc.x as i64 * to.0 as i64 / cw as i64) as i32 - 1;
+                let y0 = (q.loc.y as i64 * to.1 as i64 / ch as i64) as i32 - 1;
+                let x1 = (((q.loc.x + q.size.w) as i64 * to.0 as i64 + cw as i64 - 1) / cw as i64) as i32 + 1;
+                let y1 = (((q.loc.y + q.size.h) as i64 * to.1 as i64 + ch as i64 - 1) / ch as i64) as i32 + 1;
+                let (x0, y0) = (x0.max(0), y0.max(0));
+                gl.Enable(ffi::SCISSOR_TEST);
+                gl.Scissor(x0, y0, x1.min(to.0) - x0, y1.min(to.1) - y0);
+            }
+            None => gl.Disable(ffi::SCISSOR_TEST),
+        };
+        let pass = |from: (u32, (i32, i32)), to: (u32, (i32, i32)), prog: u32, t: i32, hp: i32| {
+            gl.BindFramebuffer(ffi::FRAMEBUFFER, to.0);
+            gl.Viewport(0, 0, to.1 .0, to.1 .1);
+            scissor(to.1);
             gl.UseProgram(prog);
-            gl.BindTexture(ffi::TEXTURE_2D, e.tex[from]);
+            gl.BindTexture(ffi::TEXTURE_2D, from.0);
             gl.Uniform1i(t, 0);
-            gl.Uniform2f(hp, OFFSET * 0.5 / e.sizes[from].0 as f32, OFFSET * 0.5 / e.sizes[from].1 as f32);
+            gl.Uniform2f(hp, OFFSET * 0.5 / from.1 .0 as f32, OFFSET * 0.5 / from.1 .1 as f32);
         };
         for i in 1..n {
-            pass(i - 1, i, down, down_t, down_hp);
+            pass((e.tex[i - 1], e.sizes[i - 1]), (e.fbo[i], e.sizes[i]), down, down_t, down_hp);
             gl.DrawArrays(ffi::TRIANGLE_STRIP, 0, 4);
         }
         for i in (0..n.saturating_sub(1)).rev() {
-            pass(i + 1, i, up, up_t, up_hp);
+            let from = if i + 1 == n - 1 { e.tex[n - 1] } else { e.up_tex[i + 1] };
+            pass((from, e.sizes[i + 1]), (e.up_fbo[i], e.sizes[i]), up, up_t, up_hp);
             gl.Uniform1f(up_last, if i == 0 { 1.0 } else { 0.0 });
             gl.Uniform1f(up_contrast, CONTRAST);
             gl.Uniform1f(up_brightness, BRIGHTNESS);
@@ -391,10 +493,15 @@ unsafe fn blur(gl: &ffi::Gles2, key: &(String, Id), region: Rectangle<i32, Physi
         gl.BindTexture(ffi::TEXTURE_2D, 0);
         gl.BindFramebuffer(ffi::FRAMEBUFFER, prev_fbo as u32);
         gl.Viewport(vp[0], vp[1], vp[2], vp[3]);
+        gl.Scissor(sc[0], sc[1], sc[2], sc[3]);
         gl.Enable(ffi::SCISSOR_TEST);
         gl.Enable(ffi::BLEND);
         gl.BlendFunc(ffi::ONE, ffi::ONE_MINUS_SRC_ALPHA);
-        Some(e.tex[0])
+        if sync {
+            gl.Finish();
+        }
+        crate::prof::add(7, t0.elapsed());
+        Some((e.result(), covered))
     })
 }
 
@@ -452,9 +559,9 @@ impl Glass {
     /// What is behind it (front-to-back, everything after it in the scene) decides when to re-blur.
     pub fn set_behind<'a, E: Element + 'a>(&mut self, behind: impl Iterator<Item = &'a E>, scale: Scale<f64>) {
         // grouped surfaces of one window: the same place for all (the window), so the same hash and one blur
-        let geo = match (&self.group, self.clip) {
-            (Some(_), Some(c)) => c,
-            _ => self.geometry(scale),
+        let geo = match self.clip {
+            Some(c) => c,
+            None => self.geometry(scale),
         };
         // the layout behind (which elements, where, how opaque) in a hash; their contents by damage: a client
         // that redraws only away from the glass (a chat streaming text below the dock) does not re-blur it
@@ -463,6 +570,7 @@ impl Glass {
         let mut changed = false;
         let bkey = self.group.clone().unwrap_or_else(|| self.key.clone());
         let frame = FRAME.with(|f| f.get());
+        let mut dirty: Option<Rectangle<i32, Physical>> = None;
         BEHIND.with(|b| {
             let mut b = b.borrow_mut();
             let prev = b.get(&bkey);
@@ -475,29 +583,50 @@ impl Glass {
                 (g.loc.x, g.loc.y, g.size.w, g.size.h).hash(&mut h);
                 e.alpha().to_bits().hash(&mut h);
                 let c = e.current_commit();
-                if let Some(last) = prev.and_then(|p| p.2.get(e.id())).filter(|l| **l != c) {
-                    changed |= e.damage_since(scale, Some(*last)).iter().any(|d| Rectangle::new(d.loc + g.loc, d.size).overlaps(geo));
+                if let Some(last) = prev.and_then(|p| p.commits.get(e.id())).filter(|l| **l != c) {
+                    for d in e.damage_since(scale, Some(*last)).iter() {
+                        if let Some(i) = Rectangle::new(d.loc + g.loc, d.size).intersection(geo) {
+                            changed = true;
+                            dirty = Some(dirty.map_or(i, |u| u.merge(i)));
+                        }
+                    }
                 }
                 now.insert(e.id().clone(), c);
             }
             (geo.loc.x, geo.loc.y, geo.size.w, geo.size.h).hash(&mut h);
             let layout = h.finish();
-            let version = match prev {
-                Some(p) if p.0 == layout && p.3 == frame => p.1,
-                Some(p) if p.0 == layout => p.1 + changed as u64,
-                Some(p) => p.1 + 1,
-                None => 0,
+            // (version, this build's change: Some(r) a part, None all of it)
+            let (version, part) = match prev {
+                // the group's other surfaces in this scene build saw the same
+                Some(p) if p.layout == layout && p.frame == frame => (p.version, p.dirty),
+                Some(p) if p.layout == layout => (p.version + changed as u64, dirty),
+                Some(p) => (p.version + 1, None),
+                None => (0, None),
             };
-            // the group's other surfaces in this scene build saw the same: keep their bookkeeping
-            if prev.is_none_or(|p| p.3 != frame) {
-                b.insert(bkey.clone(), (layout, version, now, frame));
+            if prev.is_none_or(|p| p.frame != frame) {
+                let bumped = prev.is_none_or(|p| p.version != version);
+                // pending since the blur last ran: parts merge, any full change makes it full
+                let pending = match (prev.and_then(|p| p.pending), bumped) {
+                    (old, false) => old,
+                    (None, true) => Some(part),
+                    (Some(Some(o)), true) => Some(part.map(|r| o.merge(r))),
+                    (Some(None), true) => Some(None),
+                };
+                b.insert(bkey.clone(), Behind { layout, version, commits: now, frame, dirty: part, pending });
             }
+            dirty = part;
             if b.len() > 64 {
-                b.retain(|_, v| frame.saturating_sub(v.3) < 600);
+                b.retain(|_, v| frame.saturating_sub(v.frame) < 600);
             }
             let mut v = std::collections::hash_map::DefaultHasher::new();
             (layout, version).hash(&mut v);
             self.behind = v.finish();
+        });
+        // this surface's part of the change, surface-local and widened by what the blur spreads it over
+        let g = self.geometry(scale);
+        let local = dirty.map(|d| {
+            let w = Rectangle::new(d.loc - g.loc - Point::from((DAMAGE_REACH, DAMAGE_REACH)), (d.size.w + 2 * DAMAGE_REACH, d.size.h + 2 * DAMAGE_REACH).into());
+            w.intersection(Rectangle::from_size(g.size)).unwrap_or_default()
         });
         let own = self.inner.current_commit();
         self.track = STATE.with(|s| {
@@ -506,6 +635,10 @@ impl Glass {
             if e.behind != self.behind || e.own != own {
                 if e.behind != self.behind {
                     e.blur += 1;
+                    e.bdirty.push((e.blur, local));
+                    if e.bdirty.len() > 8 {
+                        e.bdirty.remove(0);
+                    }
                 }
                 e.behind = self.behind;
                 e.own = own;
@@ -535,7 +668,13 @@ pub fn counts() -> (u64, u64) {
 thread_local!(static COUNTS: Cell<(u64, u64)> = const { Cell::new((0, 0)) });
 /// IPC `blurs`: requests and runs per live cache (output, surface).
 pub fn per_cache() -> String {
-    CACHE.with(|c| c.borrow().iter().map(|(k, e)| format!("{}/{} {} {:?}\n", e.runs, e.calls, k.0, k.1)).collect())
+    CACHE.with(|c| c.borrow().iter().map(|(k, e)| format!("{}/{} partial {} {} {:?}\n", e.runs, e.calls, e.partial, k.0, k.1)).collect())
+}
+
+/// IPC `blur-reset`: every blur runs in full next time (tests: a full run to compare partial ones against)
+pub fn reset() {
+    BEHIND.with(|b| b.borrow_mut().values_mut().for_each(|v| v.pending = Some(None)));
+    CACHE.with(|c| c.borrow_mut().values_mut().for_each(|e| e.behind = None));
 }
 
 /// IPC `mem`: entries of the blur bookkeeping (blur chains with their GL textures, glass surfaces, blurs'
@@ -571,11 +710,24 @@ impl Element for Glass {
         if commit == Some(self.commit) {
             return DamageSet::default();
         }
-        // only the client drew since then: its own damage; the blur behind changed (or too long ago): all of
-        // it, the blur spreads over the whole surface
+        // only the client drew since then: its own damage; the blur behind changed: the parts it changed (each
+        // blur version since then known), else (or too long ago) all of it
+        let all = || DamageSet::from_slice(&[Rectangle::from_size(self.geometry(scale).size)]);
         match commit.and_then(|c| self.track.hist.iter().find(|h| h.0 == c)) {
             Some(&(_, own, blur)) if blur == self.track.blur => self.inner.damage_since(scale, Some(own)),
-            _ => DamageSet::from_slice(&[Rectangle::from_size(self.geometry(scale).size)]),
+            Some(&(_, own, blur)) => {
+                let mut parts = Vec::new();
+                for v in blur + 1..=self.track.blur {
+                    match self.track.bdirty.iter().find(|d| d.0 == v) {
+                        Some((_, Some(r))) => parts.push(*r),
+                        _ => return all(),
+                    }
+                }
+                let mut d: Vec<Rectangle<i32, Physical>> = self.inner.damage_since(scale, Some(own)).iter().copied().collect();
+                d.extend(parts.into_iter().filter(|r| !r.is_empty()));
+                DamageSet::from_slice(&d)
+            }
+            _ => all(),
         }
     }
     fn opaque_regions(&self, scale: Scale<f64>) -> OpaqueRegions<i32, Physical> {
@@ -614,11 +766,11 @@ impl RenderElement<GlesRenderer> for Glass {
             if region.size.w < 2 || region.size.h < 2 {
                 return None;
             }
-            let t = blur(gl, key, region, behind)?;
+            let (t, covered) = blur(gl, key, region, behind, flipped.then_some(vp[3]))?;
             gl.ActiveTexture(ffi::TEXTURE1);
             gl.BindTexture(ffi::TEXTURE_2D, t);
             gl.ActiveTexture(ffi::TEXTURE0);
-            Some(region)
+            Some(Rectangle::<i32, Physical>::new(region.loc, covered.into()))
         })?;
         if let Some(region) = blurred.filter(|_| !gdamage.is_empty()) {
             frame.override_default_tex_program(

@@ -2,7 +2,8 @@
 //! waiting for frame callbacks, the way a broken client burns CPU/GPU. mist-comp's watchdog should name it.
 //! BUSY_FRAME=1: a well-behaved animating client instead (tests/t-occlude.sh): draws on every frame callback,
 //! marks itself opaque; BUSY_ID (app_id, mist-busy) and BUSY_SIZE (WxH, 200x150) for several of them,
-//! BUSY_DAMAGE (WxH) damages only that much in the middle of the window each frame.
+//! BUSY_DAMAGE (WxH) damages only that much in the middle of the window each frame; BUSY_PAINT=1 paints it a
+//! new colour each time; BUSY_DAMAGE_AT (x,y) puts it there instead.
 use std::{io::Write, os::fd::AsFd, time::Duration};
 
 use wayland_client::{
@@ -105,8 +106,23 @@ fn main() {
         surface.set_opaque_region(Some(&region));
         println!("busy on frame callbacks");
         let part = std::env::var("BUSY_DAMAGE").ok().and_then(|v| v.split_once('x').and_then(|(a, b)| Some((a.parse::<i32>().ok()?, b.parse::<i32>().ok()?))));
-        let (dx, dy, dw, dh) = part.map(|(pw, ph)| ((w - pw) / 2, (h - ph) / 2, pw, ph)).unwrap_or((0, 0, w, h));
+        let at = std::env::var("BUSY_DAMAGE_AT").ok().and_then(|v| v.split_once(',').and_then(|(a, b)| Some((a.parse::<i32>().ok()?, b.parse::<i32>().ok()?))));
+        let (dx, dy, dw, dh) = part.map(|(pw, ph)| { let (x, y) = at.unwrap_or(((w - pw) / 2, (h - ph) / 2)); (x, y, pw, ph) }).unwrap_or((0, 0, w, h));
+        // BUSY_PAINT=1: the damaged part changes colour every frame (else the pixels stay the same)
+        let paint = std::env::var("BUSY_PAINT").is_ok_and(|v| v == "1");
+        // BUSY_PAINT_DELAY (ms): stay grey that long first
+        let from = std::time::Instant::now() + Duration::from_millis(std::env::var("BUSY_PAINT_DELAY").ok().and_then(|v| v.parse().ok()).unwrap_or(0));
+        let mut n = 0u32;
         loop {
+            if paint && std::time::Instant::now() >= from {
+                use std::os::unix::fs::FileExt;
+                n += 1;
+                let c = [[0x20, 0x40, 0xf0, 0], [0xf0, 0xe0, 0x30, 0], [0x30, 0xd0, 0x40, 0], [0xe0, 0x20, 0x90, 0]][n as usize % 4];
+                let row: Vec<u8> = c.iter().copied().cycle().take(dw as usize * 4).collect();
+                for y in dy..dy + dh {
+                    f.write_at(&row, ((y * w + dx) * 4) as u64).unwrap();
+                }
+            }
             surface.attach(Some(&buf), 0, 0);
             surface.damage_buffer(dx, dy, dw, dh);
             surface.frame(&qh, ());
