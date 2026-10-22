@@ -57,6 +57,11 @@
     <td align="center" width="33%"><h3>GL コンテキスト 0</h3><sub>CPU で描く <code>wl_shm</code> バッファ。<br>GPU はライブ壁紙だけ</sub></td>
     <td align="center" width="33%"><h3>アイドル時タイマー 0</h3><sub>Hyprland ソケット、D-Bus、inotify。<br>隠れた画面は何もしない</sub></td>
   </tr>
+  <tr>
+    <td align="center" width="33%"><h3>CPU 0.04 %</h3><sub><code>mist-comp</code> + シェルのアイドル時、<br>起床 6 回 / 秒</sub></td>
+    <td align="center" width="33%"><h3>1 フレーム / 秒</h3><sub>他のウィンドウに隠れたウィンドウ<br>（フレームコールバック 60 → 1）</sub></td>
+    <td align="center" width="33%"><h3>ブラー 0 回</h3><sub>ガラスの背後が変わらない間<br>（3 秒あたり 362 → 0）</sub></td>
+  </tr>
 </table>
 
 ## なぜ
@@ -96,6 +101,41 @@ Hyprland 0.56.2、2 × 1920x1080 (165 + 75 Hz)。[bench/measure.sh](../../bench/
 （[caelestia-dots/shell#1927](https://github.com/caelestia-dots/shell/issues/1927)）。方法、生データ、注意点:
 [docs/BENCHMARKS.md](../BENCHMARKS.md)。
 
+### コンポジター: mist-comp
+
+**アイドル時**、[bench/comp.sh](../../bench/comp.sh): Mesa のソフトウェアレンダラー（llvmpipe。メモリの大半と 34 スレッドはこれによるもの）上のヘッドレス mist-comp、1920x1080 の出力 2 つ、使い捨ての `HOME`、各 15 秒。
+
+| 状態 | PSS | CPU（1 コア） | 起床 | フレーム |
+|---|---|---|---|---|
+| mist-comp のみ | 125 MB | 0.17 % | 5.7 / 秒 | 0.1 / 秒 |
+| mist-comp + シェル全体、アイドル | 173 MB | **0.04 %** | **6.3 / 秒** | 3 / 秒 |
+| その中の `mist-ui` | 32 MB | 0.33 % | 22.5 / 秒 | 0 |
+| ポインターを動かし続ける | 175 MB | 0.83 % | 163 / 秒 | 60 / 秒 |
+
+**実際の、負荷のあるセッション**（2026-10-22、上と同じマシン、NVIDIA、165 + 75 Hz、ログインから 35 分）:
+ページを開いた Zen（272 コミット/秒）、テキストをストリーミング中の Claude デスクトップアプリ（107 コミット/秒）、kitty、Vesktop。[bench/measure.sh](../../bench/measure.sh)、30 秒。
+
+| プロセス | PSS | CPU（1 コア） |
+|---|---|---|
+| mist-comp（合成、ブラー、影、モニター 2 台のすべて） | 231 MB | 14〜16 % |
+| シェル: mist-ui + mist-wall（ライブ壁紙）+ mistd | 126 MB | 5.1 % |
+
+これはアイドル値ではなく負荷時の値です。ここでのコンポジターの仕事はほぼすべて、忙しい 2 つのクライアントに追従しています。同じセッションを Hyprland で計測した値はまだありません。
+
+**コンポジターが避けていること**、[native/mist-comp/tests](../../native/mist-comp/tests) のネストテスト（前 → 後）:
+
+| 状況 | 結果 |
+|---|---|
+| 小さな四角を描き直すウィンドウの上にガラスのバーと Dock | ブラー 3 秒あたり 362 → 0、コンポジターの CPU は半分 |
+| 最大化ウィンドウの背後でアニメーションするブラウザー | フレームコールバック 毎秒 60 → 1（表示されると 60 に戻る） |
+| 片方のモニターでクライアントがアニメーション、もう片方は静止 | 静止側のレンダーパス 3 秒あたり 180 → 0 |
+| Zen（ウィンドウごとに複数のサーフェス） | フレームあたりのブラー 1.92 → 0.96 |
+| パネルを 60 秒間開閉し続ける | メモリは横ばい（NVIDIA で約 80 MB。以前は毎分約 4 MB 増加） |
+| Mist のバーの下で描き続けるクライアント | フレームあたりコンポジター CPU 0.25 ms |
+| オーバービューを開いたまま、拡大鏡オン、ポインター静止 | 0 フレーム / 秒 |
+
+方法、生データ、注意点: [docs/BENCHMARKS.md](../BENCHMARKS.md)。
+
 ## 機能
 
 <table>
@@ -124,9 +164,10 @@ Hyprland 0.56.2、2 × 1920x1080 (165 + 75 Hz)。[bench/measure.sh](../../bench/
 | 🏝️ **Dynamic Island** | イコライザー付きのメディア（MPRIS）、タイマー、着信（KDE Connect / ADB）、通知、音量 |
 | 🖼️ **デスクトップ** | 時計、日の出 / 日の入り、ガラスのカード（天気、Garmin のコンディション、ランニング計画）、カードごとの設定 |
 | 🔍 **パネル** | Spotlight 風の検索、スタート、Cmd+Tab スイッチャー、コントロールセンター（ページ切替）、通知センター、クリップボード履歴、絵文字、セッションメニュー、壁紙ギャラリー、スクリーンショットツールバー |
-| 🛡️ **システム** | 通知サーバー、polkit エージェント、ロック画面（`ext-session-lock-v1` + PAM）、アイドル（`ext-idle-notify-v1`、logind）、Windows 11 風のウィンドウスナップ |
+| 🛡️ **システム** | 通知サーバー、polkit エージェント、ロック画面（`ext-session-lock-v1` + PAM）、アイドル（`ext-idle-notify-v1`、logind） |
+| 🪟 **スナップ** | Windows 11 風: 端や角へドラッグ、緑のボタンか `Super + Z` で Snap Layouts（7 種類のレイアウト）、Snap Assist が残りを埋める、`Super + 矢印`。ゾーンの間隔は均等に 8 px、プレビューはウィンドウが収まる位置そのもの |
 | 🌄 **壁紙** | 写真（CPU）、または GLSL のライブシーンとリアルタイムの天気の空（`mist-wall`） |
-| 🧪 **mist-comp** *（実験的）* | Smithay ベースの独自コンポジター + グリーター。Hyprland なしで Mist を動かすため |
+| 🧪 **mist-comp** *（実験的）* | Smithay ベースの独自コンポジター + グリーター。Hyprland なしで Mist を動かすため。背後が変わったときだけ再計算するガラスブラー、モニターごとの再描画、隠れたウィンドウは 1 フレーム/秒に抑制、オーバービュー（`Super + O`）、1:1 のワークスペーススワイプ、拡大鏡、クラッシュや `mist-session restart` の後にウィンドウが戻る |
 
 ### デスクトップのカード
 
@@ -142,7 +183,7 @@ UI は **ポーランド語、英語、ドイツ語、スペイン語、フラ�
 翻訳は 1 つの表 [native/assets/i18n.tsv](../../native/assets/i18n.tsv) にあり、1 行が 1 つの文字列、1 列が 1 言語です。
 新しい言語は列を 1 つ足すだけです。
 
-Dock、Island、デスクトップ、天気の空は Hyprland の最初のモニターに表示されます。別のモニターにするには
+Dock、Island、デスクトップ、天気の空は コンポジターの最初のモニターに表示されます。別のモニターにするには
 `~/.config/mist/settings.json` に `"primary": "DP-3"`、または `MIST_PRIMARY=DP-3`。天気の場所:
 *デスクトップをカスタマイズ* → 一般。すべてのファイルと変数: [docs/CONFIG.md](../CONFIG.md)。
 
@@ -150,7 +191,7 @@ Dock、Island、デスクトップ、天気の空は Hyprland の最初のモニ
 
 ```mermaid
 flowchart LR
-    H[Hyprland] -- layer-shell --> UI["<b>mist-ui</b><br/>Rust · tiny-skia + swash<br/>wl_shm、すべての画面"]
+    H["Hyprland / mist-comp"] -- layer-shell --> UI["<b>mist-ui</b><br/>Rust · tiny-skia + swash<br/>wl_shm、すべての画面"]
     H -- layer-shell --> W["<b>mist-wall</b><br/>Rust · EGL / GLSL 150<br/>ライブ壁紙、空"]
     UI <-- "stdin / stdout" --> D["<b>mistd</b><br/>stats · phone · calls<br/>island · clipstore"]
     UI <-- D-Bus --> S[(MPRIS · トレイ · 通知<br/>polkit · NetworkManager · BlueZ)]
@@ -166,6 +207,19 @@ flowchart LR
 | `scripts/mistd` | バックエンド: システム情報、電話（KDE Connect、ADB）、着信、クリップボード保存、ファイルマネージャーの D-Bus |
 | `shaders/` | 壁紙と空のシェーダー（`.frag` ソース、mist-wall が読む `shaders/glsl` の GLSL 150） |
 | タグ `legacy-qml` | 元の Quickshell（QML）版。参考として保存 |
+
+## mist-comp
+
+Mist のために [Smithay] で書かれた実験的な Wayland コンポジター（Rust で約 12,000 行）で、独自のグリーターを備えています。Hyprland と同じシェルを動かし、Hyprland の IPC を十分に話すので、`hyprctl`、Mist のスクリプト、シェルのウィンドウ一覧はそのまま動きます。作者は Hyprland と並べて毎日使っています。
+
+- **ウィンドウ:** Mist のタイトルバーかアプリ自身のバーを持つフローティング、すべてのウィンドウに角丸と 1 つの柔らかい影、半透明のウィンドウとパネルの下でのライブなガラスブラー、Windows 11 風のスナップ、オーバービュー（`Super + O`、3 本指で上）、拡大鏡（`Super + =` / `Super + -`、最大 8 倍）、3 本指に 1:1 で追従するワークスペース、ウィンドウのスワロー、開く・閉じる・最小化のアニメーション。
+- **コストを意識した描画:** クライアントのウィンドウがあるモニターだけを描き直す。ガラスは背後が変わったときだけブラーし直す。不透明なウィンドウに覆われたウィンドウには毎秒 1 回だけフレームコールバックを送る。隠れたデスクトップレイヤーにはそれを伝え（`mistcover`）、描画を止めさせる。フルスクリーンゲームのフレームは直接画面へ。
+- **セッション:** libseat と logind 経由の DRM / KMS、ホットプラグ、フルスクリーン時の VRR、explicit sync、XWayland、greetd 用グリーター、ロック画面、アイドル、xdg-desktop-portal-hyprland 経由の画面共有とスクリーンショット。クラッシュ後は `start-mist` がセーフモードで再起動し、ウィンドウは元のワークスペースに戻ります。`mist-session restart` はログアウトせずに新しいビルドを読み込みます。
+- **プロトコル:** 約 45。たとえば xdg-shell, layer-shell, session-lock, idle-notify, linux-dmabuf, drm-syncobj, presentation-time, fifo + commit-timing, fractional-scale, cursor-shape, tablet, text-input + input-method, pointer-constraints, foreign-toplevel (ext, wlr), ext-workspace, wlr-screencopy, wlr-output-management, data-control, xdg-activation、Hyprland のトップレベルエクスポートとグローバルショートカット。
+- **観察:** そのセッションでは `hyprctl` が応答し、IPC ソケットは `stats`（フレーム、コミット、起床、ブラー）、`passes`（モニターごとのレンダーパス）、`top 5`（誰が画面を忙しくしているか）、`prof`（段階ごとの µs）、`mem` に答えます。ウォッチドッグは、隠れたワークスペースで描き続けるクライアントやビジーループするクライアントをログに残します。
+- **テスト:** ヘッドレスバックエンド上の 47 のネストテスト（`native/mist-comp/tests/run-all.sh`）。CI はソフトウェアレンダラーで実行し、ジョブのサマリーに計測値を出します。
+
+まだないもの: タイル配置、ティアリング制御（Smithay 0.7 には非同期ページフリップがない）、NVIDIA で検証済みのダイレクトスキャンアウト。設定: [docs/CONFIG.md](../CONFIG.md#compconf-outputs-mist-comp-only) の `comp.conf`。`mist-comp migrate` は Hyprland の設定を変換します。
 
 ## インストール
 
@@ -244,11 +298,12 @@ cd native && cargo build --release && cargo test --release
 |---|---|
 | `mist-ui --png out.png '{"app":"Firefox"}'` | トップバーの PNG |
 | `mist-ui-bin --desk-png dir` / `--dock-png out.png` | デスクトップのステージ + カード（+ `layout.json`）/ Dock |
-| `mist-ui-bin --pane-png spotlight 1920 1080 out.png fi` | アニメーション後のパネル |
+| `mist-ui-bin --pane-png spotlight 1920 1080 out.png fi` | アニメーション後のパネル（`snapfly:3 640 290`: ゾーン 3 を強調した Snap Layouts） |
 | `mist-ui-bin --island-frames notif out 30 20` | Island のデモを 1 フレームずつ |
 | `mist-ui --test` | HDMI-A-1 の本物のバーの上に 2 本目のバー |
 | `mist-wall-bin --png out.ppm dunes 1920 1080` | ライブ壁紙の 1 フレーム（`MIST_WALL_BENCH=N`: 1 フレームの ms） |
 | `mist-ui-bin msg ui stats` | 画面ごとの起床回数、描画回数、描画時間 |
+| `native/mist-comp/tests/run-all.sh` | ネストしたコンポジターで mist-comp の全テスト（`CI=1`: ソフトウェアレンダラー） |
 | `bench/measure.sh 30 mist-ui-bin mist-wall-bin mistd` | 動作中シェルのアイドル時 PSS / CPU |
 
 </details>
@@ -258,7 +313,7 @@ cd native && cargo build --release && cargo test --release
 
 ## 状況
 
-1 人の日常環境、モニター 2 台、NVIDIA。上の表はすべてネイティブで毎日使っています。`mist-comp` は実験的です。
+1 人の日常環境、モニター 2 台、NVIDIA。今は Hyprland に加えて `mist-comp` でも使っています。上の表はすべてネイティブで毎日使っています。`mist-comp` はまだ実験的です。
 公開リリースまでに残っていること: [docs/PUBLISHING.md](../PUBLISHING.md)。
 
 ## Star History

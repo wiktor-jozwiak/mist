@@ -57,6 +57,11 @@ Sperrbildschirm und Polkit-Agent in einem Prozess mit ~50 MB, ohne GPU-Kontext.
     <td align="center" width="33%"><h3>0 GL-Kontexte</h3><sub><code>wl_shm</code>-Puffer, auf der CPU gezeichnet;<br>die GPU nur für Live-Hintergründe</sub></td>
     <td align="center" width="33%"><h3>0 Timer im Leerlauf</h3><sub>Hyprland-Socket, D-Bus, inotify:<br>verborgene Oberflächen tun nichts</sub></td>
   </tr>
+  <tr>
+    <td align="center" width="33%"><h3>0,04 % CPU</h3><sub><code>mist-comp</code> + Shell im Leerlauf,<br>6 Aufwachvorgänge / s</sub></td>
+    <td align="center" width="33%"><h3>1 Frame / s</h3><sub>für ein von anderen verdecktes Fenster<br>(60 → 1 Frame-Callbacks)</sub></td>
+    <td align="center" width="33%"><h3>0 Blur-Läufe</h3><sub>solange sich hinter dem Glas nichts ändert<br>(362 → 0 pro 3 s)</sub></td>
+  </tr>
 </table>
 
 ## Warum
@@ -96,6 +101,44 @@ Zahlen anderer (RSS, andere Rechner, nicht 1:1 vergleichbar): Waybar 50 bis 66 M
 ([caelestia-dots/shell#1927](https://github.com/caelestia-dots/shell/issues/1927)). Methode, Rohdaten und
 Einschränkungen: [docs/BENCHMARKS.md](../BENCHMARKS.md).
 
+### Der Compositor: mist-comp
+
+**Leerlauf**, [bench/comp.sh](../../bench/comp.sh): mist-comp headless auf Mesas Software-Renderer (llvmpipe;
+davon stammen der Großteil des Speichers und die 34 Threads), zwei Ausgaben 1920x1080, ein Wegwerf-`HOME`, je 15 s.
+
+| Zustand | PSS | CPU (ein Kern) | Aufwachen | Frames |
+|---|---|---|---|---|
+| mist-comp allein | 125 MB | 0,17 % | 5,7 / s | 0,1 / s |
+| mist-comp + die ganze Shell im Leerlauf | 173 MB | **0,04 %** | **6,3 / s** | 3 / s |
+| `mist-ui` darin | 32 MB | 0,33 % | 22,5 / s | 0 |
+| Zeiger ständig in Bewegung | 175 MB | 0,83 % | 163 / s | 60 / s |
+
+**Eine echte, ausgelastete Sitzung** (2026-10-22, der Rechner oben, NVIDIA, 165 + 75 Hz, 35 Minuten nach der
+Anmeldung): Zen mit geöffneter Seite (272 Commits/s), die Claude-Desktop-App streamt Text (107 Commits/s),
+kitty, Vesktop. [bench/measure.sh](../../bench/measure.sh), 30 s.
+
+| Prozess | PSS | CPU (ein Kern) |
+|---|---|---|
+| mist-comp (gesamtes Compositing, Blur, Schatten, zwei Monitore) | 231 MB | 14 bis 16 % |
+| Shell: mist-ui + mist-wall (Live-Hintergrund) + mistd | 126 MB | 5,1 % |
+
+Das ist ein Wert unter Last, kein Leerlaufwert: fast die ganze Arbeit des Compositors folgt hier den zwei
+aktiven Clients. Dieselbe Sitzung unter Hyprland ist noch nicht gemessen.
+
+**Was der Compositor vermeidet**, verschachtelte Tests in [native/mist-comp/tests](../../native/mist-comp/tests) (vorher → nachher):
+
+| Situation | Ergebnis |
+|---|---|
+| Glas-Leiste und Dock über einem Fenster, das ein kleines Quadrat neu zeichnet | Blur-Läufe 362 → 0 pro 3 s, Compositor-CPU halbiert |
+| Ein animierender Browser hinter einem maximierten Fenster | Frame-Callbacks 60 → 1 pro s (wieder 60, sobald er sichtbar ist) |
+| Ein Client animiert auf einem Monitor, der andere ist still | Render-Durchgänge auf dem stillen 180 → 0 pro 3 s |
+| Zen (mehrere Oberflächen pro Fenster) | Blur-Durchgänge pro Frame 1,92 → 0,96 |
+| Panels 60 s lang öffnen und schließen | Speicher pendelt sich ein (~80 MB auf NVIDIA; wuchs vorher ~4 MB/min) |
+| Ein Client zeichnet ununterbrochen unter einer Mist-Leiste | 0,25 ms Compositor-CPU pro Frame |
+| Übersicht offen, Lupe an, Zeiger still | 0 Frames / s |
+
+Methode, Rohdaten und Vorbehalte: [docs/BENCHMARKS.md](../BENCHMARKS.md).
+
 ## Funktionen
 
 <table>
@@ -124,9 +167,10 @@ Einschränkungen: [docs/BENCHMARKS.md](../BENCHMARKS.md).
 | 🏝️ **Dynamic Island** | Medien (MPRIS) mit Equalizer, Timer, Anrufe (KDE Connect / ADB), Mitteilungen, Lautstärke |
 | 🖼️ **Desktop** | Uhr, Sonnenauf- / -untergang, Glaskarten (Wetter, Garmin-Bereitschaft, Laufplan), Einstellungen je Karte |
 | 🔍 **Panels** | Suche im Stil von Spotlight, Start, Cmd+Tab-Umschalter, Kontrollzentrum (Seiten), Mitteilungszentrale, Zwischenablage-Verlauf, Emoji, Sitzungsmenü, Hintergrund-Galerie, Bildschirmfoto-Leiste |
-| 🛡️ **System** | Mitteilungsserver, Polkit-Agent, Sperrbildschirm (`ext-session-lock-v1` + PAM), Leerlauf (`ext-idle-notify-v1`, logind), Fenster-Einrasten wie in Windows 11 |
+| 🛡️ **System** | Mitteilungsserver, Polkit-Agent, Sperrbildschirm (`ext-session-lock-v1` + PAM), Leerlauf (`ext-idle-notify-v1`, logind) |
+| 🪟 **Einrasten** | wie in Windows 11: an einen Rand oder eine Ecke ziehen, Snap Layouts am grünen Knopf oder mit `Super + Z` (7 Layouts), Snap Assist füllt den Rest, `Super + Pfeiltasten`; Zonen mit gleichmäßigen 8-px-Abständen, die Vorschau zeigt genau, wo das Fenster landet |
 | 🌄 **Hintergründe** | Fotos (CPU) oder Live-Szenen in GLSL und ein Wetterhimmel in Echtzeit (`mist-wall`) |
-| 🧪 **mist-comp** *(experimentell)* | eigener Smithay-Compositor + Greeter, um Mist ohne Hyprland zu starten |
+| 🧪 **mist-comp** *(experimentell)* | eigener Smithay-Compositor + Greeter, um Mist ohne Hyprland zu starten: Glasunschärfe, die nur neu läuft, wenn sich dahinter etwas ändert, Neuzeichnen je Monitor, verdeckte Fenster auf 1 Frame/s gedrosselt, Übersicht (`Super + O`), Arbeitsflächen-Wischen 1:1, Lupe, Fenster kommen nach einem Absturz oder `mist-session restart` zurück |
 
 ### Desktop-Karten
 
@@ -143,7 +187,7 @@ Die Oberfläche spricht **Polnisch, Englisch, Deutsch, Spanisch und Französisch
 sonst Englisch. Die Übersetzungen stehen in einer Tabelle, [native/assets/i18n.tsv](../../native/assets/i18n.tsv):
 eine Zeile pro Text, eine Spalte pro Sprache. Eine neue Sprache ist eine Spalte mehr.
 
-Dock, Island, Desktop und Wetterhimmel kommen auf den ersten Monitor von Hyprland. Ein anderer:
+Dock, Island, Desktop und Wetterhimmel kommen auf den ersten Monitor des Compositors. Ein anderer:
 `"primary": "DP-3"` in `~/.config/mist/settings.json` oder `MIST_PRIMARY=DP-3`. Der Wetterort: *Desktop
 anpassen* → Allgemein. Alle Dateien und Variablen: [docs/CONFIG.md](../CONFIG.md).
 
@@ -151,7 +195,7 @@ anpassen* → Allgemein. Alle Dateien und Variablen: [docs/CONFIG.md](../CONFIG.
 
 ```mermaid
 flowchart LR
-    H[Hyprland] -- layer-shell --> UI["<b>mist-ui</b><br/>Rust · tiny-skia + swash<br/>wl_shm, jede Oberfläche"]
+    H["Hyprland / mist-comp"] -- layer-shell --> UI["<b>mist-ui</b><br/>Rust · tiny-skia + swash<br/>wl_shm, jede Oberfläche"]
     H -- layer-shell --> W["<b>mist-wall</b><br/>Rust · EGL / GLSL 150<br/>Live-Hintergründe, Himmel"]
     UI <-- "stdin / stdout" --> D["<b>mistd</b><br/>stats · phone · calls<br/>island · clipstore"]
     UI <-- D-Bus --> S[(MPRIS · Ablage · Mitteilungen<br/>polkit · NetworkManager · BlueZ)]
@@ -167,6 +211,38 @@ flowchart LR
 | `scripts/mistd` | Backends: Systemwerte, Telefon (KDE Connect, ADB), Anrufe, Zwischenablage, D-Bus des Dateimanagers |
 | `shaders/` | Shader für Hintergründe und Himmel (`.frag`-Quellen, GLSL 150 in `shaders/glsl` für mist-wall) |
 | Tag `legacy-qml` | die ursprüngliche Quickshell-Version (QML), zum Vergleich aufbewahrt |
+
+## mist-comp
+
+Ein experimenteller Wayland-Compositor, für Mist auf [Smithay] geschrieben (etwa 12 000 Zeilen Rust), mit
+eigenem Greeter. Er führt dieselbe Shell aus wie Hyprland und spricht genug von Hyprlands IPC, dass `hyprctl`,
+Mists Skripte und die Fensterliste der Shell unverändert funktionieren. Er ist die tägliche Sitzung des Autors
+neben Hyprland.
+
+- **Fenster:** schwebend mit Mist-Titelleisten oder den eigenen der App, abgerundete Ecken und ein weicher
+  Schatten für jedes Fenster, Live-Glasunschärfe unter durchscheinenden Fenstern und Panels, Einrasten wie in
+  Windows 11, Übersicht (`Super + O`, drei Finger nach oben), Lupe (`Super + =` / `Super + -`, bis 8x),
+  Arbeitsflächen, die drei Fingern 1:1 folgen, Fenster-Swallowing, Animationen beim Öffnen, Schließen und
+  Minimieren.
+- **Sparsames Rendern:** nur die Monitore mit einem Fenster des Clients zeichnen neu; Glas wird nur neu
+  weichgezeichnet, wenn sich dahinter etwas geändert hat; von undurchsichtigen Fenstern verdeckte Fenster
+  bekommen einen Frame-Callback pro Sekunde; verdeckte Desktop-Ebenen erfahren es (`mistcover`) und hören auf
+  zu zeichnen; die Frames eines Vollbildspiels gehen direkt auf den Bildschirm.
+- **Sitzung:** DRM / KMS über libseat und logind, Hotplug, VRR im Vollbild, Explicit Sync, XWayland, ein
+  Greeter für greetd, Sperrbildschirm, Leerlauf, Bildschirmfreigabe und Screenshots über
+  xdg-desktop-portal-hyprland. Nach einem Absturz startet `start-mist` ihn im abgesicherten Modus neu, und die
+  Fenster kehren auf ihre Arbeitsflächen zurück; `mist-session restart` lädt eine neue Version ohne Abmelden.
+- **Protokolle:** etwa 45, darunter xdg-shell, layer-shell, session-lock, idle-notify, linux-dmabuf, drm-syncobj, presentation-time, fifo + commit-timing, fractional-scale, cursor-shape, tablet, text-input + input-method, pointer-constraints, foreign-toplevel (ext, wlr), ext-workspace, wlr-screencopy, wlr-output-management, data-control, xdg-activation, Hyprlands Toplevel-Export und globale Tastenkürzel.
+- **Beobachten:** `hyprctl` antwortet in seiner Sitzung; sein IPC-Socket beantwortet `stats` (Frames,
+  Commits, Aufwachvorgänge, Blur-Läufe), `passes` (Render-Durchgänge je Monitor), `top 5` (wer den Bildschirm
+  beschäftigt), `prof` (µs je Stufe), `mem`. Der Watchdog protokolliert Clients, die auf versteckten
+  Arbeitsflächen weiterzeichnen oder in einer Schleife hängen.
+- **Getestet:** 47 verschachtelte Tests (`native/mist-comp/tests/run-all.sh`) auf einem Headless-Backend; die
+  CI führt sie auf dem Software-Renderer aus und zeigt die Messungen in der Job-Zusammenfassung.
+
+Noch nicht da: Kacheln, Tearing-Steuerung (Smithay 0.7 hat keine asynchronen Page-Flips), auf NVIDIA geprüftes
+Direct Scan-out. Konfiguration: `comp.conf` in [docs/CONFIG.md](../CONFIG.md#compconf-outputs-mist-comp-only);
+`mist-comp migrate` wandelt eine Hyprland-Konfiguration um.
 
 ## Installation
 
@@ -245,11 +321,12 @@ cd native && cargo build --release && cargo test --release
 |---|---|
 | `mist-ui --png out.png '{"app":"Firefox"}'` | die obere Leiste als PNG |
 | `mist-ui-bin --desk-png dir` / `--dock-png out.png` | Desktop-Bühne + Karten (+ `layout.json`) / Dock |
-| `mist-ui-bin --pane-png spotlight 1920 1080 out.png fi` | ein Panel nach der Animation |
+| `mist-ui-bin --pane-png spotlight 1920 1080 out.png fi` | ein Panel nach der Animation (`snapfly:3 640 290`: Snap Layouts mit hervorgehobener Zone 3) |
 | `mist-ui-bin --island-frames notif out 30 20` | eine Island-Demo, Bild für Bild |
 | `mist-ui --test` | eine zweite Leiste über der echten auf HDMI-A-1 |
 | `mist-wall-bin --png out.ppm dunes 1920 1080` | ein Bild eines Live-Hintergrunds (`MIST_WALL_BENCH=N`: ms pro Bild) |
 | `mist-ui-bin msg ui stats` | Aufwachen, Zeichnungen und Zeichenzeit je Oberfläche |
+| `native/mist-comp/tests/run-all.sh` | alle mist-comp-Tests in einem verschachtelten Compositor (`CI=1`: Software-Renderer) |
 | `bench/measure.sh 30 mist-ui-bin mist-wall-bin mistd` | PSS / CPU der laufenden Shell im Leerlauf |
 
 </details>
@@ -258,8 +335,8 @@ cd native && cargo build --release && cargo test --release
 
 ## Stand
 
-Tägliches Werkzeug einer Person, zwei Monitore, NVIDIA. Alles aus den Tabellen oben ist nativ und täglich in
-Gebrauch; `mist-comp` ist experimentell. [docs/PUBLISHING.md](../PUBLISHING.md) listet, was vor einer
+Tägliches Werkzeug einer Person, zwei Monitore, NVIDIA, inzwischen auch auf `mist-comp` neben Hyprland. Alles aus den Tabellen oben ist nativ und täglich in
+Gebrauch; `mist-comp` ist noch experimentell. [docs/PUBLISHING.md](../PUBLISHING.md) listet, was vor einer
 öffentlichen Veröffentlichung noch fehlt.
 
 ## Star History

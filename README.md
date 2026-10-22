@@ -49,6 +49,11 @@ lock screen and polkit agent in one ~50 MB process, without a GPU context.
     <td align="center" width="33%"><h3>0 GL contexts</h3><sub>CPU-drawn <code>wl_shm</code> buffers;<br>the GPU only for live wallpapers</sub></td>
     <td align="center" width="33%"><h3>0 timers at idle</h3><sub>Hyprland socket, D-Bus, inotify:<br>hidden surfaces do no work</sub></td>
   </tr>
+  <tr>
+    <td align="center" width="33%"><h3>0.04 % CPU</h3><sub><code>mist-comp</code> + the shell at idle,<br>6 wake-ups / s</sub></td>
+    <td align="center" width="33%"><h3>1 frame / s</h3><sub>for a window hidden behind others<br>(60 → 1 frame callbacks)</sub></td>
+    <td align="center" width="33%"><h3>0 blur runs</h3><sub>while nothing behind the glass changes<br>(362 → 0 per 3 s)</sub></td>
+  </tr>
 </table>
 
 ## Why
@@ -84,8 +89,45 @@ Idle, whole shell, proportional set size (shared pages split between processes),
 
 Numbers reported by others (RSS, different machines, not comparable 1:1): Waybar 50 to 66 MB
 ([Waybar#5186](https://github.com/Alexays/waybar/issues/5186)), Caelestia ~650 MB after a restart
-([caelestia-dots/shell#1927](https://github.com/caelestia-dots/shell/issues/1927)). Method, raw output and
-caveats: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+([caelestia-dots/shell#1927](https://github.com/caelestia-dots/shell/issues/1927)).
+
+### The compositor: mist-comp
+
+**Idle**, [bench/comp.sh](bench/comp.sh): headless mist-comp on Mesa's software renderer (llvmpipe, which
+accounts for most of the memory and the 34 threads), two 1920x1080 outputs, a throwaway `HOME`, 15 s each.
+
+| State | PSS | CPU (one core) | Wake-ups | Frames |
+|---|---|---|---|---|
+| mist-comp alone | 125 MB | 0.17 % | 5.7 / s | 0.1 / s |
+| mist-comp + the whole shell, idle | 173 MB | **0.04 %** | **6.3 / s** | 3 / s |
+| `mist-ui` inside it | 32 MB | 0.33 % | 22.5 / s | 0 |
+| pointer moving nonstop | 175 MB | 0.83 % | 163 / s | 60 / s |
+
+**A real, busy session** (2026-10-22, the machine above, NVIDIA, 165 + 75 Hz, 35 minutes after login): Zen with a
+page open (272 commits/s), the Claude desktop app streaming text (107 commits/s), kitty, Vesktop.
+[bench/measure.sh](bench/measure.sh), 30 s.
+
+| Process | PSS | CPU (one core) |
+|---|---|---|
+| mist-comp (all compositing, blur, shadows, two monitors) | 231 MB | 14 to 16 % |
+| shell: mist-ui + mist-wall (live wallpaper) + mistd | 126 MB | 5.1 % |
+
+This is a load figure, not an idle one: almost all of the compositor's work here follows the two busy
+clients. The same session under Hyprland has not been measured yet.
+
+**What the compositor avoids**, nested tests in [native/mist-comp/tests](native/mist-comp/tests) (before → after):
+
+| Situation | Result |
+|---|---|
+| Glass bar and dock over a window that redraws a small square | blur runs 362 → 0 per 3 s, compositor CPU halved |
+| A browser animating behind a maximized window | frame callbacks 60 → 1 per s (back to 60 once it shows) |
+| A client animating on one monitor, the other one idle | render passes on the idle one 180 → 0 per 3 s |
+| Zen (several surfaces per window) | blur passes per frame 1.92 → 0.96 |
+| Panels opening and closing for 60 s | memory levels off (~80 MB on NVIDIA; grew ~4 MB/min before) |
+| A client redrawing nonstop under a Mist bar | 0.25 ms of compositor CPU per frame |
+| Overview open, magnifier on, pointer still | 0 frames / s |
+
+Method, raw output and caveats: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## Features
 
@@ -157,6 +199,37 @@ flowchart LR
 | `scripts/mistd` | backends: system stats, phone (KDE Connect, ADB), calls, clipboard store, file manager D-Bus |
 | `shaders/` | wallpaper and sky shaders (`.frag` sources, GLSL 150 in `shaders/glsl` read by mist-wall) |
 | tag `legacy-qml` | the original Quickshell (QML) version, kept for reference |
+
+## mist-comp
+
+An experimental Wayland compositor written for Mist on [Smithay] (about 12 000 lines of Rust), with its own
+greeter. It runs the same shell as Hyprland does and speaks enough of Hyprland's IPC that `hyprctl`, Mist's
+scripts and the shell's window list work unchanged. It is the author's daily session next to Hyprland.
+
+- **Windows:** floating with Mist title bars or the app's own, rounded corners and one soft shadow for every
+  window, live glass blur under translucent windows and panels, Windows 11 snapping, Overview
+  (`Super + O`, three fingers up), a magnifier (`Super + =` / `Super + -`, up to 8x), workspaces that follow
+  three fingers 1:1, window swallowing, open / close / minimize animations.
+- **Cost-aware rendering:** only the monitors a client's window is on redraw; glass re-blurs only when what is
+  behind it changed; windows covered by opaque windows get one frame callback a second; hidden desktop
+  layers are told so (`mistcover`) and stop drawing; a fullscreen game's frames go straight to the screen.
+- **Session:** DRM / KMS through libseat and logind, hotplug, VRR for fullscreen, explicit sync, XWayland, a
+  greeter for greetd, lock screen, idle, screen casting and screenshots through xdg-desktop-portal-hyprland.
+  After a crash `start-mist` restarts it in safe mode and the windows come back on their workspaces;
+  `mist-session restart` loads a new build without logging out.
+- **Protocols:** about 45, among them xdg-shell, layer-shell, session-lock, idle-notify, linux-dmabuf,
+  drm-syncobj, presentation-time, fifo + commit-timing, fractional-scale, cursor-shape, tablet, text-input +
+  input-method, pointer-constraints, foreign-toplevel (ext and wlr), ext-workspace, wlr-screencopy,
+  wlr-output-management, data-control, xdg-activation, Hyprland's toplevel export and global shortcuts.
+- **Watching it:** `hyprctl` answers in its session; its IPC socket answers `stats` (frames, commits,
+  wake-ups, blur runs), `passes` (render passes per monitor), `top 5` (who keeps the screen busy), `prof`
+  (µs per stage), `mem`. The watchdog logs clients that keep drawing on hidden workspaces or busy-loop.
+- **Tested:** 47 nested tests (`native/mist-comp/tests/run-all.sh`) on a headless backend; CI runs them on
+  the software renderer and prints the benchmarks in the job summary.
+
+Not there yet: tiling, tearing control (no async page flips in Smithay 0.7), direct scan-out verified on
+NVIDIA. Configuration: `comp.conf` in [docs/CONFIG.md](docs/CONFIG.md#compconf-outputs-mist-comp-only);
+`mist-comp migrate` converts a Hyprland config.
 
 ## Install
 

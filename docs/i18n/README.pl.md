@@ -48,6 +48,11 @@ powiadomienia, ekran blokady i agent polkit w jednym procesie ~50 MB, bez kontek
     <td align="center" width="33%"><h3>0 kontekstów GL</h3><sub>bufory <code>wl_shm</code> rysowane na CPU;<br>GPU tylko dla żywych tapet</sub></td>
     <td align="center" width="33%"><h3>0 timerów w spoczynku</h3><sub>socket Hyprlanda, D-Bus, inotify:<br>ukryte powierzchnie nic nie robią</sub></td>
   </tr>
+  <tr>
+    <td align="center" width="33%"><h3>0,04 % CPU</h3><sub><code>mist-comp</code> + powłoka w spoczynku,<br>6 wybudzeń / s</sub></td>
+    <td align="center" width="33%"><h3>1 klatka / s</h3><sub>dla okna zasłoniętego innymi<br>(60 → 1 wywołań klatki)</sub></td>
+    <td align="center" width="33%"><h3>0 rozmyć</h3><sub>gdy za szkłem nic się nie zmienia<br>(362 → 0 na 3 s)</sub></td>
+  </tr>
 </table>
 
 ## Dlaczego
@@ -86,6 +91,44 @@ Liczby podawane przez innych (RSS, inne maszyny, nieporównywalne 1:1): Waybar 5
 ([Waybar#5186](https://github.com/Alexays/waybar/issues/5186)), Caelestia ~650 MB po restarcie
 ([caelestia-dots/shell#1927](https://github.com/caelestia-dots/shell/issues/1927)). Metoda, surowe wyniki i
 zastrzeżenia: [docs/BENCHMARKS.md](../BENCHMARKS.md).
+
+### Kompozytor: mist-comp
+
+**Spoczynek**, [bench/comp.sh](../../bench/comp.sh): mist-comp bez ekranu (headless) na programowym rendererze Mesy
+(llvmpipe, od którego pochodzi większość pamięci i 34 wątki), dwa wyjścia 1920x1080, tymczasowy `HOME`, po 15 s.
+
+| Stan | PSS | CPU (jeden rdzeń) | Wybudzenia | Klatki |
+|---|---|---|---|---|
+| sam mist-comp | 125 MB | 0,17 % | 5,7 / s | 0,1 / s |
+| mist-comp + cała powłoka w spoczynku | 173 MB | **0,04 %** | **6,3 / s** | 3 / s |
+| `mist-ui` w nim | 32 MB | 0,33 % | 22,5 / s | 0 |
+| kursor w ciągłym ruchu | 175 MB | 0,83 % | 163 / s | 60 / s |
+
+**Prawdziwa, zajęta sesja** (2026-10-22, komputer jak wyżej, NVIDIA, 165 + 75 Hz, 35 minut po zalogowaniu):
+Zen z otwartą stroną (272 commity/s), aplikacja Claude streamująca tekst (107 commitów/s), kitty, Vesktop.
+[bench/measure.sh](../../bench/measure.sh), 30 s.
+
+| Proces | PSS | CPU (jeden rdzeń) |
+|---|---|---|
+| mist-comp (całe składanie obrazu, rozmycie, cienie, dwa monitory) | 231 MB | 14 do 16 % |
+| powłoka: mist-ui + mist-wall (żywa tapeta) + mistd | 126 MB | 5,1 % |
+
+To wynik pod obciążeniem, nie w spoczynku: prawie cała praca kompozytora idzie tu za dwoma zajętymi klientami.
+Tej samej sesji pod Hyprlandem jeszcze nie zmierzono.
+
+**Czego kompozytor unika**, testy zagnieżdżone w [native/mist-comp/tests](../../native/mist-comp/tests) (przed → po):
+
+| Sytuacja | Wynik |
+|---|---|
+| Szklany pasek i dock nad oknem, które przerysowuje mały kwadrat | rozmycia 362 → 0 na 3 s, CPU kompozytora o połowę mniej |
+| Przeglądarka z animacją za zmaksymalizowanym oknem | wywołania klatki 60 → 1 na s (znów 60, gdy się pokaże) |
+| Klient animuje na jednym monitorze, drugi stoi | przebiegi renderowania na stojącym 180 → 0 na 3 s |
+| Zen (kilka powierzchni na okno) | rozmycia na klatkę 1,92 → 0,96 |
+| Panele otwierane i zamykane przez 60 s | pamięć się stabilizuje (~80 MB na NVIDIA; wcześniej rosła ~4 MB/min) |
+| Klient rysujący bez przerwy pod paskiem Mist | 0,25 ms CPU kompozytora na klatkę |
+| Overview otwarte, lupa włączona, kursor stoi | 0 klatek / s |
+
+Metoda, surowe wyniki i zastrzeżenia: [docs/BENCHMARKS.md](../BENCHMARKS.md).
 
 ## Funkcje
 
@@ -158,6 +201,36 @@ flowchart LR
 | `scripts/mistd` | backendy: statystyki systemu, telefon (KDE Connect, ADB), połączenia, schowek, D-Bus menedżera plików |
 | `shaders/` | shadery tapet i nieba (źródła `.frag`, GLSL 150 w `shaders/glsl` czytany przez mist-wall) |
 | tag `legacy-qml` | pierwotna wersja na Quickshellu (QML), zachowana dla porównania |
+
+## mist-comp
+
+Eksperymentalny kompozytor Wayland napisany dla Mist na [Smithay] (około 12 000 linii Rusta), z własnym
+greeterem. Uruchamia tę samą powłokę co Hyprland i mówi na tyle dużo z IPC Hyprlanda, że `hyprctl`, skrypty
+Mist i lista okien powłoki działają bez zmian. To codzienna sesja autora obok Hyprlanda.
+
+- **Okna:** pływające, z paskami Mist albo własnymi paskami aplikacji, zaokrąglone rogi i jeden miękki cień
+  dla każdego okna, żywe rozmycie szkła pod przezroczystymi oknami i panelami, przyciąganie jak w Windows 11,
+  Overview (`Super + O`, trzy palce w górę), lupa (`Super + =` / `Super + -`, do 8x), przestrzenie robocze
+  przesuwane trzema palcami 1:1, pochłanianie okien (swallow), animacje otwierania, zamykania i minimalizacji.
+- **Oszczędne renderowanie:** przerysowują się tylko monitory, na których jest okno klienta; szkło rozmywa się
+  ponownie tylko, gdy zmieniło się to, co pod nim; okna zasłonięte nieprzezroczystymi dostają jedno wywołanie
+  klatki na sekundę; zakryte warstwy pulpitu dostają o tym znać (`mistcover`) i przestają rysować; klatki gry
+  na pełnym ekranie idą prosto na ekran.
+- **Sesja:** DRM / KMS przez libseat i logind, podłączanie monitorów w locie, VRR na pełnym ekranie, explicit
+  sync, XWayland, greeter dla greetd, ekran blokady, bezczynność, udostępnianie ekranu i zrzuty przez
+  xdg-desktop-portal-hyprland. Po awarii `start-mist` uruchamia go ponownie w trybie bezpiecznym, a okna wracają
+  na swoje przestrzenie; `mist-session restart` wczytuje nową wersję bez wylogowania.
+- **Protokoły:** około 45, m.in. xdg-shell, layer-shell, session-lock, idle-notify, linux-dmabuf, drm-syncobj, presentation-time, fifo + commit-timing, fractional-scale, cursor-shape, tablet, text-input + input-method, pointer-constraints, foreign-toplevel (ext, wlr), ext-workspace, wlr-screencopy, wlr-output-management, data-control, xdg-activation, eksport okien i globalne skróty Hyprlanda.
+- **Podgląd:** `hyprctl` odpowiada w jego sesji; jego gniazdo IPC odpowiada na `stats` (klatki, commity,
+  wybudzenia, rozmycia), `passes` (przebiegi renderowania na monitor), `top 5` (kto zajmuje ekran), `prof`
+  (µs na etap), `mem`. Watchdog zapisuje w logu klientów, którzy rysują na ukrytych przestrzeniach albo kręcą
+  się w pętli.
+- **Testy:** 47 testów zagnieżdżonych (`native/mist-comp/tests/run-all.sh`) na backendzie headless; CI
+  uruchamia je na rendererze programowym i wypisuje benchmarki w podsumowaniu zadania.
+
+Jeszcze nie ma: kafelkowania, kontroli tearingu (Smithay 0.7 nie ma asynchronicznych page flipów), direct
+scan-out sprawdzonego na NVIDIA. Konfiguracja: `comp.conf` w [docs/CONFIG.md](../CONFIG.md#compconf-outputs-mist-comp-only);
+`mist-comp migrate` konwertuje konfigurację Hyprlanda.
 
 ## Instalacja
 

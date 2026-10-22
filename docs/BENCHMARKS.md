@@ -94,6 +94,31 @@ with this table.
 | Blur runs while a maximized window redraws a small square under the glass bar and dock | `tests/t-glassdamage.sh` | 362 → 0 per 3 s; compositor CPU 8 → 4 ticks / 3 s (NVIDIA) |
 | Memory while panels open and close (2 × 30 s) | `tests/t-texleak.sh` | levels off: 110 → 132 → 139 MB on llvmpipe, ~80 MB on NVIDIA (grew ~4 MB/min before 2026-10-22) |
 
+### Idle and live, 2026-10-22
+
+`env -u __EGL_VENDOR_LIBRARY_FILENAMES SECS=15 sh bench/comp.sh` (headless, llvmpipe, two 1920x1080 outputs;
+inside a Mist session the variable hides Mesa and the run fails with "software requested"):
+
+```
+mist-comp alone        pss= 125.3MB threads=34 cpu= 0.17% wakeups=   5.7/s frames=  0.1/s
+mist-comp + shell      pss= 173.4MB threads=34 cpu= 0.04% wakeups=   6.3/s frames=  3.0/s
+mist-ui (shell)        pss=  31.5MB threads=29 cpu= 0.33% wakeups=  22.5/s frames=  0.0/s
+mist-comp, pointer     pss= 174.5MB threads=34 cpu= 0.83% wakeups= 162.8/s frames= 60.0/s
+```
+
+The live session (NVIDIA, 165 + 75 Hz, 35 min after login, binary from 17:44), `bench/measure.sh 30 mist-comp`
+and `bench/measure.sh 30 mist-ui-bin mist-wall-bin mistd`, while Zen showed a page and the Claude desktop app
+streamed text (IPC `top 5`: zen 272 commits/s, Claude 107/s, mist-live 15/s, kitty 3/s, Mist layers < 2/s):
+
+```
+mist-comp      pss=231.2MB rss=283.3MB threads=7  cpu=14.28% gl=yes   (bench/comp.sh live: 15.96 %, 995 wake-ups/s)
+mist-wall-bin  pss= 51.4MB            mist-ui-bin pss=64.5MB (41 threads)   mistd x3 pss=9.7MB
+shell TOTAL    pss=125.6MB rss=192.0MB threads=65 cpu=5.10% gl=yes
+```
+
+`stats` since login: 327 826 frames, 613 164 commits, blur 260 464 runs of 934 072 calls (72 % of the glass
+draws reused a cached blur). Hyprland on the same session, same apps: not measured yet.
+
 Watching it live: `hyprctl` is mist-comp in its session, and its IPC socket answers `stats` (frames,
 commits, wake-ups, blur runs), `passes` (render passes per monitor, and how many changed pixels), `top 5` (commits per client over 5 s: who keeps the screen busy) and `blurs`.
 The watchdog logs `watchdog: <app> draws N frames/s while hidden` to `~/.cache/mist/comp.log` when a client
