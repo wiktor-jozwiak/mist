@@ -25,6 +25,7 @@ pub struct Client {
     pub ws_id: i64,
     pub focus: i64, // focusHistoryID, 0 = the active window
     pub fullscreen: i64,
+    pub rect: (i64, i64, i64, i64), // at + size, global layout px
 }
 
 #[derive(Debug, Clone, Default)]
@@ -33,6 +34,7 @@ pub struct Hypr {
     pub focused_ws: i64,
     pub active: Option<Win>,
     pub monitors: Vec<(i64, String, i64)>, // id, name, active workspace id
+    pub mon_pos: Vec<(String, i64, i64)>,  // name, x, y
     pub ws_windows: Vec<(i64, i64)>,       // workspace id, window count
 }
 
@@ -140,6 +142,7 @@ fn hypr_state() -> Hypr {
     if let Some(Value::Array(ms)) = hypr_request("j/monitors") {
         for m in ms {
             h.monitors.push((m["id"].as_i64().unwrap_or(0), m["name"].as_str().unwrap_or("").into(), m["activeWorkspace"]["id"].as_i64().unwrap_or(0)));
+            h.mon_pos.push((m["name"].as_str().unwrap_or("").into(), m["x"].as_i64().unwrap_or(0), m["y"].as_i64().unwrap_or(0)));
         }
     }
     if let Some(Value::Array(cs)) = hypr_request("j/clients") {
@@ -155,6 +158,10 @@ fn hypr_state() -> Hypr {
                 ws_id: c["workspace"]["id"].as_i64().unwrap_or(0),
                 focus: c["focusHistoryID"].as_i64().unwrap_or(99),
                 fullscreen: c["fullscreen"].as_i64().unwrap_or(0),
+                rect: {
+                    let v = |k: &str, i: usize| c[k][i].as_i64().unwrap_or(0);
+                    (v("at", 0), v("at", 1), v("size", 0), v("size", 1))
+                },
             });
         }
     }
@@ -220,7 +227,7 @@ pub fn hyprland(tx: Sender<Msg>) {
                 break;
             }
             let ev = line.split(">>").next().unwrap_or("");
-            if matches!(ev, "activelayout" | "screencast" | "fullscreen" | "submap" | "urgent" | "activespecial" | "configreloaded" | "monitoraddedv2" | "monitorremovedv2" | "pin" | "mistdrag" | "mistsnap") {
+            if matches!(ev, "activelayout" | "screencast" | "fullscreen" | "submap" | "urgent" | "activespecial" | "configreloaded" | "monitoraddedv2" | "monitorremovedv2" | "pin" | "mistdrag" | "mistsnap" | "mistcover") {
                 let data = line.trim_end().splitn(2, ">>").nth(1).unwrap_or("").to_string();
                 let _ = tx.send(Msg::HyprEv(ev.to_string(), data));
             }

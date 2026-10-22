@@ -1101,3 +1101,27 @@ obszar specjalny	special workspace	Spezialbereich	espacio especial	espace spéci
 profil zasilania	power profile	Energieprofil	perfil de energía	profil d'énergie
 Na partycji {} zostało {}.	The {} partition has {} left.	Auf der Partition {} sind noch {} frei.	A la partición {} le quedan {}.	La partition {} n'a plus que {}.
 {} z {}	{} of {}	{} von {}	{} de {}	{} sur {}
+Przypnij do Ulubionych	Pin to Favourites	An Favoriten anheften	Anclar a Favoritos	Épingler aux favoris
+Odepnij od Ulubionych	Unpin from Favourites	Von Favoriten lösen	Desanclar de Favoritos	Désépingler des favoris
+Przesuń na początek	Move to start	An den Anfang	Mover al principio	Placer en premier
+Ulubione są pełne (12): najpierw coś odepnij	Favourites are full (12): unpin something first	Favoriten sind voll (12): zuerst etwas lösen	Favoritos llenos (12): desancla algo primero	Favoris pleins (12) : désépinglez d'abord
+Prawy przycisk na aplikacji w „Wszystkie” przypina ją tutaj	Right-click an app in “All” to pin it here	Rechtsklick auf eine App unter „Alle“ heftet sie hier an	Clic derecho en una app de «Todas» para anclarla aquí	Clic droit sur une app dans « Toutes » pour l'épingler ici
+Zapyta o potwierdzenie	Asks to confirm	Fragt nach Bestätigung	Pide confirmación	Demande confirmation
+# composite strings found by a scan of literals (2026-10-22): start menu agenda, phone, files, player, weather
+brak urządzenia	no device	kein Gerät	sin dispositivo	aucun appareil
+Najbliższe	Upcoming	Demnächst	Próximos	À venir
+{} wydarzenie	{} event	{} Termin	{} evento	{} événement
+{} wydarzenia	{} events	{} Termine	{} eventos	{} événements
+{} wydarzeń	{} events	{} Termine	{} eventos	{} événements
+{} wydarzenie przed tobą	{} event ahead	{} Termin vor dir	{} evento por delante	{} événement à venir
+{} wydarzenia przed tobą	{} events ahead	{} Termine vor dir	{} eventos por delante	{} événements à venir
+{} wydarzeń przed tobą	{} events ahead	{} Termine vor dir	{} eventos por delante	{} événements à venir
+następne {}	next {}	nächster {}	siguiente {}	prochain {}
+Skopiowano: {}	Copied: {}	Kopiert: {}	Copiado: {}	Copié : {}
+Wycięto: {}	Cut: {}	Ausgeschnitten: {}	Cortado: {}	Coupé : {}
+{} elem.	{} items	{} Elemente	{} elementos	{} éléments
+wznów od {}	resume at {}	fortsetzen bei {}	reanudar en {}	reprendre à {}
+porywy do {} km/h	gusts up to {} km/h	Böen bis {} km/h	rachas de hasta {} km/h	rafales jusqu'à {} km/h
+Opad {}%, {} mm	Rain {}%, {} mm	Regen {} %, {} mm	Lluvia {} %, {} mm	Pluie {} %, {} mm
+jutro krótszy o {} min	tomorrow {} min shorter	morgen {} Min. kürzer	mañana {} min más corto	demain {} min plus court
+jutro dłuższy o {} min	tomorrow {} min longer	morgen {} Min. länger	mañana {} min más largo	demain {} min plus long

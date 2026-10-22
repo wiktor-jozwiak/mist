@@ -119,6 +119,95 @@ pub struct PaneSurf {
     configured: bool,
     dirty: bool,
     canvas: Canvas,
+    swap: Swap,
+}
+
+/// Two buffers kept for one big surface (a full-monitor pane, 8 MB each) and used in turn: a frame converts
+/// and copies only the rows that differ from the buffer's old content, and damages only what differs from
+/// that or from the frame on screen, so the compositor uploads that part of its texture (one per buffer).
+#[derive(Default)]
+pub struct Swap {
+    bufs: Vec<smithay_client_toolkit::shm::slot::Buffer>,
+    size: (i32, i32),
+    last: Option<usize>,
+    row: Vec<u32>,
+}
+
+impl Swap {
+    /// false: no buffer free (both still held by the compositor), the caller commits a new one
+    fn commit(&mut self, pool: &mut SlotPool, layer: &LayerSurface, canvas: &Canvas) -> bool {
+        let (w, h) = (canvas.pm.width() as i32, canvas.pm.height() as i32);
+        if self.size != (w, h) {
+            self.bufs.clear();
+            self.last = None;
+            self.size = (w, h);
+        }
+        let free = (0..self.bufs.len()).find(|&i| Some(i) != self.last && self.bufs[i].canvas(pool).is_some());
+        let s = layer.wl_surface();
+        let i = match free {
+            Some(i) => i,
+            None if self.bufs.len() < 2 => {
+                let Ok((b, data)) = pool.create_buffer(w, h, w * 4, wl_shm::Format::Argb8888) else { return false };
+                canvas.to_bgra(data);
+                self.bufs.push(b);
+                let i = self.bufs.len() - 1;
+                s.damage_buffer(0, 0, w, h);
+                let _ = self.bufs[i].attach_to(s);
+                layer.commit();
+                self.last = Some(i);
+                count("commits", 1);
+                return true;
+            }
+            None => return false,
+        };
+        let t0 = Instant::now();
+        let n = w as usize;
+        // the frame on screen (the other buffer, read only while the compositor may read it too)
+        let shown: Option<*const u32> = self.last.map(|l| pool.raw_data_mut(&self.bufs[l].slot()).as_ptr() as *const u32);
+        let dst = pool.raw_data_mut(&self.bufs[i].slot());
+        let (_, dst, _) = unsafe { dst.align_to_mut::<u32>() };
+        let (_, src, _) = unsafe { canvas.pm.data().align_to::<u32>() };
+        self.row.resize(n, 0);
+        let (mut x0, mut x1, mut y0, mut y1) = (n, 0usize, usize::MAX, 0usize);
+        for y in 0..h as usize {
+            let row = &src[y * n..(y + 1) * n];
+            for (d, px) in self.row.iter_mut().zip(row) {
+                *d = (px & 0xFF00FF00) | ((px & 0x000000FF) << 16) | ((px & 0x00FF0000) >> 16);
+            }
+            let old = &mut dst[y * n..(y + 1) * n];
+            let on_screen = shown.map(|p| unsafe { std::slice::from_raw_parts(p.add(y * n), n) });
+            let differs = |a: &[u32]| -> Option<(usize, usize)> {
+                let f = a.iter().zip(&self.row).position(|(a, b)| a != b)?;
+                let l = n - 1 - a.iter().rev().zip(self.row.iter().rev()).position(|(a, b)| a != b).unwrap_or(0);
+                Some((f, l))
+            };
+            let mut span = differs(old);
+            if let Some(d) = on_screen.and_then(|o| differs(o)) {
+                span = Some(span.map_or(d, |s| (s.0.min(d.0), s.1.max(d.1))));
+            }
+            if let Some((f, l)) = span {
+                old.copy_from_slice(&self.row);
+                x0 = x0.min(f);
+                x1 = x1.max(l);
+                y0 = y0.min(y);
+                y1 = y;
+            }
+        }
+        count("commit_us", t0.elapsed().as_micros() as u64);
+        if y0 == usize::MAX {
+            // nothing differs from the frame on screen nor from this buffer: keep the shown one
+            count("commits_same", 1);
+            layer.commit();
+            return true;
+        }
+        count("commits", 1);
+        count("swap_px", ((x1 - x0 + 1) * (y1 - y0 + 1)) as u64);
+        s.damage_buffer(x0 as i32, y0 as i32, (x1 - x0 + 1) as i32, (y1 - y0 + 1) as i32);
+        let _ = self.bufs[i].attach_to(s);
+        layer.commit();
+        self.last = Some(i);
+        true
+    }
 }
 
 pub struct App {
@@ -142,6 +231,8 @@ pub struct App {
     pub apps: Apps,
     pub st: BarState,
     pub hypr: Hypr,
+    /// mist-comp's mistcover for the weather card (None: not on mist-comp, computed from the windows)
+    pub card_cover: Option<bool>,
     pub ui_popup: (String, String),
     pub tray_items: Vec<tray::Item>,
     pub tray_req: std::sync::mpsc::Sender<Req>,
@@ -212,6 +303,7 @@ impl App {
             apps: Apps::load(),
             st: BarState { net: "ethernet".into(), ..Default::default() },
             hypr: Hypr::default(),
+            card_cover: None,
             ui_popup: (String::new(), String::new()),
             tray_items: Vec::new(),
             tray_req,
@@ -382,6 +474,33 @@ impl App {
     pub fn intent_due(&self) -> Option<Instant> {
         [self.desk.intent.due(), self.desk.wx.intent.due()].into_iter().flatten().min()
     }
+    /// The weather card 85 % under windows of the shown workspace (mist-wall's rule for its sky): its
+    /// carousel waits, nobody reads it through a window's blur
+    fn card_covered(&mut self) -> bool {
+        if let Some(c) = self.card_cover {
+            return c;
+        }
+        let mon = primary_monitor();
+        let Some((_, mx, my)) = self.hypr.mon_pos.iter().find(|m| m.0 == mon).cloned() else { return false };
+        let Some(ws) = self.hypr.monitors.iter().find(|m| m.1 == mon).map(|m| m.2) else { return false };
+        let (cx, cy) = self.desk.card_at(&mut self.text);
+        let (x, y, w, h) = ((mx + cx as i64) as f64, (my + cy as i64) as f64, crate::desktop::WX_W as f64, crate::desktop::BENTO_H as f64);
+        let rects: Vec<_> = self.hypr.clients.iter().filter(|c| c.ws_id == ws).map(|c| c.rect).collect();
+        if rects.is_empty() {
+            return false;
+        }
+        let mut n = 0;
+        for i in 0..32 {
+            let px = x + (i as f64 + 0.5) * w / 32.0;
+            for j in 0..18 {
+                let py = y + (j as f64 + 0.5) * h / 18.0;
+                if rects.iter().any(|r| px >= r.0 as f64 && px < (r.0 + r.2) as f64 && py >= r.1 as f64 && py < (r.1 + r.3) as f64) {
+                    n += 1;
+                }
+            }
+        }
+        n * 100 >= 576 * 85
+    }
     pub fn intent_tick(&mut self) {
         if self.desk.intent.settle() {
             self.desk.dirty = true;
@@ -426,7 +545,7 @@ impl App {
         let outs = self.outs();
         self.wall.slow_tick(&self.compositor, &self.layer_shell, &self.qh, &outs);
         let n = crate::wxcard::Wx::n_insights(&self.desk.weather, &self.desk.garmin, &self.desk.cfg);
-        if self.desk.wx.tick(n) {
+        if !self.card_covered() && self.desk.wx.tick(n) {
             self.desk.card_dirty = true;
         }
         let (ringing, call) = { let s = self.phone.st.lock().unwrap(); (s.ringing(), s.call().is_some()) };
@@ -666,7 +785,7 @@ impl App {
         layer.commit();
         let mut p = p;
         p.opened(&sname);
-        self.pane = Some(PaneSurf { p, layer, screen: sname, configured: false, dirty: true, canvas: Canvas::new(1, 1) });
+        self.pane = Some(PaneSurf { p, layer, screen: sname, configured: false, dirty: true, canvas: Canvas::new(1, 1), swap: Swap::default() });
         self.set_start_open(start);
         self.mark_all();
         self.dock_rebuild();
@@ -695,6 +814,13 @@ impl App {
                 }
             }
             self.set_start_open(false);
+            // the shared shm pool grew to the pane's full-monitor buffers and never shrinks: a small new one,
+            // the old memfd (tens of MB, mapped here and in the compositor) goes with its last buffer
+            if self.pool.len() > 4 << 20 {
+                if let Ok(p) = SlotPool::new(1920 * 40 * 4, &self.shm) {
+                    self.pool = p;
+                }
+            }
             self.mark_all();
             self.dock_rebuild();
             // the full-monitor buffers (~8 MB each) and the pane's data go back to the OS, not glibc's arena
@@ -759,6 +885,10 @@ impl App {
                 let scr = self.pane.as_ref().map(|p| p.screen.clone()).unwrap_or_default();
                 self.ui_toggle(name, &scr);
             }
+            Act::Open(name, page) => {
+                let scr = self.pane.as_ref().map(|p| p.screen.clone()).unwrap_or_else(|| self.focused_screen());
+                self.pane_open(name, page, &scr);
+            }
         }
     }
     fn draw_pane(&mut self) {
@@ -777,7 +907,11 @@ impl App {
             *d.entry("pane").or_insert(0) += 1;
             *d.entry("pane_ms").or_insert(0) += ms;
         });
-        Self::commit(&mut self.pool, &p.layer, &c);
+        if !p.swap.commit(&mut self.pool, &p.layer, &c) {
+            // both buffers still held: a one-off buffer; the pair starts over (its idea of the shown frame is gone)
+            p.swap = Swap::default();
+            Self::commit(&mut self.pool, &p.layer, &c);
+        }
         p.canvas = c;
     }
     fn pane_pointer(&mut self, e: &PointerEvent) {
@@ -1699,12 +1833,28 @@ impl App {
                 }
             }
             // test hook: a left click (or `wheel <d>`) at x y in the popup's surface coordinates
-            ("ui", "click") | ("ui", "wheel") => {
+            // `rclick x y` the right button; `drag x y x2 y2 [hold]` press, move in steps, release (moves end at x2 y2)
+            ("ui", "click") | ("ui", "wheel") | ("ui", "rclick") | ("ui", "drag") => {
+                use crate::pane::Ptr;
                 let (x, y) = (a(0).parse::<f32>().unwrap_or(0.0), a(1).parse::<f32>().unwrap_or(0.0));
-                let evs = if r.func == "wheel" { vec![crate::pane::Ptr::Motion, crate::pane::Ptr::Wheel(a(2).parse().unwrap_or(1.0))] } else { vec![crate::pane::Ptr::Motion, crate::pane::Ptr::Press(0x110), crate::pane::Ptr::Release(0x110)] };
+                let evs: Vec<(Ptr, f32, f32)> = match r.func.as_str() {
+                    "wheel" => vec![(Ptr::Motion, x, y), (Ptr::Wheel(a(2).parse().unwrap_or(1.0)), x, y)],
+                    "rclick" => vec![(Ptr::Motion, x, y), (Ptr::Press(0x111), x, y), (Ptr::Release(0x111), x, y)],
+                    "drag" => {
+                        let (x2, y2) = (a(2).parse::<f32>().unwrap_or(x), a(3).parse::<f32>().unwrap_or(y));
+                        let mut v = vec![(Ptr::Motion, x, y), (Ptr::Press(0x110), x, y)];
+                        v.extend((1..=8).map(|i| (Ptr::Motion, x + (x2 - x) * i as f32 / 8.0, y + (y2 - y) * i as f32 / 8.0)));
+                        // `drag x y x2 y2 hold`: no release (a frame mid-drag; Esc cancels)
+                        if a(4) != "hold" {
+                            v.push((Ptr::Release(0x110), x2, y2));
+                        }
+                        v
+                    }
+                    _ => vec![(Ptr::Motion, x, y), (Ptr::Press(0x110), x, y), (Ptr::Release(0x110), x, y)],
+                };
                 match self.pane.is_some() {
                     true => {
-                        for ev in evs {
+                        for (ev, x, y) in evs {
                             let Some(p) = self.pane.as_mut() else { break };
                             let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl, st: &self.st, players: &self.island.players, phone_name: &self.island.phone_name, wx: &self.desk.weather };
                             let act = p.p.pointer(ev, x, y, &mut cx);
@@ -2651,6 +2801,13 @@ impl App {
             },
             Msg::Cursor(x, y) => self.snap_cursor(x, y),
             Msg::HyprEv(n, d) if n == "mistdrag" || n == "mistsnap" => self.snap_event(&n, &d),
+            // mist-comp: a desktop layer under windows (OUTPUT,NAMESPACE,COVERED,FULLSCREEN)
+            Msg::HyprEv(n, d) if n == "mistcover" => {
+                let f: Vec<&str> = d.split(',').collect();
+                if f.len() == 4 && f[1] == "mist-desktop-card" && f[0] == primary_monitor() {
+                    self.card_cover = Some(f[2] == "1");
+                }
+            }
             Msg::HyprEv(n, d) => {
                 let active = self.hypr.clients.iter().find(|c| c.focus == 0).map(|c| c.address.clone()).unwrap_or_default();
                 self.island.on_hypr(&n, &d, &self.apps, &self.hypr.clients, &active);

@@ -123,6 +123,36 @@ impl Cx {
     }
 }
 
+/// Window corner radius, the same as mist-comp's (rounded.rs) and Zen's (chrome.css).
+const WIN_RADIUS: f32 = crate::tokens::WINDOW_RADIUS;
+
+/// Clear the four corners outside a rounded rect of radius `r` (antialiased; premultiplied pixels scale).
+fn round_corners(pm: &mut tiny_skia::Pixmap, r: f32) {
+    let (w, h) = (pm.width() as usize, pm.height() as usize);
+    let n = r.ceil() as usize;
+    if w < 2 * n || h < 2 * n {
+        return;
+    }
+    let px = pm.pixels_mut();
+    for y in 0..n {
+        for x in 0..n {
+            let (dx, dy) = (r - (x as f32 + 0.5), r - (y as f32 + 0.5));
+            if dx <= 0.0 || dy <= 0.0 {
+                continue;
+            }
+            let k = (0.5 - ((dx * dx + dy * dy).sqrt() - r)).clamp(0.0, 1.0);
+            if k >= 1.0 {
+                continue;
+            }
+            for (cx, cy) in [(x, y), (w - 1 - x, y), (x, h - 1 - y), (w - 1 - x, h - 1 - y)] {
+                let p = &mut px[cy * w + cx];
+                let m = |v: u8| (v as f32 * k + 0.5) as u8;
+                *p = tiny_skia::PremultipliedColorU8::from_rgba(m(p.red()), m(p.green()), m(p.blue()), m(p.alpha())).unwrap_or(tiny_skia::PremultipliedColorU8::TRANSPARENT);
+            }
+        }
+    }
+}
+
 pub trait Logic {
     fn app_id(&self) -> &str;
     // a window asked for with Cx::new_window exists (not yet configured)
@@ -166,6 +196,8 @@ struct Win {
     video: Option<(wl_surface::WlSurface, smithay_client_toolkit::reexports::client::protocol::wl_subsurface::WlSubsurface, (i32, i32, i32, i32))>,
     min: (u32, u32),
     fullscreen: bool,
+    // maximized, fullscreen or tiled: square corners
+    square: bool,
     inhibitor: Option<zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1>,
 }
 
@@ -369,7 +401,7 @@ impl Rt {
                     window.commit();
                     let id = self.next_id;
                     self.next_id += 1;
-                    self.wins.push(Win { id, window, w, h, configured: false, dirty: true, animate: false, frame_pending: false, canvas: Canvas::new(1, 1), video: None, min, fullscreen: false, inhibitor: None });
+                    self.wins.push(Win { id, window, w, h, configured: false, dirty: true, animate: false, frame_pending: false, canvas: Canvas::new(1, 1), video: None, min, fullscreen: false, square: false, inhibitor: None });
                     self.cx.mods = self.mods;
                     // its commands are applied after this batch (apply loops)
                     self.logic.opened(id, token, &mut self.cx);
@@ -503,6 +535,11 @@ impl Rt {
         let Some(i) = self.wins.iter().position(|w| w.id == id) else { return };
         let win = &mut self.wins[i];
         win.dirty = false;
+        // the window's shape: Mist's window corners (mist-comp's bars, Zen), square when it fills a place; not
+        // over a video plane (the square video would show in the corners)
+        if !win.square && video.is_none() {
+            round_corners(&mut canvas.pm, WIN_RADIUS);
+        }
         if let Ok((buf, data)) = self.pool.create_buffer(w as i32, h as i32, w as i32 * 4, wl_shm::Format::Argb8888) {
             canvas.to_bgra(data);
             let surf = win.window.wl_surface();
@@ -597,6 +634,12 @@ impl WindowHandler for Rt {
         let fs = c.state.contains(smithay_client_toolkit::reexports::csd_frame::WindowState::FULLSCREEN);
         let fs_changed = fs != w.fullscreen;
         w.fullscreen = fs;
+        {
+            use smithay_client_toolkit::reexports::csd_frame::WindowState as S;
+            let sq = c.state.intersects(S::FULLSCREEN | S::MAXIMIZED | S::TILED);
+            w.dirty |= sq != w.square;
+            w.square = sq;
+        }
         w.w = nw.max(1);
         w.h = nh.max(1);
         w.configured = true;

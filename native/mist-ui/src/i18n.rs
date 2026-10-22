@@ -334,6 +334,11 @@ mod tests {
     fn translates() {
         assert_eq!(with("en", "Nie przeszkadzać"), "Do not disturb");
         assert_eq!(with("en", "5 min temu"), "5 min ago");
+        // composite strings: templates, segments split at " · ", headings in capitals
+        assert_eq!(with("en", "3 wydarzenia przed tobą"), "3 events ahead");
+        assert_eq!(with("en", "wolny dzień · następne jutro"), "free day · next tomorrow");
+        assert_eq!(with("de", "NAJBLIŻSZE"), "DEMNÄCHST");
+        assert_eq!(with("en", "Bez większych opadów · porywy do 40 km/h"), "No significant rain · gusts up to 40 km/h");
         assert_eq!(with("en", "3 d 4 godz."), "3 d 4 h");
         assert_eq!(with("en", "Połączono · 80%"), "Connected · 80%");
         assert_eq!(with("en", "Piątek, 16 października"), "Friday, 16 October");
@@ -354,6 +359,38 @@ mod tests {
         assert_eq!(with("en", "pochmurno"), "cloudy");
         assert_eq!(with("en", "Jutro 9°/3° · pochmurno, 5° chłodniej"), "Tomorrow 9°/3° · cloudy, 5° cooler");
     }
+    // every literal passed to tr("…") in mist-ui and mist-comp has a row (a typo or a new string without one
+    // stays Polish in every other language)
+    #[test]
+    fn every_tr_literal_has_a_row() {
+        let keys: std::collections::HashSet<&str> = TSV.lines().filter(|l| !l.starts_with('#')).filter_map(|l| l.split('\t').next()).collect();
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
+        let mut missing = Vec::new();
+        let mut dirs = vec![format!("{root}/mist-ui/src"), format!("{root}/mist-comp/src")];
+        while let Some(d) = dirs.pop() {
+            for e in std::fs::read_dir(&d).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    dirs.push(p.to_string_lossy().into());
+                } else if p.extension().is_some_and(|x| x == "rs") && !p.ends_with("i18n.rs") {
+                    let src = std::fs::read_to_string(&p).unwrap();
+                    for (i, _) in src.match_indices("tr(\"") {
+                        if src[..i].ends_with(|c: char| c.is_alphanumeric() || c == '_') {
+                            continue;
+                        }
+                        let rest = &src[i + 4..];
+                        let Some(end) = rest.find('"') else { continue };
+                        let k = &rest[..end];
+                        if !k.contains('\\') && !keys.contains(k) {
+                            missing.push(format!("{}: {k}", p.display()));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(missing.is_empty(), "no i18n.tsv row for:\n{}", missing.join("\n"));
+    }
+
     #[test]
     fn table_is_well_formed() {
         let mut lines = TSV.lines();

@@ -16,6 +16,8 @@ pub enum Act {
     Exec(Vec<String>),
     // open another popup instead
     Toggle(&'static str),
+    // open another popup at a page (Start -> the session question)
+    Open(&'static str, &'static str),
     // the screenshot toolbar: capture now
     Capture,
     // close, start an app (Apps index)
@@ -128,7 +130,7 @@ pub fn native(name: &str) -> bool {
 pub fn make(name: &str, page: &str) -> Option<Box<dyn Pane>> {
     match name {
         "desk" => Some(Box::new(crate::desksettings::DeskSettings::new(page))),
-        "session" => Some(Box::new(crate::session::Session::new())),
+        "session" => Some(Box::new(crate::session::Session::new(page))),
         "calendar" => Some(Box::new(crate::calendar::Calendar::new())),
         "notifications" => Some(Box::new(crate::notifcenter::NotifCenter::new())),
         "clipboard" => Some(Box::new(crate::clipboard::Clipboard::new())),

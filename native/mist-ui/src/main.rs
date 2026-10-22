@@ -52,6 +52,8 @@ mod winpick;
 mod desksettings;
 #[path = "../../common/astro.rs"]
 mod astro;
+#[path = "../../common/tokens.rs"]
+mod tokens;
 #[path = "../../common/paths.rs"]
 mod paths;
 #[path = "../../common/presets.rs"]

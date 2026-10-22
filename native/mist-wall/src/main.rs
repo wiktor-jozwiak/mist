@@ -44,6 +44,8 @@ const FADE_MS: f32 = 600.0;
 // the main monitor's scene is visible: only then is the music measured
 static SHOWN: AtomicBool = AtomicBool::new(true);
 static MUSIC_ON: AtomicBool = AtomicBool::new(false);
+// mist-comp announces what windows cover (mistcover events): no window queries, no 8 s check
+static COMP_COVER: AtomicBool = AtomicBool::new(false);
 // a shader compiled: malloc_trim at this time (ms since the epoch, 0 = none)
 static TRIM_AT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 // a shader compiled without the driver's cache at this time (0 = all cached)
@@ -879,6 +881,26 @@ impl App {
         }
         n as f64 / 576.0 >= 0.85
     }
+    // mist-comp's word on one layer: the wallpaper of an output, or the sky
+    fn on_comp_cover(&mut self, out: String, ns: &str, covered: bool, full: bool) {
+        match ns {
+            "mist-live" => {
+                self.hidden.insert(out.clone(), covered);
+                self.fs.insert(out, full);
+            }
+            "mist-sky" => {
+                let was = self.sky.hidden;
+                self.sky.hidden = covered;
+                if was && !covered {
+                    if let Some(s) = self.surfs.iter_mut().find(|s| s.kind == Kind::Sky) {
+                        s.dirty = true;
+                    }
+                }
+            }
+            _ => return,
+        }
+        SHOWN.store(self.animate(primary_monitor()) && !*self.hidden.get(primary_monitor()).unwrap_or(&false), Ordering::Relaxed);
+    }
     fn on_cover(&mut self, mons: Vec<Mon>) {
         self.mons = mons;
         self.hidden.clear();
@@ -1440,6 +1462,8 @@ enum Ev {
     Preview,
     Sky,
     Cover(Vec<Mon>),
+    // mistcover>>OUTPUT,NAMESPACE,COVERED,FULLSCREEN
+    CompCover(String, String, bool, bool),
     Screen,
     Level(f32),
 }
@@ -1694,6 +1718,9 @@ fn main() {
         let tx1 = tx.clone();
         std::thread::spawn(move || loop {
             std::thread::sleep(Duration::from_secs(8));
+            if COMP_COVER.load(Ordering::Relaxed) {
+                return;
+            }
             if tx1.send(Ev::Cover(coverage(true))).is_err() {
                 return;
             }
@@ -1704,7 +1731,20 @@ fn main() {
             let p = format!("{}/hypr/{}/.socket2.sock", std::env::var("XDG_RUNTIME_DIR").unwrap_or_default(), std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_default());
             let Ok(s) = std::os::unix::net::UnixStream::connect(p) else { return };
             for l in std::io::BufReader::new(s).lines().map_while(Result::ok) {
-                let e = l.split(">>").next().unwrap_or("");
+                let (e, d) = l.split_once(">>").unwrap_or((&l, ""));
+                if e == "mistcover" {
+                    if !COMP_COVER.swap(true, Ordering::Relaxed) {
+                        eprintln!("mist-wall: coverage from mist-comp (mistcover), no window queries");
+                    }
+                    let f: Vec<&str> = d.split(',').collect();
+                    if f.len() == 4 && tx2.send(Ev::CompCover(f[0].into(), f[1].into(), f[2] == "1", f[3] == "1")).is_err() {
+                        return;
+                    }
+                    continue;
+                }
+                if COMP_COVER.load(Ordering::Relaxed) {
+                    continue;
+                }
                 if matches!(e, "openwindow" | "closewindow" | "movewindow" | "movewindowv2" | "changefloatingmode" | "fullscreen" | "activewindow" | "activewindowv2") {
                     std::thread::sleep(Duration::from_millis(100));
                     if tx2.send(Ev::Cover(coverage(false))).is_err() {
@@ -1744,6 +1784,7 @@ fn main() {
                 }
             }
             Ev::Cover(m) => app.on_cover(m),
+            Ev::CompCover(o, ns, c, f) => app.on_comp_cover(o, &ns, c, f),
             Ev::Level(l) => app.energy_to = l,
         }
     })

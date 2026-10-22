@@ -5,11 +5,54 @@ pub const T1: Rgba = Rgba(1.0, 1.0, 1.0, 0.96);
 pub const T2: Rgba = Rgba(235.0 / 255.0, 235.0 / 255.0, 245.0 / 255.0, 0.6);
 pub const T3: Rgba = Rgba(235.0 / 255.0, 235.0 / 255.0, 245.0 / 255.0, 0.3);
 pub const T4: Rgba = Rgba(235.0 / 255.0, 235.0 / 255.0, 245.0 / 255.0, 0.18);
-pub const ACCENT: Rgba = Rgba::rgb8(0x0A, 0x84, 0xFF, 1.0);
-pub const GREEN: Rgba = Rgba::rgb8(0x30, 0xD1, 0x58, 1.0);
-pub const YELLOW: Rgba = Rgba::rgb8(0xFF, 0xD6, 0x0A, 1.0);
-pub const ORANGE: Rgba = Rgba::rgb8(0xFF, 0x9F, 0x0A, 1.0);
-pub const DANGER: Rgba = Rgba::rgb8(0xFF, 0x45, 0x3A, 1.0);
+pub const ACCENT: Rgba = Rgba::rgb8(crate::tokens::ACCENT.0, crate::tokens::ACCENT.1, crate::tokens::ACCENT.2, 1.0);
+pub const GREEN: Rgba = Rgba::rgb8(crate::tokens::GREEN.0, crate::tokens::GREEN.1, crate::tokens::GREEN.2, 1.0);
+pub const YELLOW: Rgba = Rgba::rgb8(crate::tokens::YELLOW.0, crate::tokens::YELLOW.1, crate::tokens::YELLOW.2, 1.0);
+pub const ORANGE: Rgba = Rgba::rgb8(crate::tokens::ORANGE.0, crate::tokens::ORANGE.1, crate::tokens::ORANGE.2, 1.0);
+pub const DANGER: Rgba = Rgba::rgb8(crate::tokens::DANGER.0, crate::tokens::DANGER.1, crate::tokens::DANGER.2, 1.0);
 pub const HAIR: Rgba = Rgba(200.0 / 255.0, 214.0 / 255.0, 236.0 / 255.0, 0.1);
 pub const FILL: Rgba = Rgba(1.0, 1.0, 1.0, 0.055);
 pub const FILL2: Rgba = Rgba(1.0, 1.0, 1.0, 0.1);
+
+// High contrast (accessibility): ~/.config/mist/settings.json {"contrast": "high"}, MIST_CONTRAST=high
+// overrides; read once at start. Secondary text gets near full opacity (gfx::Canvas::text), glass panels an
+// opaque body (glass.rs), so nothing depends on the wallpaper behind it.
+pub fn high_contrast() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| match std::env::var("MIST_CONTRAST") {
+        Ok(v) => v == "high",
+        Err(_) => std::fs::read_to_string(format!("{}/.config/mist/settings.json", std::env::var("HOME").unwrap_or_default()))
+            .ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .is_some_and(|v| v["contrast"] == "high"),
+    })
+}
+
+// a text colour as drawn: in high contrast 2.5x its opacity (T3 0.3 -> 0.75, T2 -> 1), fades still fade
+pub fn text_colour(c: Rgba) -> Rgba {
+    if high_contrast() {
+        Rgba(c.0, c.1, c.2, (c.3 * 2.5).min(1.0))
+    } else {
+        c
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // the Zen theme copies the tokens by hand: keep them equal
+    #[test]
+    fn tokens_match_zen_css() {
+        use crate::tokens as t;
+        let css = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../integrations/zen/chrome/mist/tokens.css")).unwrap();
+        let has = |s: String| assert!(css.contains(&s), "tokens.css lacks `{s}`");
+        let hex = |c: (u8, u8, u8)| format!("#{:02x}{:02x}{:02x}", c.0, c.1, c.2);
+        let rgba = |c: (u8, u8, u8, f32)| format!("rgba({}, {}, {}, {})", c.0, c.1, c.2, c.3);
+        has(format!("--mist-r-window: {}px;", t::WINDOW_RADIUS));
+        has(format!("--mist-window: linear-gradient(180deg, {}, {});", rgba(t::WINDOW_TOP), rgba(t::WINDOW_BOTTOM)));
+        has(format!("--mist-glass: rgba({}, {}, {}, 0.82);", t::BAR.0, t::BAR.1, t::BAR.2));
+        has(format!("--mist-tone: {}, {}, {};", t::TONE.0, t::TONE.1, t::TONE.2));
+        for (k, c) in [("accent", t::ACCENT), ("green", t::GREEN), ("yellow", t::YELLOW), ("orange", t::ORANGE), ("danger", t::DANGER)] {
+            has(format!("--mist-{k}: {};", hex(c)));
+        }
+    }
+}

@@ -53,6 +53,7 @@ impl Canvas {
     // text with its line box (ascent + descent) centred on cy, starting at x; returns the advance
     pub fn text(&mut self, t: &mut Text, x: f32, cy: f32, s: &str, st: &Style, c: Rgba) -> f32 {
         let sh = t.shape(s, st);
+        let c = crate::theme::text_colour(c);
         let base = (cy - (sh.ascent + sh.descent) / 2.0 + sh.ascent).round();
         for (k, &(id, gx)) in sh.glyphs.iter().enumerate() {
             let px = x + gx;

@@ -22,17 +22,21 @@ use std::time::Instant;
 const W: f32 = 1000.0;
 const H: f32 = 720.0;
 const LW: f32 = 588.0;
-const M_FG: Rgba = Rgba(244.0 / 255.0, 247.0 / 255.0, 251.0 / 255.0, 0.97);
-const M_FG2: Rgba = Rgba(222.0 / 255.0, 230.0 / 255.0, 242.0 / 255.0, 0.86);
-const M_MUTED: Rgba = Rgba(206.0 / 255.0, 216.0 / 255.0, 232.0 / 255.0, 0.74);
-const M_FAINT: Rgba = Rgba(196.0 / 255.0, 208.0 / 255.0, 226.0 / 255.0, 0.6);
-const M_ACC: Rgba = Rgba::rgb8(0x8a, 0xd6, 0xd0, 1.0);
-const M_ACC_STRONG: Rgba = Rgba::rgb8(0xa8, 0xe4, 0xdf, 1.0);
-const M_ACC_SOFT: Rgba = Rgba(138.0 / 255.0, 214.0 / 255.0, 208.0 / 255.0, 0.16);
-const M_BLUE: Rgba = Rgba::rgb8(0x9d, 0xbd, 0xf0, 1.0);
-const M_WARN: Rgba = Rgba::rgb8(0xec, 0xc4, 0x8e, 1.0);
-const M_BAD: Rgba = Rgba::rgb8(0xee, 0x95, 0xa3, 1.0);
-const M_TRACK: Rgba = Rgba(200.0 / 255.0, 214.0 / 255.0, 236.0 / 255.0, 0.12);
+const FH: f32 = 48.0;
+// Mist tokens (theme.rs, Apple dark labels + system colours), as the other panes use them
+const M_FG: Rgba = T1;
+const M_FG2: Rgba = Rgba(1.0, 1.0, 1.0, 0.8);
+const M_MUTED: Rgba = T2;
+const M_FAINT: Rgba = T3;
+const M_ACC: Rgba = ACCENT;
+const M_ACC_STRONG: Rgba = Rgba::rgb8(0x3d, 0x9b, 0xff, 1.0);
+const M_ACC_SOFT: Rgba = Rgba(10.0 / 255.0, 132.0 / 255.0, 1.0, 0.2);
+const M_BLUE: Rgba = Rgba::rgb8(0x64, 0xd2, 0xff, 1.0);
+const M_PURPLE: Rgba = Rgba::rgb8(0xbf, 0x5a, 0xf2, 1.0);
+const M_WARN: Rgba = ORANGE;
+const M_BAD: Rgba = Rgba::rgb8(0xff, 0x6b, 0x62, 1.0);
+const M_TRACK: Rgba = FILL2;
+const WHITE: Rgba = Rgba(1.0, 1.0, 1.0, 1.0);
 const INK: Rgba = Rgba::rgb8(0x0e, 0x14, 0x20, 1.0);
 const CLEAR: Rgba = Rgba(0.0, 0.0, 0.0, 0.0);
 const DAYS: [&str; 7] = ["nd", "pon", "wt", "śr", "czw", "pt", "sob"];
@@ -85,6 +89,19 @@ enum Hit {
     Play,
     Next,
     Power(usize),
+    Menu(usize),
+}
+// the right-click menu: an app (Apps index) at a point in sheet coordinates
+struct Menu {
+    app: usize,
+    x: f32,
+    y: f32,
+}
+// a favourite being dragged: its cell, where the press began, whether it moved far enough to be a drag
+struct Drag {
+    from: usize,
+    at: (f32, f32),
+    live: bool,
 }
 
 pub struct Start {
@@ -119,10 +136,23 @@ pub struct Start {
     playing: bool,
     ticks: u32,
     bg: Option<tiny_skia::Pixmap>,
+    // ~/.config/mist/start.json "pinned": once set, the favourites are these (in order) and nothing else
+    pins: Option<Vec<String>>,
+    menu: Option<Menu>,
+    drag: Option<Drag>,
+    // the cell a dragged favourite would land on
+    drop_at: Option<usize>,
+    // a press that only closed the menu / opened it: its release does nothing
+    eat: bool,
+    // a short footer message ("favourites are full")
+    note: (String, Option<Instant>),
 }
 
 fn home() -> String {
     std::env::var("HOME").unwrap_or_default()
+}
+fn pins_path() -> String {
+    format!("{}/.config/mist/start.json", home())
 }
 fn usage_path() -> String {
     format!("{}/.config/mist/usage.json", home())
@@ -228,7 +258,7 @@ fn feed_color(e: &Value) -> Rgba {
     if e["holiday"].as_bool().unwrap_or(false) {
         return M_BAD;
     }
-    [M_ACC, M_BLUE, M_FG2, M_WARN][(e["feed"].as_i64().unwrap_or(0) % 4) as usize]
+    [M_ACC, GREEN, M_PURPLE, M_WARN][(e["feed"].as_i64().unwrap_or(0) % 4) as usize]
 }
 fn hsla(h: f32, s: f32, l: f32) -> Rgba {
     let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
@@ -331,14 +361,31 @@ impl Start {
             playing: false,
             ticks: 0,
             bg: None,
+            pins: std::fs::read_to_string(pins_path()).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).and_then(|v| v["pinned"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())),
+            menu: None,
+            drag: None,
+            drop_at: None,
+            eat: false,
+            note: (String::new(), None),
         }
     }
     fn entry_of(&self, id: &str, apps: &crate::apps::Apps) -> Option<usize> {
         let e = apps.lookup(id)?;
         apps.entries.iter().position(|x| std::ptr::eq(x, e))
     }
-    // favourites: the most launched apps first, then the curated groups in order
+    // favourites: the pinned apps when the user has pinned (stable: nothing moves by itself); before that the
+    // most launched apps first, then the curated groups in order
     fn tab_apps(&self, apps: &crate::apps::Apps) -> Vec<usize> {
+        if let Some(pins) = &self.pins {
+            let mut out: Vec<usize> = Vec::new();
+            for id in pins {
+                if let Some(i) = self.entry_of(id, apps).filter(|i| !out.contains(i)) {
+                    out.push(i);
+                }
+            }
+            out.truncate(12);
+            return out;
+        }
         let mut used: Vec<(&String, &Value)> = self.usage.as_object().map(|o| o.iter().collect()).unwrap_or_default();
         used.sort_by(|a, b| b.1["n"].as_i64().cmp(&a.1["n"].as_i64()).then(b.1["t"].as_i64().cmp(&a.1["t"].as_i64())));
         let mut out: Vec<usize> = Vec::new();
@@ -428,6 +475,9 @@ impl Start {
             }
         }
         scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        // one row per name (two .desktop files for one app, e.g. Discord from the repo and a flatpak)
+        let mut names = std::collections::HashSet::new();
+        scored.retain(|(_, i)| names.insert(norm(&apps.entries[*i].name)));
         for (_, i) in scored.into_iter().take(6) {
             let a = &apps.entries[i];
             let sub = if !a.generic.is_empty() { a.generic.clone() } else if !a.comment.is_empty() { a.comment.clone() } else { "Aplikacja".into() };
@@ -454,7 +504,7 @@ impl Start {
         ];
         for (k, title, cmd, icon, risky) in cmds {
             if k.split(' ').any(|w| w.starts_with(&q)) {
-                out.push(Res { kind: Kind::Cmd(cmd, risky), cat: "Polecenia", title: title.into(), sub: if risky { "Enter dwa razy".into() } else { "Polecenie".into() }, icon: icon.into(), act: "Wykonaj" });
+                out.push(Res { kind: Kind::Cmd(cmd, risky), cat: "Polecenia", title: title.into(), sub: if risky { "Zapyta o potwierdzenie".into() } else { "Polecenie".into() }, icon: icon.into(), act: "Wykonaj" });
             }
         }
         let (online, plugins, name) = {
@@ -492,6 +542,58 @@ impl Start {
         out.push(web(raw));
         out
     }
+    fn is_pinned(&self, i: usize, apps: &crate::apps::Apps) -> bool {
+        match &self.pins {
+            Some(p) => p.iter().any(|id| self.entry_of(id, apps) == Some(i)),
+            None => false,
+        }
+    }
+    // the pin list to change: the favourites as shown become the pins on the first change
+    fn pins_mut(&mut self, apps: &crate::apps::Apps) -> &mut Vec<String> {
+        if self.pins.is_none() {
+            let shown = self.tab_apps(apps).iter().map(|&i| apps.entries[i].id.clone()).collect();
+            self.pins = Some(shown);
+        }
+        self.pins.as_mut().unwrap()
+    }
+    fn save_pins(&mut self) {
+        let _ = std::fs::write(pins_path(), json!({ "pinned": self.pins }).to_string());
+        self.gsel = -1;
+    }
+    // true when it was pinned (false: the favourites are full)
+    fn pin(&mut self, i: usize, apps: &crate::apps::Apps) -> bool {
+        if self.is_pinned(i, apps) {
+            return true;
+        }
+        let id = apps.entries[i].id.clone();
+        let p = self.pins_mut(apps);
+        if p.len() >= 12 {
+            return false;
+        }
+        p.push(id);
+        self.save_pins();
+        true
+    }
+    fn unpin(&mut self, i: usize, apps: &crate::apps::Apps) {
+        let id = apps.entries[i].id.clone();
+        let ids: Vec<String> = self.tab_apps(apps).iter().map(|&k| apps.entries[k].id.clone()).collect();
+        let p = self.pins_mut(apps);
+        p.retain(|x| x != &id && ids.contains(x));
+        self.save_pins();
+    }
+    // a favourite dragged from cell a onto cell b
+    fn move_pin(&mut self, a: usize, b: usize, apps: &crate::apps::Apps) {
+        let shown: Vec<String> = self.tab_apps(apps).iter().map(|&k| apps.entries[k].id.clone()).collect();
+        if a >= shown.len() || a == b {
+            return;
+        }
+        // the shown order is the pin order from here on (drops ids that no longer resolve)
+        let mut p = shown;
+        let id = p.remove(a);
+        p.insert(b.min(p.len()), id);
+        self.pins = Some(p);
+        self.save_pins();
+    }
     fn launch(&mut self, i: usize, apps: &crate::apps::Apps) -> Act {
         let id = apps.entries[i].id.clone();
         if !self.usage.is_object() {
@@ -512,13 +614,9 @@ impl Start {
                 Act::Run(vec!["xdg-open".into(), format!("https://www.google.com/search?q={enc}")])
             }
             Kind::Sh(c) => Act::Run(vec!["alacritty".into(), "-e".into(), "sh".into(), "-c".into(), format!("{c}; printf '\\n[Enter] zamyka'; read _")]),
-            Kind::Cmd(cmd, risky) => {
-                if *risky && self.armed != r.title {
-                    self.armed = r.title.clone();
-                    return Act::Redraw;
-                }
-                Act::Run(cmd.clone())
-            }
+            // log out / restart / shut down: the session pane's question (as from the bar)
+            Kind::Cmd(cmd, true) => Act::Open("session", if cmd[0] == "loginctl" { "logout" } else if cmd[1] == "reboot" { "reboot" } else { "poweroff" }),
+            Kind::Cmd(cmd, false) => Act::Run(cmd.clone()),
             Kind::Phone(c, a) => self.phone_cmd(c, a.clone()),
         }
     }
@@ -543,6 +641,41 @@ impl Start {
             }
         }
     }
+    fn menu_items(&self, app: usize, apps: &crate::apps::Apps) -> Vec<(&'static str, &'static str)> {
+        let mut v = vec![("external", "Otwórz")];
+        if self.is_pinned(app, apps) {
+            v.push(("pinOff", "Odepnij od Ulubionych"));
+            if self.tab_apps(apps).first() != Some(&app) {
+                v.push(("arrowUp", "Przesuń na początek"));
+            }
+        } else {
+            v.push(("pinned", "Przypnij do Ulubionych"));
+        }
+        v
+    }
+    fn menu_pick(&mut self, k: usize, apps: &crate::apps::Apps) -> Act {
+        let Some(m) = self.menu.take() else { return Act::None };
+        match self.menu_items(m.app, apps).get(k).map(|x| x.1) {
+            Some("Otwórz") => self.launch(m.app, apps),
+            Some("Odepnij od Ulubionych") => {
+                self.unpin(m.app, apps);
+                Act::Redraw
+            }
+            Some("Przesuń na początek") => {
+                if let Some(a) = self.tab_apps(apps).iter().position(|&x| x == m.app) {
+                    self.move_pin(a, 0, apps);
+                }
+                Act::Redraw
+            }
+            Some(_) => {
+                if !self.pin(m.app, apps) {
+                    self.note = ("Ulubione są pełne (12): najpierw coś odepnij".into(), Some(Instant::now()));
+                }
+                Act::Redraw
+            }
+            None => Act::Redraw,
+        }
+    }
     fn hit(&self) -> Option<Hit> {
         self.hits.iter().rev().find(|h| inside(self.ptr, h.0)).map(|h| h.1.clone())
     }
@@ -561,6 +694,10 @@ impl Start {
             }
         }
     }
+    // the white lens tile of the Control Centre / notification centre
+    fn lens(c: &mut Canvas, x: f32, y: f32, w: f32, h: f32, r: f32, tint: f32) {
+        crate::glass::Glass { radius: r, tint, tone: WHITE, shine: 0.6, shadow: false, ..Default::default() }.paint(c, x, y, w, h);
+    }
     fn chip(c: &mut Canvas, t: &mut Text, x: f32, y: f32, s: f32, icon: &str, col: Rgba) {
         rect(c, x, y, s, s, s * 0.3, col.mul_a(0.14));
         border(c, x, y, s, s, s * 0.3, 1.0, col.mul_a(0.22));
@@ -569,30 +706,40 @@ impl Start {
 
     // ---------------------------------------------------------------- left (origin = left column)
     fn paint_left(&mut self, c: &mut Canvas, cx: &mut Ctx) {
-        // the search field
+        // the search field: an inset well (Spotlight), the blue caret; the prefixes as keycaps while empty
         let mode = self.mode();
-        rect(c, 0.0, 0.0, LW, 52.0, 20.0, Rgba(4.0 / 255.0, 8.0 / 255.0, 16.0 / 255.0, 0.24));
-        if let Some(p) = crate::gfx::rrect_path(1.0, 1.0, LW - 2.0, 50.0, 19.0) {
-            fill_lin(c, &p, (0.0, 1.0), (0.0, 18.5), &[(0.0, Rgba(0.0, 0.0, 0.0, 0.10)), (1.0, CLEAR)]);
+        rect(c, 0.0, 0.0, LW, FH, 15.0, Rgba(0.0, 0.0, 0.0, 0.22));
+        if let Some(p) = crate::gfx::rrect_path(0.5, 0.5, LW - 1.0, FH - 1.0, 14.5) {
+            fill_lin(c, &p, (0.0, 0.0), (0.0, 10.0), &[(0.0, Rgba(0.0, 0.0, 0.0, 0.14)), (1.0, CLEAR)]);
         }
-        border(c, 0.0, 0.0, LW, 52.0, 20.0, 1.0, M_ACC.mul_a(0.5));
+        border(c, 0.0, 0.0, LW, FH, 15.0, 1.0, Rgba(1.0, 1.0, 1.0, 0.09));
         let t = &mut *cx.t;
         let icon = match mode { "Terminal" => "terminal", "Kalkulator" => "calc", "Sieć" => "world", _ => "search" };
-        c.icon(t, 20.0 + 9.5, 26.0, icon, 19.0, M_ACC);
-        let fs = st(17.0, 400.0);
+        c.icon(t, 18.0 + 9.0, FH / 2.0, icon, 18.0, if mode.is_empty() { T2 } else { M_ACC });
+        let fs = st(16.5, 400.0);
         let mut hint_w = 0.0;
         if !mode.is_empty() {
-            let hs = st(11.5, 700.0);
-            hint_w = t.width(mode, &hs) + 16.0;
-            let hx = LW - 14.0 - hint_w;
-            rect(c, hx, 13.0, hint_w, 26.0, 9.0, M_ACC_SOFT);
-            border(c, hx, 13.0, hint_w, 26.0, 9.0, 1.0, M_ACC.mul_a(0.3));
-            text_cy(c, t, hx + 8.0, 26.0, mode, &hs, M_ACC, None);
+            let hs = st(11.5, 600.0);
+            hint_w = t.width(mode, &hs) + 18.0;
+            let hx = LW - 10.0 - hint_w;
+            rect(c, hx, (FH - 26.0) / 2.0, hint_w, 26.0, 13.0, M_ACC_SOFT);
+            text_cy(c, t, hx + 9.0, FH / 2.0, mode, &hs, M_ACC_STRONG, None);
+        } else if self.field.text.is_empty() {
+            let mut x = LW - 12.0;
+            for k in ["?", ">", "="] {
+                x -= 22.0;
+                rect(c, x, (FH - 22.0) / 2.0, 22.0, 22.0, 7.0, FILL);
+                border(c, x, (FH - 22.0) / 2.0, 22.0, 22.0, 7.0, 1.0, Rgba(1.0, 1.0, 1.0, 0.06));
+                let kw = t.width(k, &st(11.5, 600.0));
+                text_cy(c, t, x + (22.0 - kw) / 2.0, FH / 2.0, k, &st(11.5, 600.0), T3, None);
+                x -= 5.0;
+            }
+            hint_w = LW - 12.0 - x;
         }
-        let fw = LW - 54.0 - hint_w - 28.0;
+        let fw = LW - 50.0 - hint_w - 22.0;
         if self.field.text.is_empty() {
-            text_cy(c, t, 54.0, 26.0, "Szukaj aplikacji, plików i poleceń…", &fs, M_FAINT, Some(fw));
-            rect(c, 54.0, 15.0, 1.5, 22.0, 0.0, M_ACC);
+            rect(c, 50.0, FH / 2.0 - 10.0, 2.0, 20.0, 1.0, M_ACC);
+            text_cy(c, t, 55.0, FH / 2.0, "Szukaj aplikacji, plików i poleceń…", &fs, T3, Some(fw));
         } else {
             let mut shown: &str = &self.field.text;
             while t.width(shown, &fs) > fw - 4.0 && !shown.is_empty() {
@@ -600,16 +747,16 @@ impl Start {
                 it.next();
                 shown = it.next().map(|(i, _)| &shown[i..]).unwrap_or("");
             }
-            let w = text_cy(c, t, 54.0, 26.0, shown, &fs, M_FG, None);
-            rect(c, 54.0 + w + 1.0, 15.0, 1.5, 22.0, 0.0, M_ACC);
+            let w = text_cy(c, t, 50.0, FH / 2.0, shown, &fs, M_FG, None);
+            rect(c, 50.0 + w + 1.0, FH / 2.0 - 10.0, 2.0, 20.0, 1.0, M_ACC);
         }
-        self.push_hit((0.0, 0.0, LW, 52.0), Hit::Field);
+        self.push_hit((0.0, 0.0, LW, FH), Hit::Field);
 
         let lh = H - 32.0 - 72.0;
         if !self.field.text.trim().is_empty() {
-            self.paint_results(c, cx, 66.0, lh);
+            self.paint_results(c, cx, FH + 14.0, lh);
         } else {
-            self.paint_home(c, cx, 78.0, lh);
+            self.paint_home(c, cx, FH + 24.0, lh);
         }
     }
     fn paint_results(&mut self, c: &mut Canvas, cx: &mut Ctx, top: f32, bottom: f32) {
@@ -663,15 +810,12 @@ impl Start {
             let cur = i == self.sel;
             let warn = matches!(r.kind, Kind::Cmd(_, true)) && self.armed == r.title;
             if cur {
-                if let Some(p) = crate::gfx::rrect_path(0.0, y, LW, 58.0, 16.0) {
-                    fill_lin(&mut page, &p, (0.0, y), (LW, y), &[(0.0, M_ACC.mul_a(0.20)), (1.0, M_ACC.mul_a(0.05))]);
-                }
-                border(&mut page, 0.0, y, LW, 58.0, 16.0, 1.0, M_ACC.mul_a(0.22));
+                rect(&mut page, 0.0, y, LW, 58.0, 14.0, if warn { DANGER.mul_a(0.9) } else { M_ACC.mul_a(0.92) });
             }
             match &r.kind {
                 Kind::App(_) => Self::app_icon(&mut page, cx, &r.icon, 14.0, y + 11.0, 36.0),
                 k => {
-                    let col = if warn { M_BAD } else if matches!(k, Kind::File(_)) { M_FG2 } else if matches!(k, Kind::Sh(_)) { M_WARN } else { M_ACC };
+                    let col = if cur { WHITE } else if warn { M_BAD } else if matches!(k, Kind::File(_)) { M_FG2 } else if matches!(k, Kind::Sh(_)) { M_WARN } else { M_ACC };
                     Self::chip(&mut page, cx.t, 14.0, y + 11.0, 36.0, &r.icon, col);
                 }
             }
@@ -683,13 +827,13 @@ impl Start {
             let ts = st(if matches!(r.kind, Kind::Calc(_)) { 18.0 } else { 14.0 }, 600.0);
             let (h1, h2) = (line_h(t, &ts), line_h(t, &st(11.5, 400.0)));
             let ty = y + (58.0 - h1 - h2 - 1.0) / 2.0;
-            text(&mut page, t, 64.0, ty, &r.title, &ts, if warn { M_BAD } else { M_FG }, false, Some(tw));
-            text(&mut page, t, 64.0, ty + h1 + 1.0, if warn { "Naciśnij jeszcze raz, aby potwierdzić" } else { &r.sub }, &st(11.5, 400.0), M_MUTED, false, Some(tw));
+            text(&mut page, t, 64.0, ty, &r.title, &ts, if cur { WHITE } else if warn { M_BAD } else { M_FG }, false, Some(tw));
+            text(&mut page, t, 64.0, ty + h1 + 1.0, if warn { "Naciśnij jeszcze raz, aby potwierdzić" } else { &r.sub }, &st(11.5, 400.0), if cur { WHITE.mul_a(0.78) } else { M_MUTED }, false, Some(tw));
             if cur {
                 let ax = LW - 14.0 - aw;
-                rect(&mut page, ax, y + 16.0, aw, 26.0, 9.0, if warn { Rgba(238.0 / 255.0, 149.0 / 255.0, 163.0 / 255.0, 0.18) } else { Rgba(1.0, 1.0, 1.0, 0.08) });
-                let w1 = text_cy(&mut page, t, ax + 9.0, y + 29.0, act, &as_, if warn { M_BAD } else { M_FG }, None);
-                text_cy(&mut page, t, ax + 9.0 + w1 + 7.0, y + 29.0, "↵", &rs, M_MUTED, None);
+                rect(&mut page, ax, y + 16.0, aw, 26.0, 13.0, Rgba(1.0, 1.0, 1.0, 0.2));
+                let w1 = text_cy(&mut page, t, ax + 9.0, y + 29.0, act, &as_, WHITE, None);
+                text_cy(&mut page, t, ax + 9.0 + w1 + 7.0, y + 29.0, "↵", &rs, WHITE.mul_a(0.75), None);
             }
             let (a, b) = (y.max(0.0), (y + 58.0).min(view));
             if b > a {
@@ -697,6 +841,7 @@ impl Start {
             }
         }
         self.origin = saved;
+        fade(&mut page, sc > 0.5, sc < max_sc - 0.5);
         c.pm.draw_pixmap(0, top as i32, page.pm.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), None);
     }
     fn paint_home(&mut self, c: &mut Canvas, cx: &mut Ctx, top: f32, bottom: f32) {
@@ -705,12 +850,13 @@ impl Start {
             let t = &mut *cx.t;
             caps(c, t, 0.0, top + 2.0, if all { "Wszystkie aplikacje" } else { "Ulubione" }, M_FAINT);
             let sw = if all { "‹ Ulubione" } else { "Wszystkie ›" };
-            let ss = st(12.0, 600.0);
-            let w = t.width(sw, &ss);
+            let ss = st(11.5, 600.0);
+            let w = t.width(sw, &ss) + 20.0;
             let h = Hit::Switch;
-            let col = if self.hov(&h) { M_ACC } else { M_FG2 };
-            text_cy(c, t, LW - w, top + 10.0, sw, &ss, col, None);
-            self.push_hit((LW - w - 6.0, top, w + 12.0, 20.0), h);
+            let hv = self.hov(&h);
+            rect(c, LW - w, top - 1.0, w, 24.0, 12.0, if hv { FILL2 } else { FILL });
+            text_cy(c, t, LW - w + 10.0, top + 11.0, sw, &ss, if hv { M_FG } else { M_FG2 }, None);
+            self.push_hit((LW - w, top - 1.0, w, 24.0), h);
         }
         if !all {
             // the favourites grid: 6 x 2 cells of 99 x 100
@@ -719,24 +865,48 @@ impl Start {
             for (i, &ai) in apps.iter().enumerate() {
                 let (x, y) = (-4.0 + (i % 6) as f32 * 99.0, gy + (i / 6) as f32 * 104.0);
                 let h = Hit::Cell(i);
-                let (hov, foc) = (self.hov(&h), i as i32 == self.gsel);
+                let dragging = self.drag.as_ref().filter(|d| d.live).map(|d| d.from);
+                let (hov, foc) = (self.hov(&h) && dragging.is_none(), i as i32 == self.gsel);
+                if dragging.is_some() && self.drop_at == Some(i) && dragging != Some(i) {
+                    Self::lens(c, x, y, 99.0, 100.0, 20.0, 0.06);
+                    border(c, x, y, 99.0, 100.0, 20.0, 1.5, M_ACC.mul_a(0.8));
+                }
+                if dragging == Some(i) {
+                    // the dragged one's slot: an outline, its icon follows the pointer
+                    border(c, x + 4.0, y + 4.0, 91.0, 92.0, 18.0, 1.0, Rgba(1.0, 1.0, 1.0, 0.14));
+                    self.push_hit((x, y, 99.0, 100.0), h);
+                    continue;
+                }
                 if hov || foc {
-                    rect(c, x, y, 99.0, 100.0, 18.0, Rgba(1.0, 1.0, 1.0, 0.06));
+                    Self::lens(c, x, y, 99.0, 100.0, 20.0, 0.075);
                 }
                 if foc {
-                    border(c, x, y, 99.0, 100.0, 18.0, 1.0, M_ACC.mul_a(0.35));
+                    border(c, x, y, 99.0, 100.0, 20.0, 1.5, M_ACC.mul_a(0.8));
                 }
                 let e = &cx.apps.entries[ai];
                 let (icon, name) = (e.icon.clone(), e.name.clone());
-                let s = if hov { 52.0 } else { 48.0 };
-                Self::app_icon(c, cx, &icon, x + (99.0 - s) / 2.0, y + 12.0 - (s - 48.0) / 2.0, s);
+                let s = 50.0;
+                Self::app_icon(c, cx, &icon, x + (99.0 - s) / 2.0, y + 12.0, s);
                 let t = &mut *cx.t;
-                let ns = st(11.0, 500.0);
+                let ns = st(11.5, 500.0);
                 for (k, l) in crate::gfx::wrap(t, &name, &ns, 87.0, 2).iter().enumerate() {
                     let w = t.width(l, &ns);
-                    text(c, t, x + (99.0 - w) / 2.0, y + 66.0 + k as f32 * 13.5, l, &ns, if hov { M_FG } else { M_FG2 }, false, None);
+                    text(c, t, x + (99.0 - w) / 2.0, y + 68.0 + k as f32 * 14.0, l, &ns, if hov { M_FG } else { M_FG2 }, false, None);
                 }
                 self.push_hit((x, y, 99.0, 100.0), h);
+            }
+            if apps.is_empty() {
+                let t = &mut *cx.t;
+                c.icon(t, LW / 2.0, gy + 34.0, "pinned", 22.0, M_FAINT);
+                let s = "Prawy przycisk na aplikacji w „Wszystkie” przypina ją tutaj";
+                let w = t.width(s, &st(12.0, 450.0));
+                text(c, t, (LW - w) / 2.0, gy + 54.0, s, &st(12.0, 450.0), M_MUTED, false, None);
+            }
+            if let Some(&ai) = self.drag.as_ref().filter(|d| d.live).and_then(|d| apps.get(d.from)) {
+                let icon = cx.apps.entries[ai].icon.clone();
+                let (px, py) = (self.ptr.0 - self.origin.0, self.ptr.1 - self.origin.1);
+                crate::glass::shadow(c, px - 28.0, py - 22.0, 56.0, 56.0, 14.0, 18.0, -2.0, Rgba(0.0, 0.0, 0.0, 0.45));
+                Self::app_icon(c, cx, &icon, px - 28.0, py - 28.0, 56.0);
             }
             // recent files
             let sug = self.sug();
@@ -753,10 +923,7 @@ impl Start {
                     }
                     let h = Hit::File(i);
                     let hov = inside(self.ptr, (self.origin.0 + x, self.origin.1 + ry, cw, 58.0));
-                    rect(c, x, ry, cw, 58.0, 16.0, Rgba(1.0, 1.0, 1.0, if hov { 0.07 } else { 0.025 }));
-                    if hov {
-                        border(c, x, ry, cw, 58.0, 16.0, 1.0, HAIR);
-                    }
+                    Self::lens(c, x, ry, cw, 58.0, 16.0, if hov { 0.085 } else { 0.045 });
                     let fi = file_icon(p);
                     let img = fi == "photo" && !p.to_lowercase().ends_with(".svg");
                     let thumb = if img { cx.imgs.get(p, 96, cx.icons) } else { None };
@@ -780,7 +947,7 @@ impl Start {
                     if hov {
                         let (bx, by) = (x + cw - 10.0 - 30.0, ry + 14.0);
                         let rh = Hit::Reveal(i);
-                        rect(c, bx, by, 30.0, 30.0, 10.0, if self.hov(&rh) { FILL2 } else { FILL });
+                        rect(c, bx, by, 30.0, 30.0, 15.0, if self.hov(&rh) { M_ACC } else { FILL2 });
                         c.icon(t, bx + 15.0, by + 15.0, "folderOpen", 14.0, M_FG);
                         self.push_hit((x, ry, cw, 58.0), h);
                         self.push_hit((bx, by, 30.0, 30.0), rh);
@@ -821,8 +988,10 @@ impl Start {
                 let h = Hit::AZ(k);
                 let (hov, foc) = (self.hov(&h), k as i32 == self.gsel);
                 if hov || foc {
-                    rect(&mut page, x + 2.0, y + 2.0, cw - 4.0, 48.0, 14.0, Rgba(1.0, 1.0, 1.0, 0.07));
-                    border(&mut page, x + 2.0, y + 2.0, cw - 4.0, 48.0, 14.0, 1.0, if foc { M_ACC.mul_a(0.35) } else { HAIR });
+                    Self::lens(&mut page, x + 2.0, y + 2.0, cw - 4.0, 48.0, 14.0, 0.075);
+                    if foc {
+                        border(&mut page, x + 2.0, y + 2.0, cw - 4.0, 48.0, 14.0, 1.5, M_ACC.mul_a(0.8));
+                    }
                 }
                 let (icon, name, sub) = { let e = &cx.apps.entries[ai]; (e.icon.clone(), e.name.clone(), if !e.generic.is_empty() { e.generic.clone() } else { e.comment.clone() }) };
                 Self::app_icon(&mut page, cx, &icon, x + 12.0, y + 10.0, 32.0);
@@ -839,6 +1008,7 @@ impl Start {
                 }
             }
             self.origin = saved;
+            fade(&mut page, self.az_scroll > 0.5, self.az_scroll < max_sc - 0.5);
             c.pm.draw_pixmap(-4, gy as i32, page.pm.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), None);
         }
     }
@@ -866,24 +1036,20 @@ impl Start {
         c.icon(t, right - tw - 4.0 - 6.5, cy, if w.2 { "umbrella" } else { &w.0 }, 13.0, if w.2 { M_BLUE } else { M_FG2 });
         tw + 4.0 + 13.0
     }
-    fn card(c: &mut Canvas, y: f32, w: f32, h: f32, fill: f32) {
-        rect(c, 0.0, y, w, h, 22.0, Rgba(1.0, 1.0, 1.0, fill));
-        if let Some(p) = crate::gfx::rrect_path(1.0, y + 1.0, w - 2.0, h - 2.0, 21.0) {
-            fill_lin(c, &p, (0.0, y), (0.0, y + h * 0.4), &[(0.0, Rgba(1.0, 1.0, 1.0, fill * 0.85)), (1.0, CLEAR)]);
-        }
-        border(c, 0.0, y, w, h, 22.0, 1.0, HAIR);
+    fn card(c: &mut Canvas, y: f32, w: f32, h: f32, _fill: f32) {
+        Self::lens(c, 0.0, y, w, h, 22.0, 0.06);
     }
     // the agenda card; returns its height
-    fn paint_cal(&mut self, c: &mut Canvas, cx: &mut Ctx, w: f32, playing: bool) -> f32 {
+    fn paint_cal(&mut self, c: &mut Canvas, cx: &mut Ctx, w: f32, avail: f32) -> f32 {
         let cal = cx.cal;
         let td = today();
         let day_at = |i: usize| day(td.y, td.m, td.d + i as i32);
         let picked: Day = day_at(self.pick);
         let now = crate::data::now();
         let day_events: Vec<Value> = events_on(cal, picked).into_iter().filter(|e| self.pick > 0 || e["end"].as_i64().unwrap_or(0) > now).collect();
-        let soon = crate::data::upcoming(cal, if playing { 2 } else { 3 }, 30);
+        let soon = crate::data::upcoming(cal, 6, 30);
         let iw = w - 36.0;
-        let mut l = Canvas::new(w as u32, 460);
+        let mut l = Canvas::new(w as u32, avail.max(120.0) as u32);
         let t = &mut *cx.t;
         let (ox, oy) = (18.0, 16.0);
         let saved = self.origin;
@@ -914,24 +1080,24 @@ impl Start {
             let on = self.pick == i;
             let x = i as f32 * dw;
             let h = Hit::Day(i);
-            if on || self.hov(&h) {
-                rect(&mut l, ox + x + 2.0, oy + y + 2.0, dw - 4.0, 50.0, 13.0, if on { M_ACC_SOFT } else { FILL });
+            if (on && i > 0) || (!on && self.hov(&h)) {
+                rect(&mut l, ox + x + 2.0, oy + y + 2.0, dw - 4.0, 50.0, 14.0, if on { FILL2 } else { FILL });
             }
-            if on {
-                border(&mut l, ox + x + 2.0, oy + y + 2.0, dw - 4.0, 50.0, 13.0, 1.0, M_ACC.mul_a(0.3));
+            if i == 0 {
+                circle(&mut l, ox + x + dw / 2.0, oy + y + 27.5, 12.5, M_ACC);
             }
             let ds = st(9.0, 700.0).spaced(0.5);
             let dn = DAYS[d.wd as usize].to_uppercase();
             let ww = t.width(&dn, &ds);
-            text(&mut l, t, ox + x + (dw - ww) / 2.0, oy + y + 7.0, &dn, &ds, if on { M_ACC } else { M_FAINT }, false, None);
-            let ns = st(15.0, if i == 0 || on { 700.0 } else { 500.0 });
+            text(&mut l, t, ox + x + (dw - ww) / 2.0, oy + y + 6.0, &dn, &ds, if on { M_FG2 } else { M_FAINT }, false, None);
+            let ns = st(14.0, if i == 0 || on { 650.0 } else { 500.0 });
             let n = d.d.to_string();
             let nw = t.width(&n, &ns);
-            text(&mut l, t, ox + x + (dw - nw) / 2.0, oy + y + 18.0, &n, &ns, if on { M_FG } else if i == 0 { M_ACC } else if d.wd == 0 { M_BAD } else { M_FG2 }, false, None);
+            text_cy(&mut l, t, ox + x + (dw - nw) / 2.0, oy + y + 27.5, &n, &ns, if i == 0 { WHITE } else if d.wd == 0 { M_BAD } else if on { M_FG } else { M_FG2 }, None);
             let k = evs.len().min(3);
             let dx = ox + x + dw / 2.0 - (k as f32 * 4.0 + (k.max(1) - 1) as f32 * 3.0) / 2.0;
             for (j, e) in evs.iter().take(3).enumerate() {
-                circle(&mut l, dx + j as f32 * 7.0 + 2.0, oy + y + 42.0, 2.0, feed_color(e));
+                circle(&mut l, dx + j as f32 * 7.0 + 2.0, oy + y + 46.0, 2.0, feed_color(e));
             }
             self.push_hit((x, y, dw, 54.0), h);
         }
@@ -960,15 +1126,16 @@ impl Start {
             }
             y += 24.0 + 12.0;
         }
-        // the picked day's events
-        let n = if playing { 2 } else { 3 };
+        // the picked day's events: as many as the card's height takes
+        let room = avail - 30.0 - y;
+        let n = if (day_events.len() as f32) * 46.0 <= room { day_events.len() } else { ((room - 18.0) / 46.0).floor().max(1.0) as usize };
         for (i, e) in day_events.iter().take(n).enumerate() {
             let (s, en) = (e["start"].as_i64().unwrap_or(0), e["end"].as_i64().unwrap_or(0));
             let live = s <= now && en > now;
             let first = self.pick == 0 && i == 0;
             let all_day = e["allDay"].as_bool().unwrap_or(false);
             if live || first {
-                rect(&mut l, ox, oy + y, iw, 42.0, 12.0, if live { M_ACC.mul_a(0.10) } else { Rgba(1.0, 1.0, 1.0, 0.04) });
+                rect(&mut l, ox, oy + y, iw, 42.0, 12.0, if live { M_ACC.mul_a(0.16) } else { FILL });
             }
             let other = if all_day { None } else { events_on(cal, picked).into_iter().find(|o| o != e && !o["allDay"].as_bool().unwrap_or(false) && o["start"].as_i64().unwrap_or(0) < en && o["end"].as_i64().unwrap_or(0) > s) };
             rect(&mut l, ox + 8.0, oy + y + 8.0, 3.0, 26.0, 1.5, if other.is_some() { M_WARN } else if live { M_ACC } else { feed_color(e) });
@@ -1004,10 +1171,20 @@ impl Start {
             y += 46.0;
         }
         if day_events.is_empty() {
-            let s = if soon.is_empty() { "Nic w kalendarzu na najbliższy miesiąc" } else { "Najbliższe" };
-            text(&mut l, t, ox + 8.0, oy + y + 2.0, &s.to_uppercase(), &st(11.0, 650.0).spaced(1.3), M_FAINT, false, Some(iw - 16.0));
-            y += 20.0 + 4.0;
-            for e in &soon {
+            if soon.is_empty() {
+                // the empty state in the middle of the card's free space
+                let my = y + ((avail - 32.0 - y - 56.0) / 2.0).max(0.0);
+                l.icon(t, ox + iw / 2.0, oy + my + 14.0, "calendar", 24.0, M_FAINT);
+                let s = "Nic w kalendarzu na najbliższy miesiąc";
+                let sw = t.width(s, &st(12.0, 450.0)).min(iw);
+                text(&mut l, t, ox + (iw - sw) / 2.0, oy + my + 36.0, s, &st(12.0, 450.0), M_MUTED, false, Some(iw));
+                y = my + 60.0;
+            } else {
+                text(&mut l, t, ox + 8.0, oy + y + 2.0, "NAJBLIŻSZE", &st(11.0, 600.0).spaced(1.2), M_FAINT, false, Some(iw - 16.0));
+                y += 20.0 + 4.0;
+            }
+            let fit = ((avail - 30.0 - y) / 44.0).floor().max(1.0) as usize;
+            for e in soon.iter().take(fit) {
                 let s = e["start"].as_i64().unwrap_or(0);
                 let d = crate::data::local(s);
                 let off = ((day(d.tm_year + 1900, d.tm_mon, d.tm_mday).ts - td.ts) as f64 / 86400.0).round() as i64;
@@ -1031,10 +1208,34 @@ impl Start {
             y += 18.0;
         }
         self.origin = saved;
-        let h = y - 4.0 + 32.0;
+        let h = (y - 4.0 + 32.0).max(avail);
         Self::card(c, 0.0, w, h, 0.03);
         c.pm.draw_pixmap(0, 0, l.pm.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), None);
         h
+    }
+    // the phone card's height (paint_phone's layout)
+    fn phone_h(&self, max_notes: usize) -> f32 {
+        let (main, notes) = {
+            let s = self.ph.st.lock().unwrap();
+            (s.main(), s.notes())
+        };
+        let paired = main["pair"].as_i64() == Some(3);
+        let online = paired && main["reach"].as_bool().unwrap_or(false);
+        let shown = notes.iter().filter(|n| !promo(n)).take(max_notes).count();
+        let mut h = 14.0 + 30.0;
+        if main.is_object() && !paired {
+            h += 10.0 + 30.0;
+        }
+        if online {
+            h += 10.0 + 36.0;
+            if self.phone_more {
+                h += 10.0 + 36.0;
+            }
+        }
+        if shown > 0 {
+            h += 10.0 + shown as f32 * 50.0 - 4.0;
+        }
+        h + 14.0
     }
     // the phone card at y; returns its height
     fn paint_phone(&mut self, c: &mut Canvas, cx: &mut Ctx, y0: f32, w: f32, max_notes: usize) -> f32 {
@@ -1051,10 +1252,6 @@ impl Start {
         let sig = if online { main["sig"].as_i64().unwrap_or(-1) } else { -1 };
         let plugins: Vec<String> = main["plugins"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
         let has = |p: &str| online && plugins.iter().any(|x| x == p);
-        let promo = |n: &Value| {
-            let s = format!("{} {} {}", n["app"].as_str().unwrap_or(""), n["title"].as_str().unwrap_or(""), n["text"].as_str().unwrap_or("")).to_lowercase();
-            ["promocj", "okazj", "rabat", "zniżk", "wyprzeda", "kupon", "oferta", "newsletter", "black friday", " sale ", "% taniej"].iter().any(|k| s.contains(k))
-        };
         let shown: Vec<Value> = notes.iter().filter(|n| !promo(n)).take(max_notes).cloned().collect();
         let bcol = if chg { GREEN } else if (0..=15).contains(&bat) { DANGER } else if (0..=30).contains(&bat) { YELLOW } else { T1 };
         let (x0, iw) = (14.0, w - 28.0);
@@ -1164,9 +1361,9 @@ impl Start {
                 let ls = st(12.0, 600.0);
                 let bw = t.width(label, &ls) + 24.0;
                 let hov = me.hov(&h);
-                rect(c, bx, y, bw, 30.0, 10.0, if primary { if hov { M_ACC_STRONG } else { M_ACC } } else if hov { FILL2 } else { FILL });
+                rect(c, bx, y, bw, 30.0, 15.0, if primary { if hov { M_ACC_STRONG } else { M_ACC } } else if hov { FILL2 } else { FILL });
                 let lw = t.width(label, &ls);
-                text_cy(c, t, bx + (bw - lw) / 2.0, y + 15.0, label, &ls, if primary { INK } else { M_FG }, None);
+                text_cy(c, t, bx + (bw - lw) / 2.0, y + 15.0, label, &ls, if primary { WHITE } else { M_FG }, None);
                 me.push_hit((bx, y, bw, 30.0), h);
                 bx += bw + 8.0;
             };
@@ -1211,9 +1408,8 @@ impl Start {
                 for (k, (icon, _, h, active)) in items.into_iter().enumerate() {
                     let bx = x0 + k as f32 * (bw + 6.0);
                     let hov = self.hov(&h);
-                    rect(c, bx, y, bw, 36.0, 12.0, if hov || active { M_ACC_SOFT } else { Rgba(1.0, 1.0, 1.0, 0.05) });
-                    border(c, bx, y, bw, 36.0, 12.0, 1.0, if hov { M_ACC.mul_a(0.3) } else { Rgba(1.0, 1.0, 1.0, 0.05) });
-                    c.icon(t, bx + bw / 2.0, y + 18.0, icon, 16.0, if hov || active { M_ACC } else { M_FG });
+                    rect(c, bx, y, bw, 36.0, 18.0, if active { M_ACC } else if hov { FILL2 } else { FILL });
+                    c.icon(t, bx + bw / 2.0, y + 18.0, icon, 16.0, if active { WHITE } else { M_FG });
                     self.push_hit((bx, y, bw, 36.0), h);
                 }
                 y += 36.0;
@@ -1224,8 +1420,8 @@ impl Start {
             for n in &shown {
                 let id = n["id"].as_str().unwrap_or("").to_string();
                 let hov = inside(self.ptr, (self.origin.0 + x0, self.origin.1 + y, iw, 46.0));
-                rect(c, x0, y, iw, 46.0, 13.0, Rgba(1.0, 1.0, 1.0, if hov { 0.08 } else { 0.035 }));
-                rect(c, x0 + 9.0, y + 9.0, 28.0, 28.0, 9.0, M_ACC_SOFT);
+                rect(c, x0, y, iw, 46.0, 14.0, if hov { FILL2 } else { FILL });
+                rect(c, x0 + 9.0, y + 9.0, 28.0, 28.0, 9.0, FILL2);
                 let icon = n["icon"].as_str().unwrap_or("").to_string();
                 let app = n["app"].as_str().unwrap_or("").to_string();
                 let pm = (!icon.is_empty()).then(|| cx.imgs.get(&icon, 56, cx.icons)).flatten();
@@ -1235,7 +1431,7 @@ impl Start {
                     None => {
                         let l = app.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or("?".into());
                         let lw = t.width(&l, &st(12.0, 700.0));
-                        text_cy(c, t, x0 + 23.0 - lw / 2.0, y + 23.0, &l, &st(12.0, 700.0), M_ACC, None);
+                        text_cy(c, t, x0 + 23.0 - lw / 2.0, y + 23.0, &l, &st(12.0, 700.0), M_FG, None);
                     }
                 }
                 let cw = iw - 46.0 - if hov { 34.0 } else { 10.0 };
@@ -1270,22 +1466,25 @@ impl Start {
         let amb = self.amb;
         let hov = inside(self.ptr, (self.origin.0, self.origin.1 + y, w, 146.0));
         crate::glass::shadow(c, 0.0, y + 10.0, w, 146.0, 24.0, 34.0, -10.0, amb.mul_a(if p.playing { 0.22 } else { 0.08 }));
-        rect(c, 0.0, y, w, 146.0, 24.0, Rgba(8.0 / 255.0, 12.0 / 255.0, 20.0 / 255.0, 0.6));
+        rect(c, 0.0, y, w, 146.0, 22.0, Rgba(8.0 / 255.0, 10.0 / 255.0, 16.0 / 255.0, 0.5));
         // the cover as a dim, soft backdrop (scaled up, low opacity: no blur pass)
         if let Some(pm) = &art {
             let mut l = Canvas::new(w as u32, 146);
             crate::img::draw(&mut l, pm, -w * 0.2, (146.0 - w * 1.4) / 2.0, w * 1.4, w * 1.4, 0.0, true, 0.22);
-            if let Some(path) = crate::gfx::rrect_path(0.0, y, w, 146.0, 24.0) {
+            if let Some(path) = crate::gfx::rrect_path(0.0, y, w, 146.0, 22.0) {
                 let mut mask = tiny_skia::Mask::new(c.pm.width(), c.pm.height()).unwrap();
                 mask.fill_path(&path, tiny_skia::FillRule::Winding, true, tiny_skia::Transform::identity());
                 c.pm.draw_pixmap(0, y as i32, l.pm.as_ref(), &tiny_skia::PixmapPaint { quality: tiny_skia::FilterQuality::Bilinear, ..Default::default() }, tiny_skia::Transform::identity(), Some(&mask));
             }
         }
-        if let Some(path) = crate::gfx::rrect_path(0.0, y, w, 146.0, 24.0) {
+        if let Some(path) = crate::gfx::rrect_path(0.0, y, w, 146.0, 22.0) {
             fill_lin(c, &path, (0.0, y), (0.0, y + 146.0), &[(0.0, Rgba(6.0 / 255.0, 9.0 / 255.0, 16.0 / 255.0, 0.12)), (1.0, Rgba(6.0 / 255.0, 9.0 / 255.0, 16.0 / 255.0, 0.62))]);
             fill_lin(c, &path, (0.0, y), (w, y), &[(0.0, amb.mul_a(0.16)), (0.6, amb.mul_a(0.0))]);
         }
-        border(c, 0.0, y, w, 146.0, 24.0, 1.0, amb.mul_a(if hov { 0.42 } else { 0.26 }));
+        crate::glass::Glass { radius: 22.0, rim_only: true, shine: 0.6, ..Default::default() }.paint(c, 0.0, y, w, 146.0);
+        if hov {
+            border(c, 0.0, y, w, 146.0, 22.0, 1.0, amb.mul_a(0.3));
+        }
         // art
         let ah = Hit::Art;
         let s = if self.hov(&ah) { 62.0 } else { 60.0 };
@@ -1321,7 +1520,7 @@ impl Start {
         let th = if sh { 6.0 } else { 4.0 };
         rect(c, bx, by + 7.0 - th / 2.0, bw, th, th / 2.0, Rgba(1.0, 1.0, 1.0, 0.14));
         if let Some(path) = crate::gfx::rrect_path(bx, by + 7.0 - th / 2.0, (bw * f).max(th), th, th / 2.0) {
-            fill_lin(c, &path, (bx, by), (bx + (bw * f).max(th), by), &[(0.0, amb.mul_a(0.55)), (1.0, amb)]);
+            fill_lin(c, &path, (bx, by), (bx + (bw * f).max(th), by), &[(0.0, WHITE.mul_a(0.7)), (1.0, WHITE.mul_a(0.95))]);
         }
         if can_len && sh {
             circle(c, bx + bw * f, by + 7.0, 6.0, Rgba(1.0, 1.0, 1.0, 1.0));
@@ -1352,21 +1551,50 @@ impl Start {
         let ph = Hit::Play;
         let phv = self.hov(&ph);
         let r = if phv { 22.7 } else { 21.0 };
-        crate::glass::shadow(c, cxm - 21.0, cy - 21.0 + 3.0, 42.0, 42.0, 21.0, 16.0, 0.0, amb.mul_a(if phv { 0.7 } else { 0.45 }));
-        circle(c, cxm, cy, r, amb);
+        crate::glass::shadow(c, cxm - 21.0, cy - 21.0 + 3.0, 42.0, 42.0, 21.0, 16.0, 0.0, amb.mul_a(if phv { 0.55 } else { 0.35 }));
+        circle(c, cxm, cy, r, WHITE.mul_a(0.96));
         c.icon(t, cxm, cy, if p.playing { "pause" } else { "play" }, 17.0, INK);
         self.push_hit((cxm - 21.0, cy - 21.0, 42.0, 42.0), ph);
     }
     fn paint_right(&mut self, c: &mut Canvas, cx: &mut Ctx, w: f32, h: f32) {
         let player = cx.players.iter().find(|p| p.playing).or_else(|| cx.players.iter().find(|p| !p.title.is_empty())).cloned();
         self.playing = player.as_ref().map(|p| p.playing).unwrap_or(false);
-        let gap = if player.is_some() { 10.0 } else { 12.0 };
-        let ch = self.paint_cal(c, cx, w, player.is_some());
-        let _ph = self.paint_phone(c, cx, ch + gap, w, if player.is_some() { 1 } else { 2 });
+        // the agenda takes what the phone card and now playing leave: no hole in the column
+        let gap = 12.0;
+        let notes = if player.is_some() { 1 } else { 2 };
+        let np = if player.is_some() { 146.0 + gap } else { 0.0 };
+        let ph = self.phone_h(notes);
+        let ch = self.paint_cal(c, cx, w, h - np - ph - gap);
+        self.paint_phone(c, cx, ch + gap, w, notes);
         if let Some(p) = player {
             self.paint_np(c, cx, h - 146.0, w, &p);
         }
     }
+}
+
+// a scrolled list's edges fade out (premultiplied: every channel scaled) where more is hidden
+fn fade(c: &mut Canvas, top: bool, bottom: bool) {
+    let (w, h) = (c.pm.width() as usize, c.pm.height() as usize);
+    let n = 28.min(h / 2);
+    let data = c.pm.data_mut();
+    for r in 0..n {
+        let k = (r as f32 + 0.5) / n as f32;
+        let k = k * k * (3.0 - 2.0 * k);
+        for (on, row) in [(top, r), (bottom, h - 1 - r)] {
+            if !on {
+                continue;
+            }
+            for px in data[row * w * 4..(row + 1) * w * 4].iter_mut() {
+                *px = (*px as f32 * k) as u8;
+            }
+        }
+    }
+}
+
+// a phone notification that only advertises (kept off the card)
+fn promo(n: &Value) -> bool {
+    let s = format!("{} {} {}", n["app"].as_str().unwrap_or(""), n["title"].as_str().unwrap_or(""), n["text"].as_str().unwrap_or("")).to_lowercase();
+    ["promocj", "okazj", "rabat", "zniżk", "wyprzeda", "kupon", "oferta", "newsletter", "black friday", " sale ", "% taniej"].iter().any(|k| s.contains(k))
 }
 
 // all of a day's events (the strip / bar: not filtered by "still ahead")
@@ -1424,6 +1652,10 @@ impl Pane for Start {
         }
         // the phone card's feedback follows the 250 ms tick, the scrubber once a second
         self.ticks += 1;
+        if self.note.1.is_some_and(|a| a.elapsed().as_millis() > 2700) {
+            self.note.1 = None;
+            ch = true;
+        }
         if self.phone_said.1.is_some_and(|a| a.elapsed().as_millis() > 2600) {
             self.phone_said.1 = None;
             ch = true;
@@ -1442,19 +1674,18 @@ impl Pane for Start {
         self.hits.push(((sx, sy, W, H), Hit::Sheet));
         // the sheet into a layer (scale .965 -> 1 and fade in while opening); its glass, glows and lines are drawn once
         let bg = self.bg.get_or_insert_with(|| {
+            // the panes' graphite glass (Control Centre, notifications, session), the footer's hairline
             let mut l = Canvas::new(W as u32, H as u32);
-            crate::glass::Glass { radius: 32.0, tint: 0.38, shine: 1.25, shadow_opacity: 0.2, rims: false, shadow: false, ..Default::default() }.paint(&mut l, 0.0, 0.0, W, H);
-            if let Some(p) = crate::glass::sq_path(0.0, 0.0, W, H, 32.0) {
-                crate::desktop::fill_rad(&mut l, &p, 120.0, 40.0, 560.0, &[(0.0, M_ACC.mul_a(0.10)), (1.0, CLEAR)]);
-                crate::desktop::fill_rad(&mut l, &p, 920.0, 120.0, 460.0, &[(0.0, M_BLUE.mul_a(0.08)), (1.0, CLEAR)]);
+            glass(&mut l, 0.0, 0.0, W, H, 30.0, 0.82);
+            glass_rim(&mut l, 0.0, 0.0, W, H, 30.0);
+            rect(&mut l, 0.0, H - 64.0, W, 1.0, 0.0, Rgba(1.0, 1.0, 1.0, 0.07));
+            if let Some(p) = crate::glass::sq_path(0.0, 0.0, W, H, 30.0) {
+                let mut mask = tiny_skia::Mask::new(W as u32, H as u32).unwrap();
+                mask.fill_path(&p, tiny_skia::FillRule::Winding, true, tiny_skia::Transform::identity());
+                let mut foot = Canvas::new(W as u32, H as u32);
+                rect(&mut foot, 0.0, H - 63.0, W, 63.0, 0.0, Rgba(0.0, 0.0, 0.0, 0.12));
+                l.pm.draw_pixmap(0, 0, foot.pm.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), Some(&mask));
             }
-            crate::glass::Glass { radius: 32.0, rim_only: true, shine: 1.25, ..Default::default() }.paint(&mut l, 0.0, 0.0, W, H);
-            // the search field's halo, the divider, the footer line
-            border(&mut l, 32.0, 28.0, LW + 8.0, 60.0, 24.0, 4.0, M_ACC.mul_a(0.12));
-            if let Some(p) = crate::gfx::rrect_path(652.0, 32.0, 1.0, H - 104.0, 0.0) {
-                fill_lin(&mut l, &p, (0.0, 32.0), (0.0, H - 72.0), &[(0.0, CLEAR), (0.5, Rgba(1.0, 1.0, 1.0, 0.07)), (1.0, CLEAR)]);
-            }
-            rect(&mut l, 28.0, H - 64.0, W - 56.0, 1.0, 0.0, HAIR);
             l.pm
         });
         let mut l = Canvas { pm: bg.clone() };
@@ -1466,7 +1697,7 @@ impl Pane for Start {
         self.paint_left(&mut left, cx);
         l.pm.draw_pixmap(36, 32, left.pm.as_ref(), &pp, id, None);
         // right (the now playing card's glow may hang below the column)
-        let (rx, ry, rw, rh) = (676.0, 28.0, W - 676.0 - 28.0, H - 28.0 - 68.0);
+        let (rx, ry, rw, rh) = (676.0, 32.0, W - 676.0 - 32.0, H - 32.0 - 64.0 - 20.0);
         self.origin = (sx + rx, sy + ry);
         let mut right = Canvas::new(rw as u32, rh as u32 + 24);
         self.paint_right(&mut right, cx, rw, rh);
@@ -1475,29 +1706,61 @@ impl Pane for Start {
         self.origin = (sx, sy);
         let t = &mut *cx.t;
         let fy = H - 52.0 + 16.0;
-        if self.armed.is_empty() && self.power_tip.is_empty() {
-            let mut x = 36.0;
-            for (k, label) in [("=", "licz"), (">", "terminal"), ("?", "sieć")] {
-                rect(&mut l, x, fy - 10.0, 20.0, 20.0, 6.0, Rgba(1.0, 1.0, 1.0, 0.06));
-                border(&mut l, x, fy - 10.0, 20.0, 20.0, 6.0, 1.0, Rgba(1.0, 1.0, 1.0, 0.08));
-                let kw = t.width(k, &st(12.0, 650.0));
-                text_cy(&mut l, t, x + (20.0 - kw) / 2.0, fy, k, &st(12.0, 650.0), M_FG2, None);
-                x += 26.0 + text_cy(&mut l, t, x + 26.0, fy, label, &st(11.0, 550.0), M_MUTED, None) + 16.0;
-            }
+        // the user (avatar with initials, like the session pane), or the power tip / the second-click warning
+        let (ax, ar) = (36.0 + 16.0, 16.0);
+        let mut pb = tiny_skia::PathBuilder::new();
+        pb.push_circle(ax, fy, ar);
+        if let Some(p) = pb.finish() {
+            fill_lin(&mut l, &p, (0.0, fy - ar), (0.0, fy + ar), &[(0.0, Rgba::hex("#a9b1be")), (1.0, Rgba::hex("#6c7482"))]);
+        }
+        let name = full_name();
+        let ini: String = name.split(' ').filter(|s| !s.is_empty()).take(2).filter_map(|s| s.chars().next()).collect();
+        let iw = t.width(&ini, &st(12.0, 650.0));
+        text_cy(&mut l, t, ax - iw / 2.0, fy, &ini, &st(12.0, 650.0), WHITE, None);
+        let note = self.note.1.filter(|a| a.elapsed().as_millis() < 2600).map(|_| self.note.0.clone());
+        if let Some(n) = note {
+            text_cy(&mut l, t, ax + ar + 12.0, fy, &n, &st(13.0, 600.0), M_WARN, None);
+        } else if self.armed.is_empty() && self.power_tip.is_empty() {
+            text_cy(&mut l, t, ax + ar + 12.0, fy, &name, &st(13.0, 600.0), M_FG, Some(320.0));
         } else {
             let (s, col) = if !self.armed.is_empty() { (format!("Kliknij jeszcze raz: {}", self.armed.to_lowercase()), M_BAD) } else { (self.power_tip.clone(), M_FG2) };
-            text_cy(&mut l, t, 36.0, fy, &s, &st(12.0, 650.0), col, None);
+            text_cy(&mut l, t, ax + ar + 12.0, fy, &s, &st(13.0, 600.0), col, None);
         }
-        let powers = [("lock", "Zablokuj", ""), ("logout", "Wyloguj", "Wyloguj"), ("reload", "Uruchom ponownie", "Uruchom ponownie"), ("power", "Wyłącz", "Wyłącz")];
-        let mut px = W - 36.0 - 4.0 * 34.0 - 3.0 * 4.0;
+        let powers = [("lock", "Zablokuj", ""), ("zzz", "Uśpij", ""), ("logout", "Wyloguj", "Wyloguj"), ("reload", "Uruchom ponownie", "Uruchom ponownie"), ("power", "Wyłącz", "Wyłącz")];
+        let mut px = W - 28.0 - 5.0 * 34.0 - 4.0 * 8.0;
         for (i, (icon, _, arm)) in powers.iter().enumerate() {
             let h = Hit::Power(i);
             let hov = self.hov(&h);
             let armed = !arm.is_empty() && self.armed == *arm;
-            rect(&mut l, px, fy - 17.0, 34.0, 34.0, 17.0, if armed { Rgba(238.0 / 255.0, 149.0 / 255.0, 163.0 / 255.0, 0.2) } else if hov { Rgba(1.0, 1.0, 1.0, 0.09) } else { CLEAR });
-            l.icon(t, px + 17.0, fy, icon, 15.0, if armed || (*icon == "power" && hov) { M_BAD } else if hov { M_FG } else { M_FG2 });
+            let red = armed || (*icon == "power" && hov);
+            rect(&mut l, px, fy - 17.0, 34.0, 34.0, 17.0, if red { DANGER.mul_a(0.22) } else if hov { FILL2.mul_a(1.6) } else { FILL });
+            l.icon(t, px + 17.0, fy, icon, 15.0, if red { M_BAD } else { M_FG });
             self.push_hit((px, fy - 17.0, 34.0, 34.0), h);
-            px += 38.0;
+            px += 42.0;
+        }
+        // the right-click menu (a small glass sheet, the dock's app menu style)
+        if let Some(m) = &self.menu {
+            let items = self.menu_items(m.app, cx.apps);
+            let (mw, rh) = (220.0, 34.0);
+            let mh = items.len() as f32 * rh + 12.0;
+            let (mx, my) = (m.x.min(W - mw - 12.0), m.y.min(H - mh - 12.0));
+            crate::glass::shadow(&mut l, mx, my + 8.0, mw, mh, 14.0, 24.0, -4.0, Rgba(0.0, 0.0, 0.0, 0.35));
+            // nothing blurs inside the sheet: a solid body so the icons under it do not show through
+            if let Some(p) = crate::glass::sq_path(mx, my, mw, mh, 14.0) {
+                fill_lin(&mut l, &p, (0.0, my), (0.0, my + mh), &[(0.0, Rgba::rgb8(44, 46, 54, 0.98)), (1.0, Rgba::rgb8(34, 36, 43, 0.98))]);
+            }
+            glass_rim(&mut l, mx, my, mw, mh, 14.0);
+            for (k, (icon, label)) in items.iter().enumerate() {
+                let (ix, iy) = (mx + 6.0, my + 6.0 + k as f32 * rh);
+                let h = Hit::Menu(k);
+                let hv = self.hov(&h);
+                if hv {
+                    rect(&mut l, ix, iy, mw - 12.0, rh, 9.0, M_ACC.mul_a(0.92));
+                }
+                l.icon(t, ix + 18.0, iy + rh / 2.0, icon, 15.0, if hv { WHITE } else { M_FG2 });
+                text_cy(&mut l, t, ix + 36.0, iy + rh / 2.0, label, &st(13.0, 500.0), if hv { WHITE } else { M_FG }, Some(mw - 56.0));
+                self.push_hit((ix, iy, mw - 12.0, rh), h);
+            }
         }
         // the layer onto the surface
         if k >= 1.0 {
@@ -1516,7 +1779,7 @@ impl Pane for Start {
             Ptr::Enter | Ptr::Leave => Act::Redraw,
             Ptr::Motion => {
                 // the power tooltip in the footer; hovering a result selects it
-                let tip = match &hit { Some(Hit::Power(i)) => ["Zablokuj", "Wyloguj", "Uruchom ponownie", "Wyłącz"][*i].to_string(), _ => String::new() };
+                let tip = match &hit { Some(Hit::Power(i)) => ["Zablokuj", "Uśpij", "Wyloguj", "Uruchom ponownie", "Wyłącz"][*i].to_string(), _ => String::new() };
                 self.power_tip = tip;
                 self.phone_hint = match &hit {
                     Some(Hit::PhoneAct(c)) => match *c { "ring" => "Znajdź telefon (dzwoni)", "clip" => "Wyślij schowek", "pick" => "Wyślij pliki", "browse" => "Przeglądaj pliki telefonu", "photo" => "Zrób zdjęcie telefonem", "expand" => "Wiadomości SMS", "mirror" => "Ekran telefonu na komputerze", _ => "" }.into(),
@@ -1526,10 +1789,42 @@ impl Pane for Start {
                 if let Some(Hit::Res(i)) = hit {
                     self.sel = i;
                 }
+                if let Some(d) = self.drag.as_mut() {
+                    if !d.live && ((x - d.at.0).powi(2) + (y - d.at.1).powi(2)).sqrt() > 6.0 {
+                        d.live = true;
+                    }
+                    self.drop_at = match hit { Some(Hit::Cell(j)) => Some(j), _ => None };
+                }
                 Act::Redraw
             }
-            Ptr::Press(_) => {
+            Ptr::Press(b) => {
                 self.pressed_outside = hit.is_none();
+                // an open menu: a press elsewhere only closes it
+                if self.menu.is_some() && !matches!(hit, Some(Hit::Menu(_))) {
+                    self.menu = None;
+                    self.eat = true;
+                    return Act::Redraw;
+                }
+                if b == 0x111 {
+                    let app = match &hit {
+                        Some(Hit::Cell(i)) => self.tab_apps(cx.apps).get(*i).copied(),
+                        Some(Hit::AZ(k)) => Self::all_apps(cx.apps).get(*k).copied(),
+                        Some(Hit::Res(i)) => match self.results(cx.apps).get(*i).map(|r| r.kind.clone()) {
+                            Some(Kind::App(a)) => Some(a),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    if let Some(app) = app {
+                        self.menu = Some(Menu { app, x: x - self.sheet.0 + 2.0, y: y - self.sheet.1 + 2.0 });
+                        self.eat = true;
+                        return Act::Redraw;
+                    }
+                    return Act::None;
+                }
+                if let Some(Hit::Cell(i)) = hit {
+                    self.drag = Some(Drag { from: i, at: (x, y), live: false });
+                }
                 Act::None
             }
             Ptr::Wheel(d) => {
@@ -1540,12 +1835,27 @@ impl Pane for Start {
                 }
                 Act::Redraw
             }
-            Ptr::Release(_) => {
+            Ptr::Release(b) => {
+                if std::mem::take(&mut self.eat) {
+                    return Act::None;
+                }
+                if let Some(d) = self.drag.take() {
+                    if d.live {
+                        if let Some(j) = self.drop_at.take() {
+                            self.move_pin(d.from, j, cx.apps);
+                        }
+                        return Act::Redraw;
+                    }
+                }
+                if b == 0x111 {
+                    return Act::None;
+                }
                 let Some(h) = hit else {
                     return if self.pressed_outside { Act::Close } else { Act::None };
                 };
                 match h {
                     Hit::Sheet | Hit::Field | Hit::Note => Act::None,
+                    Hit::Menu(k) => self.menu_pick(k, cx.apps),
                     Hit::Res(i) => {
                         let res = self.results(cx.apps);
                         match res.get(i) {
@@ -1639,18 +1949,13 @@ impl Pane for Start {
                         }
                     }
                     Hit::Power(i) => {
-                        let sid = std::env::var("XDG_SESSION_ID").unwrap_or("self".into());
-                        let (arm, cmd): (&str, Vec<String>) = match i {
-                            0 => ("", vec![crate::paths::self_bin(), "lock".into()]),
-                            1 => ("Wyloguj", vec!["loginctl".into(), "terminate-session".into(), sid]),
-                            2 => ("Uruchom ponownie", vec!["systemctl".into(), "reboot".into()]),
-                            _ => ("Wyłącz", vec!["systemctl".into(), "poweroff".into()]),
-                        };
-                        if arm.is_empty() || self.armed == arm {
-                            Act::Run(cmd)
-                        } else {
-                            self.armed = arm.into();
-                            Act::Redraw
+                        // lock at once; the rest ask in the session pane, as from the bar
+                        match i {
+                            0 => Act::Run(crate::session::cmd("lock")),
+                            1 => Act::Run(crate::session::cmd("suspend")),
+                            2 => Act::Open("session", "logout"),
+                            3 => Act::Open("session", "reboot"),
+                            _ => Act::Open("session", "poweroff"),
                         }
                     }
                 }
@@ -1663,6 +1968,11 @@ impl Pane for Start {
         let gcount = if self.tab == 1 { Self::all_apps(cx.apps).len() } else { self.tab_apps(cx.apps).len() } as i32;
         let gmove = |g: i32, d: i32| if g < 0 { 0 } else { (g + d).clamp(0, (gcount - 1).max(0)) };
         match ev.keysym {
+            Keysym::Escape if self.menu.is_some() || self.drag.is_some() => {
+                self.menu = None;
+                self.drag = None;
+                Act::Redraw
+            }
             Keysym::Escape => {
                 if !empty {
                     self.field.text.clear();
