@@ -17,12 +17,20 @@ use crate::wm::data;
 use crate::MistComp;
 
 pub const BAR: i32 = 30;
-const RADIUS: f32 = 10.0;
+const RADIUS: f32 = crate::rounded::RADIUS as f32;
 const PAD: f32 = 12.0;
 const DIAM: f32 = 13.0;
 const GAP: f32 = 8.0;
-/// own title bars: Zen (macOS dots in its tab bar), Mist Files / Player (hyprbars:no_bar in windowrules.lua)
-const NO_BAR: [&str; 5] = ["zen", "zen-browser", "zen-beta", "mist-files", "mist-player"];
+/// own title bars: Zen (macOS dots in its tab bar), Mist Files / Player (hyprbars:no_bar in windowrules.lua),
+/// and apps that always draw theirs even when given a server-side one (Claude, Spotify: no double bar)
+const NO_BAR: [&str; 7] = ["zen", "zen-browser", "zen-beta", "mist-files", "mist-player", "com.anthropic.claude", "spotify"];
+/// of those, the ones with a square window: mist-comp rounds its corners and gives it the window shadow
+const ROUND: [&str; 2] = ["com.anthropic.claude", "spotify"];
+
+/// A window drawing its own title bar on a square window (lowercased app id / X11 class).
+pub fn rounds(app: &str) -> bool {
+    ROUND.contains(&app)
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Hit {
@@ -177,7 +185,8 @@ fn draw(text: Option<&mut Text>, title: &str, active: bool, w: i32, hover: bool)
     pb.line_to(wf, hf);
     pb.close();
     if let Some(p) = pb.finish() {
-        pm.fill_path(&p, &paint(hex(0x10151f, 1.0)), FillRule::Winding, Tf::identity(), None);
+        let (r, g, b) = crate::tokens::BAR;
+        pm.fill_path(&p, &paint(tiny_skia::Color::from_rgba8(r, g, b, 255)), FillRule::Winding, Tf::identity(), None);
     }
 
     let cy = hf / 2.0;

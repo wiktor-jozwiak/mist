@@ -14,7 +14,7 @@ use std::{
 
 use smithay::{
     backend::renderer::{
-        element::{surface::WaylandSurfaceRenderElement, Element, Id, Kind, RenderElement, UnderlyingStorage},
+        element::{surface::WaylandSurfaceRenderElement, utils::CropRenderElement, Element, Id, Kind, RenderElement, UnderlyingStorage},
         gles::{ffi, GlesError, GlesFrame, GlesRenderer, GlesTexProgram, Uniform, UniformName, UniformType},
         utils::{CommitCounter, DamageSet, OpaqueRegions},
         Frame,
@@ -35,6 +35,15 @@ pub fn rule(namespace: &str) -> Option<f32> {
         "gallery" => Some(0.45),
         _ => None,
     }
+}
+
+/// Windows with glass (Hyprland's decoration:blur): apps whose Mist theme is translucent and that draw
+/// their own corners. Blurred under every pixel with alpha > 0.02 (Firefox leaves a trace of alpha in its
+/// transparent corners) inside the window geometry (not under the
+/// client-side shadow around it).
+pub fn window_rule(app_id: &str) -> bool {
+    thread_local!(static OFF: bool = std::env::var("MIST_COMP_BLUR").is_ok_and(|v| v == "0"));
+    !OFF.with(|o| *o) && matches!(app_id, "zen" | "zen-browser" | "zen-beta" | "mist-files")
 }
 
 const PASSES: usize = 4;
@@ -63,6 +72,7 @@ uniform sampler2D blurred;
 uniform vec2 origin;
 uniform vec2 bsize;
 uniform float ignore;
+uniform float soft;
 void main() {
 #if defined(NO_ALPHA)
     float a = 1.0;
@@ -71,8 +81,11 @@ void main() {
 #endif
     if (a <= ignore)
         discard;
+    // soft > 0: the glass fades in over that much of the surface's alpha, so antialiased edges (a window's
+    // rounded corners) stay smooth instead of getting a hard blurred fringe
+    float cov = soft > 0.0 ? clamp((a - ignore) / soft, 0.0, 1.0) : 1.0;
     vec2 uv = (gl_FragCoord.xy - origin) / bsize;
-    gl_FragColor = vec4(texture2D(blurred, uv).rgb, 1.0) * alpha;
+    gl_FragColor = vec4(texture2D(blurred, uv).rgb, 1.0) * alpha * cov;
 }
 "#;
 
@@ -146,7 +159,8 @@ struct Cache {
     tex: Vec<u32>,
     fbo: Vec<u32>,
     behind: Option<u64>,
-    seen: u64,
+    /// last drawn: a surface gone (closed panel, hidden workspace) frees its textures a second later
+    seen: std::time::Instant,
 }
 
 thread_local! {
@@ -167,6 +181,7 @@ fn mask_program(r: &mut GlesRenderer) -> Option<GlesTexProgram> {
                 UniformName::new("origin", UniformType::_2f),
                 UniformName::new("bsize", UniformType::_2f),
                 UniformName::new("ignore", UniformType::_1f),
+                UniformName::new("soft", UniformType::_1f),
             ];
             match r.compile_custom_texture_shader(MASK, &u) {
                 Ok(prog) => *p = Some(prog),
@@ -264,7 +279,7 @@ impl Cache {
             gl.FramebufferTexture2D(ffi::FRAMEBUFFER, ffi::COLOR_ATTACHMENT0, ffi::TEXTURE_2D, tex[i], 0);
         }
         gl.BindTexture(ffi::TEXTURE_2D, 0);
-        Cache { region, sizes, tex, fbo, behind: None, seen: 0 }
+        Cache { region, sizes, tex, fbo, behind: None, seen: std::time::Instant::now() }
     }
 
     unsafe fn free(&self, gl: &ffi::Gles2) {
@@ -277,12 +292,13 @@ impl Cache {
 /// Leaves the frame's GL state as Smithay set it. Returns the result texture.
 unsafe fn blur(gl: &ffi::Gles2, key: &(String, Id), region: Rectangle<i32, Physical>, behind: u64) -> Option<u32> {
     passes(gl)?;
-    let frame = FRAME.with(|f| f.get());
     CACHE.with(|c| {
         let mut c = c.borrow_mut();
-        // layers gone for a while: free their textures
+        // surfaces gone for a second: free their textures (every panel opening is a new surface, so a frame
+        // count let dozens of full-screen blur chains pile up at a low frame rate)
+        let now = std::time::Instant::now();
         c.retain(|_, e| {
-            let keep = frame.saturating_sub(e.seen) < 600;
+            let keep = now.duration_since(e.seen) < std::time::Duration::from_secs(1);
             if !keep {
                 e.free(gl);
             }
@@ -302,8 +318,16 @@ unsafe fn blur(gl: &ffi::Gles2, key: &(String, Id), region: Rectangle<i32, Physi
             gl.BindFramebuffer(ffi::FRAMEBUFFER, prev_fbo as u32);
         }
         let e = c.get_mut(key).unwrap();
-        e.seen = frame;
-        if e.behind == Some(behind) {
+        e.seen = now;
+        let hit = e.behind == Some(behind);
+        COUNTS.with(|n| n.set((n.get().0 + 1, n.get().1 + !hit as u64)));
+        PER.with(|p| {
+            let mut p = p.borrow_mut();
+            let e = p.entry(format!("{} {:?}", key.0, key.1)).or_default();
+            e.0 += 1;
+            e.1 += !hit as u64;
+        });
+        if hit {
             return Some(e.tex[0]);
         }
         e.behind = Some(behind);
@@ -358,29 +382,62 @@ unsafe fn blur(gl: &ffi::Gles2, key: &(String, Id), region: Rectangle<i32, Physi
 }
 
 pub struct Glass {
-    inner: WaylandSurfaceRenderElement<GlesRenderer>,
+    /// cropped to the window's geometry for a window's own surfaces (see `new`), else the whole surface
+    inner: CropRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>,
     mask: GlesTexProgram,
     key: (String, Id),
+    /// the blur cache's key: the window's main surface for every surface of a window (one blur per window,
+    /// not one per surface of it: Firefox has 2-3 over the same place), else `key`
+    group: Option<(String, Id)>,
     ignore: f32,
     behind: u64,
     commit: CommitCounter,
+    /// output-physical rect the glass stays inside (a window's geometry), None: the whole surface
+    clip: Option<Rectangle<i32, Physical>>,
+    /// the alpha range the glass fades in over (0: on or off at `ignore`)
+    soft: f32,
 }
 
 impl Glass {
     #[allow(clippy::result_large_err)] // the surface element comes back unchanged when it cannot be wrapped
-    pub fn new(r: &mut GlesRenderer, inner: WaylandSurfaceRenderElement<GlesRenderer>, output: &str, ignore: f32) -> Result<Self, WaylandSurfaceRenderElement<GlesRenderer>> {
-        match mask_program(r) {
-            Some(mask) => {
-                let key = (output.to_string(), inner.id().clone());
-                Ok(Glass { inner, mask, key, ignore, behind: 0, commit: CommitCounter::default() })
-            }
-            None => Err(inner),
-        }
+    /// `crop`: draw only this part of the surface (a window's geometry: GTK clients such as Firefox draw their
+    /// own frame and shadow in a margin around it, which mist-comp's rounded shadow replaces). Ok(None): the
+    /// surface lies wholly outside it.
+    pub fn new(r: &mut GlesRenderer, inner: WaylandSurfaceRenderElement<GlesRenderer>, output: &str, ignore: f32, crop: Option<Rectangle<i32, Physical>>, scale: Scale<f64>) -> Result<Option<Self>, WaylandSurfaceRenderElement<GlesRenderer>> {
+        let Some(mask) = mask_program(r) else { return Err(inner) };
+        let key = (output.to_string(), inner.id().clone());
+        let rect = crop.unwrap_or_else(|| inner.geometry(scale));
+        let Some(inner) = CropRenderElement::from_element(inner, scale, rect) else { return Ok(None) };
+        Ok(Some(Glass { inner, mask, key, group: None, ignore, behind: 0, commit: CommitCounter::default(), clip: None, soft: 0.0 }))
+    }
+
+    pub fn soft(mut self, soft: f32) -> Self {
+        self.soft = soft;
+        self
+    }
+
+    pub fn clipped(mut self, clip: Rectangle<i32, Physical>) -> Self {
+        self.clip = Some(clip);
+        self
+    }
+
+    /// One of a window's surfaces (`main`: the window's main surface): they share one blur.
+    pub fn grouped(mut self, main: Id) -> Self {
+        self.group = Some((self.key.0.clone(), main));
+        self
+    }
+
+    pub fn group(&self) -> Option<&Id> {
+        self.group.as_ref().map(|g| &g.1)
     }
 
     /// What is behind it (front-to-back, everything after it in the scene) decides when to re-blur.
     pub fn set_behind<'a, E: Element + 'a>(&mut self, behind: impl Iterator<Item = &'a E>, scale: Scale<f64>) {
-        let geo = self.geometry(scale);
+        // grouped surfaces of one window: the same place for all (the window), so the same hash and one blur
+        let geo = match (&self.group, self.clip) {
+            (Some(_), Some(c)) => c,
+            _ => self.geometry(scale),
+        };
         let mut h = std::collections::hash_map::DefaultHasher::new();
         for e in behind {
             let g = e.geometry(scale);
@@ -409,6 +466,17 @@ impl Glass {
 }
 
 /// One scene build: ages the blur caches (textures of layers not drawn for ~10 s get freed).
+/// IPC `stats`: blur requests and the ones that ran (the rest came from the cache).
+pub fn counts() -> (u64, u64) {
+    COUNTS.with(|c| c.get())
+}
+thread_local!(static COUNTS: Cell<(u64, u64)> = const { Cell::new((0, 0)) });
+thread_local!(static PER: RefCell<HashMap<String, (u64, u64)>> = RefCell::new(HashMap::new()));
+/// IPC `blurs`: requests and runs per cache (output, surface).
+pub fn per_cache() -> String {
+    PER.with(|p| p.borrow().iter().map(|(k, (c, r))| format!("{r}/{c} {k}\n")).collect())
+}
+
 pub fn tick() {
     FRAME.with(|f| f.set(f.get() + 1));
 }
@@ -454,13 +522,25 @@ impl Element for Glass {
 impl RenderElement<GlesRenderer> for Glass {
     fn draw(&self, frame: &mut GlesFrame<'_, '_>, src: Rectangle<f64, BufferCoords>, dst: Rectangle<i32, Physical>, damage: &[Rectangle<i32, Physical>], opaque_regions: &[Rectangle<i32, Physical>]) -> Result<(), GlesError> {
         let flipped = matches!(frame.transformation(), Transform::Flipped180);
-        let (key, behind) = (&self.key, self.behind);
+        let (key, behind) = (self.group.as_ref().unwrap_or(&self.key), self.behind);
+        // glass only inside the clip: its part of the surface and of the damage (damage is relative to dst)
+        let gdst = match self.clip {
+            Some(c) => match dst.intersection(c) {
+                Some(g) => g,
+                None => return RenderElement::<GlesRenderer>::draw(&self.inner, frame, src, dst, damage, opaque_regions),
+            },
+            None => dst,
+        };
+        let gdamage: Vec<Rectangle<i32, Physical>> = damage
+            .iter()
+            .filter_map(|d| Rectangle::new(d.loc + dst.loc, d.size).intersection(gdst).map(|i| Rectangle::new(i.loc - dst.loc, i.size)))
+            .collect();
         let blurred = frame.with_context(|gl| unsafe {
             let mut vp = [0i32; 4];
             gl.GetIntegerv(ffi::VIEWPORT, vp.as_mut_ptr());
             // the region in GL window coords (Smithay's projection: physical y = GL y, winit's flip inverts)
-            let y = if flipped { vp[3] - dst.loc.y - dst.size.h } else { dst.loc.y };
-            let region = Rectangle::<i32, Physical>::new((dst.loc.x, y).into(), dst.size).intersection(Rectangle::new((0, 0).into(), (vp[2], vp[3]).into()))?;
+            let y = if flipped { vp[3] - gdst.loc.y - gdst.size.h } else { gdst.loc.y };
+            let region = Rectangle::<i32, Physical>::new((gdst.loc.x, y).into(), gdst.size).intersection(Rectangle::new((0, 0).into(), (vp[2], vp[3]).into()))?;
             if region.size.w < 2 || region.size.h < 2 {
                 return None;
             }
@@ -470,7 +550,7 @@ impl RenderElement<GlesRenderer> for Glass {
             gl.ActiveTexture(ffi::TEXTURE0);
             Some(region)
         })?;
-        if let Some(region) = blurred {
+        if let Some(region) = blurred.filter(|_| !gdamage.is_empty()) {
             frame.override_default_tex_program(
                 self.mask.clone(),
                 vec![
@@ -478,9 +558,10 @@ impl RenderElement<GlesRenderer> for Glass {
                     Uniform::new("origin", (region.loc.x as f32, region.loc.y as f32)),
                     Uniform::new("bsize", (region.size.w as f32, region.size.h as f32)),
                     Uniform::new("ignore", self.ignore),
+                    Uniform::new("soft", self.soft),
                 ],
             );
-            let r = RenderElement::<GlesRenderer>::draw(&self.inner, frame, src, dst, damage, opaque_regions);
+            let r = RenderElement::<GlesRenderer>::draw(&self.inner, frame, src, dst, &gdamage, opaque_regions);
             frame.clear_tex_program_override();
             frame.with_context(|gl| unsafe {
                 gl.ActiveTexture(ffi::TEXTURE1);

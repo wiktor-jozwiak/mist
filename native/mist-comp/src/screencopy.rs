@@ -192,7 +192,7 @@ fn copy_into(r: &mut GlesRenderer, space: &smithay::desktop::Space<smithay::desk
             return false;
         }
         let mut elements = extra;
-        elements.extend(crate::scene::elements(r, space, None, false, output, anim, None).into_iter().map(OutElem::Scene));
+        elements.extend(crate::scene::elements(r, space, None, false, output, anim, None).into_iter().map(|e| OutElem::Scene(crate::scene::ViewElem::Plain(e))));
         let mut tracker = OutputDamageTracker::new((size.w, size.h), 1.0, Transform::Normal);
         let Ok(mut fb) = r.bind(&mut dmabuf) else { return false };
         let Ok(res) = tracker.render_output(r, &mut fb, 0, &elements, [0.0, 0.0, 0.0, 1.0]) else { return false };
@@ -257,7 +257,7 @@ fn grab(r: &mut GlesRenderer, space: &smithay::desktop::Space<smithay::desktop::
     let size = output.current_mode()?.size;
     let mut tex: GlesTexture = r.create_buffer(Fourcc::Abgr8888, (size.w, size.h).into()).ok()?;
     let mut elements = extra;
-    elements.extend(crate::scene::elements(r, space, None, false, output, anim, None).into_iter().map(OutElem::Scene));
+    elements.extend(crate::scene::elements(r, space, None, false, output, anim, None).into_iter().map(|e| OutElem::Scene(crate::scene::ViewElem::Plain(e))));
     let mut tracker = OutputDamageTracker::new(size, 1.0, Transform::Normal);
     let mut fb = r.bind(&mut tex).ok()?;
     tracker.render_output(r, &mut fb, 0, &elements, [0.0, 0.0, 0.0, 1.0]).ok()?;

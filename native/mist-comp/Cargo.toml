@@ -25,7 +25,7 @@ version = "0.7.0"
 default-features = false
 features = ["xwayland", "backend_winit", "backend_drm", "backend_gbm", "backend_udev", "backend_libinput", "backend_session_libseat", "renderer_gl", "wayland_frontend", "desktop"]
 
-# test clients (examples/): tests/t-lockptr.sh
+# test clients (examples/): tests/t-lockptr.sh, t-watchdog.sh, t-extws.sh
 [dev-dependencies]
 wayland-client = "0.31"
-wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
+wayland-protocols = { version = "0.32", features = ["client", "unstable", "staging"] }

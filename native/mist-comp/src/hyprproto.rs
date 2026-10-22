@@ -171,7 +171,7 @@ pub fn process(state: &mut MistComp) {
 /// read back: BGRA when the driver reads it so (`false`), else RGBA (`true`: bytes to swap).
 fn grab(r: &mut smithay::backend::renderer::gles::GlesRenderer, w: &Window, scale: f64, (cw, ch): (i32, i32)) -> Option<(Vec<u8>, bool)> {
     let mut tex: GlesTexture = r.create_buffer(Fourcc::Abgr8888, (cw, ch).into()).ok()?;
-    let elements = crate::scene::window_elements(r, w, (0, 0).into(), Scale::from(scale), 1.0);
+    let elements = crate::scene::window_elements(r, w, (0, 0).into(), Scale::from(scale), 1.0, None);
     let mut tracker = OutputDamageTracker::new((cw, ch), 1.0, Transform::Normal);
     let mut fb = r.bind(&mut tex).ok()?;
     tracker.render_output(r, &mut fb, 0, &elements, [0.0, 0.0, 0.0, 1.0]).ok()?;

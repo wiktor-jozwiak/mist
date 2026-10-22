@@ -96,6 +96,9 @@ pub fn serve(event_loop: &mut EventLoop<CalloopData>, socket: &str) {
         while let Ok((s, _)) = l.accept() {
             let _ = s.set_nonblocking(true);
             data.hypr_listeners.push(s);
+            // a new listener learns where the desktop layers are covered (cover.rs)
+            data.cover_sent.clear();
+            data.cover_sig = 0;
         }
         Ok(PostAction::Continue)
     })
@@ -109,7 +112,7 @@ impl MistComp {
     pub fn hypr_event(&mut self, name: &str, data: &str) {
         // every window change goes through here: task bars (wlr foreign toplevel) catch up after this loop turn
         // (not for the drag / snap stream, pointer-rate events that change no window state)
-        if !matches!(name, "mistdrag" | "mistsnap" | "focusedmon" | "focusedmonv2" | "activelayout" | "screencast" | "bell") {
+        if !matches!(name, "mistdrag" | "mistsnap" | "mistcover" | "focusedmon" | "focusedmonv2" | "activelayout" | "screencast" | "bell") {
             self.wlr.dirty = true;
             self.scales_dirty = true;
         }

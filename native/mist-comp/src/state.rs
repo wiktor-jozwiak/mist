@@ -62,6 +62,12 @@ pub struct MistComp {
     pub seat: Seat<Self>,
     /// something changed on screen: request a frame after this loop iteration
     pub dirty: bool,
+    /// a client committed: only these outputs show it (per-output frames; `dirty` = all of them)
+    pub dirty_outputs: std::collections::HashSet<String>,
+    /// cover / ext-workspace / toplevel lists / scales bookkeeping: last run, due, its timer armed
+    pub sync_at: Option<std::time::Instant>,
+    pub sync_due: bool,
+    pub sync_timer: bool,
     /// linux-dmabuf global + the renderer that imports client buffers (set by the backend)
     pub dmabuf: Option<(smithay::wayland::dmabuf::DmabufState, smithay::wayland::dmabuf::DmabufGlobal)>,
     pub gles: Option<crate::winit::Gles>,
@@ -88,8 +94,10 @@ pub struct MistComp {
     pub special_on: Option<String>,
     /// Super went down and nothing else since (release binds)
     pub super_alone: bool,
-    /// a workspace swipe in progress: horizontal distance so far
-    pub swipe: Option<f64>,
+    /// a workspace swipe in progress
+    pub swipe: Option<Swipe>,
+    /// a button whose press the overview took: its release is the overview's too
+    pub swallow_button: Option<u32>,
     /// the xkb layout name in use and the output under the pointer, as last announced (activelayout,
     /// focusedmon events)
     pub ev_layout: String,
@@ -100,6 +108,17 @@ pub struct MistComp {
     pub globals_held: std::collections::HashMap<u32, String>,
     /// socket2 listeners (hyprcompat)
     pub hypr_listeners: Vec<std::os::unix::net::UnixStream>,
+    /// cover.rs: the geometry the last coverage was computed from, and what was announced per (output, layer)
+    /// watchdog.rs: commits per client since its last check
+    pub commit_rate: std::collections::HashMap<smithay::reexports::wayland_server::backend::ClientId, u32>,
+    /// session.rs: a write is on its way; windows to put back after a crash
+    pub session_timer: bool,
+    pub restore: Vec<crate::session::Slot>,
+    pub cover_sig: u64,
+    /// ext-workspace-v1 clients and the workspace list they were last told (extws.rs)
+    pub ext_ws: Vec<crate::extws::Bound>,
+    pub ext_ws_last: crate::extws::Snap,
+    pub cover_sent: std::collections::HashMap<(String, String), (bool, bool)>,
     /// window addresses, most recently focused first
     pub focus_history: Vec<u64>,
     pub next_addr: u64,
@@ -115,6 +134,8 @@ pub struct MistComp {
     pub shortcuts: Vec<crate::hyprproto::Shortcut>,
     /// frames with damage shown per output (copy_with_damage waits for the next one)
     pub out_seq: std::collections::HashMap<String, u64>,
+    /// render passes per output, damage or not (IPC `passes`: a commit on one monitor leaves the others alone)
+    pub out_passes: std::collections::HashMap<String, u64>,
     /// screen casting: the last damage-driven copy served (mist-ui's island: "sharing your screen"), and
     /// the output frame each client was last given
     pub cast_last: Option<std::time::Instant>,
@@ -133,6 +154,8 @@ pub struct MistComp {
     /// IPC `stats`: frames rendered (all outputs) and surface commits since start
     pub frames: u64,
     pub commits: u64,
+    /// IPC `top`: commits per client while counting (None = off, the usual case)
+    pub top: Option<std::collections::HashMap<String, u32>>,
     /// traffic light pressed (acts on release over the same one)
     pub bar_press: Option<(u64, crate::decor::Hit)>,
     /// last bar click (double click maximizes)
@@ -171,6 +194,7 @@ impl MistComp {
         let idle_inhibit = smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Self>(&dh);
         crate::screencopy::init(&dh);
         crate::hyprproto::init(&dh);
+        crate::extws::init(&dh);
         crate::wlr::init(&dh);
         crate::outman::init(&dh);
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
@@ -247,6 +271,10 @@ impl MistComp {
             popups,
             seat,
             dirty: false,
+            dirty_outputs: Default::default(),
+            sync_at: None,
+            sync_due: false,
+            sync_timer: false,
             dmabuf: None,
             gles: None,
             vt_switch: None,
@@ -264,6 +292,7 @@ impl MistComp {
             ws_changed: false,
             super_alone: false,
             swipe: None,
+            swallow_button: None,
             ev_layout: String::new(),
             ev_mon: String::new(),
             suppressed: Default::default(),
@@ -273,6 +302,7 @@ impl MistComp {
             window_copies: Vec::new(),
             shortcuts: Vec::new(),
             out_seq: Default::default(),
+            out_passes: Default::default(),
             cast_last: None,
             cast_seen: Default::default(),
             night: false,
@@ -284,12 +314,20 @@ impl MistComp {
             max_hovered: None,
             frames: 0,
             commits: 0,
+            top: None,
             bar_press: None,
             bar_click: None,
             edge_cursor: false,
             anim: Default::default(),
             bar_drag: None,
             hypr_listeners: Vec::new(),
+            commit_rate: Default::default(),
+            session_timer: false,
+            restore: Vec::new(),
+            cover_sig: 0,
+            ext_ws: Vec::new(),
+            ext_ws_last: Vec::new(),
+            cover_sent: Default::default(),
             lock_manager,
             lock: Default::default(),
             idle,
@@ -475,5 +513,25 @@ pub struct ClientState {
 
 impl ClientData for ClientState {
     fn initialized(&self, _client_id: ClientId) {}
-    fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
+    fn disconnected(&self, _client_id: ClientId, reason: DisconnectReason) {
+        // a protocol error closes the socket silently on the client side: log which request killed it
+        if let DisconnectReason::ProtocolError(e) = reason {
+            tracing::warn!("client killed by protocol error: {e}");
+        }
+    }
+}
+
+/// A touchpad workspace swipe: the next workspace follows the fingers (1:1), lifting them finishes or takes
+/// it back.
+#[derive(Default)]
+pub struct Swipe {
+    /// horizontal distance so far and of the last update
+    pub dx: f64,
+    pub last: f64,
+    pub dy: f64,
+    /// up / down: the overview, not workspaces
+    pub vertical: bool,
+    /// switched on this output, +1 / -1, from this workspace (None: not yet, or nothing to switch to)
+    pub on: Option<(smithay::output::Output, i32, u32)>,
+    pub tried: bool,
 }

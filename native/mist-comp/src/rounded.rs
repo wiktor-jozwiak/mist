@@ -1,5 +1,6 @@
-//! Rounded bottom corners for windows with a Mist title bar (the bar rounds the top ones): the window's main
-//! surface is drawn with a texture shader that fades the two corners out. The corners leave the opaque region
+//! Rounded corners: the bottom ones for windows with a Mist title bar (the bar rounds the top ones), all four
+//! for apps that draw their own title bar on a square window (Claude, Spotify): the window's main surface is
+//! drawn with a texture shader that fades the corners out. The corners leave the opaque region
 //! (what is behind gets drawn there) and the surface never goes straight to a scanout plane uncornered.
 //! GPU: a few ALU ops per pixel of the window's own surface, nothing per frame when nothing is damaged.
 use std::cell::RefCell;
@@ -13,7 +14,7 @@ use smithay::{
     utils::{Buffer as BufferCoords, Physical, Point, Rectangle, Scale, Transform},
 };
 
-pub const RADIUS: f64 = 10.0;
+pub const RADIUS: f64 = crate::tokens::WINDOW_RADIUS as f64;
 
 const SHADER: &str = r#"
 #version 100
@@ -34,18 +35,17 @@ uniform float tint;
 #endif
 uniform vec2 size;
 uniform float radius;
+uniform float top;
 void main() {
     vec4 color = texture2D(tex, v_coords);
 #if defined(NO_ALPHA)
     color = vec4(color.rgb, 1.0);
 #endif
     vec2 p = v_coords * size;
-    // bottom corners only: distance past the corner circle, 1 px antialiased edge
-    vec2 c = vec2(clamp(p.x, radius, size.x - radius), size.y - radius);
-    if (p.y > size.y - radius) {
-        float d = length(p - c) - radius;
-        color *= clamp(0.5 - d, 0.0, 1.0);
-    }
+    // distance past the corner circles (the top ones only with top = 1), 1 px antialiased edge
+    vec2 c = vec2(clamp(p.x, radius, size.x - radius), clamp(p.y, top * radius, size.y - radius));
+    float d = length(p - c) - radius;
+    color *= clamp(0.5 - d, 0.0, 1.0);
     color *= alpha;
 #if defined(DEBUG_FLAGS)
     if (tint == 1.0)
@@ -63,7 +63,7 @@ fn program(r: &mut GlesRenderer) -> Option<GlesTexProgram> {
     PROGRAM.with(|p| {
         let mut p = p.borrow_mut();
         if p.is_none() {
-            match r.compile_custom_texture_shader(SHADER, &[UniformName::new("size", UniformType::_2f), UniformName::new("radius", UniformType::_1f)]) {
+            match r.compile_custom_texture_shader(SHADER, &[UniformName::new("size", UniformType::_2f), UniformName::new("radius", UniformType::_1f), UniformName::new("top", UniformType::_1f)]) {
                 Ok(prog) => *p = Some(prog),
                 Err(e) => tracing::warn!("rounded corners shader: {e:?}"),
             }
@@ -76,14 +76,16 @@ pub struct Rounded {
     inner: WaylandSurfaceRenderElement<GlesRenderer>,
     program: GlesTexProgram,
     radius: f64,
+    /// the top corners too (no Mist title bar above)
+    top: bool,
 }
 
 impl Rounded {
-    /// Wrap a window's main surface element (None: no shader, draw it as is).
+    /// Wrap a window's main surface element (None: no shader, draw it as is); `top`: round all four corners.
     #[allow(clippy::result_large_err)] // the surface element comes back unchanged when it cannot be wrapped
-    pub fn new(r: &mut GlesRenderer, inner: WaylandSurfaceRenderElement<GlesRenderer>, scale: f64) -> Result<Self, WaylandSurfaceRenderElement<GlesRenderer>> {
+    pub fn new(r: &mut GlesRenderer, inner: WaylandSurfaceRenderElement<GlesRenderer>, scale: f64, top: bool) -> Result<Self, WaylandSurfaceRenderElement<GlesRenderer>> {
         match program(r) {
-            Some(program) => Ok(Rounded { inner, program, radius: RADIUS * scale }),
+            Some(program) => Ok(Rounded { inner, program, radius: RADIUS * scale, top }),
             None => Err(inner),
         }
     }
@@ -114,7 +116,10 @@ impl Element for Rounded {
     fn opaque_regions(&self, scale: Scale<f64>) -> OpaqueRegions<i32, Physical> {
         let size = self.geometry(scale).size;
         let r = self.radius.ceil() as i32;
-        let corners = [Rectangle::new((0, size.h - r).into(), (r, r).into()), Rectangle::new((size.w - r, size.h - r).into(), (r, r).into())];
+        let mut corners = vec![Rectangle::new((0, size.h - r).into(), (r, r).into()), Rectangle::new((size.w - r, size.h - r).into(), (r, r).into())];
+        if self.top {
+            corners.extend([Rectangle::new((0, 0).into(), (r, r).into()), Rectangle::new((size.w - r, 0).into(), (r, r).into())]);
+        }
         Rectangle::subtract_rects_many(self.inner.opaque_regions(scale), corners).into_iter().collect()
     }
     fn alpha(&self) -> f32 {
@@ -129,7 +134,7 @@ impl RenderElement<GlesRenderer> for Rounded {
     fn draw(&self, frame: &mut GlesFrame<'_, '_>, src: Rectangle<f64, BufferCoords>, dst: Rectangle<i32, Physical>, damage: &[Rectangle<i32, Physical>], opaque_regions: &[Rectangle<i32, Physical>]) -> Result<(), GlesError> {
         frame.override_default_tex_program(
             self.program.clone(),
-            vec![Uniform::new("size", (dst.size.w as f32, dst.size.h as f32)), Uniform::new("radius", self.radius as f32)],
+            vec![Uniform::new("size", (dst.size.w as f32, dst.size.h as f32)), Uniform::new("radius", self.radius as f32), Uniform::new("top", if self.top { 1.0f32 } else { 0.0 })],
         );
         let r = RenderElement::<GlesRenderer>::draw(&self.inner, frame, src, dst, damage, opaque_regions);
         frame.clear_tex_program_override();

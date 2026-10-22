@@ -1,6 +1,6 @@
 //! The protocols Smithay implements and a daily desktop needs beyond the basics: input methods (fcitx5),
 //! virtual keyboards (KDE Connect remote input, wtype), tablets, the window list for docks / bars / portals,
-//! ext-data-control (clipboard managers), xdg-foreign (portal dialogs over their app), toplevel icons and tags,
+//! ext-data-control (clipboard managers), xdg-foreign (portal dialogs over their app), toplevel tags,
 //! content type, alpha modifier, the system bell, XWayland keyboard grabs, and security-context for sandboxes.
 //!
 //! Sandboxed clients (flatpak, through security-context) do not see the privileged globals: virtual keyboard,
@@ -12,7 +12,7 @@ use smithay::wayland::seat::WaylandFocus as _;
 use smithay::{
     delegate_alpha_modifier, delegate_content_type, delegate_ext_data_control, delegate_foreign_toplevel_list,
     delegate_input_method_manager, delegate_security_context, delegate_tablet_manager, delegate_text_input_manager,
-    delegate_virtual_keyboard_manager, delegate_xdg_foreign, delegate_xdg_system_bell, delegate_xdg_toplevel_icon,
+    delegate_virtual_keyboard_manager, delegate_xdg_foreign, delegate_xdg_system_bell,
     delegate_xdg_toplevel_tag, delegate_xwayland_keyboard_grab,
     desktop::{PopupKind, Window},
     reexports::wayland_server::{protocol::wl_surface::WlSurface, Client, DisplayHandle},
@@ -32,7 +32,6 @@ use smithay::{
         virtual_keyboard::VirtualKeyboardManagerState,
         xdg_foreign::{XdgForeignHandler, XdgForeignState},
         xdg_system_bell::{XdgSystemBellHandler, XdgSystemBellState},
-        xdg_toplevel_icon::{XdgToplevelIconHandler, XdgToplevelIconManager},
         xdg_toplevel_tag::{XdgToplevelTagHandler, XdgToplevelTagManager},
         xwayland_keyboard_grab::{XWaylandKeyboardGrabHandler, XWaylandKeyboardGrabState},
     },
@@ -53,7 +52,7 @@ pub struct Extra {
     _input_method: InputMethodManagerState,
     _text_input: TextInputManagerState,
     _tablet: TabletManagerState,
-    _icon: XdgToplevelIconManager,
+    // no xdg-toplevel-icon: smithay 0.7 kills a client that destroys the icon buffer after set_icon (Electron)
     _tag: XdgToplevelTagManager,
     _content_type: ContentTypeState,
     _alpha: AlphaModifierState,
@@ -77,7 +76,6 @@ impl Extra {
             _input_method: InputMethodManagerState::new::<MistComp, _>(dh, trusted),
             _text_input: TextInputManagerState::new::<MistComp>(dh),
             _tablet: TabletManagerState::new::<MistComp>(dh),
-            _icon: XdgToplevelIconManager::new::<MistComp>(dh),
             _tag: XdgToplevelTagManager::new::<MistComp>(dh),
             _content_type: ContentTypeState::new::<MistComp>(dh),
             _alpha: AlphaModifierState::new::<MistComp>(dh),
@@ -186,8 +184,6 @@ impl XdgForeignHandler for MistComp {
 }
 delegate_xdg_foreign!(MistComp);
 
-impl XdgToplevelIconHandler for MistComp {}
-delegate_xdg_toplevel_icon!(MistComp);
 
 impl XdgToplevelTagHandler for MistComp {}
 delegate_xdg_toplevel_tag!(MistComp);

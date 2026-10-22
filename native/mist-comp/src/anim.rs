@@ -61,6 +61,8 @@ pub struct WsSlide {
     /// +1: the new workspace comes in from the right
     pub dir: i32,
     pub start: Instant,
+    /// a touchpad swipe holds the slide here (0..1) until the fingers lift
+    pub manual: Option<f64>,
 }
 
 #[derive(Default)]
@@ -72,11 +74,24 @@ pub struct Anims {
     pub closing: Vec<Closing>,
     /// layer surfaces fading in (by wl_surface id)
     pub layers: HashMap<smithay::reexports::wayland_server::backend::ObjectId, Instant>,
+    /// Mission Control (overview.rs), opening, open or closing
+    pub overview: Option<crate::overview::Overview>,
+    /// the magnifier's factor (`zoom in|out|off`; 0 / 1 = off), drawn by scene::view
+    pub zoom: f64,
 }
 
 fn ease(t: f64) -> f64 {
     let t = t.clamp(0.0, 1.0);
     1.0 - (1.0 - t).powi(4)
+}
+
+/// The time fraction at which `ease` reaches `p`.
+fn unease(p: f64) -> f64 {
+    1.0 - (1.0 - p.clamp(0.0, 1.0)).powf(0.25)
+}
+
+fn ws_progress(s: &WsSlide, now: Instant) -> f64 {
+    s.manual.unwrap_or_else(|| progress(s.start, WS, now))
 }
 
 fn progress(start: Instant, d: Duration, now: Instant) -> f64 {
@@ -116,7 +131,24 @@ impl Anims {
 
     pub fn ws_switch(&mut self, output: String, leaving: Vec<(Window, Point<i32, Logical>)>, dir: i32) {
         if enabled() {
-            self.ws.insert(output, WsSlide { leaving, dir, start: Instant::now() });
+            self.ws.insert(output, WsSlide { leaving, dir, start: Instant::now(), manual: None });
+        }
+    }
+
+    /// The fingers of a workspace swipe are at `p` (0..1) of the slide on `output`.
+    pub fn ws_drag(&mut self, output: &str, p: f64) {
+        if let Some(s) = self.ws.get_mut(output) {
+            s.manual = Some(p.clamp(0.0, 1.0));
+        }
+    }
+
+    /// The fingers lifted: the slide runs on from where they left it, at the speed it would have there.
+    pub fn ws_release(&mut self, output: &str) {
+        if let Some(s) = self.ws.get_mut(output) {
+            if let Some(p) = s.manual.take() {
+                let now = Instant::now();
+                s.start = now.checked_sub(WS.mul_f64(unease(p))).unwrap_or(now);
+            }
         }
     }
 
@@ -125,10 +157,16 @@ impl Anims {
         let now = Instant::now();
         self.open.retain(|_, s| now.saturating_duration_since(*s) < OPEN);
         self.moved.retain(|_, (_, s)| now.saturating_duration_since(*s) < MOVE);
-        self.ws.retain(|_, s| now.saturating_duration_since(s.start) < WS);
+        // a slide under the fingers stays, without frames of its own (each finger move asks for one)
+        self.ws.retain(|_, s| s.manual.is_some() || now.saturating_duration_since(s.start) < WS);
+        let ws = self.ws.values().any(|s| s.manual.is_none());
+        if self.overview.as_ref().is_some_and(|o| o.done(now)) {
+            self.overview = None;
+        }
+        let ov = self.overview.as_ref().is_some_and(|o| o.moving(now));
         self.closing.retain(|c| now.saturating_duration_since(c.start) < c.d);
         self.layers.retain(|_, s| now.saturating_duration_since(*s) < LAYER);
-        !self.layers.is_empty() || !self.open.is_empty() || !self.moved.is_empty() || !self.ws.is_empty() || !self.closing.is_empty()
+        !self.layers.is_empty() || !self.open.is_empty() || !self.moved.is_empty() || ws || ov || !self.closing.is_empty()
     }
 
     /// A window's (offset, alpha) right now.
@@ -144,7 +182,7 @@ impl Anims {
             off += from.to_f64().upscale(1.0 - progress(*s, MOVE, now)).to_i32_round();
         }
         if let Some(s) = self.ws.get(output) {
-            let p = progress(s.start, WS, now);
+            let p = ws_progress(s, now);
             off.x += (s.dir as f64 * (1.0 - p) * width as f64).round() as i32;
         }
         (off, alpha)
@@ -153,7 +191,7 @@ impl Anims {
     /// The leaving windows of a workspace slide on `output`: (window, location now).
     pub fn leaving(&self, output: &str, width: i32, now: Instant) -> Vec<(Window, Point<i32, Logical>)> {
         let Some(s) = self.ws.get(output) else { return Vec::new() };
-        let p = progress(s.start, WS, now);
+        let p = ws_progress(s, now);
         let dx = (-(s.dir as f64) * p * width as f64).round() as i32;
         s.leaving.iter().map(|(w, l)| (w.clone(), *l + Point::from((dx, 0)))).collect()
     }
@@ -216,7 +254,7 @@ impl MistComp {
         let snap = |r: &mut GlesRenderer| -> Option<TextureBuffer<GlesTexture>> {
             let size = rect.size.to_physical_precise_round(scale);
             let mut tex: GlesTexture = r.create_buffer(Fourcc::Abgr8888, (size.w, size.h).into()).ok()?;
-            let elements = crate::scene::window_elements(r, w, (0, bar).into(), scale, 1.0);
+            let elements = crate::scene::window_elements(r, w, (0, bar).into(), scale, 1.0, None);
             {
                 let mut fb = r.bind(&mut tex).ok()?;
                 let mut tracker = OutputDamageTracker::new(size, scale, Transform::Normal);

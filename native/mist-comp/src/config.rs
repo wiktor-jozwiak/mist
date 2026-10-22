@@ -17,11 +17,13 @@
 //!   screencopy_dmabuf on                        screen casting straight into the client's GPU buffer
 //!   swipe 3|4|off                               touchpad: N-finger horizontal swipe switches workspaces (default 3)
 //!   fifo on                                     wp-fifo for Vulkan FIFO presentation (games); opt-in
-//!   direct_scanout on                           a fullscreen window's buffer straight to the screen (Hyprland
-//!                                               render:direct_scanout); off by default: everything is composited
+//!   direct_scanout game|on|off                  a client's buffer straight to the screen (Hyprland
+//!                                               render:direct_scanout): game (default) = a fullscreen game's, on
+//!                                               the primary plane only; on = any window, overlay planes too
+//!                                               (on NVIDIA that showed torn or stale windows); off = all composited
 //!
 //! Actions: exec CMD | close | kill | quit | reload | workspace N|+1|-1 | movetoworkspace N|+1|-1
-//!          | maximize | fullscreen | float | focus left|right|up|down | cycle | vt N
+//!          | maximize | fullscreen | float | focus left|right|up|down | cycle | overview | zoom in|out|off | vt N
 //!          | global APP_ID:ID   (a shortcut registered through the portal, e.g. Discord push-to-talk)
 use smithay::input::keyboard::{keysyms, xkb, ModifiersState};
 
@@ -43,6 +45,10 @@ pub enum Action {
     Float,
     Focus(Dir),
     Cycle,
+    /// Mission Control: the shown workspace's windows side by side (overview.rs)
+    Overview,
+    /// the magnifier: +1 in, -1 out, 0 off
+    Zoom(i32),
     Vt(i32),
     /// Windows 11 snapping (snap.rs)
     Snap(crate::snap::Key),
@@ -160,6 +166,17 @@ pub fn outputs(c: &Config) -> Vec<OutputConf> {
     all
 }
 
+/// What may skip composition and go to a plane as it is.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Scanout {
+    Off,
+    /// a fullscreen game (rules.rs `game`), primary plane only (Hyprland direct_scanout = 2)
+    #[default]
+    Game,
+    /// any client buffer, any plane (Hyprland direct_scanout = 1)
+    On,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Config {
     pub binds: Vec<Bind>,
@@ -186,9 +203,8 @@ pub struct Config {
     pub swipe_fingers: u32,
     /// wp-fifo for Vulkan FIFO clients (`fifo on`; off until tested on each driver)
     pub fifo: bool,
-    /// client buffers straight to a scanout plane (`direct_scanout on`); off like Hyprland's default, since a
-    /// driver that mishandles it shows torn or stale windows
-    pub direct_scanout: bool,
+    /// client buffers straight to a scanout plane: `direct_scanout game` (default), `on`, `off`
+    pub direct_scanout: Scanout,
 }
 
 pub fn path() -> std::path::PathBuf {
@@ -215,7 +231,7 @@ pub fn load() -> Config {
         c.no_explicit_sync = true;
         c.screencopy_dmabuf = false;
         c.fifo = false;
-        c.direct_scanout = false;
+        c.direct_scanout = Scanout::Off;
     }
     c
 }
@@ -289,7 +305,11 @@ pub fn parse(text: &str) -> Config {
                 true
             }
             "direct_scanout" => {
-                c.direct_scanout = rest == "on";
+                c.direct_scanout = match rest {
+                    "on" => Scanout::On,
+                    "off" => Scanout::Off,
+                    _ => Scanout::Game,
+                };
                 true
             }
             "swipe" => {
@@ -385,6 +405,13 @@ pub fn parse_action(s: &str) -> Option<Action> {
         "fullscreen" => Action::Fullscreen,
         "float" => Action::Float,
         "cycle" => Action::Cycle,
+        "overview" => Action::Overview,
+        "zoom" => Action::Zoom(match arg {
+            "in" => 1,
+            "out" => -1,
+            "off" => 0,
+            _ => return None,
+        }),
         "vt" => Action::Vt(arg.parse().ok()?),
         "snap" => Action::Snap(match arg {
             "left" => crate::snap::Key::Left,
@@ -485,6 +512,9 @@ bind  SUPER+CTRL+Right   workspace +1
 bind  SUPER+CTRL+Left    workspace -1
 bind  SUPER+CTRL+SHIFT+Right movetoworkspace +1
 bind  SUPER+CTRL+SHIFT+Left  movetoworkspace -1
+bind  SUPER+O            overview
+bind  SUPER+equal        zoom in
+bind  SUPER+minus        zoom out
 bind  SUPER+Tab          exec mist-ui-bin msg switcher next
 bind  SUPER+SHIFT+Tab    exec mist-ui-bin msg switcher prev
 bind  SUPER+Space        exec mist-ui-bin msg mist toggle spotlight

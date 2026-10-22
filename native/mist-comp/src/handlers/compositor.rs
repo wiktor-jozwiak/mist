@@ -82,6 +82,11 @@ impl CompositorHandler for MistComp {
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
         self.commits += 1;
+        self.count_commit(surface);
+        if self.top.is_some() {
+            let n = self.surface_name(surface);
+            *self.top.as_mut().unwrap().entry(n).or_default() += 1;
+        }
         if !is_sync_subsurface(surface) {
             let mut root = surface.clone();
             while let Some(parent) = get_parent(&root) {
@@ -101,11 +106,46 @@ impl CompositorHandler for MistComp {
             let _ = icon;
             *off += with_states(surface, |s| s.cached_state.get::<SurfaceAttributes>().current().buffer_delta.take().unwrap_or_default());
         }
-        self.pending_commit(surface);
+        if !self.pending_commit(surface) {
+            self.guard_size(surface);
+        }
         xdg_shell::handle_commit(&mut self.popups, &self.space, surface);
         resize_grab::handle_commit(&mut self.space, surface);
         super::layer_shell::handle_commit(self, surface);
+        self.mark_commit(surface);
+    }
+}
+
+impl MistComp {
+    /// What a commit makes redraw: the monitors of its window or layer surface, nothing for a window on a
+    /// hidden workspace, everything for the rest (popups, cursor, drag icon, lock, windows being mapped).
+    fn mark_commit(&mut self, surface: &WlSurface) {
+        let mut root = surface.clone();
+        while let Some(parent) = get_parent(&root) {
+            root = parent;
+        }
+        if let Some(w) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(&root)) {
+            let outs: Vec<String> = self.space.outputs_for_element(w).iter().map(|o| o.name()).collect();
+            if !outs.is_empty() && !self.anim_touches(w) {
+                self.dirty_outputs.extend(outs);
+                return;
+            }
+        } else if self.stash.iter().any(|(w, _)| w.wl_surface().as_deref() == Some(&root)) {
+            return;
+        } else {
+            for o in self.space.outputs() {
+                if smithay::desktop::layer_map_for_output(o).layer_for_surface(&root, smithay::desktop::WindowSurfaceType::TOPLEVEL).is_some() {
+                    self.dirty_outputs.insert(o.name());
+                    return;
+                }
+            }
+        }
         self.dirty = true;
+    }
+
+    /// a window in a workspace slide or the overview is drawn elsewhere than its place: redraw everything
+    fn anim_touches(&self, _w: &smithay::desktop::Window) -> bool {
+        !self.anim.ws.is_empty() || self.anim.overview.is_some()
     }
 }
 

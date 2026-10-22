@@ -98,7 +98,7 @@ impl MistComp {
         }
     }
 
-    fn snap_state(&self, w: &Window) -> Option<Snapped> {
+    pub fn snap_state(&self, w: &Window) -> Option<Snapped> {
         let d = &data(w).snap;
         let s = d.snapped.get()?;
         let g = self.space.element_geometry(w)?;

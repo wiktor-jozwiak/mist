@@ -38,6 +38,10 @@ pub struct WinData {
     pub pinned: Cell<bool>,
     /// the terminal this window was started from, hidden while it lives (swallow.rs)
     pub swallowed: RefCell<Option<Window>>,
+    /// drop shadow of a window with glass (shadow.rs) per output, kept between frames
+    pub shadow: RefCell<std::collections::HashMap<String, smithay::backend::renderer::gles::element::PixelShaderElement>>,
+    /// last frame callback while fully covered (scene::send_frames: covered windows draw once a second)
+    pub covered_frame: Cell<Option<std::time::Instant>>,
 }
 
 /// Which monitor (left to right) a workspace belongs to: three each.
@@ -239,7 +243,7 @@ impl MistComp {
             .map(|(_, o)| o.clone())
     }
 
-    fn resolve(&mut self, output: &Output, arg: WsArg) -> u32 {
+    pub fn resolve(&mut self, output: &Output, arg: WsArg) -> u32 {
         let group = |st: &mut Self| {
             let cur = st.active_ws(output);
             match st.ws_home(cur) {
@@ -297,6 +301,10 @@ impl MistComp {
             return;
         }
         let og = self.space.output_geometry(output).unwrap_or_default();
+        // the overview shows the old workspace's windows: gone with them
+        if self.anim.overview.as_ref().is_some_and(|o| o.output == output.name()) {
+            self.anim.overview = None;
+        }
         // hide the current one
         let leaving: Vec<Window> = self
             .space
@@ -502,6 +510,23 @@ impl MistComp {
         self.space.elements().rev().find(|w| data(w).addr.get() != 0 && output.is_none_or(|o| self.output_of(w).as_ref() == Some(o))).cloned()
     }
 
+    /// A window dragged onto another output joins the workspace shown there (as on Hyprland); otherwise it
+    /// would stay in a workspace of the monitor it left, and vanish when that one switches.
+    pub fn settle_ws(&mut self, w: &Window) {
+        let ws = data(w).ws.get();
+        if ws == SPECIAL || ws == MINIMIZED || data(w).pinned.get() {
+            return;
+        }
+        let Some(o) = self.output_of(w) else { return };
+        let shown = self.active_ws(&o);
+        if shown != ws {
+            data(w).ws.set(shown);
+            self.ws_changed = true;
+            tracing::info!("{} moved to {}: workspace {ws} -> {shown}", crate::hyprcompat::app_id(w), o.name());
+            self.hypr_event("movewindowv2", &format!("{},{shown},{shown}", crate::hyprcompat::addr(w).trim_start_matches("0x")));
+        }
+    }
+
     pub fn move_to_ws(&mut self, w: &Window, ws: u32) {
         let Some(output) = self.output_of(w) else { return };
         if data(w).ws.get() == ws {
@@ -608,6 +633,19 @@ impl MistComp {
                     self.focus_window(Some(&w));
                 }
             }
+            Action::Overview => self.overview_toggle(),
+            Action::Zoom(d) => {
+                // 1.25x a step, up to 8x; out from 1.25 or `off`: off
+                let z = self.anim.zoom.max(1.0);
+                self.anim.zoom = match d {
+                    0 => 1.0,
+                    d if d > 0 => (z * 1.25).min(8.0),
+                    _ if z / 1.25 < 1.01 => 1.0,
+                    _ => z / 1.25,
+                };
+                tracing::info!("zoom {:.2}", self.anim.zoom);
+                self.dirty = true;
+            }
             Action::Cycle => {
                 // bottom-most window on this output comes up
                 let o = output;
@@ -623,6 +661,19 @@ impl MistComp {
     }
 
     /// A fullscreen window (xdg Fullscreen state / X11 _NET_WM_STATE_FULLSCREEN) is shown on this output.
+    /// A fullscreen game (rules.rs) on the output: its frames may go to the screen without composition.
+    pub fn game_fullscreen_on(&self, o: &Output) -> bool {
+        let Some(og) = self.space.output_geometry(o) else { return false };
+        self.space.elements().any(|w| {
+            let full = match (w.toplevel(), w.x11_surface()) {
+                (Some(t), _) => t.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Fullscreen)),
+                (_, Some(x)) => x.is_fullscreen(),
+                _ => false,
+            };
+            full && self.space.element_location(w).is_some_and(|l| og.contains(l)) && self.rule_of(w).game
+        })
+    }
+
     pub fn fullscreen_on(&self, o: &Output) -> bool {
         let Some(og) = self.space.output_geometry(o) else { return false };
         self.space.elements().any(|w| {

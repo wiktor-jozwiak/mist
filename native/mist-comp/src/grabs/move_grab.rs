@@ -70,6 +70,7 @@ impl PointerGrab<MistComp> for MoveSurfaceGrab {
         if !handle.current_pressed().contains(&self.start_data.button) {
             // No more buttons are pressed, release the grab.
             handle.unset_grab(self, data, event.serial, event.time, true);
+            data.settle_ws(&self.window);
             data.hypr_event("mistdrag", &format!("end,{},{}", self.last.x as i32, self.last.y as i32));
         }
     }

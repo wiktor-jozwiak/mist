@@ -107,6 +107,24 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
             }
             "ok".into()
         }
+        // the workspace swipe as libinput drives it (tests): `swipe begin`, `swipe <dx> [dy]`, `swipe end|cancel`
+        "swipe" => {
+            match it.next() {
+                Some("begin") => state.swipe = Some(crate::state::Swipe::default()),
+                Some("end") => state.swipe_end(false),
+                Some("cancel") => state.swipe_end(true),
+                Some(n) => {
+                    if let (Some(s), Ok(d)) = (state.swipe.as_mut(), n.parse::<f64>()) {
+                        s.last = d;
+                        s.dx += d;
+                        s.dy += it.next().and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+                        state.swipe_update();
+                    }
+                }
+                None => {}
+            }
+            "ok\n".into()
+        }
         "key" | "motion" | "button" => {
             // synthetic input is activity like any other (idle lock / DPMS timers)
             state.idle.notify_activity(&state.seat);
@@ -145,7 +163,46 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
             s
         }
         "locked" => format!("{} surfaces={}\n", state.locked, state.lock.surfaces.len()),
-        "stats" => format!("frames {} commits {} windows {} hidden {} wakeups {}\n", state.frames, state.commits, state.space.elements().count(), state.stash.len(), state.wakeups),
+        "blurs" => crate::blur::per_cache(),
+        // the open overview's grid: one line per window, its place (output-relative, bar included)
+        "overview" => match state.anim.overview.as_ref() {
+            Some(o) => o
+                .slots
+                .iter()
+                .map(|(w, r)| format!("{} {} {},{} {}x{}{}\n", o.output, crate::hyprcompat::app_id(w), r.loc.x, r.loc.y, r.size.w, r.size.h, if o.closing { " closing" } else { "" }))
+                .collect(),
+            None => "closed\n".into(),
+        },
+        "stats" => {
+            let (calls, runs) = crate::blur::counts();
+            format!("frames {} commits {} windows {} hidden {} wakeups {} blur {runs}/{calls}\n", state.frames, state.commits, state.space.elements().count(), state.stash.len(), state.wakeups)
+        }
+        // commits per client over N seconds (default 3): who keeps the screen busy
+        "top" => {
+            let secs = it.next().and_then(|v| v.parse::<u64>().ok()).unwrap_or(3).clamp(1, 60);
+            state.top = Some(Default::default());
+            let _ = state.loop_handle.insert_source(smithay::reexports::calloop::timer::Timer::from_duration(std::time::Duration::from_secs(secs)), move |_, _, st: &mut crate::state::MistComp| {
+                let mut v: Vec<_> = st.top.take().unwrap_or_default().into_iter().collect();
+                v.sort_by(|a, b| b.1.cmp(&a.1));
+                let s: String = v.iter().map(|(n, c)| format!("{:7.1}/s {n}\n", *c as f64 / secs as f64)).collect();
+                use std::io::Write;
+                let _ = stream.write_all(if s.is_empty() { b"none\n" } else { s.as_bytes() });
+                smithay::reexports::calloop::timer::TimeoutAction::Drop
+            });
+            return;
+        }
+        // each window's xdg geometry against its surfaces' bounding box (what the client draws past its shape)
+        "geom" => state
+            .space
+            .elements()
+            .map(|w| format!("{} geometry {:?} bbox {:?}\n", crate::hyprcompat::app_id(w), w.geometry(), w.bbox()))
+            .collect(),
+        // render passes per output since start (and how many of them changed pixels)
+        "passes" => {
+            let mut v: Vec<_> = state.out_passes.iter().collect();
+            v.sort();
+            v.iter().map(|(n, p)| format!("{n} {p} {}\n", state.out_seq.get(*n).unwrap_or(&0))).collect()
+        }
         "night" => format!("{}\n", state.night),
         "workspaces" => state.ws_active.iter().map(|(o, w)| format!("{o} {w}\n")).collect(),
         "shot" => match it.next() {

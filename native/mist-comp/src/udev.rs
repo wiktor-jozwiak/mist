@@ -63,7 +63,7 @@ smithay::backend::renderer::element::render_elements! {
     pub OutElem<=GlesRenderer>;
     Pointer = MemoryRenderBufferRenderElement<GlesRenderer>,
     CursorSurface = WaylandSurfaceRenderElement<GlesRenderer>,
-    Scene = crate::scene::SceneElem,
+    Scene = crate::scene::ViewElem,
 }
 
 /// a queued frame carries the wp_presentation feedback of what it shows (sent at its vblank)
@@ -77,6 +77,8 @@ struct Surf {
     global: GlobalId,
     /// a frame is queued: wait for its vblank before rendering again
     pending: bool,
+    /// something changed while a frame was queued: render this output again at its vblank
+    redraw: bool,
     /// nothing changed on screen: frame callbacks wait for the next (estimated) vblank, so a client that
     /// commits every frame without damage (a browser) runs at the refresh rate, not in a busy loop
     idle_tick: bool,
@@ -234,7 +236,7 @@ pub fn init(event_loop: &mut EventLoop<CalloopData>, data: &mut CalloopData) -> 
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .find(|n| n.starts_with("libnvidia-egl-wayland.so.") && n.matches('.').count() >= 4)
             .unwrap_or_else(|| "?".into());
-        tracing::info!("nvidia {} ({eglw}); direct scan-out {}", ver.trim(), if data.config.direct_scanout { "on" } else { "off" });
+        tracing::info!("nvidia {} ({eglw}); direct scan-out {}", ver.trim(), format!("{:?}", data.config.direct_scanout).to_lowercase());
     }
     let render_formats = renderer.egl_context().dmabuf_render_formats().clone();
     let mgr = DrmOutputManager::new(
@@ -500,7 +502,7 @@ fn scan(state: &mut MistComp, dh: &smithay::reexports::wayland_server::DisplayHa
         };
         tracing::info!("output {name} {}x{}@{} at {pos:?}", wl_mode.size.w, wl_mode.size.h, wl_mode.refresh);
         events.push(("monitoraddedv2", format!("0,{name},{}", output.description())));
-        udev.surfaces.insert(crtc, Surf { output, drm_output, global, pending: false, idle_tick: false, queued: 0, watchdog: false, flip_errors: 0, vrr: Some(false), modes: info.modes().to_vec() });
+        udev.surfaces.insert(crtc, Surf { output, drm_output, global, pending: false, redraw: false, idle_tick: false, queued: 0, watchdog: false, flip_errors: 0, vrr: Some(false), modes: info.modes().to_vec() });
         if udev.night {
             udev.apply_gamma(crtc);
         }
@@ -553,8 +555,11 @@ fn vblank(state: &mut MistComp, crtc: crtc::Handle, meta: Option<smithay::backen
         fb.presented::<_, smithay::utils::Monotonic>(time, refresh, seq, flags);
     }
     state.fifo_signal();
+    let again = state.udev.as_mut().and_then(|u| u.surfaces.get_mut(&crtc)).is_some_and(|s| std::mem::take(&mut s.redraw));
     if state.redraw_after_vblank {
         render_all(state);
+    } else if again {
+        render_one(state, crtc);
     }
 }
 
@@ -623,17 +628,36 @@ pub fn render_all(state: &mut MistComp) {
     state.force_full = false;
 }
 
+/// Only the outputs where a client committed (handlers/compositor.rs: a window's or a layer's monitors):
+/// a browser streaming on one monitor no longer rebuilds and diffs the other one's frame.
+pub fn render_outputs(state: &mut MistComp, names: &std::collections::HashSet<String>) {
+    let Some(udev) = state.udev.as_mut() else { return };
+    if !udev.session.is_active() || udev.dpms_off {
+        return;
+    }
+    let crtcs: Vec<crtc::Handle> = udev.surfaces.iter().filter(|(_, s)| names.contains(&s.output.name())).map(|(c, _)| *c).collect();
+    for crtc in crtcs {
+        render_one(state, crtc);
+    }
+}
+
 fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
     // Hyprland misc.vrr = 3: adaptive sync only while a fullscreen window (game / video) is on the output
     let out = state.udev.as_ref().and_then(|u| u.surfaces.get(&crtc)).map(|s| s.output.clone());
-    let vrr_want = state.config.vrr && out.is_some_and(|o| state.fullscreen_on(&o));
-    let direct_scanout = state.config.direct_scanout;
+    let vrr_want = state.config.vrr && out.as_ref().is_some_and(|o| state.fullscreen_on(o));
+    // a fullscreen game: its buffer may replace the composited frame on the primary plane
+    let flags = match state.config.direct_scanout {
+        crate::config::Scanout::On => FrameFlags::DEFAULT,
+        crate::config::Scanout::Game if out.as_ref().is_some_and(|o| state.game_fullscreen_on(o)) => FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT | FrameFlags::ALLOW_PRIMARY_PLANE_SCANOUT,
+        _ => FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT,
+    };
     let dnd = state.dnd_at();
-    let MistComp { udev, space, seat, cursor_status, start_time, force_full, redraw_after_vblank, locked, lock, frames, anim, out_seq, loop_handle, .. } = state;
+    let MistComp { udev, space, seat, cursor_status, start_time, force_full, redraw_after_vblank, locked, lock, frames, anim, out_seq, out_passes, loop_handle, .. } = state;
     let Some(udev) = udev.as_mut() else { return };
     let Some(s) = udev.surfaces.get_mut(&crtc) else { return };
     if s.pending {
-        *redraw_after_vblank = true;
+        s.redraw = true;
+        let _ = redraw_after_vblank;
         return;
     }
     let output = s.output.clone();
@@ -644,7 +668,8 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
     let ptr = seat.get_pointer().unwrap().current_location();
     let mut elements = pointer_elements(&mut udev.renderer, &mut udev.cursors, cursor_status, ptr, og, scale);
     let scene = crate::scene::elements(&mut udev.renderer, space, lock.surfaces.get(&output.name()), *locked, &output, anim, dnd.as_ref());
-    elements.extend(scene.into_iter().map(OutElem::Scene));
+    let zoom_at = crate::scene::pointer_on(space, &output, ptr);
+    elements.extend(crate::scene::view(scene, anim.zoom, zoom_at).into_iter().map(OutElem::Scene));
 
     if s.vrr.is_some_and(|v| v != vrr_want) {
         s.vrr = match s.drm_output.with_compositor(|c| c.use_vrr(vrr_want)) {
@@ -658,11 +683,10 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
             }
         };
     }
-    // the cursor on its plane; a client's buffer only with `direct_scanout on`
-    let flags = if direct_scanout { FrameFlags::DEFAULT } else { FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT };
     if *force_full {
         s.drm_output.reset_buffers();
     }
+    *out_passes.entry(output.name()).or_insert(0) += 1;
     let rendered = match s.drm_output.render_frame(&mut udev.renderer, &elements, [0.0, 0.0, 0.0, 1.0], flags) {
         Ok(r) => !r.is_empty,
         Err(e) => {
@@ -670,6 +694,9 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
             false
         }
     };
+    // smithay 0.7 frees the GL textures / EGLImages of destroyed client buffers (and our dropped
+    // textures) only here: without it every closed panel, resized window and dmabuf stayed in memory
+    let _ = smithay::backend::renderer::Renderer::cleanup_texture_cache(&mut udev.renderer);
     let mut queued = false;
     if rendered {
         *out_seq.entry(output.name()).or_insert(0) += 1;

@@ -5,7 +5,7 @@ D=$(dirname "$0")
 # mist-ui binds (exec mist-ui-bin msg ...) go to a test socket, never the real shell
 export MIST_UI_SOCK=$XDG_RUNTIME_DIR/mist/ui-test.sock
 MIST_COMP_OUTPUT=${OUT:-HDMI-A-1} MIST_COMP_SIZE=${SIZE:-1280x800} RUST_LOG=${RUST_LOG:-warn,mist_comp=info} \
-  setsid ~/.config/quickshell/mist/native/target/release/mist-comp --headless -c true >$D/comp.log 2>&1 &
+  setsid ${MIST_COMP_BIN:-$(cd $D/../../target/release && pwd)/mist-comp} --headless -c true >$D/comp.log 2>&1 &
 echo $! > $D/comp.pid
 timeout 10 sh -c "until grep -q '^WAYLAND_DISPLAY=' $D/comp.log && grep -q '^HYPRLAND_INSTANCE_SIGNATURE=' $D/comp.log; do sleep 0.1; done"
 sock=$(grep -m1 '^WAYLAND_DISPLAY=' $D/comp.log | cut -d= -f2); echo "sock=$sock"; echo $sock > $D/sock

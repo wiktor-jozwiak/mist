@@ -1,5 +1,8 @@
 #![allow(irrefutable_let_patterns)]
 
+mod cover;
+mod session;
+mod watchdog;
 mod handlers;
 
 mod grabs;
@@ -23,7 +26,10 @@ mod decor;
 mod scene;
 mod rounded;
 mod blur;
+mod shadow;
 mod anim;
+mod overview;
+mod extws;
 mod rules;
 mod swallow;
 mod snap;
@@ -33,6 +39,8 @@ mod xwayland;
 #[allow(dead_code)]
 mod text;
 // text.rs translates what it draws (the greeter, titles stay as they are)
+#[path = "../../common/tokens.rs"]
+mod tokens;
 #[path = "../../common/paths.rs"]
 #[allow(dead_code)]
 mod paths;
@@ -116,6 +124,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let sock = data.socket_name.to_string_lossy().into_owned();
     ipc::serve(&mut event_loop, &sock);
+    watchdog::start(&mut data);
+    data.session_restore();
     hyprcompat::serve(&mut event_loop, &sock);
 
     // `-c CMD`: run one client (tests); otherwise the config's `exec` lines (only in a real session, or with
@@ -151,7 +161,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     event_loop.run(None, &mut data, move |data| {
         data.wakeups += 1;
         data.prune_inhibitors();
-        if std::mem::take(&mut data.dirty) {
+        let full = std::mem::take(&mut data.dirty);
+        let part = std::mem::take(&mut data.dirty_outputs);
+        if full || !part.is_empty() {
             data.sync_x11();
             data.update_bars();
             match &backend {
@@ -159,9 +171,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     data.redraw_pending = true;
                     b.borrow().window().request_redraw()
                 }
-                None if data.headless.is_some() => crate::headless::render(data),
+                None if data.headless.is_some() => crate::headless::render(data, if full { None } else { Some(&part) }),
                 None => {
-                    crate::udev::render_all(data);
+                    if full {
+                        crate::udev::render_all(data);
+                    } else {
+                        crate::udev::render_outputs(data, &part);
+                    }
                     // wl_surface.enter / leave for the outputs a window covers (clients pick their scale,
                     // refresh rate and menu placement from it), dead windows and popups dropped
                     data.space.refresh();
@@ -173,7 +189,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 data.dirty = true;
                 // headless has no vblank to wake the loop: this arms its frame tick
                 if backend.is_none() && data.headless.is_some() {
-                    crate::headless::render(data);
+                    crate::headless::render(data, None);
                 }
             }
         }
@@ -184,8 +200,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         crate::screencopy::process(data);
         crate::hyprproto::process(data);
-        data.ftm_sync();
-        data.update_scales();
+        // window bookkeeping (what covers what, workspace and toplevel lists, monitor scales): at once after
+        // a change of the layout, at most 10 times a second while clients only draw (a 165 Hz browser woke
+        // it at every commit)
+        let now = std::time::Instant::now();
+        if !part.is_empty() {
+            data.sync_due = true;
+        }
+        let ripe = data.sync_at.is_none_or(|t| now.duration_since(t) >= std::time::Duration::from_millis(100));
+        if full || (data.sync_due && ripe) {
+            data.sync_at = Some(now);
+            data.sync_due = false;
+            data.cover_sync();
+            data.extws_sync();
+            data.ftm_sync();
+            data.update_scales();
+        } else if data.sync_due && !data.sync_timer {
+            data.sync_timer = true;
+            let _ = data.loop_handle.insert_source(smithay::reexports::calloop::timer::Timer::from_duration(std::time::Duration::from_millis(100)), |_, _, st: &mut MistComp| {
+                st.sync_timer = false;
+                smithay::reexports::calloop::timer::TimeoutAction::Drop
+            });
+        }
         let _ = data.display_handle.flush_clients();
         tracing::trace!("loop iteration");
     })?;

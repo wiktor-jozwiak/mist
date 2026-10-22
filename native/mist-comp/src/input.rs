@@ -150,7 +150,7 @@ impl MistComp {
             InputEvent::GestureSwipeBegin { event, .. } => {
                 let fingers = GestureBeginEvent::fingers(&event);
                 if self.config.swipe_fingers != 0 && fingers == self.config.swipe_fingers && !self.locked {
-                    self.swipe = Some(0.0);
+                    self.swipe = Some(crate::state::Swipe::default());
                     return;
                 }
                 let p = self.seat.get_pointer().unwrap();
@@ -158,8 +158,11 @@ impl MistComp {
                 p.frame(self);
             }
             InputEvent::GestureSwipeUpdate { event, .. } => {
-                if let Some(dx) = self.swipe.as_mut() {
-                    *dx += GestureSwipeUpdateEvent_::delta_x(&event);
+                if let Some(s) = self.swipe.as_mut() {
+                    s.last = GestureSwipeUpdateEvent_::delta_x(&event);
+                    s.dx += s.last;
+                    s.dy += GestureSwipeUpdateEvent_::delta_y(&event);
+                    self.swipe_update();
                     return;
                 }
                 let p = self.seat.get_pointer().unwrap();
@@ -167,11 +170,8 @@ impl MistComp {
                 p.frame(self);
             }
             InputEvent::GestureSwipeEnd { event, .. } => {
-                if let Some(dx) = self.swipe.take() {
-                    // fingers moving left bring the next workspace (macOS, Hyprland's default direction)
-                    if !GestureEndEvent::cancelled(&event) && dx.abs() > 120.0 {
-                        self.do_action(Action::Workspace(crate::config::WsArg::Rel(if dx < 0.0 { 1 } else { -1 })));
-                    }
+                if self.swipe.is_some() {
+                    self.swipe_end(GestureEndEvent::cancelled(&event));
                     return;
                 }
                 let p = self.seat.get_pointer().unwrap();
@@ -291,6 +291,10 @@ impl MistComp {
                         st.suppressed.insert(kc);
                         return FilterResult::Intercept(Action::Vt((modified - keysyms::KEY_XF86Switch_VT_1 + 1) as i32));
                     }
+                    if sym == keysyms::KEY_Escape && st.overview_open() {
+                        st.suppressed.insert(kc);
+                        return FilterResult::Intercept(Action::Overview);
+                    }
                     if let Some(b) = st.config.find(m, sym, false) {
                         if !st.locked || b.locked {
                             st.suppressed.insert(kc);
@@ -352,6 +356,10 @@ impl MistComp {
         let serial = SERIAL_COUNTER.next_serial();
         let pointer = self.seat.get_pointer().unwrap();
         let under = self.surface_under(pos);
+        // the magnified view follows the pointer
+        if self.anim.zoom > 1.0 {
+            self.dirty = true;
+        }
         self.bar_drag_motion(pos);
         pointer.motion(self, under.clone(), &MotionEvent { location: pos, serial, time });
         self.activate_constraint(under.as_ref(), pos);
@@ -399,6 +407,18 @@ impl MistComp {
     pub fn handle_button(&mut self, button: u32, button_state: ButtonState, time: u32) {
         // Super+click / Super+drag is not "Super alone"
         self.super_alone = false;
+        // the overview's clicks pick a window, no client hears them
+        if button_state == ButtonState::Pressed && self.overview_open() {
+            let at = self.seat.get_pointer().unwrap().current_location();
+            if self.overview_click(at) {
+                self.swallow_button = Some(button);
+                return;
+            }
+        }
+        if button_state == ButtonState::Released && self.swallow_button == Some(button) {
+            self.swallow_button = None;
+            return;
+        }
         let pointer = self.seat.get_pointer().unwrap();
         let keyboard = self.seat.get_keyboard().unwrap();
 
@@ -523,5 +543,78 @@ impl MistComp {
             },
         );
         pointer.frame(self);
+    }
+}
+
+/// Finger travel (touchpad units, about logical px) for a whole workspace slide; Hyprland's
+/// workspace_swipe_distance default.
+const SWIPE_DISTANCE: f64 = 300.0;
+
+impl MistComp {
+    /// Fingers moving left bring the next workspace (macOS, Hyprland's default direction): it is switched at
+    /// the first movement and the slide follows the fingers.
+    pub fn swipe_update(&mut self) {
+        let Some(s) = self.swipe.as_mut() else { return };
+        let dx = s.dx;
+        // up or down first: the overview (on release)
+        if !s.tried && s.dy.abs() > dx.abs() && s.dy.abs() > 12.0 {
+            s.tried = true;
+            s.vertical = true;
+        }
+        if s.vertical || !crate::anim::enabled() {
+            return;
+        }
+        if s.on.is_none() {
+            if s.tried || dx.abs() < 12.0 {
+                return;
+            }
+            self.swipe.as_mut().unwrap().tried = true;
+            let Some(o) = self.active_output() else { return };
+            let dir = if dx < 0.0 { 1 } else { -1 };
+            let from = self.active_ws(&o);
+            let to = self.resolve(&o, crate::config::WsArg::Rel(dir));
+            if to == from {
+                return;
+            }
+            self.switch_ws(&o, to);
+            // shown on another monitor instead: no slide to follow
+            if self.active_ws(&o) != to {
+                return;
+            }
+            self.swipe.as_mut().unwrap().on = Some((o, dir, from));
+        }
+        let Some((o, dir, _)) = self.swipe.as_ref().and_then(|s| s.on.clone()) else { return };
+        self.anim.ws_drag(&o.name(), -dx * dir as f64 / SWIPE_DISTANCE);
+        self.dirty = true;
+    }
+
+    /// Fingers lifted: past a third of the way (or still moving on) the slide finishes, else the old
+    /// workspace slides back from where the fingers left it.
+    pub fn swipe_end(&mut self, cancelled: bool) {
+        let Some(s) = self.swipe.take() else { return };
+        if s.vertical {
+            // three fingers up: Mission Control, down: back
+            if !cancelled && (s.dy < -50.0) != self.overview_open() && s.dy.abs() > 50.0 {
+                self.overview_toggle();
+            }
+            return;
+        }
+        let Some((o, dir, from)) = s.on else {
+            if !crate::anim::enabled() && !cancelled && s.dx.abs() > 120.0 {
+                self.do_action(Action::Workspace(crate::config::WsArg::Rel(if s.dx < 0.0 { 1 } else { -1 })));
+            }
+            return;
+        };
+        let p = (-s.dx * dir as f64 / SWIPE_DISTANCE).clamp(0.0, 1.0);
+        let onward = -s.last * dir as f64;
+        let name = o.name();
+        if !cancelled && onward > -4.0 && (p > 0.33 || onward > 6.0) {
+            self.anim.ws_release(&name);
+        } else {
+            self.switch_ws(&o, from);
+            self.anim.ws_drag(&name, 1.0 - p);
+            self.anim.ws_release(&name);
+        }
+        self.dirty = true;
     }
 }

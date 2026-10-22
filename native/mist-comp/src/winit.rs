@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{cell::RefCell, rc::Rc};
 
 use smithay::{
     backend::{
@@ -141,6 +141,8 @@ pub fn init_winit(
                     let elems = crate::scene::elements(renderer, &state.space, state.lock.surfaces.get(&output.name()), state.locked, &output, &state.anim, state.dnd_at().as_ref());
                     let clear = if state.locked { [0.0, 0.0, 0.0, 1.0] } else { [0.1, 0.1, 0.1, 1.0] };
                     let damage = damage_tracker.render_output(renderer, &mut framebuffer, age, &elems, clear).unwrap().damage.cloned();
+                    // GL objects of destroyed buffers are freed only here (smithay 0.7)
+                    let _ = smithay::backend::renderer::Renderer::cleanup_texture_cache(renderer);
                     if let Some((path, mut reply)) = shot {
                         use std::io::Write;
                         let r = write_shot(renderer, &framebuffer, size, &path, true);
@@ -173,15 +175,7 @@ pub fn init_winit(
                     fb.discarded();
                 }
                 let now = state.start_time.elapsed();
-                state.space.elements().for_each(|window| {
-                    window.send_frame(&output, now, Some(Duration::ZERO), |_, _| Some(output.clone()))
-                });
-                for layer in layer_map_for_output(&output).layers() {
-                    layer.send_frame(&output, now, Some(Duration::ZERO), |_, _| Some(output.clone()));
-                }
-                if let Some(l) = state.lock.surfaces.get(&output.name()) {
-                    smithay::desktop::utils::send_frames_surface_tree(l.wl_surface(), &output, now, Some(Duration::ZERO), |_, _| Some(output.clone()));
-                }
+                crate::scene::send_frames(&state.space, state.lock.surfaces.get(&output.name()), &output, now);
 
                 state.redraw_pending = false;
                 state.fifo_signal();
