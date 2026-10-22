@@ -101,7 +101,11 @@ pub fn zone_rect(m: &Mon, z: &Z) -> (f32, f32, f32, f32) {
     let r = m.res;
     let (ax, ay) = (r[0] + GAP, r[1] + GAP);
     let (aw, ah) = (m.w - r[0] - r[2] - 2.0 * GAP, m.h - r[1] - r[3] - 2.0 * GAP);
-    ((ax + z[0] * (aw + GAP)).floor(), (ay + z[1] * (ah + GAP)).floor(), (z[2] * (aw + GAP) - GAP).floor(), (z[3] * (ah + GAP) - GAP).floor())
+    // both edges rounded from the fractions, like mist-comp snap.rs zone_rect: exact gaps, the last zone ends
+    // on the area's edge (origin + floored width left 2/3 + 1/3 1 px short)
+    let (x0, y0) = ((ax + z[0] * (aw + GAP)).round(), (ay + z[1] * (ah + GAP)).round());
+    let (x1, y1) = ((ax + (z[0] + z[2]) * (aw + GAP)).round() - GAP, (ay + (z[1] + z[3]) * (ah + GAP)).round() - GAP);
+    (x0, y0, (x1 - x0).max(1.0), (y1 - y0).max(1.0))
 }
 // the rest of the layout a window was snapped into: the chosen layout, else halves / quarters
 pub fn remaining(z: &Z, li: i32) -> Vec<Z> {
@@ -498,9 +502,31 @@ impl Pane for DragPane {
 }
 
 // ---------------------------------------------------------------- the Snap Layouts flyout
-const FLY_W: f32 = 4.0 * 132.0 + 3.0 * 12.0 + 28.0;
-const FLY_H: f32 = 2.0 * 76.0 + 12.0 + 28.0;
+// layout cards: 4 in the first row, the rest centred below (Windows 11); zones inside with even gaps
+const CARD_W: f32 = 120.0;
+const CARD_H: f32 = 72.0;
+const CARD_GAP: f32 = 10.0;
+const FLY_IN: f32 = 12.0; // body padding around the cards
+const CARD_IN: f32 = 6.0; // card padding around its zones
+const ZONE_GAP: f32 = 4.0;
+const FLY_W: f32 = 4.0 * CARD_W + 3.0 * CARD_GAP + 2.0 * FLY_IN;
+const FLY_H: f32 = 2.0 * CARD_H + CARD_GAP + 2.0 * FLY_IN;
 const PAD: f32 = 24.0; // room for the shadow around the hover flyout
+// card `li` relative to the flyout body
+fn card_at(li: usize) -> (f32, f32) {
+    let (row, col) = (li / 4, li % 4);
+    let in_row = (LAYOUTS.len() - row * 4).min(4) as f32;
+    let x0 = FLY_IN + (4.0 - in_row) * (CARD_W + CARD_GAP) / 2.0;
+    (x0 + col as f32 * (CARD_W + CARD_GAP), FLY_IN + row as f32 * (CARD_H + CARD_GAP))
+}
+// zone `z` of card `li`, relative to the body: edges from the fractions (like zone_rect), whole pixels
+fn zone_box(li: usize, z: &Z) -> (f32, f32, f32, f32) {
+    let (cx, cy) = card_at(li);
+    let (aw, ah) = (CARD_W - 2.0 * CARD_IN + ZONE_GAP, CARD_H - 2.0 * CARD_IN + ZONE_GAP);
+    let (x0, y0) = ((cx + CARD_IN + z[0] * aw).round(), (cy + CARD_IN + z[1] * ah).round());
+    let (x1, y1) = ((cx + CARD_IN + (z[0] + z[2]) * aw).round() - ZONE_GAP, (cy + CARD_IN + (z[1] + z[3]) * ah).round() - ZONE_GAP);
+    (x0, y0, x1 - x0, y1 - y0)
+}
 pub struct Fly {
     pub addr: String,
     pinned: bool,
@@ -522,6 +548,9 @@ impl Fly {
         open.set(1.0, 150.0, Ease::OutCubic);
         Fly { addr: norm(addr), pinned, mon, pos: if pinned { (bx, by) } else { (PAD, PAD) }, idx: if pinned { 0 } else { -1 }, open, btn: !pinned, left_at: None, inside: false, flat: flat() }
     }
+    pub fn hot(&mut self, i: i32) {
+        self.idx = i;
+    }
     pub fn screen(&self) -> &str {
         &self.mon.name
     }
@@ -532,11 +561,12 @@ impl Fly {
         ((bx - PAD) as i32, (by - PAD) as i32, (FLY_W + 2.0 * PAD) as u32, (FLY_H + 2.0 * PAD) as u32)
     }
     fn zone_at(&self, px: f32, py: f32) -> Option<usize> {
-        let (gx, gy) = (px - self.pos.0 - 14.0, py - self.pos.1 - 14.0);
+        let (gx, gy) = (px - self.pos.0, py - self.pos.1);
+        // half the gap around each zone counts, so the pointer never falls between two of them
+        let m = ZONE_GAP / 2.0;
         self.flat.iter().position(|(z, li)| {
-            let (ox, oy) = ((li % 4) as f32 * 144.0, (li / 4) as f32 * 88.0);
-            let (x, y, w, h) = (ox + 7.0 + z[0] * 122.0, oy + 7.0 + z[1] * 66.0, z[2] * 122.0 - 4.0, z[3] * 66.0 - 4.0);
-            gx >= x - 2.0 && gx <= x + w + 2.0 && gy >= y - 2.0 && gy <= y + h + 2.0
+            let (x, y, w, h) = zone_box(*li, z);
+            gx >= x - m && gx <= x + w + m && gy >= y - m && gy <= y + h + m
         })
     }
     fn pick(&self) -> Act {
@@ -595,16 +625,23 @@ impl Pane for FlyPane {
         let k = f.open.value();
         let (fx, fy) = f.pos;
         let mut l = Canvas::new(FLY_W as u32 + 2 * PAD as u32, FLY_H as u32 + 2 * PAD as u32);
-        crate::glass::Glass { radius: 18.0, tint: 0.9, ..Default::default() }.paint(&mut l, PAD, PAD, FLY_W, FLY_H);
+        crate::glass::Glass { radius: 16.0, tint: 0.9, ..Default::default() }.paint(&mut l, PAD, PAD, FLY_W, FLY_H);
+        let hot = f.flat.get(f.idx.max(0) as usize).filter(|_| f.idx >= 0).copied();
         for (li, lay) in LAYOUTS.iter().enumerate() {
-            let (ox, oy) = (PAD + 14.0 + (li % 4) as f32 * 144.0, PAD + 14.0 + (li / 4) as f32 * 88.0);
-            rect(&mut l, ox, oy, 132.0, 76.0, 12.0, Rgba(1.0, 1.0, 1.0, 0.04));
-            border(&mut l, ox, oy, 132.0, 76.0, 12.0, 1.0, HAIR);
+            let (cx, cy) = card_at(li);
+            // the card under the pointer lifts a little; no frame (the zones draw the shape)
+            let on = hot.is_some_and(|(_, hl)| hl == li);
+            rect(&mut l, PAD + cx, PAD + cy, CARD_W, CARD_H, 10.0, Rgba(1.0, 1.0, 1.0, if on { 0.08 } else { 0.035 }));
             for z in lay.iter() {
-                let hot = f.idx >= 0 && f.flat.get(f.idx as usize).map(|(hz, hl)| *hl == li && same(hz, z)).unwrap_or(false);
-                let (x, y, w, h) = (ox + 5.0 + z[0] * 122.0 + 2.0, oy + 5.0 + z[1] * 66.0 + 2.0, z[2] * 122.0 - 4.0, z[3] * 66.0 - 4.0);
-                rect(&mut l, x, y, w, h, 6.0, if hot { ACCENT } else { Rgba(1.0, 1.0, 1.0, 0.12) });
-                border(&mut l, x, y, w, h, 6.0, 1.0, if hot { ACCENT_STRONG } else { Rgba(1.0, 1.0, 1.0, 0.08) });
+                let is_hot = hot.is_some_and(|(hz, hl)| hl == li && same(&hz, z));
+                let (x, y, w, h) = zone_box(li, z);
+                if is_hot {
+                    rect(&mut l, PAD + x - 1.0, PAD + y - 1.0, w + 2.0, h + 2.0, 6.0, ACCENT_SOFT);
+                    rect(&mut l, PAD + x, PAD + y, w, h, 5.0, ACCENT);
+                } else {
+                    rect(&mut l, PAD + x, PAD + y, w, h, 5.0, Rgba(1.0, 1.0, 1.0, if on { 0.2 } else { 0.13 }));
+                    border(&mut l, PAD + x, PAD + y, w, h, 5.0, 1.0, Rgba(1.0, 1.0, 1.0, 0.06));
+                }
             }
         }
         let _ = &cx;
@@ -892,5 +929,35 @@ impl Pane for AssistPane {
             _ => return Act::None,
         }
         Act::Redraw
+    }
+}
+
+#[cfg(test)]
+mod fly_tests {
+    use super::*;
+
+    #[test]
+    fn every_zone_is_hit_at_its_centre() {
+        let mut f = Fly::new("0x1", 0.0, 0.0, false, &[]);
+        f.pos = (0.0, 0.0);
+        for (i, (z, li)) in f.flat.iter().enumerate() {
+            let (x, y, w, h) = zone_box(*li, z);
+            assert!(w > 4.0 && h > 4.0, "zone {i} too small");
+            assert_eq!(f.zone_at(x + w / 2.0, y + h / 2.0), Some(i), "zone {i}");
+            assert!(x + w <= card_at(*li).0 + CARD_W - CARD_IN + 0.01, "zone {i} inside its card");
+        }
+    }
+
+    #[test]
+    fn preview_zones_end_on_the_area_edge() {
+        let m = Mon { w: 1920.0, h: 1080.0, res: [0.0, 34.0, 0.0, 0.0], ..Default::default() };
+        let right = |z: &Z| {
+            let r = zone_rect(&m, z);
+            r.0 + r.2
+        };
+        for z in [[0.667, 0.0, 0.333, 1.0], [0.5, 0.5, 0.5, 0.5], [0.75, 0.0, 0.25, 1.0], [0.5, 0.0, 0.5, 1.0], [0.0, 0.0, 1.0, 1.0]] {
+            assert_eq!(right(&z), 1912.0, "{z:?}");
+        }
+        assert_eq!(zone_rect(&m, &[0.0, 0.0, 1.0, 1.0]), (8.0, 42.0, 1904.0, 1030.0));
     }
 }

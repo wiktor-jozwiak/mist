@@ -149,6 +149,13 @@ pub fn make(name: &str, page: &str) -> Option<Box<dyn Pane>> {
             p.set_page(page);
             Some(Box::new(p))
         }
+        // tests only (app.rs opens it from maxhover): the hover flyout, `snapfly:<i>` = zone i of flat() hot
+        "snapfly" => {
+            let mut f = crate::snap::Fly::new("0x1", 0.0, 0.0, false, &[]);
+            f.hot(page.parse().unwrap_or(-1));
+            let r = f.surface(0.0, 0.0);
+            Some(Box::new(crate::snap::FlyPane(f, r)))
+        }
         _ => None,
     }
 }
