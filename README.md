@@ -115,9 +115,10 @@ caveats: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 | 🏝️ **Dynamic Island** | media (MPRIS) with equalizer, timers, calls (KDE Connect / ADB), notifications, volume |
 | 🖼️ **Desktop** | clock, sunrise / sunset, glass cards (weather, Garmin readiness, running plan), per-widget settings sheet |
 | 🔍 **Panels** | Spotlight-style search, Start, Cmd+Tab switcher, control centre (paged), notification centre, clipboard history, emoji picker, session menu, wallpaper gallery, screenshot toolbar |
-| 🛡️ **System** | notification server, polkit agent, lock screen (`ext-session-lock-v1` + PAM), idle (`ext-idle-notify-v1`, logind), Windows 11-style snap assist |
+| 🛡️ **System** | notification server, polkit agent, lock screen (`ext-session-lock-v1` + PAM), idle (`ext-idle-notify-v1`, logind) |
+| 🪟 **Snapping** | Windows 11-style: drag to an edge or corner, Snap Layouts flyout on the green button or `Super + Z` (7 layouts), Snap Assist fills the rest, `Super + arrows`; zones with even 8 px gaps, the preview is exactly where the window lands |
 | 🌄 **Wallpapers** | photos (CPU) or live GLSL scenes and a real-time weather sky (`mist-wall`) |
-| 🧪 **mist-comp** *(experimental)* | own Smithay compositor + greeter, for running Mist without Hyprland |
+| 🧪 **mist-comp** *(experimental)* | own Smithay compositor + greeter, for running Mist without Hyprland: glass blur that re-runs only when what is behind it changes, per-monitor redraws, covered windows throttled to 1 frame/s, Overview (`Super + O`), 1:1 workspace swipe, magnifier, windows restored after a crash or `mist-session restart` |
 
 ### Desktop cards
 
@@ -133,14 +134,14 @@ the desktop clock) → Appearance → Language, or set `MIST_LANG=en`. *Automati
 to English. Translations live in one table, [native/assets/i18n.tsv](native/assets/i18n.tsv): one row per
 string, one column per language. A new language is one more column.
 
-The dock, island, desktop and weather sky go on Hyprland's first monitor. Another one: `"primary": "DP-3"` in
+The dock, island, desktop and weather sky go on the compositor's first monitor. Another one: `"primary": "DP-3"` in
 `~/.config/mist/settings.json`, or `MIST_PRIMARY=DP-3`. The weather place is set in *Customise desktop* → General.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    H[Hyprland] -- layer-shell --> UI["<b>mist-ui</b><br/>Rust · tiny-skia + swash<br/>wl_shm, every surface"]
+    H["Hyprland or mist-comp"] -- layer-shell --> UI["<b>mist-ui</b><br/>Rust · tiny-skia + swash<br/>wl_shm, every surface"]
     H -- layer-shell --> W["<b>mist-wall</b><br/>Rust · EGL / GLSL 150<br/>live wallpapers, sky"]
     UI <-- "stdin / stdout" --> D["<b>mistd</b><br/>stats · phone · calls<br/>island · clipstore"]
     UI <-- D-Bus --> S[(MPRIS · tray · notifications<br/>polkit · NetworkManager · BlueZ)]
@@ -237,11 +238,12 @@ cd native && cargo build --release && cargo test --release
 |---|---|
 | `mist-ui --png out.png '{"app":"Firefox"}'` | the top bar as PNG |
 | `mist-ui-bin --desk-png dir` / `--dock-png out.png` | desktop stage + cards (+ `layout.json`) / dock |
-| `mist-ui-bin --pane-png spotlight 1920 1080 out.png fi` | a panel, settled |
+| `mist-ui-bin --pane-png spotlight 1920 1080 out.png fi` | a panel, settled (`snapfly:3 640 290`: Snap Layouts with zone 3 hot) |
 | `mist-ui-bin --island-frames notif out 30 20` | an island demo, frame by frame |
 | `mist-ui --test` | a second bar over the real one on HDMI-A-1 |
 | `mist-wall-bin --png out.ppm dunes 1920 1080` | a live wallpaper frame (`MIST_WALL_BENCH=N`: ms per frame) |
 | `mist-ui-bin msg ui stats` | wake-ups, paints and paint time per surface |
+| `native/mist-comp/tests/run-all.sh` | every mist-comp test in a nested compositor (`CI=1`: software renderer) |
 | `bench/measure.sh 30 mist-ui-bin mist-wall-bin mistd` | idle PSS / CPU of the running shell |
 
 </details>
@@ -250,8 +252,8 @@ Keep `lto = false` (Arch rustc with system LLVM crashes with LTO). See [CONTRIBU
 
 ## Status
 
-Daily driver of one person, two monitors, NVIDIA. Everything in the tables above is native and used every
-day; `mist-comp` is experimental. [docs/PUBLISHING.md](docs/PUBLISHING.md) lists what is left before a public
+Daily driver of one person, two monitors, NVIDIA, now on `mist-comp` as well as Hyprland. Everything in the
+tables above is native and used every day; `mist-comp` is still experimental. [docs/PUBLISHING.md](docs/PUBLISHING.md) lists what is left before a public
 release.
 
 ## Star History

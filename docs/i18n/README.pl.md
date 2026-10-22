@@ -115,9 +115,10 @@ zastrzeżenia: [docs/BENCHMARKS.md](../BENCHMARKS.md).
 | 🏝️ **Dynamic Island** | multimedia (MPRIS) z equalizerem, minutniki, połączenia (KDE Connect / ADB), powiadomienia, głośność |
 | 🖼️ **Pulpit** | zegar, wschód / zachód słońca, szklane karty (pogoda, gotowość Garmin, plan biegowy), ustawienia każdej karty |
 | 🔍 **Panele** | wyszukiwarka w stylu Spotlight, Start, przełącznik Cmd+Tab, centrum sterowania (strony), centrum powiadomień, historia schowka, emoji, menu sesji, galeria tapet, pasek zrzutów ekranu |
-| 🛡️ **System** | serwer powiadomień, agent polkit, ekran blokady (`ext-session-lock-v1` + PAM), bezczynność (`ext-idle-notify-v1`, logind), przyciąganie okien jak w Windows 11 |
+| 🛡️ **System** | serwer powiadomień, agent polkit, ekran blokady (`ext-session-lock-v1` + PAM), bezczynność (`ext-idle-notify-v1`, logind) |
+| 🪟 **Przyciąganie** | jak w Windows 11: przeciągnięcie do krawędzi lub rogu, Snap Layouts na zielonym przycisku albo `Super + Z` (7 układów), Snap Assist wypełnia resztę, `Super + strzałki`; strefy z równymi 8 px przerwami, podgląd pokazuje dokładnie, gdzie wyląduje okno |
 | 🌄 **Tapety** | zdjęcia (CPU) albo żywe sceny GLSL i niebo pogody w czasie rzeczywistym (`mist-wall`) |
-| 🧪 **mist-comp** *(eksperymentalny)* | własny kompozytor Smithay + greeter, do uruchamiania Mist bez Hyprlanda |
+| 🧪 **mist-comp** *(eksperymentalny)* | własny kompozytor Smithay + greeter, do uruchamiania Mist bez Hyprlanda: rozmycie szkła liczone tylko, gdy zmieni się to, co pod nim, odświeżanie per monitor, zasłonięte okna dławione do 1 klatki/s, Overview (`Super + O`), przesuwanie przestrzeni 1:1 za palcami, lupa, okna wracają po awarii albo po `mist-session restart` |
 
 ### Karty pulpitu
 
@@ -133,7 +134,7 @@ zegarze pulpitu) → Wygląd → Język albo `MIST_LANG=pl`. *Automatycznie* idz
 angielski. Tłumaczenia są w jednej tabeli, [native/assets/i18n.tsv](../../native/assets/i18n.tsv): wiersz na
 napis, kolumna na język. Nowy język to jedna kolumna więcej.
 
-Dock, wyspa, pulpit i niebo pogody trafiają na pierwszy monitor Hyprlanda. Inny: `"primary": "DP-3"` w
+Dock, wyspa, pulpit i niebo pogody trafiają na pierwszy monitor kompozytora. Inny: `"primary": "DP-3"` w
 `~/.config/mist/settings.json` albo `MIST_PRIMARY=DP-3`. Miejsce pogody: *Dostosuj pulpit* → Ogólne.
 Wszystkie pliki i zmienne: [docs/CONFIG.md](../CONFIG.md).
 
@@ -141,7 +142,7 @@ Wszystkie pliki i zmienne: [docs/CONFIG.md](../CONFIG.md).
 
 ```mermaid
 flowchart LR
-    H[Hyprland] -- layer-shell --> UI["<b>mist-ui</b><br/>Rust · tiny-skia + swash<br/>wl_shm, każda powierzchnia"]
+    H["Hyprland albo mist-comp"] -- layer-shell --> UI["<b>mist-ui</b><br/>Rust · tiny-skia + swash<br/>wl_shm, każda powierzchnia"]
     H -- layer-shell --> W["<b>mist-wall</b><br/>Rust · EGL / GLSL 150<br/>żywe tapety, niebo"]
     UI <-- "stdin / stdout" --> D["<b>mistd</b><br/>stats · phone · calls<br/>island · clipstore"]
     UI <-- D-Bus --> S[(MPRIS · zasobnik · powiadomienia<br/>polkit · NetworkManager · BlueZ)]
@@ -235,11 +236,12 @@ cd native && cargo build --release && cargo test --release
 |---|---|
 | `mist-ui --png out.png '{"app":"Firefox"}'` | górny pasek jako PNG |
 | `mist-ui-bin --desk-png dir` / `--dock-png out.png` | scena pulpitu + karty (+ `layout.json`) / dock |
-| `mist-ui-bin --pane-png spotlight 1920 1080 out.png fi` | panel, po ustaniu animacji |
+| `mist-ui-bin --pane-png spotlight 1920 1080 out.png fi` | panel, po ustaniu animacji (`snapfly:3 640 290`: Snap Layouts z podświetloną strefą 3) |
 | `mist-ui-bin --island-frames notif out 30 20` | demo wyspy, klatka po klatce |
 | `mist-ui --test` | drugi pasek nad prawdziwym na HDMI-A-1 |
 | `mist-wall-bin --png out.ppm dunes 1920 1080` | klatka żywej tapety (`MIST_WALL_BENCH=N`: ms na klatkę) |
 | `mist-ui-bin msg ui stats` | wybudzenia, malowania i czas malowania na powierzchnię |
+| `native/mist-comp/tests/run-all.sh` | wszystkie testy mist-comp w zagnieżdżonym kompozytorze (`CI=1`: renderer programowy) |
 | `bench/measure.sh 30 mist-ui-bin mist-wall-bin mistd` | PSS / CPU działającej powłoki w spoczynku |
 
 </details>
@@ -248,8 +250,8 @@ Zostaw `lto = false` (rustc z Archa z systemowym LLVM wywraca się przy LTO). Zo
 
 ## Stan
 
-Codzienne narzędzie jednej osoby, dwa monitory, NVIDIA. Wszystko z tabel powyżej jest natywne i używane
-codziennie; `mist-comp` jest eksperymentalny. [docs/PUBLISHING.md](../PUBLISHING.md) wymienia, co zostało
+Codzienne narzędzie jednej osoby, dwa monitory, NVIDIA, teraz także na `mist-comp` obok Hyprlanda. Wszystko
+z tabel powyżej jest natywne i używane codziennie; `mist-comp` jest wciąż eksperymentalny. [docs/PUBLISHING.md](../PUBLISHING.md) wymienia, co zostało
 przed publicznym wydaniem.
 
 ## Star History
