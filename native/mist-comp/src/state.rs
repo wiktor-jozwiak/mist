@@ -35,6 +35,8 @@ pub struct MistComp {
 
     pub space: Space<Window>,
     pub loop_signal: LoopSignal,
+    /// IPC `restart`: exit 75 (start-mist restarts with the windows restored)
+    pub restart: bool,
 
     // Smithay State
     pub compositor_state: CompositorState,
@@ -250,6 +252,7 @@ impl MistComp {
 
             space,
             loop_signal,
+            restart: false,
             socket_name,
 
             compositor_state,
@@ -372,9 +375,11 @@ impl MistComp {
                 Generic::new(display, Interest::READ, Mode::Level),
                 |_, display, state| {
                     // Safety: we don't drop the display
+                    let t = std::time::Instant::now();
                     unsafe {
                         display.get_mut().dispatch_clients(state).unwrap();
                     }
+                    crate::prof::add(6, t.elapsed());
                     Ok(PostAction::Continue)
                 },
             )
@@ -398,6 +403,7 @@ impl MistComp {
         }
         for w in self.space.elements() {
             w.set_activated(Some(w) == window);
+            crate::wm::data(w).active.set(Some(w) == window);
             if let Some(t) = w.toplevel() {
                 if t.is_initial_configure_sent() {
                     t.send_pending_configure();

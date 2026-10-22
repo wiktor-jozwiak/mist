@@ -156,7 +156,7 @@ pub fn window_elements(r: &mut GlesRenderer, w: &Window, loc: Point<i32, Logical
             shape.loc.y -= BAR;
             shape.size.h += BAR;
         }
-        if let Some(e) = crate::shadow::element(r, &crate::wm::data(w).shadow, o, shape, alpha) {
+        if let Some(e) = crate::shadow::element(r, &crate::wm::data(w).shadow, o, shape, if crate::wm::data(w).active.get() { alpha } else { alpha * crate::shadow::INACTIVE }) {
             out.push(SceneElem::Shadow(e));
         }
     }

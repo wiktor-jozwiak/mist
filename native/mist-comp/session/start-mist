@@ -41,15 +41,18 @@ export RUST_LOG=${RUST_LOG:-warn,mist_comp=info,smithay::backend::drm::device::f
 # the session survives a driver-specific failure; three crashes end it. A normal quit or logout ends it at once.
 # After a crash MIST_COMP_RESTORE=1 starts again what ~/.cache/mist/session.json lists, on the same workspace and place.
 crashes=0
+restore=0
 safe=${MIST_COMP_SAFE:-0}
 while :; do
     echo "--- mist-comp start $(date '+%F %T') safe=$safe" >>"$LOG"
-    MIST_COMP_SAFE=$safe MIST_COMP_RESTORE=$([ $crashes -gt 0 ] && echo 1 || echo 0) "$COMP" --tty >>"$LOG" 2>&1
+    MIST_COMP_SAFE=$safe MIST_COMP_RESTORE=$restore "$COMP" --tty >>"$LOG" 2>&1
     rc=$?
     echo "--- mist-comp exit $rc $(date '+%F %T')" >>"$LOG"
     case $rc in
         0 | 129 | 130 | 143) break ;; # quit, SIGHUP / SIGINT / SIGTERM (logout, shutdown)
+        75) restore=1; sleep 0.5; continue ;; # `restart` over IPC (mist-session restart): the new binary, same mode
     esac
+    restore=1
     crashes=$((crashes + 1))
     [ $crashes -ge 3 ] && break
     safe=1

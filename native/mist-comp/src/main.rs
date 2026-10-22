@@ -1,5 +1,6 @@
 #![allow(irrefutable_let_patterns)]
 
+mod prof;
 mod cover;
 mod session;
 mod watchdog;
@@ -159,6 +160,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // no fixed tick: the loop sleeps until a client or input event; a frame is requested only when dirty
     tracing::trace!("run");
     event_loop.run(None, &mut data, move |data| {
+        let turn = std::time::Instant::now();
         data.wakeups += 1;
         data.prune_inhibitors();
         let full = std::mem::take(&mut data.dirty);
@@ -209,12 +211,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         let ripe = data.sync_at.is_none_or(|t| now.duration_since(t) >= std::time::Duration::from_millis(100));
         if full || (data.sync_due && ripe) {
+            let t = std::time::Instant::now();
             data.sync_at = Some(now);
             data.sync_due = false;
             data.cover_sync();
             data.extws_sync();
             data.ftm_sync();
             data.update_scales();
+            crate::prof::add(5, t.elapsed());
         } else if data.sync_due && !data.sync_timer {
             data.sync_timer = true;
             let _ = data.loop_handle.insert_source(smithay::reexports::calloop::timer::Timer::from_duration(std::time::Duration::from_millis(100)), |_, _, st: &mut MistComp| {
@@ -223,8 +227,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
         }
         let _ = data.display_handle.flush_clients();
+        crate::prof::add(4, turn.elapsed());
         tracing::trace!("loop iteration");
     })?;
 
+    if data.restart {
+        std::process::exit(75);
+    }
     Ok(())
 }

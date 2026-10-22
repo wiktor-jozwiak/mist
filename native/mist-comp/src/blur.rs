@@ -161,15 +161,36 @@ struct Cache {
     behind: Option<u64>,
     /// last drawn: a surface gone (closed panel, hidden workspace) frees its textures a second later
     seen: std::time::Instant,
+    /// IPC `blurs`: requests and the ones that ran
+    calls: u64,
+    runs: u64,
+}
+
+/// A glass element's own commit counter: bumped when the blur behind or the client's surface changed. The
+/// last few bumps remember the client's commit at the time and the blur version then, so the damage since
+/// one of them is the client's own damage (a page scrolling) instead of the whole window.
+#[derive(Clone, Default)]
+struct Track {
+    behind: u64,
+    own: CommitCounter,
+    out: CommitCounter,
+    /// (our counter, the client's commit then, the blur version then)
+    hist: Vec<(CommitCounter, CommitCounter, u64)>,
+    blur: u64,
+    /// the scene build it was last in (closed panels' entries go)
+    frame: u64,
 }
 
 thread_local! {
     static MASK_PROGRAM: RefCell<Option<GlesTexProgram>> = const { RefCell::new(None) };
     static PASSES_PROGRAM: RefCell<Option<Passes>> = const { RefCell::new(None) };
     static CACHE: RefCell<HashMap<(String, Id), Cache>> = RefCell::new(HashMap::new());
-    /// per glass layer: (hash of what is behind, the surface's own commit, the glass commit)
-    static STATE: RefCell<HashMap<(String, Id), (u64, CommitCounter, CommitCounter)>> = RefCell::new(HashMap::new());
+    /// per glass surface: its commit counter and what it stands for
+    static STATE: RefCell<HashMap<(String, Id), Track>> = RefCell::new(HashMap::new());
     static FRAME: Cell<u64> = const { Cell::new(0) };
+    /// per blur (window or panel): the layout behind it (hash), a version bumped whenever pixels behind it
+    /// change, the commit of each element behind it last seen, and the scene build it was last used in
+    static BEHIND: RefCell<HashMap<(String, Id), (u64, u64, HashMap<Id, CommitCounter>, u64)>> = RefCell::new(HashMap::new());
 }
 
 fn mask_program(r: &mut GlesRenderer) -> Option<GlesTexProgram> {
@@ -279,7 +300,7 @@ impl Cache {
             gl.FramebufferTexture2D(ffi::FRAMEBUFFER, ffi::COLOR_ATTACHMENT0, ffi::TEXTURE_2D, tex[i], 0);
         }
         gl.BindTexture(ffi::TEXTURE_2D, 0);
-        Cache { region, sizes, tex, fbo, behind: None, seen: std::time::Instant::now() }
+        Cache { region, sizes, tex, fbo, behind: None, seen: std::time::Instant::now(), calls: 0, runs: 0 }
     }
 
     unsafe fn free(&self, gl: &ffi::Gles2) {
@@ -321,12 +342,8 @@ unsafe fn blur(gl: &ffi::Gles2, key: &(String, Id), region: Rectangle<i32, Physi
         e.seen = now;
         let hit = e.behind == Some(behind);
         COUNTS.with(|n| n.set((n.get().0 + 1, n.get().1 + !hit as u64)));
-        PER.with(|p| {
-            let mut p = p.borrow_mut();
-            let e = p.entry(format!("{} {:?}", key.0, key.1)).or_default();
-            e.0 += 1;
-            e.1 += !hit as u64;
-        });
+        e.calls += 1;
+        e.runs += !hit as u64;
         if hit {
             return Some(e.tex[0]);
         }
@@ -394,6 +411,7 @@ pub struct Glass {
     commit: CommitCounter,
     /// output-physical rect the glass stays inside (a window's geometry), None: the whole surface
     clip: Option<Rectangle<i32, Physical>>,
+    track: Track,
     /// the alpha range the glass fades in over (0: on or off at `ignore`)
     soft: f32,
 }
@@ -408,7 +426,7 @@ impl Glass {
         let key = (output.to_string(), inner.id().clone());
         let rect = crop.unwrap_or_else(|| inner.geometry(scale));
         let Some(inner) = CropRenderElement::from_element(inner, scale, rect) else { return Ok(None) };
-        Ok(Some(Glass { inner, mask, key, group: None, ignore, behind: 0, commit: CommitCounter::default(), clip: None, soft: 0.0 }))
+        Ok(Some(Glass { inner, mask, key, group: None, ignore, behind: 0, commit: CommitCounter::default(), clip: None, track: Track::default(), soft: 0.0 }))
     }
 
     pub fn soft(mut self, soft: f32) -> Self {
@@ -438,30 +456,74 @@ impl Glass {
             (Some(_), Some(c)) => c,
             _ => self.geometry(scale),
         };
+        // the layout behind (which elements, where, how opaque) in a hash; their contents by damage: a client
+        // that redraws only away from the glass (a chat streaming text below the dock) does not re-blur it
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        for e in behind {
-            let g = e.geometry(scale);
-            if !g.overlaps(geo) {
-                continue;
+        let mut now: HashMap<Id, CommitCounter> = HashMap::new();
+        let mut changed = false;
+        let bkey = self.group.clone().unwrap_or_else(|| self.key.clone());
+        let frame = FRAME.with(|f| f.get());
+        BEHIND.with(|b| {
+            let mut b = b.borrow_mut();
+            let prev = b.get(&bkey);
+            for e in behind {
+                let g = e.geometry(scale);
+                if !g.overlaps(geo) {
+                    continue;
+                }
+                e.id().hash(&mut h);
+                (g.loc.x, g.loc.y, g.size.w, g.size.h).hash(&mut h);
+                e.alpha().to_bits().hash(&mut h);
+                let c = e.current_commit();
+                if let Some(last) = prev.and_then(|p| p.2.get(e.id())).filter(|l| **l != c) {
+                    changed |= e.damage_since(scale, Some(*last)).iter().any(|d| Rectangle::new(d.loc + g.loc, d.size).overlaps(geo));
+                }
+                now.insert(e.id().clone(), c);
             }
-            e.id().hash(&mut h);
-            format!("{:?}", e.current_commit()).hash(&mut h);
-            (g.loc.x, g.loc.y, g.size.w, g.size.h).hash(&mut h);
-            e.alpha().to_bits().hash(&mut h);
-        }
-        (geo.loc.x, geo.loc.y, geo.size.w, geo.size.h).hash(&mut h);
-        self.behind = h.finish();
-        let own = self.inner.current_commit();
-        self.commit = STATE.with(|s| {
-            let mut s = s.borrow_mut();
-            let e = s.entry(self.key.clone()).or_insert((self.behind, own, CommitCounter::default()));
-            if e.0 != self.behind || e.1 != own {
-                e.0 = self.behind;
-                e.1 = own;
-                e.2.increment();
+            (geo.loc.x, geo.loc.y, geo.size.w, geo.size.h).hash(&mut h);
+            let layout = h.finish();
+            let version = match prev {
+                Some(p) if p.0 == layout && p.3 == frame => p.1,
+                Some(p) if p.0 == layout => p.1 + changed as u64,
+                Some(p) => p.1 + 1,
+                None => 0,
+            };
+            // the group's other surfaces in this scene build saw the same: keep their bookkeeping
+            if prev.is_none_or(|p| p.3 != frame) {
+                b.insert(bkey.clone(), (layout, version, now, frame));
             }
-            e.2
+            if b.len() > 64 {
+                b.retain(|_, v| frame.saturating_sub(v.3) < 600);
+            }
+            let mut v = std::collections::hash_map::DefaultHasher::new();
+            (layout, version).hash(&mut v);
+            self.behind = v.finish();
         });
+        let own = self.inner.current_commit();
+        self.track = STATE.with(|s| {
+            let mut s = s.borrow_mut();
+            let e = s.entry(self.key.clone()).or_insert_with(|| Track { behind: self.behind, own, ..Default::default() });
+            if e.behind != self.behind || e.own != own {
+                if e.behind != self.behind {
+                    e.blur += 1;
+                }
+                e.behind = self.behind;
+                e.own = own;
+                e.out.increment();
+                let t = (e.out, own, e.blur);
+                e.hist.push(t);
+                if e.hist.len() > 8 {
+                    e.hist.remove(0);
+                }
+            }
+            e.frame = FRAME.with(|f| f.get());
+            let t = e.clone();
+            if s.len() > 64 {
+                s.retain(|_, v| t.frame.saturating_sub(v.frame) < 600);
+            }
+            t
+        });
+        self.commit = self.track.out;
     }
 }
 
@@ -471,10 +533,15 @@ pub fn counts() -> (u64, u64) {
     COUNTS.with(|c| c.get())
 }
 thread_local!(static COUNTS: Cell<(u64, u64)> = const { Cell::new((0, 0)) });
-thread_local!(static PER: RefCell<HashMap<String, (u64, u64)>> = RefCell::new(HashMap::new()));
-/// IPC `blurs`: requests and runs per cache (output, surface).
+/// IPC `blurs`: requests and runs per live cache (output, surface).
 pub fn per_cache() -> String {
-    PER.with(|p| p.borrow().iter().map(|(k, (c, r))| format!("{r}/{c} {k}\n")).collect())
+    CACHE.with(|c| c.borrow().iter().map(|(k, e)| format!("{}/{} {} {:?}\n", e.runs, e.calls, k.0, k.1)).collect())
+}
+
+/// IPC `mem`: entries of the blur bookkeeping (blur chains with their GL textures, glass surfaces, blurs'
+/// views of what is behind them)
+pub fn sizes() -> (usize, usize, usize) {
+    (CACHE.with(|c| c.borrow().len()), STATE.with(|s| s.borrow().len()), BEHIND.with(|b| b.borrow().len()))
 }
 
 pub fn tick() {
@@ -501,11 +568,14 @@ impl Element for Glass {
         self.inner.geometry(scale)
     }
     fn damage_since(&self, scale: Scale<f64>, commit: Option<CommitCounter>) -> DamageSet<i32, Physical> {
-        // anything behind or the panel itself changed: the whole panel (the blur spreads over it)
         if commit == Some(self.commit) {
-            DamageSet::default()
-        } else {
-            DamageSet::from_slice(&[Rectangle::from_size(self.geometry(scale).size)])
+            return DamageSet::default();
+        }
+        // only the client drew since then: its own damage; the blur behind changed (or too long ago): all of
+        // it, the blur spreads over the whole surface
+        match commit.and_then(|c| self.track.hist.iter().find(|h| h.0 == c)) {
+            Some(&(_, own, blur)) if blur == self.track.blur => self.inner.damage_since(scale, Some(own)),
+            _ => DamageSet::from_slice(&[Rectangle::from_size(self.geometry(scale).size)]),
         }
     }
     fn opaque_regions(&self, scale: Scale<f64>) -> OpaqueRegions<i32, Physical> {

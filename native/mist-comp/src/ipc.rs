@@ -195,8 +195,42 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
         "geom" => state
             .space
             .elements()
-            .map(|w| format!("{} geometry {:?} bbox {:?}\n", crate::hyprcompat::app_id(w), w.geometry(), w.bbox()))
+            .map(|w| {
+                let opaque = smithay::wayland::seat::WaylandFocus::wl_surface(w).map(|s| {
+                    smithay::wayland::compositor::with_states(&s, |st| {
+                        let mut a = st.cached_state.get::<smithay::wayland::compositor::SurfaceAttributes>();
+                        a.current().opaque_region.as_ref().map(|r| r.rects.iter().map(|(k, r)| format!("{k:?} {}x{}+{}+{}", r.size.w, r.size.h, r.loc.x, r.loc.y)).collect::<Vec<_>>().join(","))
+                    })
+                });
+                format!("{} geometry {:?} bbox {:?} opaque {:?}\n", crate::hyprcompat::app_id(w), w.geometry(), w.bbox(), opaque.flatten())
+            })
             .collect(),
+        // sizes of what grows with time (memory hunting): collections in the state and the blur's caches
+        "mem" => {
+            let (cache, glass, behind) = crate::blur::sizes();
+            let st = &*state;
+            format!(
+                "windows {} stash {} pending {} listeners {} restore {} ext_ws {} focus_history {} inhibitors {} screencopy {} window_copies {} shortcuts {} fence_waits {} out_seq {} anim.open {} anim.moved {} anim.layers {} anim.closing {} blur.cache {cache} blur.glass {glass} blur.behind {behind}\n",
+                st.space.elements().count(),
+                st.stash.len(),
+                st.pending.len(),
+                st.hypr_listeners.len(),
+                st.restore.len(),
+                st.ext_ws.len(),
+                st.focus_history.len(),
+                st.inhibitors.len(),
+                st.screencopy.len(),
+                st.window_copies.len(),
+                st.shortcuts.len(),
+                st.fence_waits.len(),
+                st.out_seq.len(),
+                st.anim.open.len(),
+                st.anim.moved.len(),
+                st.anim.layers.len(),
+                st.anim.closing.len(),
+            )
+        }
+        "prof" => crate::prof::take(),
         // render passes per output since start (and how many of them changed pixels)
         "passes" => {
             let mut v: Vec<_> = state.out_passes.iter().collect();
@@ -235,6 +269,16 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
             }
         }
         "quit" => {
+            state.loop_signal.stop();
+            "ok\n".into()
+        }
+        // a new compositor binary without logging out: exit 75, start-mist starts it again (not in safe mode)
+        // and reopens the windows (the session file is written first)
+        "restart" => {
+            if state.udev.is_some() {
+                state.session_write();
+            }
+            state.restart = true;
             state.loop_signal.stop();
             "ok\n".into()
         }

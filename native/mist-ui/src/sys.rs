@@ -413,7 +413,18 @@ pub fn audio(tx: Sender<Msg>) {
         let _ = tx.send(Msg::Volume(v, m));
         let mut a = audio_state();
         let _ = tx.send(Msg::Audio(a.clone()));
-        let Ok(mut ch) = Command::new("pactl").arg("subscribe").stdout(Stdio::piped()).stderr(Stdio::null()).spawn() else { return };
+        use std::os::unix::process::CommandExt;
+        let mut c = Command::new("pactl");
+        c.arg("subscribe").stdout(Stdio::piped()).stderr(Stdio::null());
+        // without it every mist-ui restart left an orphaned `pactl subscribe`; at 64 of them pipewire-pulse
+        // refuses new clients and apps lose sound
+        unsafe {
+            c.pre_exec(|| {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+                Ok(())
+            });
+        }
+        let Ok(mut ch) = c.spawn() else { return };
         let r = BufReader::new(ch.stdout.take().unwrap());
         // the lines come through a channel, so a burst (a browser stream starts, moves, changes volume: a dozen
         // events) is gathered for up to 300 ms and pactl is asked once per kind, not once per line

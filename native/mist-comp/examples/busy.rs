@@ -1,7 +1,8 @@
 //! Test client (tests/t-watchdog.sh): a 200x150 window that commits a new frame every BUSY_MS (5) ms without
 //! waiting for frame callbacks, the way a broken client burns CPU/GPU. mist-comp's watchdog should name it.
 //! BUSY_FRAME=1: a well-behaved animating client instead (tests/t-occlude.sh): draws on every frame callback,
-//! marks itself opaque; BUSY_ID (app_id, mist-busy) and BUSY_SIZE (WxH, 200x150) for several of them.
+//! marks itself opaque; BUSY_ID (app_id, mist-busy) and BUSY_SIZE (WxH, 200x150) for several of them,
+//! BUSY_DAMAGE (WxH) damages only that much in the middle of the window each frame.
 use std::{io::Write, os::fd::AsFd, time::Duration};
 
 use wayland_client::{
@@ -103,9 +104,11 @@ fn main() {
         region.add(0, 0, w, h);
         surface.set_opaque_region(Some(&region));
         println!("busy on frame callbacks");
+        let part = std::env::var("BUSY_DAMAGE").ok().and_then(|v| v.split_once('x').and_then(|(a, b)| Some((a.parse::<i32>().ok()?, b.parse::<i32>().ok()?))));
+        let (dx, dy, dw, dh) = part.map(|(pw, ph)| ((w - pw) / 2, (h - ph) / 2, pw, ph)).unwrap_or((0, 0, w, h));
         loop {
             surface.attach(Some(&buf), 0, 0);
-            surface.damage_buffer(0, 0, w, h);
+            surface.damage_buffer(dx, dy, dw, dh);
             surface.frame(&qh, ());
             surface.commit();
             app.frame_done = false;

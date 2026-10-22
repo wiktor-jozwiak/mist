@@ -91,6 +91,7 @@ with this table.
 | Workspace swipe held still | `tests/t-swipe.sh` | 1 frame / 0.5 s (the screenshot's) |
 | Render passes on an idle monitor while a client animates on the other one | `tests/t-perout.sh` | 180 → 0 per 3 s |
 | Frame callbacks to an animating client covered by an opaque window | `tests/t-occlude.sh` | 60 → 1 per s (60 again once uncovered) |
+| Blur runs while a maximized window redraws a small square under the glass bar and dock | `tests/t-glassdamage.sh` | 362 → 0 per 3 s; compositor CPU 8 → 4 ticks / 3 s (NVIDIA) |
 | Memory while panels open and close (2 × 30 s) | `tests/t-texleak.sh` | levels off: 110 → 132 → 139 MB on llvmpipe, ~80 MB on NVIDIA (grew ~4 MB/min before 2026-10-22) |
 
 Watching it live: `hyprctl` is mist-comp in its session, and its IPC socket answers `stats` (frames,

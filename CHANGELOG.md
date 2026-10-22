@@ -17,7 +17,9 @@ nothing is released yet.
 - CI runs every nested mist-comp test on the software renderer and prints compositor and panel benchmarks in the job summary (docs/BENCHMARKS.md has this machine's numbers).
 
 ### Changed
-- One window shape everywhere: corner radius 12 (mist-comp bars, rounded windows and the window shadow, mist-ui app windows, Zen) from `native/common/tokens.rs`, which also holds the window and bar colours; a test keeps Zen's tokens.css equal. Windows with a Mist bar get the window shadow too.
+- The Zen Browser theme is no longer part of the repository (removed from its history too); a local copy in `integrations/zen/` is ignored by git.
+- mist-ui: the Snap Layouts flyout redrawn: the last row centred, cards without frames, zones with even 4 px gaps, the hovered card lifts, the pointer hits a zone anywhere up to the middle of a gap.
+- One window shape everywhere: corner radius 12 (mist-comp bars, rounded windows and the window shadow, mist-ui app windows, Zen) from `native/common/tokens.rs`, which also holds the window and bar colours; a test keeps a local Zen theme's tokens.css equal. Windows with a Mist bar get the window shadow too.
 - mist-comp: `direct_scanout game` is the default: a fullscreen game's frames go to the primary plane without composition (one frame less latency, no GPU pass); other windows stay composited.
 - start-mist: on an NVIDIA-only machine EGL skips Mesa's vendor (gallium + LLVM, ~20 MB in every GL process).
 
@@ -27,9 +29,11 @@ nothing is released yet.
 - mist-ui: full-monitor panels reuse two buffers and send only the rows that changed (typing in Spotlight: ~6 % of the screen per frame instead of all 8 MB); the shared buffer pool shrinks when a panel closes.
 - mist-ui: the weather card's carousel waits while windows cover the card.
 - mist-comp: a client's commit redraws only the monitors its window is on; the other monitor stays idle (two monitors with a browser animating on one: half the render passes). Window, cursor and workspace bookkeeping runs at most 10 times a second while only clients commit, not on every commit.
+- mist-comp: glass (bar, dock, island, Zen) re-blurs only when pixels behind it change, not whenever a window behind it commits anywhere; a glass window's own redraws damage only what the client drew, not the whole window. A chat streaming text under the dock: 362 → 0 blur runs per 3 s.
 - mist-comp: a window fully covered by opaque windows gets a frame callback once a second instead of every refresh: a browser or chat app behind a maximized window stops drawing (its CPU and GPU, and our frames) and answers again as soon as it shows. Glass windows (Zen, Mist Files) and X11 windows never cover others.
 
 ### Fixed
+- Snapping: a zone's edges are rounded from its fractions instead of origin + floored width, in mist-comp and in the preview alike: 2/3 + 1/3, thirds and 1/4 + 1/2 + 1/4 no longer stop 1 px short of the screen edge, neighbours keep exactly 8 px between them.
 - mist-comp: Zen (and every glass window) drew a square grey frame around its rounded corners: Firefox leaves a 24 px margin around the window for GTK's own frame and shadow, which mist-comp showed under its rounded shadow. A glass window's own surfaces are now cut at its geometry (menus and popups are not), and the glass under its antialiased corners fades with the surface's alpha instead of a hard edge.
 - mist-comp leaked memory: the GL textures and EGL images of every destroyed client buffer stayed until the session ended (smithay 0.7 frees them only on `cleanup_texture_cache`, which was never called), and a closed panel's blur textures stayed for 600 frames. A live session grew about 4 MB a minute (520 MB after two hours); opening and closing panels now levels off at ~80 MB (test t-texleak).
 - Screen sharing and screenshots through the portal in the Mist session: xdg-desktop-portal found no ScreenCast backend for `XDG_CURRENT_DESKTOP=mist` (xdph only lists Hyprland and wlroots desktops); start-mist now installs `mist-portals.conf`.
@@ -96,9 +100,6 @@ nothing is released yet.
   Chosen in *Dostosuj pulpit* → Wygląd → Język, saved in `~/.config/mist/settings.json`, `MIST_LANG`
   overrides; *auto* follows `$LANG`, English fallback. Applied when text is shaped, so cached strings cost
   nothing; Polish renders are pixel-identical to before.
-- Zen Browser theme (`integrations/zen/`): Mist glass sidebar, menus, popups, panels, dialogs, urlbar and
-  about: pages, SF Pro / Inter fonts, prefs in `user.js`, `install.sh` per profile; guide in
-  `docs/guides/zen.md` (Polish version).
 - Garmin setup guide (`docs/guides/garmin.md`, Polish version) and a compose file for garmin-grafana
   (`integrations/garmin/`).
 - Benchmarks table in the README; demo data (`docs/demo`) and `docs/img/hero.sh` for the README

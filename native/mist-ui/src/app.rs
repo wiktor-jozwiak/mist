@@ -239,6 +239,9 @@ pub struct App {
     fades: Vec<(usize, Hit, f32, f32, Instant)>,
     pending_menu: Option<(String, usize, i32, i32)>,
     dock_hide_at: Option<Instant>,
+    /// app key + time of the last left-click launch from the dock: a second click before its window shows
+    /// (Zen takes 1-2 s) would start it again, and the browser opens a second window
+    dock_launched: Option<(String, Instant)>,
     dock_show_at: Option<Instant>,
     island_surf: Option<IslandSurf>,
     pub island: crate::island::Island,
@@ -310,6 +313,7 @@ impl App {
             fades: Vec::new(),
             pending_menu: None,
             dock_hide_at: None,
+            dock_launched: None,
             dock_show_at: None,
             island_surf: None,
             island: crate::island::Island::new(),
@@ -2132,10 +2136,19 @@ impl App {
                     self.open_dock_menu(i, &app);
                     return;
                 }
-                if button == BTN_MIDDLE || app.wins.is_empty() {
+                if button == BTN_MIDDLE {
                     launch(&app.exec);
                     return;
                 }
+                if app.wins.is_empty() {
+                    if self.dock_launched.as_ref().is_some_and(|(k, t)| *k == key && t.elapsed().as_secs() < 8) {
+                        return;
+                    }
+                    self.dock_launched = Some((key, Instant::now()));
+                    launch(&app.exec);
+                    return;
+                }
+                self.dock_launched = None;
                 // more than one window: pick one (Windows taskbar thumbnails)
                 if app.wins.len() > 1 {
                     self.open_winpick(i, &app);

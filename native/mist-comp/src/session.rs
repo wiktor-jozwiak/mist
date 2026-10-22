@@ -44,7 +44,7 @@ impl MistComp {
         });
     }
 
-    fn session_write(&self) {
+    pub fn session_write(&self) {
         let mut out = Vec::new();
         let all = self.space.elements().map(|w| (w, self.space.element_geometry(w))).chain(self.stash.iter().map(|(w, at)| (w, Some(Rectangle::new(*at, w.geometry().size)))));
         for (w, g) in all {

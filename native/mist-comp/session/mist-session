@@ -5,6 +5,7 @@
 #   mist-session update     git pull + build + install (gałąź dev), sesja bez zmian
 #   mist-session status     co jest ustawione i co działa teraz
 #   mist-session log        najważniejsze z logu Mist (do wklejenia w zgłoszeniu)
+#   mist-session restart    nowy mist-comp bez wylogowania: okna wracają (bez sudo)
 # Asks for sudo; offers a reboot at the end (the login screen restarts cleanly that way).
 set -eu
 SELF=$(readlink -f "$0")
@@ -47,6 +48,10 @@ case "${1:-}" in
     update)
         as_user update
         sh "$SESSION_DIR/install-session.sh"
+        ;;
+    restart)
+        S="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/mist-comp/${WAYLAND_DISPLAY:-wayland-1}.sock"
+        echo restart | socat -t2 - "UNIX:$S"
         ;;
     status)
         printf 'Teraz działa:       %s\n' "${XDG_CURRENT_DESKTOP:-(konsola tekstowa)}"

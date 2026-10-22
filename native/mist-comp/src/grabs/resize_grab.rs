@@ -347,8 +347,8 @@ impl ResizeSurfaceState {
     }
 }
 
-/// Should be called on `WlSurface::commit`
-pub fn handle_commit(space: &mut Space<Window>, surface: &WlSurface) -> Option<()> {
+/// Should be called on `WlSurface::commit`. Some(window) when this commit ended an interactive resize.
+pub fn handle_commit(space: &mut Space<Window>, surface: &WlSurface) -> Option<Window> {
     let window = space
         .elements()
         .find(|w| w.wl_surface().as_deref() == Some(surface))
@@ -362,25 +362,27 @@ pub fn handle_commit(space: &mut Space<Window>, surface: &WlSurface) -> Option<(
         st.data_map.get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>().and_then(|d| d.lock().unwrap().current_serial)
     });
 
+    let mut done = false;
     let new_loc: Point<Option<i32>, Logical> = ResizeSurfaceState::with(surface, |state| {
-        state
-            .commit(acked)
-            .and_then(|(edges, initial_rect)| {
-                // If the window is being resized by top or left, its location must be adjusted
-                // accordingly.
-                edges.intersects(ResizeEdge::TOP_LEFT).then(|| {
-                    let new_x = edges
-                        .intersects(ResizeEdge::LEFT)
-                        .then_some(initial_rect.loc.x + (initial_rect.size.w - geometry.size.w));
+        let waiting = matches!(state, ResizeSurfaceState::WaitingForLastCommit { .. });
+        let r = state.commit(acked);
+        done = waiting && matches!(state, ResizeSurfaceState::Idle);
+        r.and_then(|(edges, initial_rect)| {
+            // If the window is being resized by top or left, its location must be adjusted
+            // accordingly.
+            edges.intersects(ResizeEdge::TOP_LEFT).then(|| {
+                let new_x = edges
+                    .intersects(ResizeEdge::LEFT)
+                    .then_some(initial_rect.loc.x + (initial_rect.size.w - geometry.size.w));
 
-                    let new_y = edges
-                        .intersects(ResizeEdge::TOP)
-                        .then_some(initial_rect.loc.y + (initial_rect.size.h - geometry.size.h));
+                let new_y = edges
+                    .intersects(ResizeEdge::TOP)
+                    .then_some(initial_rect.loc.y + (initial_rect.size.h - geometry.size.h));
 
-                    (new_x, new_y).into()
-                })
+                (new_x, new_y).into()
             })
-            .unwrap_or_default()
+        })
+        .unwrap_or_default()
     });
 
     if let Some(new_x) = new_loc.x {
@@ -392,8 +394,8 @@ pub fn handle_commit(space: &mut Space<Window>, surface: &WlSurface) -> Option<(
 
     if new_loc.x.is_some() || new_loc.y.is_some() {
         // If TOP or LEFT side of the window got resized, we have to move it
-        space.map_element(window, window_loc, false);
+        space.map_element(window.clone(), window_loc, false);
     }
 
-    Some(())
+    done.then_some(window)
 }

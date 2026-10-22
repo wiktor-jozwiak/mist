@@ -110,7 +110,9 @@ impl CompositorHandler for MistComp {
             self.guard_size(surface);
         }
         xdg_shell::handle_commit(&mut self.popups, &self.space, surface);
-        resize_grab::handle_commit(&mut self.space, surface);
+        if let Some(w) = resize_grab::handle_commit(&mut self.space, surface) {
+            self.fill_to_max(&w);
+        }
         super::layer_shell::handle_commit(self, surface);
         self.mark_commit(surface);
     }

@@ -36,6 +36,8 @@ pub struct WinData {
     pub snap: crate::snap::SnapData,
     /// on every workspace (Picture-in-Picture)
     pub pinned: Cell<bool>,
+    /// has the focus (its shadow is the full one)
+    pub active: Cell<bool>,
     /// the terminal this window was started from, hidden while it lives (swallow.rs)
     pub swallowed: RefCell<Option<Window>>,
     /// drop shadow of a window with glass (shadow.rs) per output, kept between frames
@@ -432,6 +434,7 @@ impl MistComp {
         self.hypr_event("openwindow", &format!("{:x},{ws},{class},", self.next_addr));
         self.list_window(&window);
         self.space.map_element(window.clone(), loc, true);
+        self.fill_to_max(&window);
         self.anim.opened(self.next_addr);
         if focus {
             self.focus_window(Some(&window));
@@ -744,6 +747,32 @@ impl MistComp {
         }
         // Space locations are window-geometry origins (CSD shadows are outside them)
         self.space.map_element(w.clone(), area.loc, true);
+    }
+
+/// A normal window that covers nearly all of the usable area (>= 97 % both ways: opened that big or resized
+    /// to it) is maximized instead of floating with thin accidental gaps; un-maximizing gives it 70 % of the
+    /// area, centred.
+    pub fn fill_to_max(&mut self, w: &Window) {
+        let d = data(w);
+        if d.restore.borrow().is_some() || d.snap.is_snapped() || d.pinned.get() || self.parent_of(w).is_some() {
+            return;
+        }
+        if w.toplevel().is_none() && w.x11_surface().is_none_or(|x| x.is_override_redirect()) {
+            return;
+        }
+        let Some(output) = self.output_of(w) else { return };
+        let og = self.space.output_geometry(&output).unwrap_or_default();
+        let z = layer_map_for_output(&output).non_exclusive_zone();
+        let bar = self.bar_h(w);
+        let g = w.geometry().size;
+        if z.size.w <= 0 || g.w * 100 < z.size.w * 97 || (g.h + bar) * 100 < z.size.h * 97 {
+            return;
+        }
+        tracing::info!("{} fills the screen ({}x{}): maximized", crate::hyprcompat::app_id(w), g.w, g.h);
+        self.toggle_max(w, false);
+        let (rw, rh) = (z.size.w * 7 / 10, (z.size.h - bar) * 7 / 10);
+        let at = og.loc + z.loc + Point::from(((z.size.w - rw) / 2, bar + (z.size.h - bar - rh) / 2));
+        *data(w).restore.borrow_mut() = Some(Rectangle::new(at, (rw, rh).into()));
     }
 
     /// X11 windows learn where Mist put them (override-redirect menus are placed in root coordinates).

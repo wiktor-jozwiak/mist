@@ -665,6 +665,7 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
     let scale = Scale::from(output.current_scale().fractional_scale());
 
     // pointer on top
+    let t0 = std::time::Instant::now();
     let ptr = seat.get_pointer().unwrap().current_location();
     let mut elements = pointer_elements(&mut udev.renderer, &mut udev.cursors, cursor_status, ptr, og, scale);
     let scene = crate::scene::elements(&mut udev.renderer, space, lock.surfaces.get(&output.name()), *locked, &output, anim, dnd.as_ref());
@@ -687,6 +688,8 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
         s.drm_output.reset_buffers();
     }
     *out_passes.entry(output.name()).or_insert(0) += 1;
+    let t1 = std::time::Instant::now();
+    crate::prof::add(0, t1 - t0);
     let rendered = match s.drm_output.render_frame(&mut udev.renderer, &elements, [0.0, 0.0, 0.0, 1.0], flags) {
         Ok(r) => !r.is_empty,
         Err(e) => {
@@ -697,6 +700,8 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
     // smithay 0.7 frees the GL textures / EGLImages of destroyed client buffers (and our dropped
     // textures) only here: without it every closed panel, resized window and dmabuf stayed in memory
     let _ = smithay::backend::renderer::Renderer::cleanup_texture_cache(&mut udev.renderer);
+    let t2 = std::time::Instant::now();
+    crate::prof::add(1, t2 - t1);
     let mut queued = false;
     if rendered {
         *out_seq.entry(output.name()).or_insert(0) += 1;
@@ -725,9 +730,12 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
         }
     }
 
+    let t3 = std::time::Instant::now();
+    crate::prof::add(2, t3 - t2);
     if queued {
         // frame callbacks for what is on this output: clients draw the next frame while this one scans out
         crate::scene::send_frames(space, lock.surfaces.get(&output.name()), &output, start_time.elapsed());
+        crate::prof::add(3, t3.elapsed());
         if let Some((icon, _)) = dnd.as_ref() {
             smithay::desktop::utils::send_frames_surface_tree(icon, &output, start_time.elapsed(), Some(Duration::ZERO), |_, _| Some(output.clone()));
         }
