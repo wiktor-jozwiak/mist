@@ -866,6 +866,17 @@ impl App {
                 let v: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
                 spawn(&v);
             }
+            Act::Paste(f, mime) => {
+                self.pane_close();
+                // wl-copy returns once the selection is set (its server forks): then mist-comp types Ctrl+V
+                let _ = std::thread::Builder::new().name("clip-paste".into()).stack_size(64 * 1024).spawn(move || {
+                    let src = std::fs::File::open(&f).ok();
+                    let ok = src.and_then(|s| std::process::Command::new("wl-copy").args(["--type", &mime]).stdin(s).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().ok()).is_some_and(|s| s.success());
+                    if ok {
+                        let _ = crate::sys::hypr_eval_sync("MistPaste()");
+                    }
+                });
+            }
             Act::Exec(cmd) => {
                 let v: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
                 spawn(&v);

@@ -11,6 +11,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 - Mist Settings: the window is translucent over mist-comp's blur (opaque with high contrast), a scroll bar
   that can be dragged or clicked, 60 px per mouse wheel notch.
 
+- Clipboard history: Enter pastes the item straight into the window below (mist-comp types Ctrl+V, Ctrl+Shift+V
+  in terminals), Ctrl+Enter only copies, Ctrl+P pins an item (pinned ones stay above the newest 80); a
+  password manager's copy is skipped without an extra `wl-paste` call on wl-clipboard 2.2+.
+
 ### Fixed
 - Settings: the main monitor can be chosen, the lock screen page sets when the screen turns off, restarting
   the shell no longer closes Mist Settings and Mist Files.

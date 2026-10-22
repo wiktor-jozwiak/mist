@@ -3,7 +3,7 @@
 //! $XDG_RUNTIME_DIR/hypr/<sig>/.socket.sock: `j/clients|monitors|workspaces|activewindow|activeworkspace|cursorpos|
 //! decorations|getoption|configerrors|version`, `eval <lua>` (only the calls Mist makes: focus window / workspace /
 //! monitor, window.close / move / resize / fullscreen / bring_to_top, dpms, send_shortcut, hl.config night light,
-//! MistMinimize / MistRestore / MistSnapApply / MistMaximize / MistUnsnap / MistLayouts), `dispatch <classic>`.
+//! MistMinimize / MistRestore / MistSnapApply / MistMaximize / MistUnsnap / MistLayouts / MistPaste), `dispatch <classic>`.
 //! .socket2.sock: the events mist-ui listens to (openwindow, closewindow, activewindow(v2), workspace(v2),
 //! focusedmon(v2), windowtitlev2, movewindowv2, activespecial(v2), fullscreen, urgent, activelayout,
 //! configreloaded, monitoradded/removedv2, mistdrag, mistsnap).
@@ -364,6 +364,8 @@ fn eval(state: &mut MistComp, code: &str) -> String {
                 let grab = (f.len() >= 8).then(|| [f[4], f[5], f[6], f[7]]);
                 state.snap_apply(&w, [f[0], f[1], f[2], f[3]], grab);
             }
+        } else if stmt.starts_with("MistPaste") {
+            state.paste_soon();
         } else if stmt.starts_with("MistMaximize") || stmt.starts_with("MistUnsnap") || stmt.starts_with("MistLayouts") {
             // windows-like.lua functions (addr optional: else the focused window)
             let a = call_args(stmt);
@@ -483,5 +485,32 @@ mod tests {
         assert_eq!(class_name("kitty"), "kitty");
         assert_eq!(call_args("MistRestore('0x12', 3)"), vec!["0x12", "3"]);
         assert_eq!(call_args(r#"MistSnapApply("0x5", 0, 0, 0.5, 1, 10, 20, 300, 400)"#).len(), 9);
+    }
+}
+
+/// Terminals paste with Ctrl+Shift+V (Ctrl+V is a control character there).
+const TERMINALS: [&str; 9] = ["kitty", "foot", "footclient", "alacritty", "org.wezfurlong.wezterm", "com.mitchellh.ghostty", "org.kde.konsole", "org.gnome.ptyxis", "xterm"];
+
+impl MistComp {
+    /// MistPaste(): the clipboard history put an item on the clipboard and closed; once the keyboard is back on
+    /// the window under it (100 ms), Ctrl+V (Ctrl+Shift+V in a terminal) as if typed.
+    pub fn paste_soon(&mut self) {
+        use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
+        let _ = self.loop_handle.insert_source(Timer::from_duration(std::time::Duration::from_millis(100)), |_, _, st: &mut MistComp| {
+            let Some(w) = st.focused_window() else {
+                tracing::info!("paste: no focused window");
+                return TimeoutAction::Drop;
+            };
+            let term = TERMINALS.contains(&app_id(&w).to_lowercase().as_str());
+            let keys: &[u32] = if term { &[29, 42, 47] } else { &[29, 47] }; // evdev LEFTCTRL, LEFTSHIFT, V
+            let t = st.start_time.elapsed().as_millis() as u32;
+            for k in keys {
+                st.handle_key((k + 8).into(), smithay::backend::input::KeyState::Pressed, t);
+            }
+            for k in keys.iter().rev() {
+                st.handle_key((k + 8).into(), smithay::backend::input::KeyState::Released, t);
+            }
+            TimeoutAction::Drop
+        });
     }
 }

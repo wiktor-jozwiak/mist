@@ -446,6 +446,8 @@
     "val_characters": "{} caractères",
     "delete": "Supprimer  ⌦",
     "copy": "Copier  ↵",
+    "copy_only": "Copier",
+    "paste": "Coller  ↵",
     "password_copied": "Mot de passe copié",
     "colour_copied": "Couleur copiée",
     "link_copied": "Lien copié",

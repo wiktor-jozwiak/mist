@@ -41,8 +41,18 @@ pub fn clipstore() {
     let _ = std::fs::create_dir_all(&d);
     let mut data = vec![];
     let _ = std::io::stdin().take(64 << 20).read_to_end(&mut data);
-    let (_, types) = run(&["wl-paste", "--list-types"], 3.0);
-    if types.contains("x-kde-passwordManagerHint") || data.is_empty() {
+    // wl-paste --watch (2.2+) says what changed: `sensitive` = a password manager's copy, `nil`/`clear` = nothing.
+    // Older ones set nothing: then ask for the types (one more process and connection per copy)
+    match std::env::var("CLIPBOARD_STATE").as_deref() {
+        Ok("data") => {}
+        Ok(_) => return,
+        Err(_) => {
+            if run(&["wl-paste", "--list-types"], 3.0).1.contains("x-kde-passwordManagerHint") {
+                return;
+            }
+        }
+    }
+    if data.is_empty() {
         return;
     }
     let ext = match image_ext(&data) {
@@ -73,10 +83,19 @@ pub fn clipstore() {
         return;
     }
     let _ = std::fs::rename(&tmp, format!("{}/{}-{}.{}", d, ms, h, ext));
+    // the newest 80 stay, pinned ones (their hashes in .pinned) besides
+    let pinned = std::fs::read_to_string(format!("{}/.pinned", d)).unwrap_or_default();
+    files.retain(|(_, p)| !p.file_name().and_then(|n| n.to_str()).and_then(clip_hash).is_some_and(|h| pinned.lines().any(|l| l == h)));
     files.sort_by(|a, b| b.0.cmp(&a.0));
-    for (_, p) in files.iter().skip(79) {
+    let keep = if pinned.lines().any(|l| l == h) { 80 } else { 79 };
+    for (_, p) in files.iter().skip(keep) {
         let _ = std::fs::remove_file(p);
     }
+}
+
+/// `<ms>-<hash>.<ext>` -> hash
+fn clip_hash(name: &str) -> Option<&str> {
+    name.split_once('-').map(|(_, r)| r.split('.').next().unwrap_or(r))
 }
 
 /// The history for Clipboard.qml: [{f, kind: "text"|"image", text, t}], newest first.

@@ -12,6 +12,8 @@ pub enum Act {
     Close,
     // close, then run a command (detached)
     Run(Vec<String>),
+    // close, put this file on the clipboard (path, mime) and paste it into the window below (MistPaste)
+    Paste(String, String),
     // run a command, stay open
     Exec(Vec<String>),
     // open another popup instead
