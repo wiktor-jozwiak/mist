@@ -350,7 +350,14 @@ fn main() {
         return;
     }
     let test = args.iter().any(|a| a == "--test");
-    let conn = Connection::connect_to_env().expect("wayland");
+    // no compositor (it quit; the guard restarted us during logout): nothing to restart, exit 0 stops the guard
+    let conn = match Connection::connect_to_env() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("mist-ui: no Wayland compositor ({e}), exiting");
+            std::process::exit(0);
+        }
+    };
     let (globals, queue) = registry_queue_init::<app::App>(&conn).expect("registry");
     let qh = queue.handle();
     let mut ev: EventLoop<app::App> = EventLoop::try_new().expect("event loop");
@@ -420,8 +427,9 @@ fn main() {
         let timeout = app.intent_due().map(|d| timeout.min(d.saturating_duration_since(std::time::Instant::now()))).unwrap_or(timeout);
         if let Err(e) = ev.dispatch(Some(timeout), &mut app) {
             // the compositor is gone (it quit or crashed): leave quietly, the session restarts us with it
+            // exit 0: the guard (dist/mist-ui) restarts only a crash, a restart here would find no compositor
             eprintln!("mist-ui: wayland connection lost ({e}), exiting");
-            std::process::exit(1);
+            std::process::exit(0);
         }
         app.intent_tick();
         if last_slow.elapsed() >= app.slow_period() {

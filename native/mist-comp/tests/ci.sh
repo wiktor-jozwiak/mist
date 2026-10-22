@@ -273,7 +273,15 @@ check "event configreloaded" "wait_for \"grep -q '^configreloaded>>' '$OUT/event
 sec=$(date +%-S); [ "$sec" -ge 53 ] && sleep $((62 - sec))
 C motion 640 400 >/dev/null; sleep 2
 S0=$(C stats); w0=$(echo "$S0" | awk '{print $10}'); sleep 3; S1=$(C stats); w1=$(echo "$S1" | awk '{print $10}')
-check "idle: the compositor sleeps (< 10 wakeups/s with the shell up)" "[ \$((w1 - w0)) -lt 30 ]" "$((w1 - w0)) wakeups in 3 s"; echo "     idle wakeups in 3 s: $((w1 - w0)) ($S0 -> $S1)"
+# the shell shares the session bus: music playing on this machine animates the island's equalizer
+playing=$(busctl --user list 2>/dev/null | awk '/org.mpris.MediaPlayer2/ {print $1}' | while read -r n; do
+    busctl --user get-property "$n" /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player PlaybackStatus 2>/dev/null; done | grep -c Playing)
+if [ "${playing:-0}" -gt 0 ]; then
+    echo "skip idle: a media player is playing on this machine (the island animates); $((w1 - w0)) wakeups in 3 s"
+else
+    check "idle: the compositor sleeps (< 10 wakeups/s with the shell up)" "[ \$((w1 - w0)) -lt 30 ]" "$((w1 - w0)) wakeups in 3 s"
+fi
+echo "     idle wakeups in 3 s: $((w1 - w0)) ($S0 -> $S1)"
 
 # ------------------------------------------------------------------ health
 check "no panic in the compositor" "! grep -q panicked '$OUT/comp.log'"

@@ -180,11 +180,8 @@ impl PointerGrab<MistComp> for ResizeSurfaceGrab {
     ) {
         handle.button(data, event);
 
-        // The button is a button code as defined in the
-        // Linux kernel's linux/input-event-codes.h header file, e.g. BTN_LEFT.
-        const BTN_LEFT: u32 = 0x110;
-
-        if !handle.current_pressed().contains(&BTN_LEFT) {
+        // the button that started the drag (evdev code: BTN_LEFT, BTN_RIGHT for Super + right drag) is up
+        if !handle.current_pressed().contains(&self.start_data.button) {
             // No more buttons are pressed, release the grab.
             handle.unset_grab(self, data, event.serial, event.time, true);
 

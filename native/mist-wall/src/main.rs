@@ -1461,7 +1461,10 @@ fn main() {
     if std::env::var_os("LP_NUM_THREADS").is_none() {
         unsafe { std::env::set_var("LP_NUM_THREADS", "4") };
     }
-    let conn = Connection::connect_to_env().expect("wayland");
+    let Ok(conn) = Connection::connect_to_env() else {
+        eprintln!("mist-wall: no Wayland compositor, exiting");
+        std::process::exit(0);
+    };
     let (globals, queue) = registry_queue_init::<App>(&conn).expect("registry");
     let qh = queue.handle();
     // EGL + desktop GL 3.3 core (the GLSL 150 shaders of the .qsb files)
@@ -1751,7 +1754,11 @@ fn main() {
     })
     .unwrap();
     loop {
-        ev.dispatch(None, &mut app).unwrap();
+        // the compositor is gone (logout, crash): leave quietly
+        if let Err(e) = ev.dispatch(None, &mut app) {
+            eprintln!("mist-wall: wayland connection lost ({e}), exiting");
+            std::process::exit(0);
+        }
         let _ = conn.flush();
     }
 }

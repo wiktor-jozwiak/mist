@@ -12,6 +12,8 @@ while :; do
     "$bin" >>"$LOG" 2>&1
     code=$?
     [ $code -eq 0 ] && exit 0
+    # the compositor is gone (logout): nothing to restart into
+    [ -n "${WAYLAND_DISPLAY:-}" ] && [ ! -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/$WAYLAND_DISPLAY" ] && exit 0
     now=$(date +%s); echo "$(date '+%F %T') mist-ui exited with $code" >>"$LOG"
     # SIGTERM (pkill after an install) is a restart, not a crash
     [ $code -eq 143 ] && { sleep 0.2; continue; }

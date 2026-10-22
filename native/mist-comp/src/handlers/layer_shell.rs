@@ -46,9 +46,14 @@ impl WlrLayerShellHandler for MistComp {
         // a popup that had the keys gives them back to the top window
         let keyboard = self.seat.get_keyboard().unwrap();
         if keyboard.current_focus().is_some_and(|f| f.is(surface.wl_surface())) {
-            let top = self.space.elements().last().and_then(crate::focus::of_window);
-            keyboard.set_focus(self, top, SERIAL_COUNTER.next_serial());
+            let top = self.top_window(None);
+            self.focus_window(top.as_ref());
         }
+    }
+
+    // a panel's menu (tray, a bar's dropdown): its parent is set only now, keep it on the panel's monitor
+    fn new_popup(&mut self, _parent: WlrLayerSurface, popup: smithay::wayland::shell::xdg::PopupSurface) {
+        self.unconstrain_popup(&popup);
     }
 }
 
@@ -96,9 +101,9 @@ pub fn handle_commit(state: &mut MistComp, surface: &WlSurface) -> bool {
     // keys would go to a surface nobody sees
     let none = layer.cached_state().keyboard_interactivity == KeyboardInteractivity::None;
     if focused && (!has || none) {
-        let top = state.space.elements().last().and_then(crate::focus::of_window);
+        let top = state.top_window(None);
         tracing::info!("layer {} gave the keyboard back", layer.namespace());
-        keyboard.set_focus(state, top, SERIAL_COUNTER.next_serial());
+        state.focus_window(top.as_ref());
     }
     true
 }

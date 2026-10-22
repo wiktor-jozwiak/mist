@@ -129,14 +129,15 @@ pub fn render(state: &mut MistComp) {
     }
     hl.last = Some(std::time::Instant::now());
     state.frames += 1;
-    let MistComp { headless, space, locked, lock, shot, shot_output: state_shot_output, force_full, start_time, anim, out_seq, frames, .. } = state;
+    let dnd = state.dnd_at();
+    let MistComp { headless, space, popups, locked, lock, shot, shot_output: state_shot_output, force_full, start_time, anim, out_seq, frames, .. } = state;
     let Some(hl) = headless.as_mut() else { return };
     let age = if std::mem::take(force_full) { 0 } else { 1 };
     let now = start_time.elapsed();
     for (i, o) in hl.outs.iter_mut().enumerate() {
         let output = o.output.clone();
         let Ok(mut fb) = hl.renderer.bind(&mut o.buffer) else { continue };
-        let elems = crate::scene::elements(&mut hl.renderer, space, lock.surfaces.get(&output.name()), *locked, &output, anim);
+        let elems = crate::scene::elements(&mut hl.renderer, space, lock.surfaces.get(&output.name()), *locked, &output, anim, dnd.as_ref());
         let clear = if *locked { [0.0, 0.0, 0.0, 1.0] } else { [0.1, 0.1, 0.1, 1.0] };
         match o.damage.render_output(&mut hl.renderer, &mut fb, age, &elems, clear) {
             Ok(r) if r.damage.is_some() => *out_seq.entry(output.name()).or_insert(0) += 1,
@@ -170,7 +171,11 @@ pub fn render(state: &mut MistComp) {
     if let Some(first) = hl.outs.first().map(|o| o.output.clone()) {
         space.elements().for_each(|w| w.send_frame(&first, now, Some(Duration::ZERO), |_, _| Some(first.clone())));
     }
+    if let (Some((icon, _)), Some(first)) = (dnd.as_ref(), hl.outs.first()) {
+        smithay::desktop::utils::send_frames_surface_tree(icon, &first.output, now, Some(Duration::ZERO), |_, _| Some(first.output.clone()));
+    }
     space.refresh();
+    popups.cleanup();
     state.fifo_signal();
 }
 

@@ -203,9 +203,7 @@ pub fn init(event_loop: &mut EventLoop<CalloopData>, data: &mut CalloopData) -> 
             .ok_or("no GPU")?,
     };
     tracing::info!("gpu {}", path.display());
-    let mut session_c = session.clone();
-    let fd = session_c.open(&path, OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK)?;
-    wait_for_master(&fd);
+    let fd = open_as_master(&mut session.clone(), &path)?;
     let fd = DrmDeviceFd::new(DeviceFd::from(fd));
     let node = DrmNode::from_file(fd.clone())?;
     let (drm, drm_notifier) = DrmDevice::new(fd.clone(), true)?;
@@ -311,6 +309,10 @@ pub fn init(event_loop: &mut EventLoop<CalloopData>, data: &mut CalloopData) -> 
                 for s in u.surfaces.values_mut() {
                     s.pending = false;
                 }
+                // the compositor on the other VT may have left its own gamma ramp
+                if u.night {
+                    u.set_night(true);
+                }
             }
             data.force_full = true;
             data.dirty = true;
@@ -340,32 +342,53 @@ pub fn init(event_loop: &mut EventLoop<CalloopData>, data: &mut CalloopData) -> 
     Ok(())
 }
 
-/// Another compositor can still hold the GPU when the session starts (the greeter's, until it has exited):
-/// wait up to 5 s for DRM master instead of starting without it, when every page flip would be refused.
-fn wait_for_master(fd: &std::os::fd::OwnedFd) {
-    struct Card<'a>(std::os::fd::BorrowedFd<'a>);
-    impl std::os::fd::AsFd for Card<'_> {
-        fn as_fd(&self) -> std::os::fd::BorrowedFd<'_> {
-            self.0
-        }
-    }
-    impl smithay::reexports::drm::Device for Card<'_> {}
-    let card = Card(std::os::fd::AsFd::as_fd(fd));
+/// The GPU, as DRM master. logind makes the fd master when it hands it over (TakeDevice) to the active
+/// session, but not while another compositor still holds the GPU (the greeter's, until it has exited), and
+/// nobody makes it master later: every page flip would be refused. The fd cannot take master itself (the
+/// kernel lets only its opener, logind, do that), so while the GPU is busy it is handed back and taken
+/// again, up to 5 s. An inactive session (another VT in front) gets master when it is switched to.
+fn open_as_master(session: &mut LibSeatSession, path: &std::path::Path) -> Result<std::os::fd::OwnedFd, Box<dyn std::error::Error>> {
+    let flags = OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK;
     let start = std::time::Instant::now();
     loop {
-        match card.acquire_master_lock() {
-            Ok(()) => {
-                if start.elapsed() > Duration::from_millis(50) {
-                    tracing::info!("drm master after {} ms (another compositor held the GPU)", start.elapsed().as_millis());
-                }
-                return;
+        let fd = session.open(path, flags)?;
+        if is_master(&fd) {
+            if start.elapsed() > Duration::from_millis(50) {
+                tracing::info!("drm master after {} ms (another compositor held the GPU)", start.elapsed().as_millis());
             }
-            Err(e) if start.elapsed() > Duration::from_secs(5) => {
-                tracing::warn!("no drm master after 5 s ({e}): frames may be refused until it is released");
-                return;
-            }
-            Err(_) => std::thread::sleep(Duration::from_millis(50)),
+            return Ok(fd);
         }
+        if !session.is_active() {
+            tracing::info!("session not active yet: drm master comes when it is switched to");
+            return Ok(fd);
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            tracing::warn!("no drm master after 5 s: another compositor holds the GPU, frames will be refused");
+            return Ok(fd);
+        }
+        let _ = session.close(fd);
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// libdrm's drmIsMaster: ATTACHMODE needs master; with zeroed arguments a master gets EINVAL, anyone else
+/// EACCES. (SET_MASTER cannot tell: it refuses a fd logind opened even when that fd is master.)
+fn is_master(fd: &std::os::fd::OwnedFd) -> bool {
+    use std::os::fd::AsRawFd;
+    // DRM_IOWR(0xA8, struct drm_mode_mode_cmd): u32 connector_id + 68-byte drm_mode_modeinfo
+    const DRM_IOCTL_MODE_ATTACHMODE: libc::c_ulong = 0xC048_64A8;
+    let mut arg = [0u8; 72];
+    let r = unsafe { libc::ioctl(fd.as_raw_fd(), DRM_IOCTL_MODE_ATTACHMODE, arg.as_mut_ptr()) };
+    r == 0 || std::io::Error::last_os_error().raw_os_error() != Some(libc::EACCES)
+}
+
+#[cfg(test)]
+mod tests {
+    /// A card opened directly (not through logind) while another compositor runs is not master here.
+    #[test]
+    fn card_opened_by_hand_is_not_master() {
+        let Ok(f) = std::fs::OpenOptions::new().read(true).write(true).open("/dev/dri/card1") else { return };
+        assert!(!super::is_master(&std::os::fd::OwnedFd::from(f)));
     }
 }
 
@@ -605,6 +628,7 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
     let out = state.udev.as_ref().and_then(|u| u.surfaces.get(&crtc)).map(|s| s.output.clone());
     let vrr_want = state.config.vrr && out.is_some_and(|o| state.fullscreen_on(&o));
     let direct_scanout = state.config.direct_scanout;
+    let dnd = state.dnd_at();
     let MistComp { udev, space, seat, cursor_status, start_time, force_full, redraw_after_vblank, locked, lock, frames, anim, out_seq, loop_handle, .. } = state;
     let Some(udev) = udev.as_mut() else { return };
     let Some(s) = udev.surfaces.get_mut(&crtc) else { return };
@@ -619,7 +643,7 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
     // pointer on top
     let ptr = seat.get_pointer().unwrap().current_location();
     let mut elements = pointer_elements(&mut udev.renderer, &mut udev.cursors, cursor_status, ptr, og, scale);
-    let scene = crate::scene::elements(&mut udev.renderer, space, lock.surfaces.get(&output.name()), *locked, &output, anim);
+    let scene = crate::scene::elements(&mut udev.renderer, space, lock.surfaces.get(&output.name()), *locked, &output, anim, dnd.as_ref());
     elements.extend(scene.into_iter().map(OutElem::Scene));
 
     if s.vrr.is_some_and(|v| v != vrr_want) {
@@ -677,6 +701,9 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
     if queued {
         // frame callbacks for what is on this output: clients draw the next frame while this one scans out
         crate::scene::send_frames(space, lock.surfaces.get(&output.name()), &output, start_time.elapsed());
+        if let Some((icon, _)) = dnd.as_ref() {
+            smithay::desktop::utils::send_frames_surface_tree(icon, &output, start_time.elapsed(), Some(Duration::ZERO), |_, _| Some(output.clone()));
+        }
         // a vblank that never comes freezes the output: say so in the log
         if !s.watchdog {
             s.watchdog = true;

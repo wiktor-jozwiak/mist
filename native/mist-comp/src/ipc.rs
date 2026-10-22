@@ -131,6 +131,19 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
             state.dirty = true;
             if r.is_some() { "ok\n".into() } else { "usage: key CODE press|release | motion X Y | button left|right press|release\n".into() }
         }
+        // open menus: their window and where their surface is on the desktop
+        "popups" => {
+            let mut s = String::new();
+            for w in state.space.elements() {
+                let (Some(root), Some(loc)) = (smithay::wayland::seat::WaylandFocus::wl_surface(w), state.space.element_location(w)) else { continue };
+                for (p, off) in smithay::desktop::PopupManager::popups_for_surface(&root) {
+                    let at = loc - w.geometry().loc + off;
+                    let g = p.geometry();
+                    s += &format!("{} {},{} {}x{}\n", crate::hyprcompat::app_id(w), at.x + g.loc.x, at.y + g.loc.y, g.size.w, g.size.h);
+                }
+            }
+            s
+        }
         "locked" => format!("{} surfaces={}\n", state.locked, state.lock.surfaces.len()),
         "stats" => format!("frames {} commits {} windows {} hidden {} wakeups {}\n", state.frames, state.commits, state.space.elements().count(), state.stash.len(), state.wakeups),
         "night" => format!("{}\n", state.night),
@@ -155,8 +168,10 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
                 })
             });
             let lock = f.as_ref().is_some_and(|f| state.lock.surfaces.values().any(|l| l.wl_surface() == f));
+            let popup = f.as_ref().is_some_and(|f| state.popups.find_popup(f).is_some());
             match (f, layer) {
                 (None, _) => "none\n".into(),
+                (Some(_), _) if popup => "popup\n".into(),
                 (Some(_), _) if lock => "lock\n".into(),
                 (Some(_), Some(ns)) => format!("layer {ns}\n"),
                 (Some(_), None) => "window\n".into(),

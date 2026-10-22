@@ -42,9 +42,13 @@ impl SeatHandler for MistComp {
         let to = match focused.and_then(|f| f.wl_surface()) {
             None => "nothing".to_string(),
             Some(s) => {
+                // an open menu: named after its window
+                let root = self.popups.find_popup(&s).and_then(|p| smithay::desktop::find_popup_root_surface(&p).ok());
+                let menu = if root.is_some() { "menu of " } else { "" };
+                let s = root.map(std::borrow::Cow::Owned).unwrap_or(s);
                 let win = self.space.elements().chain(self.stash.iter().map(|(w, _)| w)).find(|w| w.wl_surface().is_some_and(|x| *x == *s));
                 match win {
-                    Some(w) => format!("window {}", crate::hyprcompat::app_id(w)),
+                    Some(w) => format!("{menu}window {}", crate::hyprcompat::app_id(w)),
                     None => self
                         .space
                         .outputs()
@@ -92,7 +96,17 @@ impl DataDeviceHandler for MistComp {
     }
 }
 
-impl ClientDndGrabHandler for MistComp {}
+impl ClientDndGrabHandler for MistComp {
+    // the dragged thing follows the pointer (scene.rs draws it) until the drop
+    fn started(&mut self, _source: Option<smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource>, icon: Option<WlSurface>, _seat: Seat<Self>) {
+        self.dnd_icon = icon.map(|s| (s, (0, 0).into()));
+        self.dirty = true;
+    }
+    fn dropped(&mut self, _target: Option<WlSurface>, _validated: bool, _seat: Seat<Self>) {
+        self.dnd_icon = None;
+        self.dirty = true;
+    }
+}
 impl ServerDndGrabHandler for MistComp {}
 
 delegate_data_device!(MistComp);

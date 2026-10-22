@@ -45,7 +45,7 @@ impl SessionLockHandler for MistComp {
         tracing::info!("session unlocked");
         self.locked = false;
         self.lock.surfaces.clear();
-        let top = self.space.elements().last().cloned();
+        let top = self.top_window(None);
         self.focus_window(top.as_ref());
         self.force_full = true;
         self.dirty = true;

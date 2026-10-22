@@ -72,7 +72,7 @@ chmod 644 "$D"/*
 cat > "$D/run" <<SH
 #!/bin/sh
 # started by greetd as the greeter user
-export MIST_COMP_CONFIG=$D/comp.conf MIST_FONT_DIR=$D XDG_SESSION_TYPE=wayland RUST_LOG=warn,mist_comp=info${PRIM:+ MIST_PRIMARY=$PRIM}
+export MIST_COMP_CONFIG=$D/comp.conf MIST_FONT_DIR=$D XDG_SESSION_TYPE=wayland RUST_LOG=warn,mist_comp=info,smithay::backend::drm::device::fd=error${PRIM:+ MIST_PRIMARY=$PRIM}
 exec /usr/local/bin/mist-greeter-comp --tty --session "/usr/local/bin/mist-greeter-ui greeter $D/greeter.json"
 SH
 chmod 755 "$D/run"

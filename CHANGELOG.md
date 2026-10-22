@@ -13,7 +13,19 @@ nothing is released yet.
 - mist-comp: client buffers are no longer put straight on a scanout plane unless `direct_scanout on` (Hyprland's default; on NVIDIA it showed torn or stale windows); the cursor plane stays.
 - mist-comp: the log names the NVIDIA driver and egl-wayland versions, an output whose vblank never comes, and a window whose frame waits over a second for its GPU fence; `mist-session log` prints that part of the log.
 - mist-ui exits cleanly when the compositor goes away instead of aborting.
-- mist-comp: a page flip the kernel refuses (the login screen still held the GPU when the session started) no longer leaves stale, garbled windows: the frame was lost while the damage tracking counted it as shown, so later frames only redrew what changed over it. Now everything is redrawn on the next refresh, and at start mist-comp waits up to 5 s for the GPU to be released.
+- mist-comp: a page flip the kernel refuses (the login screen still held the GPU when the session started) no longer leaves stale, garbled windows: the frame was lost while the damage tracking counted it as shown, so later frames only redrew what changed over it. Now everything is redrawn on the next refresh.
+- mist-comp: no 5 s black screen at every login. The DRM master check asked the kernel to make the fd master, which it always refuses for a fd logind opened, so it waited out its timeout and warned "no drm master" while the fd was master all along. It now asks the way libdrm's drmIsMaster does, and while the login screen still holds the GPU it hands the fd back to logind and takes it again (up to 5 s) instead of waiting on a fd that nobody makes master.
+- mist-comp: right-click menus and menu bars (xdg popup grabs): the keys go to the open menu and a click outside closes it; they stayed open and the window lost its focus.
+- mist-comp: a menu of a window on the second monitor opens next to the pointer; it was kept inside the first monitor, so it showed up on the other screen. Menus of panels (layer-shell popups) are kept on their monitor too.
+- mist-comp (real session): windows are told which monitor they are on (wl_surface.enter / leave: their scale, refresh rate and menu placement) and closed menus are dropped; only the nested and headless backends did that.
+- mist-comp: drag and drop shows the dragged thing under the pointer (the client's drag icon was never drawn).
+- mist-comp: a game that asks for a pointer lock or confinement gets it once the pointer is over its window, and again after Alt+Tab; it worked only when the pointer was already there when the game asked.
+- mist-comp: X11 windows with their own frame (Steam, Discord) resize from their edges and move by their title area (_NET_WM_MOVERESIZE); window drags end when the button that started them is released.
+- mist-comp: Super + right drag on a window with client-side shadows (GTK) no longer makes it jump by the shadow's size.
+- mist-comp: a window that asks to be maximized or fullscreen before its first frame (mpv --fs, a browser that was closed maximized) opens that way.
+- mist-comp: the keys go back to the top window (not an X11 menu or tooltip) when a panel, the lock screen or a menu closes, and the window shows as focused while its menu is open.
+- mist-comp: no crash on an xdg resize request from a window that is not on screen, or on tablet input with no monitor.
+- mist-ui and mist-wall exit with 0 when the compositor is gone, so the guard (dist/mist-ui) no longer restarts them five times at logout and then starts Noctalia with a "Mist crashed" notification.
 
 ### mist-comp
 - Explicit sync (linux-drm-syncobj-v1) where the GPU supports it; commits wait for the client's GPU work (acquire point, else the dmabuf fence).

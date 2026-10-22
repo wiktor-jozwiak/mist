@@ -202,13 +202,37 @@ impl XwmHandler for MistComp {
         }
     }
 
-    fn resize_request(&mut self, _: XwmId, _: X11Surface, _: u32, _: X11ResizeEdge) {
-        // Super + right drag resizes any window; client-initiated X11 resize is not supported
+    /// _NET_WM_MOVERESIZE from the window's own frame (Steam, Discord): resize from that edge.
+    fn resize_request(&mut self, _: XwmId, x: X11Surface, button: u32, edge: X11ResizeEdge) {
+        use crate::grabs::resize_grab::ResizeEdge as E;
+        let Some(w) = self.x11_window(&x) else { return };
+        let Some(loc) = self.space.element_location(&w) else { return };
+        let pointer = self.seat.get_pointer().unwrap();
+        // only while the button is still held (the request can arrive after the release)
+        if !pointer.is_grabbed() {
+            return;
+        }
+        let edges = match edge {
+            X11ResizeEdge::Top => E::TOP,
+            X11ResizeEdge::Bottom => E::BOTTOM,
+            X11ResizeEdge::Left => E::LEFT,
+            X11ResizeEdge::Right => E::RIGHT,
+            X11ResizeEdge::TopLeft => E::TOP_LEFT,
+            X11ResizeEdge::TopRight => E::TOP_RIGHT,
+            X11ResizeEdge::BottomLeft => E::BOTTOM_LEFT,
+            X11ResizeEdge::BottomRight => E::BOTTOM_RIGHT,
+        };
+        let start = smithay::input::pointer::GrabStartData { focus: None, button: evdev_button(button), location: pointer.current_location() };
+        let grab = crate::grabs::ResizeSurfaceGrab::start(start, w.clone(), edges, Rectangle::new(loc, w.geometry().size));
+        pointer.set_grab(self, grab, smithay::utils::SERIAL_COUNTER.next_serial(), smithay::input::pointer::Focus::Clear);
     }
 
     fn move_request(&mut self, _: XwmId, x: X11Surface, button: u32) {
         let Some(w) = self.x11_window(&x) else { return };
-        self.start_move(w, button, smithay::utils::SERIAL_COUNTER.next_serial());
+        if !self.seat.get_pointer().is_some_and(|p| p.is_grabbed()) {
+            return;
+        }
+        self.start_move(w, evdev_button(button), smithay::utils::SERIAL_COUNTER.next_serial());
     }
 
     fn allow_selection_access(&mut self, xwm: XwmId, _: SelectionTarget) -> bool {
@@ -246,5 +270,15 @@ impl XwmHandler for MistComp {
                 }
             }
         }
+    }
+}
+
+/// An X button number (1 left, 2 middle, 3 right) as the evdev code the pointer reports (the grab ends
+/// when it is released).
+fn evdev_button(x: u32) -> u32 {
+    match x {
+        2 => 0x112,
+        3 => 0x111,
+        _ => 0x110,
     }
 }

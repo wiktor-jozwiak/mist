@@ -96,6 +96,11 @@ impl CompositorHandler for MistComp {
             }
         };
 
+        // the drag icon moves by what the client offsets it (wl_surface.offset / attach x, y)
+        if let Some((icon, off)) = self.dnd_icon.as_mut().filter(|(i, _)| i == surface) {
+            let _ = icon;
+            *off += with_states(surface, |s| s.cached_state.get::<SurfaceAttributes>().current().buffer_delta.take().unwrap_or_default());
+        }
         self.pending_commit(surface);
         xdg_shell::handle_commit(&mut self.popups, &self.space, surface);
         resize_grab::handle_commit(&mut self.space, surface);

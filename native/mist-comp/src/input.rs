@@ -86,15 +86,16 @@ impl MistComp {
                     return;
                 }
                 self.bar_drag_motion(pos);
-                pointer.motion(self, new_under, &MotionEvent { location: pos, serial, time: event.time_msec() });
+                pointer.motion(self, new_under.clone(), &MotionEvent { location: pos, serial, time: event.time_msec() });
+                self.activate_constraint(new_under.as_ref(), pos);
                 pointer.frame(self);
                 self.bar_hover(pos);
                 self.edge_hover(pos);
                 self.note_pointer_output();
             }
             InputEvent::PointerMotionAbsolute { event, .. } => {
-                let output = self.space.outputs().next().unwrap();
-                let output_geo = self.space.output_geometry(output).unwrap();
+                // tablets / VM pointers map onto the first monitor (none plugged in: nowhere to go)
+                let Some(output_geo) = self.space.outputs().next().and_then(|o| self.space.output_geometry(o)) else { return };
                 let pos = event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
                 self.pointer_to(pos, event.time_msec());
             }
@@ -352,11 +353,27 @@ impl MistComp {
         let pointer = self.seat.get_pointer().unwrap();
         let under = self.surface_under(pos);
         self.bar_drag_motion(pos);
-        pointer.motion(self, under, &MotionEvent { location: pos, serial, time });
+        pointer.motion(self, under.clone(), &MotionEvent { location: pos, serial, time });
+        self.activate_constraint(under.as_ref(), pos);
         pointer.frame(self);
         self.bar_hover(pos);
         self.edge_hover(pos);
         self.note_pointer_output();
+    }
+
+    /// The pointer is over a surface whose lock / confinement waits (a game it came back to after
+    /// Alt+Tab): it takes effect where its region allows.
+    fn activate_constraint(&mut self, under: Option<&(smithay::reexports::wayland_server::protocol::wl_surface::WlSurface, Point<f64, Logical>)>, pos: Point<f64, Logical>) {
+        let Some((surface, origin)) = under else { return };
+        let pointer = self.seat.get_pointer().unwrap();
+        with_pointer_constraint(surface, &pointer, |c| {
+            if let Some(c) = c.filter(|c| !c.is_active()) {
+                let at = (pos - *origin).to_i32_round();
+                if c.region().is_none_or(|r| r.contains(at)) {
+                    c.activate();
+                }
+            }
+        });
     }
 
     fn bar_drag_motion(&mut self, pos: Point<f64, Logical>) {
@@ -394,7 +411,10 @@ impl MistComp {
         let logo = keyboard.modifier_state().logo || keyboard.modifier_state().alt;
         if logo && button_state == ButtonState::Pressed && !pointer.is_grabbed() && (button == BTN_LEFT || button == BTN_RIGHT) {
             let loc = pointer.current_location();
-            if let Some((window, wloc)) = self.space.element_under(loc).map(|(w, l)| (w.clone(), l)) {
+            // element_under gives where the surface is drawn (CSD shadows included); the grabs work from the
+            // window geometry's origin, as an xdg resize request does
+            let hit = self.space.element_under(loc).map(|(w, _)| w.clone()).and_then(|w| Some((self.space.element_location(&w)?, w)));
+            if let Some((wloc, window)) = hit {
                 self.focus_window(Some(&window));
                 let start_data = PointerGrabStartData { focus: None, button, location: loc };
                 if button == BTN_LEFT {

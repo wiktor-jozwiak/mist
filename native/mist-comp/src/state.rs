@@ -71,6 +71,8 @@ pub struct MistComp {
     /// offscreen test backend
     pub headless: Option<crate::headless::Headless>,
     pub cursor_status: smithay::input::pointer::CursorImageStatus,
+    /// drag and drop: the icon surface the client gave, and its offset from the pointer (wl_surface.offset)
+    pub dnd_icon: Option<(WlSurface, Point<i32, Logical>)>,
     pub config: crate::config::Config,
     /// output name -> shown workspace id
     pub ws_active: std::collections::HashMap<String, u32>,
@@ -251,6 +253,7 @@ impl MistComp {
             udev: None,
             headless: None,
             cursor_status: smithay::input::pointer::CursorImageStatus::default_named(),
+            dnd_icon: None,
             redraw_after_vblank: false,
             config,
             ws_active: Default::default(),
@@ -399,6 +402,13 @@ impl MistComp {
         })?;
         let og = self.space.output_geometry(o)?;
         Some(og.loc.y + layer_map_for_output(o).non_exclusive_zone().loc.y)
+    }
+
+    /// The drag icon and where it shows (None: no drag, or its surface is gone).
+    pub fn dnd_at(&self) -> Option<crate::scene::Dnd> {
+        let (s, off) = self.dnd_icon.as_ref().filter(|(s, _)| smithay::utils::IsAlive::alive(s))?;
+        let ptr = self.seat.get_pointer()?.current_location().to_i32_round();
+        Some((s.clone(), ptr + *off))
     }
 
     /// The Overlay/Top layer surface under a point (these sit above windows).

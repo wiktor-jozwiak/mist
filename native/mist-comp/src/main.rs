@@ -160,7 +160,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     b.borrow().window().request_redraw()
                 }
                 None if data.headless.is_some() => crate::headless::render(data),
-                None => crate::udev::render_all(data),
+                None => {
+                    crate::udev::render_all(data);
+                    // wl_surface.enter / leave for the outputs a window covers (clients pick their scale,
+                    // refresh rate and menu placement from it), dead windows and popups dropped
+                    data.space.refresh();
+                    data.popups.cleanup();
+                }
             }
             // one more frame while something moves (paced by vblank / the frame tick)
             if data.anim.active() {

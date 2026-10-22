@@ -214,7 +214,13 @@ impl MistComp {
 
     pub fn focused_window(&self) -> Option<Window> {
         let kb = self.seat.get_keyboard().unwrap();
-        let f = kb.current_focus()?;
+        let mut f = kb.current_focus()?;
+        // an open menu has the keys: its window is still the focused one
+        if let crate::focus::KbFocus::Surface(s) = &f {
+            if let Some(root) = self.popups.find_popup(s).and_then(|p| smithay::desktop::find_popup_root_surface(&p).ok()) {
+                f = crate::focus::KbFocus::Surface(root);
+            }
+        }
         self.space.elements().find(|w| crate::focus::of_window(w).as_ref() == Some(&f)).cloned()
     }
 
@@ -487,8 +493,13 @@ impl MistComp {
     }
 
     fn focus_top_on(&mut self, output: &Output) {
-        let top = self.space.elements().rev().find(|w| self.output_of(w).as_ref() == Some(output)).cloned();
+        let top = self.top_window(Some(output));
         self.focus_window(top.as_ref());
+    }
+
+    /// The topmost window that can take the keys (not an X11 menu / tooltip), on that output if given.
+    pub fn top_window(&self, output: Option<&Output>) -> Option<Window> {
+        self.space.elements().rev().find(|w| data(w).addr.get() != 0 && output.is_none_or(|o| self.output_of(w).as_ref() == Some(o))).cloned()
     }
 
     pub fn move_to_ws(&mut self, w: &Window, ws: u32) {

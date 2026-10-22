@@ -138,7 +138,7 @@ pub fn init_winit(
                         tracing::debug!("swap interval 0: {ok}");
                         swap_interval_set = true;
                     }
-                    let elems = crate::scene::elements(renderer, &state.space, state.lock.surfaces.get(&output.name()), state.locked, &output, &state.anim);
+                    let elems = crate::scene::elements(renderer, &state.space, state.lock.surfaces.get(&output.name()), state.locked, &output, &state.anim, state.dnd_at().as_ref());
                     let clear = if state.locked { [0.0, 0.0, 0.0, 1.0] } else { [0.1, 0.1, 0.1, 1.0] };
                     let damage = damage_tracker.render_output(renderer, &mut framebuffer, age, &elems, clear).unwrap().damage.cloned();
                     if let Some((path, mut reply)) = shot {

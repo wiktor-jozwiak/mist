@@ -104,7 +104,23 @@ impl MistComp {
         w.on_commit();
         let r = self.rule_of(&w);
         let loc = self.place_new(&w, &r);
-        self.adopt_ruled(w, loc, r);
+        let game = r.game;
+        self.adopt_ruled(w.clone(), loc, r);
+        // maximized / fullscreen asked for before the first frame (mpv --fs, a browser that closed maximized)
+        match with_states(surface, |s| s.data_map.get::<MapWish>().and_then(|m| m.0.get())) {
+            Some(Wish::Max) => self.mist_maximize(&w),
+            Some(Wish::Full) if !game => self.toggle_max(&w, true),
+            _ => {}
+        }
+        true
+    }
+
+    /// A toplevel not on screen yet asks to be maximized / fullscreen (None: back to normal): done at map.
+    pub fn wish_at_map(&mut self, surface: &WlSurface, wish: Option<Wish>) -> bool {
+        if !self.pending.iter().any(|w| w.toplevel().is_some_and(|t| t.wl_surface() == surface)) {
+            return false;
+        }
+        with_states(surface, |s| s.data_map.get_or_insert(|| MapWish(std::cell::Cell::new(None))).0.set(wish));
         true
     }
 
@@ -202,3 +218,12 @@ mod tests {
         assert_eq!(rule("gedit", "x", false), Rule::default());
     }
 }
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Wish {
+    Max,
+    Full,
+}
+
+/// What an unmapped toplevel asked to be (xdg set_maximized / set_fullscreen before its first buffer).
+struct MapWish(std::cell::Cell<Option<Wish>>);

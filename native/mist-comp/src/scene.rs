@@ -68,7 +68,10 @@ pub fn window_elements(r: &mut GlesRenderer, w: &Window, loc: Point<i32, Logical
     out
 }
 
-pub fn elements(r: &mut GlesRenderer, space: &Space<Window>, lock: Option<&LockSurface>, locked: bool, output: &Output, anim: &crate::anim::Anims) -> Vec<SceneElem> {
+/// A drag-and-drop icon: its surface, and where it is on the desktop (the pointer + the icon's offset).
+pub type Dnd = (smithay::reexports::wayland_server::protocol::wl_surface::WlSurface, Point<i32, Logical>);
+
+pub fn elements(r: &mut GlesRenderer, space: &Space<Window>, lock: Option<&LockSurface>, locked: bool, output: &Output, anim: &crate::anim::Anims, dnd: Option<&Dnd>) -> Vec<SceneElem> {
     let mut out = Vec::new();
     let scale = Scale::from(output.current_scale().fractional_scale());
     if locked {
@@ -78,6 +81,11 @@ pub fn elements(r: &mut GlesRenderer, space: &Space<Window>, lock: Option<&LockS
         return out;
     }
     let Some(og) = space.output_geometry(output) else { return out };
+    // the dragged thing under the pointer, above everything
+    if let Some((icon, at)) = dnd {
+        let loc = (*at - og.loc).to_physical_precise_round(scale);
+        out.extend(render_elements_from_surface_tree(r, icon, loc, scale, 1.0, Kind::Unspecified).into_iter().map(SceneElem::Surface));
+    }
     let now = std::time::Instant::now();
     let map = layer_map_for_output(output);
     let layers = |out: &mut Vec<SceneElem>, r: &mut GlesRenderer, lvl: Layer| {

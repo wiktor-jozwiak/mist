@@ -132,7 +132,8 @@ impl PointerConstraintsHandler for MistComp {
                 .space
                 .elements()
                 .find(|w| w.toplevel().is_some_and(|t| t.wl_surface() == surface))
-                .and_then(|w| self.space.element_location(w))
+                // the hint is surface-local: from where the surface is drawn (CSD shadows included)
+                .and_then(|w| Some(self.space.element_location(w)? - w.geometry().loc))
                 .unwrap_or_default()
                 .to_f64();
             pointer.set_location(origin + location);
