@@ -1,7 +1,7 @@
 # Configuration
 
 Everything lives in `~/.config/mist/`. Every file is optional: Mist starts with sane defaults and writes most of
-them itself when you change something in the UI (*Customise desktop*, the wallpaper gallery, the dock). Edit
+them itself when you change something in the UI (Settings, the wallpaper gallery, the dock). Edit
 them by hand only for what the UI does not offer; `mist-ui` re-reads them on its own or after a restart
 (`pkill -x mist-ui-bin`, the guard `mist-ui` starts it again).
 
@@ -15,13 +15,13 @@ them by hand only for what the UI does not offer; `mist-ui` re-reads them on its
 
 | Key | Values | |
 |---|---|---|
-| `lang` | `auto`, `pl`, `en`, `de`, `es` | UI language; `auto` follows `$LANG`, falls back to English. Set in *Customise desktop* → Appearance |
+| `lang` | `auto`, `pl`, `en`, `de`, `es`, `fr` | UI language; `auto` follows `$LANG`, falls back to English. Set in Settings → General |
 | `primary` | a Hyprland monitor name | where the dock, island, desktop and weather sky go; default: Hyprland's first monitor |
 | `contrast` | `high` | accessibility: secondary text near full opacity, glass panels opaque (read at start; `MIST_CONTRAST=high` overrides) |
 
 ### `widgets.json`: the desktop
 
-Written by *Customise desktop* (right click on the desktop clock).
+Written by Settings (right click on the desktop).
 
 | Key | Values |
 |---|---|
@@ -49,7 +49,7 @@ cards close up.
 { "city": "Kraków", "lat": 50.06, "lon": 19.94 }
 ```
 
-Chosen in *Customise desktop* → General (search through Open-Meteo geocoding). Without it the weather card
+Chosen in Settings → General (search through Open-Meteo geocoding). Without it the weather card
 asks for a place and nothing is fetched.
 
 ### `wallpaper.json`
@@ -90,15 +90,15 @@ start over. `mist-ui-bin --inhibit` keeps the screen on by hand until stopped (C
 A list of iCal URLs (`.ics`, e.g. the *secret address* of a Google calendar). Shown in the calendar sheet and as
 the island's next event. Treat this file as a secret.
 
-### `influx.json`: Garmin and running (optional)
+### `coach.json`: Garmin and running (optional)
 
 ```json
-{ "url": "http://127.0.0.1:8086/query", "db": "GarminStats", "user": "...", "password": "..." }
+{ "race_date": "2027-04-12", "race_name": "Marathon" }
 ```
 
-The InfluxDB 1.x of [garmin-grafana](https://github.com/arpanghosh8453/garmin-grafana). Setup:
-[guides/garmin.md](guides/garmin.md). Without this file the Garmin and running cards are off and nothing is
-asked.
+The race the suggested workout and the countdown aim at. The cards themselves need only a Garmin Connect login;
+`mistd garmin sync` keeps the data in `~/.local/share/mist/garmin.db`. Setup: [guides/garmin.md](guides/garmin.md).
+Without a login the Garmin and running cards are off and nothing is asked.
 
 ### Written by Mist
 
@@ -147,7 +147,7 @@ mist-comp also speaks ext-workspace-v1 (waybar `ext/workspaces` and other bars) 
 
 | What | Needs | Off when |
 |---|---|---|
-| Garmin readiness + running cards | `influx.json` and garmin-grafana | the file is missing |
+| Garmin readiness + running cards | a Garmin Connect login ([guide](guides/garmin.md)) | no token file |
 | Phone (calls, SMS, battery, find my phone) | KDE Connect paired with the phone | no paired device |
 | Calls through ADB (phones where KDE Connect telephony stays silent, e.g. HyperOS) | `adb` installed, the phone authorised (USB, or Wi-Fi after `adb tcpip`) | `adb` missing or no authorised device |
 | Brightness keys on external monitors (`scripts/bright.sh`) | `ddcutil`, DDC/CI on | `ddcutil` missing |

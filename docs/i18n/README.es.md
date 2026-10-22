@@ -1,29 +1,13 @@
-<div align="right">
-  🌐 <b>Seleccionar idioma:</b>
-  <a href="../../README.md">English</a> ·
-  <a href="README.pl.md">Polski</a> ·
-  <a href="README.de.md">Deutsch</a> ·
-  <a href="README.es.md"><b>Español</b></a> ·
-  <a href="README.zh-CN.md">简体中文</a> ·
-  <a href="README.ja.md">日本語</a>
-</div>
-
 <div align="center">
 
 <img src="../img/banner.svg" alt="Mist" width="100%">
 
-**Un shell de escritorio para Hyprland inspirado en macOS, escrito en Rust y dibujado en la CPU.**
+**Un entorno de escritorio para Wayland inspirado en macOS, escrito en Rust y dibujado en la CPU.**
 
-Barra, dock, Dynamic Island, widgets de escritorio, buscador al estilo Spotlight, centro de control,
-notificaciones, pantalla de bloqueo y agente polkit en un solo proceso de ~50 MB, sin contexto de GPU.
-
-[![Licencia: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-3b82f6?style=flat-square)](../../LICENSE)
-[![Rust 2024](https://img.shields.io/badge/rust-2024-e2683c?style=flat-square&logo=rust&logoColor=white)](../../native)
-[![Hyprland](https://img.shields.io/badge/wayland-Hyprland-58e1ff?style=flat-square)](https://hyprland.org)
 [![CI](https://img.shields.io/github/actions/workflow/status/wiktor-jozwiak/mist/ci.yml?branch=main&style=flat-square&label=CI)](../../.github/workflows/ci.yml)
-[![Discord](https://img.shields.io/badge/discord-unirse-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/4rRabwQTPE)
-
-[Funciones](#funciones) · [Mediciones](#mediciones) · [Instalación](#instalación) · [Uso](#uso) · [Desarrollo](#desarrollo)
+[![Release](https://img.shields.io/github/v/release/wiktor-jozwiak/mist?style=flat-square&color=3b82f6)](https://github.com/wiktor-jozwiak/mist/releases)
+[![Licencia: GPL-3.0](https://img.shields.io/badge/licencia-GPL--3.0-8d8590?style=flat-square)](../../LICENSE)
+[![Discord](https://img.shields.io/badge/discord-chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/4rRabwQTPE)
 
 [English](../../README.md) · [Polski](README.pl.md) · [Deutsch](README.de.md) ·
 [Español](README.es.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
@@ -34,230 +18,126 @@ notificaciones, pantalla de bloqueo y agente polkit en un solo proceso de ~50 MB
 
 <table>
   <tr>
-    <td width="50%"><img src="../img/island.gif" alt="Dynamic Island: una notificación, el volumen, lluvia pronto, el próximo evento" width="100%"></td>
+    <td width="50%"><img src="../img/island.gif" alt="Dynamic Island: una notificación, el volumen, lluvia en breve, el próximo evento" width="100%"></td>
     <td width="50%"><img src="../img/weather.gif" alt="La tarjeta del tiempo bajo la lluvia, sobre su cielo en vivo" width="100%"></td>
   </tr>
   <tr>
-    <td align="center"><sub><b>Dynamic Island</b>: notificaciones, volumen, lluvia inminente, el próximo evento</sub></td>
-    <td align="center"><sub><b>Tarjeta del tiempo</b>: datos de Open-Meteo sobre un cielo GLSL en tiempo real</sub></td>
+    <td align="center"><sub>Dynamic Island: notificaciones, volumen, lluvia en la próxima hora, próximo evento</sub></td>
+    <td align="center"><sub>Tarjeta del tiempo sobre un cielo GLSL en tiempo real</sub></td>
   </tr>
 </table>
-
-<sub>Renders fuera de pantalla con los datos de demostración de <code>docs/demo</code>, generados por
-<a href="../img/hero.sh">hero.sh</a>, <a href="../img/gifs.sh">gifs.sh</a> y
-<a href="../img/panels.sh">panels.sh</a>. En una sesión real Hyprland desenfoca lo que hay bajo el cristal.</sub>
 
 </div>
 
-<br>
+Mist es la barra, el dock, la Dynamic Island, los widgets del escritorio, el buscador, el centro de control,
+las notificaciones, la pantalla de bloqueo y el agente polkit de un escritorio, en un único proceso de ~50 MB
+que nunca abre un contexto de GPU. Funciona sobre Hyprland o sobre su propio compositor, `mist-comp`.
 
-<table>
-  <tr>
-    <td align="center" width="33%"><h3>~50 MB</h3><sub>todas las superficies del shell en un proceso<br><code>mist-ui</code>, PSS en reposo</sub></td>
-    <td align="center" width="33%"><h3>0 contextos GL</h3><sub>búferes <code>wl_shm</code> dibujados en la CPU;<br>la GPU solo para fondos animados</sub></td>
-    <td align="center" width="33%"><h3>0 temporizadores en reposo</h3><sub>socket de Hyprland, D-Bus, inotify:<br>las superficies ocultas no trabajan</sub></td>
-  </tr>
-  <tr>
-    <td align="center" width="33%"><h3>0,04 % de CPU</h3><sub><code>mist-comp</code> + el shell en reposo,<br>6 despertares / s</sub></td>
-    <td align="center" width="33%"><h3>1 fotograma / s</h3><sub>para una ventana tapada por otras<br>(60 → 1 frame callbacks)</sub></td>
-    <td align="center" width="33%"><h3>0 desenfoques</h3><sub>mientras nada cambia detrás del cristal<br>(362 → 0 cada 3 s)</sub></td>
-  </tr>
-</table>
+Empezó como una configuración de Quickshell que usaba 428 MB y un 9,5 % de CPU en reposo, y se reescribió
+superficie a superficie siguiendo tres reglas:
 
-## Por qué
+- **Dibujar en la CPU.** `mist-ui` pinta búferes `wl_shm` con [tiny-skia] y [swash] y solo redibuja lo que
+  cambió. En NVIDIA cada contexto OpenGL cuesta entre 100 y 160 MB antes del primer píxel; Mist no tiene
+  ninguno.
+- **Esperar eventos.** Todo llega del socket del compositor, D-Bus, `pactl subscribe` e inotify. Nada consulta
+  en bucle mientras la pantalla está quieta, y las superficies ocultas no trabajan.
+- **Un solo proceso de GPU, y solo cuando muestra algo.** `mist-wall` dibuja fondos animados y el cielo del
+  tiempo; con una foto de fondo se cierra y la foto la dibuja `mist-ui`.
 
-La mayoría de los shells de Hyprland funcionan sobre Qt Quick (Quickshell), GTK + GJS (AGS) o una WebView. Cada
-uno abre un contexto OpenGL, y en NVIDIA cada contexto GL mapea el driver: unos **100 a 160 MB por proceso**
-antes del primer píxel. Mist empezó como una configuración de Quickshell (428 MB, 9,5 % de CPU) y se reescribió
-superficie a superficie:
-
-- 🖌️ **Superficies dibujadas en la CPU.** `mist-ui` pinta en búferes `wl_shm` con [tiny-skia] y [swash];
-  Hyprland las compone y las desenfoca. Solo se redibujan las zonas que cambian.
-- ⚡ **Guiado por eventos.** Los datos llegan del socket de Hyprland, D-Bus, `pactl subscribe`, inotify y
-  backends `mistd` de larga vida. En reposo nada consulta con un temporizador; las superficies ocultas no trabajan.
-- 🎨 **Un solo proceso de GPU, solo cuando hace falta.** `mist-wall` (EGL, GLSL 150) dibuja los fondos
-  animados y el cielo del tiempo. Con una foto de fondo termina y `mist-ui` dibuja la foto. Se pausa con los
-  monitores apagados o la sesión bloqueada, y con GL por software baja a media resolución.
-
-<p align="center"><img src="../img/wallpaper.gif" alt="Un fondo animado (dunas)" width="100%"></p>
-
-## Mediciones
-
-<p align="center"><img src="../img/memory.svg" alt="Memoria en reposo: mist-ui solo 36 a 50 MB, Mist con mist-wall 87 a 106 MB, Noctalia v5 122 MB, Quickshell vacío 124 MB, Mist sobre Quickshell 428 MB" width="100%"></p>
-
-En reposo, shell completo, PSS (páginas compartidas repartidas entre procesos), Ryzen 7 5700X + RTX 4060
-(driver 615.71), Hyprland 0.56.2, 2 × 1920x1080 (165 + 75 Hz). Medido con [bench/measure.sh](../../bench/measure.sh).
-
-| Shell | Toolkit | PSS | CPU en reposo | Contexto GL |
-|---|---|---|---|---|
-| **Mist nativo** | Rust, CPU, `wl_shm` | **87 a 106 MB** | 0,6 % (con música) | solo `mist-wall` |
-| Mist nativo, solo `mist-ui` | | 36 a 50 MB | 0,6 % | no |
-| Noctalia v5 | C++, cairo + EGL | 122 MB | 0,07 % | sí |
-| Quickshell vacío (un `PanelWindow`) | Qt Quick | 124 MB | ~0 % | sí |
-| Mist sobre Quickshell (versión QML antigua) | Qt Quick + QML | 428 MB | 9,5 % | sí |
-
-Cifras publicadas por otros (RSS, otras máquinas, no comparables 1:1): Waybar 50 a 66 MB
-([Waybar#5186](https://github.com/Alexays/waybar/issues/5186)), Caelestia ~650 MB tras reiniciar
-([caelestia-dots/shell#1927](https://github.com/caelestia-dots/shell/issues/1927)). Método, datos en bruto y
-salvedades: [docs/BENCHMARKS.md](../BENCHMARKS.md).
-
-### El compositor: mist-comp
-
-**En reposo**, [bench/comp.sh](../../bench/comp.sh): mist-comp sin pantalla (headless) con el renderizador por
-software de Mesa (llvmpipe, que explica casi toda la memoria y los 34 hilos), dos salidas 1920x1080, un `HOME`
-desechable, 15 s cada medición.
-
-| Estado | PSS | CPU (un núcleo) | Despertares | Fotogramas |
-|---|---|---|---|---|
-| mist-comp solo | 125 MB | 0,17 % | 5,7 / s | 0,1 / s |
-| mist-comp + todo el shell en reposo | 173 MB | **0,04 %** | **6,3 / s** | 3 / s |
-| `mist-ui` dentro de él | 32 MB | 0,33 % | 22,5 / s | 0 |
-| puntero moviéndose sin parar | 175 MB | 0,83 % | 163 / s | 60 / s |
-
-**Una sesión real y ocupada** (2026-10-22, la máquina de arriba, NVIDIA, 165 + 75 Hz, 35 minutos después de
-iniciar sesión): Zen con una página abierta (272 commits/s), la app de escritorio de Claude transmitiendo texto
-(107 commits/s), kitty, Vesktop. [bench/measure.sh](../../bench/measure.sh), 30 s.
-
-| Proceso | PSS | CPU (un núcleo) |
-|---|---|---|
-| mist-comp (toda la composición, desenfoque, sombras, dos monitores) | 231 MB | 14 a 16 % |
-| shell: mist-ui + mist-wall (fondo animado) + mistd | 126 MB | 5,1 % |
-
-Es una cifra bajo carga, no en reposo: casi todo el trabajo del compositor sigue aquí a los dos clientes
-ocupados. La misma sesión con Hyprland aún no se ha medido.
-
-**Lo que el compositor evita**, pruebas anidadas en [native/mist-comp/tests](../../native/mist-comp/tests) (antes → después):
-
-| Situación | Resultado |
-|---|---|
-| Barra y dock de cristal sobre una ventana que redibuja un cuadrado pequeño | desenfoques 362 → 0 cada 3 s, la mitad de CPU del compositor |
-| Un navegador animado detrás de una ventana maximizada | frame callbacks 60 → 1 por s (60 otra vez al mostrarse) |
-| Un cliente animado en un monitor, el otro quieto | pasadas de render en el quieto 180 → 0 cada 3 s |
-| Zen (varias superficies por ventana) | desenfoques por fotograma 1,92 → 0,96 |
-| Paneles que se abren y cierran durante 60 s | la memoria se estabiliza (~80 MB en NVIDIA; antes crecía ~4 MB/min) |
-| Un cliente que redibuja sin parar bajo una barra de Mist | 0,25 ms de CPU del compositor por fotograma |
-| Vista general abierta, lupa activa, puntero quieto | 0 fotogramas / s |
-
-Método, datos en bruto y advertencias: [docs/BENCHMARKS.md](../BENCHMARKS.md).
+> [!NOTE]
+> Mist es el escritorio diario de una persona (Arch / CachyOS, dos monitores, NVIDIA). Es público porque
+> funciona, no porque esté terminado: cuenta con leer algo de código.
 
 ## Funciones
 
 <table>
   <tr>
-    <td width="50%"><img src="../img/panels/spotlight.webp" alt="Buscador al estilo Spotlight" width="100%"></td>
-    <td width="50%"><img src="../img/panels/calendar.webp" alt="Calendario" width="100%"></td>
+    <td width="50%"><img src="../img/panels/spotlight.webp" alt="Búsqueda al estilo Spotlight" width="100%"></td>
+    <td width="50%"><img src="../img/panels/settings.webp" alt="Ventana de ajustes" width="100%"></td>
   </tr>
   <tr>
-    <td align="center"><sub><b>Spotlight</b>: apps, archivos, comandos, emoji, web</sub></td>
-    <td align="center"><sub><b>Calendario</b>: mes, agenda, eventos nuevos</sub></td>
+    <td align="center"><sub>Spotlight: aplicaciones, archivos, comandos, emoji, web</sub></td>
+    <td align="center"><sub>Ajustes: todo en una ventana, aplicado al instante</sub></td>
   </tr>
   <tr>
     <td width="50%"><img src="../img/panels/control.webp" alt="Centro de control" width="100%"></td>
-    <td width="50%"><img src="../img/panels/emoji.webp" alt="Selector de emoji" width="100%"></td>
+    <td width="50%"><img src="../img/panels/calendar.webp" alt="Calendario" width="100%"></td>
   </tr>
   <tr>
-    <td align="center"><sub><b>Centro de control</b>: red, Bluetooth, teléfono, sonido, luz nocturna</sub></td>
-    <td align="center"><sub><b>Emoji</b>: <code>Super + .</code></sub></td>
+    <td align="center"><sub>Centro de control: red, Bluetooth, teléfono, sonido, luz nocturna</sub></td>
+    <td align="center"><sub>Calendario: mes, agenda, eventos nuevos</sub></td>
   </tr>
 </table>
 
 | | |
 |---|---|
-| 🔝 **Barra superior** | app activa y título, bandeja del sistema (host StatusNotifierItem + dbusmenu), red, Bluetooth, audio, indicadores de CPU / memoria, reloj, calendario |
-| 🚀 **Dock** | apps fijadas y abiertas, magnificación, selector de ventanas con miniaturas en vivo (`hyprland_toplevel_export_v1`), un clic en la app activa la minimiza |
-| 🏝️ **Dynamic Island** | multimedia (MPRIS) con ecualizador, temporizadores, llamadas (KDE Connect / ADB), notificaciones, volumen |
-| 🖼️ **Escritorio** | reloj, salida / puesta del sol, tarjetas de cristal (tiempo, disposición de Garmin, plan de carrera), ajustes de cada tarjeta |
-| 🔍 **Paneles** | buscador al estilo Spotlight, Inicio, selector Cmd+Tab, centro de control (por páginas), centro de notificaciones, historial del portapapeles, emoji, menú de sesión, galería de fondos, barra de capturas |
-| 🛡️ **Sistema** | servidor de notificaciones, agente polkit, pantalla de bloqueo (`ext-session-lock-v1` + PAM), inactividad (`ext-idle-notify-v1`, logind) |
-| 🪟 **Ajuste de ventanas** | al estilo Windows 11: arrastrar a un borde o una esquina, Snap Layouts en el botón verde o con `Super + Z` (7 diseños), Snap Assist llena el resto, `Super + flechas`; zonas con separaciones iguales de 8 px, la vista previa muestra exactamente dónde cae la ventana |
-| 🌄 **Fondos** | fotos (CPU) o escenas GLSL animadas y un cielo del tiempo en tiempo real (`mist-wall`) |
-| 🧪 **mist-comp** *(experimental)* | compositor propio con Smithay + greeter, para usar Mist sin Hyprland: desenfoque de cristal que solo se recalcula cuando cambia lo de detrás, redibujado por monitor, ventanas tapadas limitadas a 1 fotograma/s, vista general (`Super + O`), deslizar escritorios 1:1, lupa, las ventanas vuelven tras un fallo o `mist-session restart` |
+| **Barra superior** | aplicación activa, bandeja del sistema (StatusNotifierItem + dbusmenu), red, Bluetooth, audio, CPU y memoria, reloj |
+| **Dock** | aplicaciones fijadas y abiertas, ampliación, selector de ventanas con miniaturas en vivo |
+| **Dynamic Island** | multimedia con ecualizador, temporizadores, llamadas (KDE Connect o ADB), notificaciones, volumen |
+| **Escritorio** | reloj y tarjetas de cristal: tiempo, disposición de Garmin, carrera, música, calendario, sistema, relojes del mundo |
+| **Paneles** | Spotlight, Inicio, cambiador de aplicaciones, centro de control, centro de notificaciones, portapapeles, emoji, menú de sesión, capturas |
+| **Ajustes** | idioma, lugar del tiempo, fondo, disposición del escritorio, widgets, luz nocturna, bloqueo y suspensión, notificaciones |
+| **Sistema** | servidor de notificaciones, agente polkit, pantalla de bloqueo (PAM), inactividad y suspensión |
+| **Aplicaciones** | Mist Files (también el selector de archivos de cualquier aplicación), Mist Player (libmpv), ajustes del sistema |
+| **Ajuste de ventanas** | como en Windows 11: arrastra a un borde o esquina, Snap Layouts en el botón verde o con `Super + Z`, Snap Assist |
+| **Fondos** | fotos, escenas GLSL animadas o un cielo que sigue el tiempo actual |
 
-### Tarjetas del escritorio
+El **tiempo** viene de [Open-Meteo](https://open-meteo.com) sin cuenta: curva por horas, cuatro días, lluvia en
+la próxima hora, sol y luna. **Disposición de Garmin** y **carrera** muestran tus propios datos de Garmin
+Connect, que `mistd` sincroniza en un archivo SQLite local; las tarjetas siguen ocultas hasta que inicias
+sesión una vez ([guía](../guides/garmin.md)).
 
-- **Tiempo**: [Open-Meteo](https://open-meteo.com), sin cuenta. Curva por horas, 4 días, lluvia en la próxima
-  hora, ventana para correr, consejo de ropa, sol y luna; el cielo en vivo tras la tarjeta sigue el tiempo actual.
-- **Disposición de Garmin** y **carrera**: tus propios datos de Garmin Connect a través de una InfluxDB local.
-  Opcionales: sin `influx.json` estas tarjetas no aparecen. Configuración: [docs/guides/garmin.md](../guides/garmin.md).
+La interfaz está en **español, inglés, polaco, alemán y francés**, según `$LANG` o lo elegido en Ajustes. Un
+idioma es un archivo JSON en [native/assets/i18n](../../native/assets/i18n).
 
-### Idiomas y monitores
+## Mediciones
 
-La interfaz habla **polaco, inglés, alemán, español y francés**. Elígelo en *Personalizar escritorio* (clic derecho en el
-reloj del escritorio) → Apariencia → Idioma, o con `MIST_LANG=es`. *Automático* sigue `$LANG` y si no, inglés.
-Las traducciones están en una tabla, [native/assets/i18n.tsv](../../native/assets/i18n.tsv): una fila por texto,
-una columna por idioma. Un idioma nuevo es una columna más.
+<p align="center"><img src="../img/memory.svg" alt="Memoria en reposo: mist-ui solo 36 a 50 MB, Mist con mist-wall 87 a 106 MB, Noctalia v5 122 MB, Quickshell vacío 124 MB, Mist sobre Quickshell 428 MB" width="100%"></p>
 
-El dock, la isla, el escritorio y el cielo del tiempo van al primer monitor del compositor. Otro:
-`"primary": "DP-3"` en `~/.config/mist/settings.json` o `MIST_PRIMARY=DP-3`. El lugar del tiempo: *Personalizar
-escritorio* → General. Todos los archivos y variables: [docs/CONFIG.md](../CONFIG.md).
+Todo el entorno en reposo, PSS, Ryzen 7 5700X + RTX 4060, Hyprland 0.56, dos monitores 1080p,
+[bench/measure.sh](../../bench/measure.sh):
 
-## Arquitectura
+| Entorno | Tecnología | Memoria (PSS) | CPU en reposo | Contexto GL |
+|---|---|---|---|---|
+| **Mist** | Rust, CPU, `wl_shm` | **87 a 106 MB** | 0,6 % (con música) | solo `mist-wall` |
+| Mist, solo `mist-ui` | | 36 a 50 MB | 0,6 % | no |
+| Noctalia v5 | C++, cairo + EGL | 122 MB | 0,07 % | sí |
+| Quickshell vacío (un `PanelWindow`) | Qt Quick | 124 MB | ~0 % | sí |
+| Mist sobre Quickshell (versión QML antigua) | Qt Quick | 428 MB | 9,5 % | sí |
 
-```mermaid
-flowchart LR
-    H["Hyprland / mist-comp"] -- layer-shell --> UI["<b>mist-ui</b><br/>Rust · tiny-skia + swash<br/>wl_shm, cada superficie"]
-    H -- layer-shell --> W["<b>mist-wall</b><br/>Rust · EGL / GLSL 150<br/>fondos animados, cielo"]
-    UI <-- "stdin / stdout" --> D["<b>mistd</b><br/>stats · phone · calls<br/>island · clipstore"]
-    UI <-- D-Bus --> S[(MPRIS · bandeja · notificaciones<br/>polkit · NetworkManager · BlueZ)]
-    CLI["mist-ui-bin msg destino función"] -. IPC .-> UI
-```
-
-| Ruta | Qué |
-|---|---|
-| `native/mist-ui` | todas las superficies del shell ([native/README.md](../../native/README.md)) |
-| `native/mist-wall` | proceso de fondos en la GPU |
-| `native/mist-comp` | compositor experimental con Smithay, sesión y greeter |
-| `native/common` | código compartido por mist-ui y mist-wall (astronomía, presets) |
-| `scripts/mistd` | backends: estadísticas del sistema, teléfono (KDE Connect, ADB), llamadas, portapapeles, D-Bus del gestor de archivos |
-| `shaders/` | shaders de fondos y cielo (fuentes `.frag`, GLSL 150 en `shaders/glsl` que lee mist-wall) |
-| etiqueta `legacy-qml` | la versión original sobre Quickshell (QML), guardada como referencia |
+Sobre `mist-comp`, el compositor y todo el entorno juntos se quedan en **0,04 % de CPU y 6 despertares por
+segundo** (sin monitor, renderizador por software). Método, las cifras del compositor y una sesión real con
+carga: [docs/BENCHMARKS.md](../BENCHMARKS.md).
 
 ## mist-comp
 
-Un compositor Wayland experimental escrito para Mist sobre [Smithay] (unas 12 000 líneas de Rust), con su
-propio greeter. Ejecuta el mismo shell que Hyprland y habla lo suficiente del IPC de Hyprland como para que
-`hyprctl`, los scripts de Mist y la lista de ventanas del shell funcionen sin cambios. Es la sesión diaria del
-autor junto a Hyprland.
+El compositor Wayland propio de Mist, unas 12 500 líneas de Rust sobre [Smithay], con pantalla de inicio de
+sesión. Ejecuta el mismo entorno y responde a suficiente IPC de Hyprland como para que `hyprctl` y los scripts
+de Mist funcionen sin cambios. Es experimental y es la sesión diaria del autor junto a Hyprland.
 
-- **Ventanas:** flotantes con barras de título de Mist o las de la propia app, esquinas redondeadas y una sola
-  sombra suave para todas, desenfoque de cristal en vivo bajo ventanas y paneles translúcidos, ajuste al estilo
-  Windows 11, vista general (`Super + O`, tres dedos arriba), lupa (`Super + =` / `Super + -`, hasta 8x),
-  escritorios que siguen a tres dedos 1:1, absorción de ventanas (swallow), animaciones al abrir, cerrar y
-  minimizar.
-- **Render que cuida el coste:** solo se redibujan los monitores donde está la ventana del cliente; el cristal
-  solo vuelve a desenfocar si cambió lo que hay detrás; las ventanas tapadas por otras opacas reciben un frame
-  callback por segundo; las capas del escritorio ocultas lo saben (`mistcover`) y dejan de dibujar; los
-  fotogramas de un juego a pantalla completa van directos a la pantalla.
-- **Sesión:** DRM / KMS mediante libseat y logind, conexión de monitores en caliente, VRR a pantalla completa,
-  explicit sync, XWayland, un greeter para greetd, pantalla de bloqueo, reposo, compartir pantalla y capturas
-  mediante xdg-desktop-portal-hyprland. Tras un fallo, `start-mist` lo reinicia en modo seguro y las ventanas
-  vuelven a sus escritorios; `mist-session restart` carga una versión nueva sin cerrar sesión.
-- **Protocolos:** unos 45, entre ellos xdg-shell, layer-shell, session-lock, idle-notify, linux-dmabuf, drm-syncobj, presentation-time, fifo + commit-timing, fractional-scale, cursor-shape, tablet, text-input + input-method, pointer-constraints, foreign-toplevel (ext, wlr), ext-workspace, wlr-screencopy, wlr-output-management, data-control, xdg-activation, la exportación de ventanas y los atajos globales de Hyprland.
-- **Para observarlo:** `hyprctl` responde en su sesión; su socket IPC responde `stats` (fotogramas, commits,
-  despertares, desenfoques), `passes` (pasadas de render por monitor), `top 5` (quién mantiene ocupada la
-  pantalla), `prof` (µs por etapa), `mem`. El watchdog registra los clientes que siguen dibujando en escritorios
-  ocultos o giran en bucle.
-- **Probado:** 47 pruebas anidadas (`native/mist-comp/tests/run-all.sh`) en un backend headless; la CI las
-  ejecuta con el renderizador por software e imprime las mediciones en el resumen del job.
+- **Ventanas:** barras de título de Mist o las de la aplicación, esquinas redondeadas y sombras, desenfoque de
+  cristal bajo ventanas y paneles translúcidos, ajuste como en Windows 11, Overview (`Super + O`), una lupa,
+  cambio de escritorio que sigue a los dedos, Win + D muestra el escritorio.
+- **No hace el trabajo que puede evitar:** un monitor solo se redibuja si algo cambió en él; el cristal solo
+  se vuelve a desenfocar si algo detrás se movió; una ventana tapada recibe un fotograma por segundo en lugar
+  de sesenta.
+- **Sesión:** DRM / KMS mediante logind, conexión de monitores en caliente, VRR, explicit sync, XWayland,
+  compartir pantalla mediante el portal, unos 45 protocolos. Tras un fallo las ventanas vuelven a sus
+  escritorios; `mist-session restart` carga una versión nueva sin cerrar sesión.
+- **Probado:** 50 pruebas anidadas sobre un backend sin monitor, ejecutadas en la CI con el renderizador por software.
 
-Aún no: mosaico (tiling), control de tearing (Smithay 0.7 no tiene page flips asíncronos), direct scan-out
-verificado en NVIDIA. Configuración: `comp.conf` en [docs/CONFIG.md](../CONFIG.md#compconf-outputs-mist-comp-only);
-`mist-comp migrate` convierte una configuración de Hyprland.
+Aún no: mosaico, control del tearing, scan-out directo verificado en NVIDIA. Configuración:
+[docs/CONFIG.md](../CONFIG.md#compconf-outputs-mist-comp-only); `mist-comp migrate` convierte una configuración de Hyprland.
 
 ## Instalación
 
-> [!NOTE]
-> Mist es la herramienta diaria de una persona: apunta a Arch / CachyOS, Hyprland 0.55+ con configuración en
-> Lua y una GPU NVIDIA o Mesa. Cuenta con leer código.
-
-**Arch (paquete al estilo AUR):** [packaging/arch/PKGBUILD](../../packaging/arch/PKGBUILD) construye
-`mist-shell-git` (binarios en `/usr/bin`, archivos en `/usr/share/mist`).
+Arch: [packaging/arch/PKGBUILD](../../packaging/arch/PKGBUILD) construye `mist-shell-git`.
 
 ```bash
 git clone https://github.com/wiktor-jozwiak/mist && cd mist/packaging/arch && makepkg -si
 ```
 
-**Desde un checkout** (en cualquier sitio; `native/install.sh` enlaza `~/.local/share/mist/shell` a él):
+Desde un clon, en cualquier lugar:
 
 ```bash
 git clone https://github.com/wiktor-jozwiak/mist ~/src/mist
@@ -267,27 +147,28 @@ git clone https://github.com/wiktor-jozwiak/mist ~/src/mist
 ~/src/mist/scripts/mistd/install.sh && ~/src/mist/native/install.sh
 ```
 
-`native/install.sh` instala `mist-ui-bin`, `mist-wall-bin`, `mist-comp` y, la primera vez, el guardián
-`mist-ui` en `~/.local/bin`. Las versiones etiquetadas incluyen también binarios compilados.
+El primero compila `mistd`, el segundo coloca `mist-ui-bin`, `mist-wall-bin` y `mist-comp` en `~/.local/bin`.
+Cada [versión](https://github.com/wiktor-jozwiak/mist/releases) incluye binarios ya compilados.
 
-Después añade [examples/hyprland/mist.lua](../../examples/hyprland/mist.lua) a tu configuración de Hyprland
-(arranque, atajos, reglas de desenfoque) y quita otras barras, demonios de notificaciones y agentes polkit.
+- **En Hyprland:** carga [examples/hyprland/mist.lua](../../examples/hyprland/mist.lua) desde tu configuración y
+  quita otras barras, demonios de notificaciones y agentes polkit.
+- **En mist-comp:** `native/mist-comp/session/install-session.sh --greeter` añade una sesión Mist a la pantalla
+  de inicio; Hyprland se queda.
 
 <details>
-<summary><b>Dependencias</b></summary>
+<summary>Dependencias</summary>
 
 <br>
 
-**Compilación:** `rust` (stable), `pkgconf`, `libxkbcommon`, `pam`, `wayland`, `mesa` (cabeceras EGL);
-para `mist-comp` también `libinput`, `libseat`, `libdrm`, `mesa` (gbm), `systemd-libs` (udev).
+**Compilación:** `rust`, `pkgconf`, `libxkbcommon`, `pam`, `wayland`, `mesa`; para `mist-comp` también
+`libinput`, `libseat`, `libdrm`, `systemd-libs`.
 
-**Ejecución:** `hyprland`, `pipewire` + `pipewire-pulse` (`pactl`, `pw-play`, `parec`), `wireplumber` (`wpctl`),
-`networkmanager` (`nmcli`), `wl-clipboard`, `grim`, `slurp`, `polkit`, `noto-fonts`, `noto-fonts-emoji`.
-Opcionales: `ddcutil` (brillo por DDC/CI), `kdeconnect` / `android-tools` (teléfono), `wf-recorder` (solo
-`scripts/demo-reel.sh`). Qué activa cada una: [docs/CONFIG.md](../CONFIG.md#optional-integrations).
+**Ejecución:** `pipewire-pulse`, `wireplumber`, `networkmanager`, `wl-clipboard`, `grim`, `slurp`, `polkit`,
+`noto-fonts`, `noto-fonts-emoji`. Opcional: `ddcutil` (brillo del monitor), `kdeconnect` o `android-tools`
+(teléfono). Qué activa cada una: [docs/CONFIG.md](../CONFIG.md#optional-integrations).
 
-**Fuente:** la interfaz está diseñada para SF Pro (`SF-Pro.ttf` variable en `~/.local/share/fonts/SF-Pro/`),
-que Apple licencia solo para sus plataformas y Mist no incluye. Sin ella Mist usa Inter Variable y luego Noto Sans.
+**Fuente:** la interfaz está pensada para SF Pro, que Mist no puede incluir. Sin ella usa Inter y después
+Noto Sans.
 
 </details>
 
@@ -296,14 +177,14 @@ que Apple licencia solo para sus plataformas y Mist no incluye. Sin ella Mist us
 | Tecla | Acción | | Tecla | Acción |
 |---|---|---|---|---|
 | `Super` | Inicio | | `Super + A` | centro de notificaciones |
-| `Super + Space` | Spotlight | | `Super + V` | historial del portapapeles |
-| `Super + Tab` | selector de apps | | `Super + .` | emoji |
+| `Super + Space` | Spotlight | | `Super + V` | portapapeles |
+| `Super + Tab` | cambiador de aplicaciones | | `Super + .` | emoji |
 | `Super + I` | centro de control | | `Super + L` | bloquear |
-| `Print`, `Super + Shift + S` | captura (región) | | | |
+| `Super + Shift + S` | captura | | clic derecho en el escritorio | ajustes |
 
-Todo se puede automatizar: `mist-ui-bin msg mist toggle spotlight`, `mist-ui-bin msg ui stats`,
-`mist-ui-bin msg dock click firefox`. Registro: `~/.cache/mist/ui.log`. Ajustes: `~/.config/mist/`, descritos en
-[docs/CONFIG.md](../CONFIG.md).
+Todo se puede automatizar: `mist-ui-bin msg mist toggle spotlight`, `mist-ui-bin msg ui stats`. Los ajustes
+están en `~/.config/mist/`, cada archivo se describe en [docs/CONFIG.md](../CONFIG.md); el registro es
+`~/.cache/mist/ui.log`.
 
 ## Desarrollo
 
@@ -311,60 +192,35 @@ Todo se puede automatizar: `mist-ui-bin msg mist toggle spotlight`, `mist-ui-bin
 cd native && cargo build --release && cargo test --release
 ```
 
-<details>
-<summary><b>Comprobaciones sin tocar la sesión en marcha</b></summary>
+Cada superficie se renderiza fuera de pantalla, así que los cambios se comprueban sin tocar la sesión en marcha:
+`mist-ui-bin --pane-png spotlight 1920 1080 out.png`, `mist-ui-bin --desk-png dir`,
+`mist-wall-bin --png out.ppm dunes 1920 1080`. `native/mist-comp/tests/run-all.sh` ejecuta las pruebas del
+compositor en una ventana anidada. Más en [native/README.md](../../native/README.md) y
+[CONTRIBUTING.md](../../CONTRIBUTING.md).
 
-<br>
-
-| Comando | Resultado |
+| Ruta | Qué |
 |---|---|
-| `mist-ui --png out.png '{"app":"Firefox"}'` | la barra superior en PNG |
-| `mist-ui-bin --desk-png dir` / `--dock-png out.png` | escena del escritorio + tarjetas (+ `layout.json`) / dock |
-| `mist-ui-bin --pane-png spotlight 1920 1080 out.png fi` | un panel, ya asentado (`snapfly:3 640 290`: Snap Layouts con la zona 3 resaltada) |
-| `mist-ui-bin --island-frames notif out 30 20` | una demo de la isla, fotograma a fotograma |
-| `mist-ui --test` | una segunda barra sobre la real en HDMI-A-1 |
-| `mist-wall-bin --png out.ppm dunes 1920 1080` | un fotograma de un fondo animado (`MIST_WALL_BENCH=N`: ms por fotograma) |
-| `mist-ui-bin msg ui stats` | despertares, pintados y tiempo de pintado por superficie |
-| `native/mist-comp/tests/run-all.sh` | todas las pruebas de mist-comp en un compositor anidado (`CI=1`: renderizador por software) |
-| `bench/measure.sh 30 mist-ui-bin mist-wall-bin mistd` | PSS / CPU en reposo del shell en marcha |
-
-</details>
-
-Mantén `lto = false` (el rustc de Arch con el LLVM del sistema falla con LTO). Ver [CONTRIBUTING.md](../../CONTRIBUTING.md).
-
-## Estado
-
-Herramienta diaria de una persona, dos monitores, NVIDIA, ahora también sobre `mist-comp` además de Hyprland. Todo lo de las tablas es nativo y se usa a diario;
-`mist-comp` sigue siendo experimental. [docs/PUBLISHING.md](../PUBLISHING.md) enumera lo que falta antes de una versión
-pública.
-
-## Star History
-
-<a href="https://star-history.com/#wiktor-jozwiak/mist&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date" />
- </picture>
-</a>
+| `native/mist-ui` | todas las superficies del entorno |
+| `native/mist-wall` | el proceso de fondos en GPU |
+| `native/mist-comp` | compositor, sesión y pantalla de inicio |
+| `scripts/mistd` | backends: estadísticas del sistema, teléfono, llamadas, portapapeles, sincronización de Garmin |
+| `shaders/` | shaders de fondos y cielo |
+| etiqueta `legacy-qml` | la versión original en Quickshell |
 
 ## Créditos
 
-[Hyprland], [Smithay] y [smithay-client-toolkit], [tiny-skia], [swash], [resvg], [zbus], [Tabler Icons]
-(MIT). La versión QML original se hizo sobre [Quickshell]; [Noctalia] sirvió de respaldo y referencia.
+Construido sobre [Smithay], [smithay-client-toolkit], [tiny-skia], [swash], [resvg], [zbus] y [Tabler Icons].
+La primera versión funcionaba sobre [Quickshell], con [Noctalia] como referencia.
 
-<sub><i>Mist no está afiliado a Apple. macOS, Dynamic Island, Spotlight y SF Pro son marcas de Apple Inc.; se
-nombran aquí solo para describir la inspiración del diseño.</i></sub>
+<sub>Mist no está afiliado a Apple. macOS, Dynamic Island, Spotlight y SF Pro son marcas de Apple Inc., citadas
+aquí solo para describir la inspiración del diseño.</sub>
 
-## Licencia
-
-[GPL-3.0](../../LICENSE).
+[GPL-3.0](../../LICENSE)
 
 [tiny-skia]: https://github.com/linebender/tiny-skia
 [swash]: https://github.com/dfrg/swash
 [resvg]: https://github.com/linebender/resvg
 [zbus]: https://github.com/dbus2/zbus
-[Hyprland]: https://hyprland.org
 [Smithay]: https://github.com/Smithay/smithay
 [smithay-client-toolkit]: https://github.com/Smithay/client-toolkit
 [Tabler Icons]: https://tabler.io/icons

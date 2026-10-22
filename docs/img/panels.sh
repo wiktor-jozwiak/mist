@@ -14,6 +14,7 @@ trap 'rm -rf "$w"' EXIT
 mkdir -p "$out" "$w/home/.cache/mist" "$w/home/.config/mist" "$w/home/.config/quickshell" "$w/home/.local/share/fonts"
 cp "$repo"/docs/demo/weather.json "$repo"/docs/demo/garmin.json "$repo"/docs/demo/running.json "$w/home/.cache/mist/"
 cp "$repo/docs/demo/widgets.json" "$w/home/.config/mist/"
+echo '{"welcomed": true}' >"$w/home/.config/mist/settings.json" # no first-start welcome in the settings shot
 ln -s "$repo" "$w/home/.config/quickshell/mist"
 [ -d "$HOME/.local/share/fonts/SF-Pro" ] && ln -s "$HOME/.local/share/fonts/SF-Pro" "$w/home/.local/share/fonts/SF-Pro"
 export LANG=en_US.UTF-8 MIST_LANG=en
@@ -22,8 +23,8 @@ HOME=$w/home "$wall" --png "$w/bg.ppm" dunes 1920 1080 >/dev/null 2>&1
 # <panel> [query]
 shot() {
     HOME=$w/home "$ui" --pane-png "$1" 1920 1080 "$w/$1.png" ${2:+"$2"} >/dev/null 2>&1
-    # what it draws (alpha > 3 %), 48 px around it, inside the monitor
-    g=$(magick "$w/$1.png" -alpha extract -threshold 3% -format '%@' info:)
+    # what it draws (alpha over $TH %, 3 by default), 48 px around it, inside the monitor
+    g=$(magick "$w/$1.png" -alpha extract -threshold "${TH:-3}%" -format '%@' info:)
     set -- "$1" $(echo "$g" | sed -E 's/([0-9]+)x([0-9]+)\+([0-9]+)\+([0-9]+)/\1 \2 \3 \4/')
     x=$(($4 > 48 ? $4 - 48 : 0)); y=$(($5 > 48 ? $5 - 48 : 0))
     cw=$(($2 + 96)); ch=$(($3 + 96))
@@ -35,10 +36,11 @@ shot() {
         \( "$w/$1.png" -alpha extract -threshold 25% \) -composite "$w/$1.bg.png"
     magick "$w/$1.bg.png" "$w/$1.png" -composite -crop "${cw}x${ch}+${x}+${y}" +repage \
         \( +clone -alpha extract -fill black -colorize 100 -fill white -draw "roundrectangle 0,0 $((cw - 1)),$((ch - 1)) 18,18" \) \
-        -alpha off -compose CopyOpacity -composite -strip -quality 92 "$out/$1.webp"
-    echo "$out/$1.webp"
+        -alpha off -compose CopyOpacity -composite -strip -quality 92 "$out/${1%%:*}.webp"
+    echo "$out/${1%%:*}.webp"
 }
 shot spotlight te
 shot control
 shot calendar
 shot emoji
+TH=90 shot settings:desk # over a dimmed screen
