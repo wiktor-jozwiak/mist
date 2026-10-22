@@ -199,6 +199,8 @@ impl MistComp {
             let _ = x11.configure(smithay::utils::Rectangle::new(p, w.geometry().size));
         }
         self.space.map_element(w.clone(), p, false);
+        // onto another monitor: its shown workspace, as after a drag
+        self.settle_ws(w);
         self.dirty = true;
     }
 

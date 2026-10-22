@@ -37,6 +37,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 ### Fixed
 - Garmin steps: Connect's 15-minute intervals carry no time zone and were all stored at noon, overwriting
   each other (today's steps read 0).
+- mist-comp: a window moved onto another monitor with `hl.dsp.window.move` joins the workspace shown there,
+  as after a drag; it kept the old monitor's workspace and ignored both monitors' switches.
 - mist-comp tests: the stale `xdg_toplevel_icon_manager_v1` check (the global is off on purpose: Smithay 0.7
   kills Electron clients that drop the icon buffer) and waits for workspace switches on slow CI runners.
 

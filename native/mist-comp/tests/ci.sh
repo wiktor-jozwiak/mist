@@ -164,7 +164,11 @@ if command -v wev >/dev/null; then
     C key 46 press >/dev/null; C key 46 release >/dev/null
     check "typing: a click gives the keys back" "wait_for \"grep -q \\\"utf8: 'c'\\\" '$OUT/wev.log'\" 30"
     pkill -x wev; C action close >/dev/null
-    wait_for "! C windows | grep -q '^mist-files'" 50
+    wait_for "[ \$(C windows | grep -c '^mist-files') -le $NF ]" 50
+    # the one left from the checks above back on DP-3 (joins its workspace 1) for the workspace checks
+    for MF in $(J j/clients | tr '{' '\n' | grep '"class":"mist-files"' | sed -n 's/.*"address":"\(0x[0-9a-f]*\)".*/\1/p'); do
+        J "eval hl.dispatch(hl.dsp.window.move({ x = 300, y = 100, window = \"address:$MF\" }))" >/dev/null
+    done
 else
     echo "skip typing checks (no wev)"
 fi
