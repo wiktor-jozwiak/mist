@@ -1,0 +1,82 @@
+#!/bin/sh
+# Switch the session the login screen starts, from a text console (Ctrl+Alt+F2) or a terminal:
+#   mist-session hyprland   po zalogowaniu Hyprland
+#   mist-session mist       po zalogowaniu Mist (mist-comp); buduje i instaluje bieżący kod z checkoutu
+#   mist-session update     git pull + build + install (gałąź dev), sesja bez zmian
+#   mist-session status     co jest ustawione i co działa teraz
+#   mist-session log        najważniejsze z logu Mist (do wklejenia w zgłoszeniu)
+#   mist-session restart    nowy mist-comp bez wylogowania: okna wracają (bez sudo)
+# Asks for sudo; offers a reboot at the end (the login screen restarts cleanly that way).
+set -eu
+SELF=$(readlink -f "$0")
+SESSION_DIR=$(dirname "$SELF")
+ROOT=$(cd "$SESSION_DIR/../../.." && pwd)
+GREETER_JSON=/usr/share/mist-greeter/greeter.json
+
+say() { printf '\n== %s\n' "$*"; }
+reboot_offer() {
+    printf '\nUruchomić ponownie teraz? [T/n] '
+    read -r a || a=n
+    case $a in
+        n | N) echo "Zadziała po następnym restarcie (sudo reboot)." ;;
+        *) sudo reboot ;;
+    esac
+}
+as_user() {
+    if [ "$(id -u)" = 0 ]; then
+        echo "Uruchom jako swój użytkownik (nie root): mist-session $1"
+        exit 1
+    fi
+}
+
+case "${1:-}" in
+    hyprland)
+        as_user hyprland
+        say "Ekran logowania -> Hyprland"
+        sudo sh "$SESSION_DIR/install-greeter.sh" hyprland
+        reboot_offer
+        ;;
+    mist)
+        as_user mist
+        say "Budowanie i instalacja mist-comp + Mist z $ROOT"
+        sh "$ROOT/native/install.sh"
+        say "Ekran logowania -> Mist"
+        sudo sh "$SESSION_DIR/install-greeter.sh" mist
+        echo "Wyjście z Mist: Ctrl+Alt+Backspace. Powrót: mist-session hyprland"
+        reboot_offer
+        ;;
+    update)
+        as_user update
+        sh "$SESSION_DIR/install-session.sh"
+        ;;
+    restart)
+        S="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/mist-comp/${WAYLAND_DISPLAY:-wayland-1}.sock"
+        echo restart | socat -t2 - "UNIX:$S"
+        ;;
+    status)
+        printf 'Teraz działa:       %s\n' "${XDG_CURRENT_DESKTOP:-(konsola tekstowa)}"
+        printf 'Po zalogowaniu:     %s\n' "$(grep -q start-mist "$GREETER_JSON" 2>/dev/null && echo Mist || echo Hyprland)"
+        printf 'Kod:                %s\n' "$(git -C "$ROOT" log -1 --format='%h %s (%cr)' 2>/dev/null)"
+        printf 'mist-comp:          %s\n' "$(ls -l --time-style=+%F\ %R "$HOME/.local/bin/mist-comp" 2>/dev/null | awk '{print $6, $7}')"
+        printf 'Log Mist:           %s\n' "$HOME/.cache/mist/comp.log"
+        ;;
+    log)
+        L="$HOME/.cache/mist/comp.log"
+        [ -f "$L" ] || L="$L.old"
+        [ -f "$L" ] || { echo "Brak logu: Mist jeszcze nie działał (~/.cache/mist/comp.log)"; exit 1; }
+        echo "== $L ($(date -r "$L" '+%F %R'))"
+        # start (GPU, driver, outputs, explicit sync), then warnings and errors, repeated lines once
+        grep -E 'INFO mist_comp::udev|explicit sync|safe mode' "$L" | head -20
+        echo "== ostrzeżenia i błędy"
+        grep -E ' (WARN|ERROR) |panicked' "$L" | sed -E 's/^[0-9T:.-]+Z +//' | sort | uniq -c | sort -rn | head -40
+        ;;
+    *)
+        echo "mist-session hyprland | mist | update | status | log"
+        echo "  hyprland  po zalogowaniu Hyprland"
+        echo "  mist      po zalogowaniu Mist (buduje i instaluje bieżący kod)"
+        echo "  update    pobierz najnowszy kod (dev) i zainstaluj"
+        echo "  status    co jest ustawione"
+        echo "  log       najważniejsze z logu Mist (wklej mi to)"
+        exit 1
+        ;;
+esac

@@ -47,10 +47,13 @@ mod snap;
 mod wallpapers;
 mod wxcard;
 mod wincap;
+mod devtools;
 mod winpick;
 mod desksettings;
 #[path = "../../common/astro.rs"]
 mod astro;
+#[path = "../../common/tokens.rs"]
+mod tokens;
 #[path = "../../common/paths.rs"]
 mod paths;
 #[path = "../../common/presets.rs"]
@@ -70,6 +73,22 @@ fn main() {
         libc::mallopt(libc::M_ARENA_MAX, 2);
     }
     let args: Vec<String> = std::env::args().collect();
+    // `--wayland-globals`: the compositor's globals, one `interface version` per line (checks, CI)
+    if args.get(1).map(|s| s.as_str()) == Some("--wayland-globals") {
+        let Ok(conn) = Connection::connect_to_env() else { std::process::exit(1) };
+        let Ok((globals, _queue)) = registry_queue_init::<app::App>(&conn) else { std::process::exit(1) };
+        for g in globals.contents().clone_list() {
+            println!("{} {}", g.interface, g.version);
+        }
+        return;
+    }
+    match (args.get(1).map(|s| s.as_str()), args.get(2), args.get(3)) {
+        (Some("--wincap"), Some(a), Some(o)) => std::process::exit(devtools::wincap(a, o)),
+        (Some("--global-shortcut"), Some(a), Some(i)) => std::process::exit(devtools::global_shortcut(a, i)),
+        (Some("--present"), n, _) => std::process::exit(devtools::present(n.and_then(|s| s.parse().ok()).unwrap_or(30))),
+        (Some("--inhibit"), a, _) => std::process::exit(devtools::inhibit(a.map(|s| s.as_str()).unwrap_or("mist"))),
+        _ => {}
+    }
     if args.get(1).map(|s| s.as_str()) == Some("msg") {
         // client of the running mist-ui: mist-ui-bin msg <target> <function> [args...]
         std::process::exit(ipc::call(&args[2..]));
@@ -96,6 +115,22 @@ fn main() {
         d.weather = rd("weather");
         d.garmin = rd("garmin");
         d.running = rd("running");
+        // MIST_EDIT=garmin,running,weather: those cards turned to their settings (the backs settled)
+        if let Ok(e) = std::env::var("MIST_EDIT") {
+            for k in ["garmin", "running"] {
+                if e.split(',').any(|x| x == k) {
+                    d.editing.insert(k, true);
+                }
+            }
+            d.wx.editing = e.split(',').any(|x| x == "weather");
+            // MIST_SCROLL=px: the weather card's settings scrolled down by that much (clamped on paint)
+            d.wx.sheet.0 = std::env::var("MIST_SCROLL").ok().and_then(|s| s.parse().ok()).unwrap_or(0.0);
+            for _ in 0..30 {
+                d.dirty = true;
+                d.paint_stage(&mut t);
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
         let t0 = std::time::Instant::now();
         d.paint_stage(&mut t);
         eprintln!("stage {:?}", t0.elapsed());
@@ -317,7 +352,14 @@ fn main() {
         return;
     }
     let test = args.iter().any(|a| a == "--test");
-    let conn = Connection::connect_to_env().expect("wayland");
+    // no compositor (it quit; the guard restarted us during logout): nothing to restart, exit 0 stops the guard
+    let conn = match Connection::connect_to_env() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("mist-ui: no Wayland compositor ({e}), exiting");
+            std::process::exit(0);
+        }
+    };
     let (globals, queue) = registry_queue_init::<app::App>(&conn).expect("registry");
     let qh = queue.handle();
     let mut ev: EventLoop<app::App> = EventLoop::try_new().expect("event loop");
@@ -362,6 +404,7 @@ fn main() {
         // the services Quickshell ran: notifications, players, data, phone, the island's event sources
         notif::spawn(tx.clone(), nrx);
         polkit::spawn(tx.clone());
+        idle::screensaver(tx.clone());
     }
     if native_services || std::env::var("MIST_UI_SOCK").is_ok() {
         if std::env::var("MIST_UI_DEBUG").is_ok() { eprintln!("dbg: ipc serve {}", ipc::path()); }
@@ -384,7 +427,12 @@ fn main() {
         let slow_left = app.slow_period().saturating_sub(last_slow.elapsed());
         let timeout = if app.animating() { slow_left.min(app::tick_interval().saturating_sub(last_tick.elapsed())) } else { slow_left };
         let timeout = app.intent_due().map(|d| timeout.min(d.saturating_duration_since(std::time::Instant::now()))).unwrap_or(timeout);
-        ev.dispatch(Some(timeout), &mut app).expect("dispatch");
+        if let Err(e) = ev.dispatch(Some(timeout), &mut app) {
+            // the compositor is gone (it quit or crashed): leave quietly, the session restarts us with it
+            // exit 0: the guard (dist/mist-ui) restarts only a crash, a restart here would find no compositor
+            eprintln!("mist-ui: wayland connection lost ({e}), exiting");
+            std::process::exit(0);
+        }
         app.intent_tick();
         if last_slow.elapsed() >= app.slow_period() {
             last_slow = std::time::Instant::now();

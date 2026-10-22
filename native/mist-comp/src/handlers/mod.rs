@@ -1,5 +1,6 @@
-mod compositor;
+pub mod compositor;
 pub mod layer_shell;
+pub mod extra;
 pub mod protocols;
 mod xdg_shell;
 
@@ -37,6 +38,26 @@ impl SeatHandler for MistComp {
         use smithay::wayland::seat::WaylandFocus;
         let dh = &self.display_handle;
         let client = focused.and_then(|f| f.wl_surface()).and_then(|s| dh.get_client(s.id()).ok());
+        // where the keys go (comp.log; a session where typing reaches nothing shows it here)
+        let to = match focused.and_then(|f| f.wl_surface()) {
+            None => "nothing".to_string(),
+            Some(s) => {
+                // an open menu: named after its window
+                let root = self.popups.find_popup(&s).and_then(|p| smithay::desktop::find_popup_root_surface(&p).ok());
+                let menu = if root.is_some() { "menu of " } else { "" };
+                let s = root.map(std::borrow::Cow::Owned).unwrap_or(s);
+                let win = self.space.elements().chain(self.stash.iter().map(|(w, _)| w)).find(|w| w.wl_surface().is_some_and(|x| *x == *s));
+                match win {
+                    Some(w) => format!("{menu}window {}", crate::hyprcompat::app_id(w)),
+                    None => self
+                        .space
+                        .outputs()
+                        .find_map(|o| smithay::desktop::layer_map_for_output(o).layer_for_surface(&s, smithay::desktop::WindowSurfaceType::TOPLEVEL).map(|l| format!("layer {}", l.namespace())))
+                        .unwrap_or_else(|| if self.locked { "lock screen".into() } else { "a surface".into() }),
+                }
+            }
+        };
+        tracing::info!("keyboard focus: {to}");
         set_data_device_focus(dh, seat, client.clone());
         smithay::wayland::selection::primary_selection::set_primary_focus(dh, seat, client);
     }
@@ -75,7 +96,17 @@ impl DataDeviceHandler for MistComp {
     }
 }
 
-impl ClientDndGrabHandler for MistComp {}
+impl ClientDndGrabHandler for MistComp {
+    // the dragged thing follows the pointer (scene.rs draws it) until the drop
+    fn started(&mut self, _source: Option<smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource>, icon: Option<WlSurface>, _seat: Seat<Self>) {
+        self.dnd_icon = icon.map(|s| (s, (0, 0).into()));
+        self.dirty = true;
+    }
+    fn dropped(&mut self, _target: Option<WlSurface>, _validated: bool, _seat: Seat<Self>) {
+        self.dnd_icon = None;
+        self.dirty = true;
+    }
+}
 impl ServerDndGrabHandler for MistComp {}
 
 delegate_data_device!(MistComp);

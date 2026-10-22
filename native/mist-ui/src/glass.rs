@@ -105,7 +105,8 @@ impl Glass {
         }
         if !g.rim_only {
             let body = sq_path(0.0, 0.0, w, h, r);
-            solid(c, &body, g.tone.alpha(g.tint), FillRule::Winding, tf);
+            let tint = if crate::theme::high_contrast() { g.tint.max(0.96) } else { g.tint };
+            solid(c, &body, g.tone.alpha(tint), FillRule::Winding, tf);
             fill(c, &body, lin(0.0, 0.0, 0.0, h, &[(0.0, WHITE.alpha(0.085 * sh)), (0.32, WHITE.alpha(0.025 * sh)), (0.7, WHITE.alpha(0.0)), (1.0, WHITE.alpha(0.045 * sh))]), FillRule::Winding, tf);
         }
         if !g.rims {

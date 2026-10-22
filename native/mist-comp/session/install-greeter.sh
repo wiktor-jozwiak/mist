@@ -3,6 +3,7 @@
 # through greetd IPC) and quits with it; greetd then starts the chosen session.
 # Replaces the old lock/install-greeter.sh (Quickshell inside noctalia-greeter-compositor; in git history).
 # Run: sudo ./install-greeter.sh [hyprland|mist]   (session after login, default hyprland)
+#      sudo MIST_PRIMARY=DP-1 ./install-greeter.sh …  (the password field on that monitor; default: settings.json "primary")
 #      sudo ./install-greeter.sh --revert          (the greetd config from before, kept as config.toml.before-mist-native)
 # Build first as the user: cargo build --release -p mist-comp -p mist-ui (in native/).
 set -eu
@@ -22,6 +23,8 @@ for b in mist-comp mist-ui; do
     [ -x "$SRC/target/release/$b" ] || { echo "brak $SRC/target/release/$b: najpierw cargo build --release"; exit 1; }
 done
 
+# `mist-session hyprland|mist|update|status` from any console
+ln -sf "$SRC/mist-comp/session/mist-session" /usr/local/bin/mist-session
 # binaries readable by the greeter user (the user's ~/.local is behind a 700 home)
 install -m755 "$SRC/target/release/mist-comp" /usr/local/bin/mist-greeter-comp
 install -m755 "$SRC/target/release/mist-ui" /usr/local/bin/mist-greeter-ui
@@ -33,6 +36,10 @@ install -m644 "$SRC/assets/tabler-icons.ttf" "$D/tabler-icons.ttf"
 WALL=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('image',''))" "$H/.config/mist/wallpaper.json" 2>/dev/null || true)
 WALLF=""
 [ -f "$WALL" ] && install -m644 "$WALL" "$D/wallpaper.${WALL##*.}" && WALLF="wallpaper.${WALL##*.}"
+# the monitor with the password field: the user's primary (settings.json "primary"); the greeter cannot read
+# this home, and without it the field went to whichever monitor came first
+PRIM=${MIST_PRIMARY:-}
+[ -n "$PRIM" ] || PRIM=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('primary',''))" "$H/.config/mist/settings.json" 2>/dev/null || true)
 AV=""
 [ -f "$H/.face" ] && install -m644 "$H/.face" "$D/avatar" && AV="avatar"
 NAME=$(getent passwd "$U" | cut -d: -f5 | cut -d, -f1)
@@ -65,7 +72,7 @@ chmod 644 "$D"/*
 cat > "$D/run" <<SH
 #!/bin/sh
 # started by greetd as the greeter user
-export MIST_COMP_CONFIG=$D/comp.conf MIST_FONT_DIR=$D XDG_SESSION_TYPE=wayland
+export MIST_COMP_CONFIG=$D/comp.conf MIST_FONT_DIR=$D XDG_SESSION_TYPE=wayland RUST_LOG=warn,mist_comp=info,smithay::backend::drm::device::fd=error${PRIM:+ MIST_PRIMARY=$PRIM}
 exec /usr/local/bin/mist-greeter-comp --tty --session "/usr/local/bin/mist-greeter-ui greeter $D/greeter.json"
 SH
 chmod 755 "$D/run"

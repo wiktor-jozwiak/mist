@@ -43,6 +43,9 @@ use paths::primary_monitor;
 const FADE_MS: f32 = 600.0;
 // the main monitor's scene is visible: only then is the music measured
 static SHOWN: AtomicBool = AtomicBool::new(true);
+static MUSIC_ON: AtomicBool = AtomicBool::new(false);
+// mist-comp announces what windows cover (mistcover events): no window queries, no 8 s check
+static COMP_COVER: AtomicBool = AtomicBool::new(false);
 // a shader compiled: malloc_trim at this time (ms since the epoch, 0 = none)
 static TRIM_AT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 // a shader compiled without the driver's cache at this time (0 = all cached)
@@ -50,7 +53,6 @@ static COLD_AT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new
 // software GL (llvmpipe: NVIDIA's kernel module older than its libraries until a reboot, no GPU): the live
 // scene at half size and fewer frames (llvmpipe, 30 fps at full size: 457 % CPU); MIST_WALL_SOFT=1 forces it
 static SOFT: AtomicBool = AtomicBool::new(false);
-
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 enum Kind {
@@ -88,6 +90,104 @@ struct Mon {
     reserved: [f64; 4],
     rects: Vec<(f64, f64, f64, f64)>,
     fs: bool,
+}
+
+struct LiveUniforms {
+    shader: &'static str,
+    time: [f32; 1],
+    mode: [f32; 1],
+    size: [f32; 2],
+    c0: [f32; 4],
+    c1: [f32; 4],
+    c2: [f32; 4],
+    c3: [f32; 4],
+    opt: [f32; 4],
+    sun: [f32; 4],
+    wind_k: f32,
+}
+
+impl LiveUniforms {
+    fn as_slice(&self) -> [(&'static str, &[f32]); 9] {
+        [
+            ("time", &self.time),
+            ("mode", &self.mode),
+            ("size", &self.size),
+            ("c0", &self.c0),
+            ("c1", &self.c1),
+            ("c2", &self.c2),
+            ("c3", &self.c3),
+            ("opt", &self.opt),
+            ("sun", &self.sun),
+        ]
+    }
+}
+
+struct CloudsUniforms {
+    time: [f32; 1],
+    fov: [f32; 1],
+    pitch: [f32; 1],
+    size: [f32; 2],
+    sun_dir: [f32; 4],
+    scene: [f32; 4],
+    wx: [f32; 4],
+    wx2: [f32; 4],
+    bolt: [f32; 4],
+    fx: [f32; 4],
+}
+
+impl CloudsUniforms {
+    fn as_slice(&self) -> [(&'static str, &[f32]); 10] {
+        [
+            ("time", &self.time),
+            ("fov", &self.fov),
+            ("pitch", &self.pitch),
+            ("size", &self.size),
+            ("sunDir", &self.sun_dir),
+            ("scene", &self.scene),
+            ("wx", &self.wx),
+            ("wx2", &self.wx2),
+            ("bolt", &self.bolt),
+            ("fx", &self.fx),
+        ]
+    }
+}
+
+struct SkyUniforms {
+    time: [f32; 1],
+    radius: [f32; 1],
+    size: [f32; 2],
+    sun: [f32; 4],
+    moon: [f32; 4],
+    moon_lit: [f32; 4],
+    wx: [f32; 4],
+    wx2: [f32; 4],
+    fx: [f32; 4],
+    bolt: [f32; 4],
+    life: [f32; 4],
+    env: [f32; 4],
+    env2: [f32; 4],
+    env3: [f32; 4],
+}
+
+impl SkyUniforms {
+    fn as_slice(&self) -> [(&'static str, &[f32]); 14] {
+        [
+            ("time", &self.time),
+            ("radius", &self.radius),
+            ("size", &self.size),
+            ("sun", &self.sun),
+            ("moon", &self.moon),
+            ("moonLit", &self.moon_lit),
+            ("wx", &self.wx),
+            ("wx2", &self.wx2),
+            ("fx", &self.fx),
+            ("bolt", &self.bolt),
+            ("life", &self.life),
+            ("env", &self.env),
+            ("env2", &self.env2),
+            ("env3", &self.env3),
+        ]
+    }
 }
 
 // a value that glides to a new target (QML Behavior: NumberAnimation, linear or InOutSine)
@@ -287,27 +387,6 @@ impl App {
     fn gl(&self) -> &glow::Context {
         self.gl.as_ref().unwrap()
     }
-    fn prog(&mut self, name: &str) -> Option<&Prog> {
-        if !self.progs.contains_key(name) {
-            let t0 = Instant::now();
-            let p = self.compile(name);
-            if p.is_none() {
-                eprintln!("mist-wall: shader {name} failed");
-            }
-            self.progs.insert(name.to_string(), p);
-            // what the driver's compiler leaves on the heap back to the OS once it is done (it may compile while
-            // drawing): ~5 MB of it
-            TRIM_AT.store(now_ms() as u64 + 2000, Ordering::Relaxed);
-            // not from the driver's shader cache (after a driver update, a changed shader): the driver keeps the
-            // compiler's work as long as the process lives (NVIDIA: 88 MB PSS, 35 MB from the cache), so a
-            // restart from the cache follows when nobody sees it (tick)
-            if t0.elapsed() > Duration::from_millis(25) && COLD_AT.load(Ordering::Relaxed) == 0 && !SOFT.load(Ordering::Relaxed) {
-                eprintln!("mist-wall: shader {name} compiled in {} ms (not cached)", t0.elapsed().as_millis());
-                COLD_AT.store(now_ms() as u64, Ordering::Relaxed);
-            }
-        }
-        self.progs.get(name).and_then(|p| p.as_ref())
-    }
     fn compile(&self, name: &str) -> Option<Prog> {
         let src = shader_src(name)?;
         // the uniform block instance name SPIRV-Cross picked ("uniform buf _339;") and its fields
@@ -366,11 +445,33 @@ impl App {
             Some(Prog { prog: p, loc })
         }
     }
+    fn ensure_prog(&mut self, name: &str) {
+        if !self.progs.contains_key(name) {
+            let t0 = Instant::now();
+            let p = self.compile(name);
+            if p.is_none() {
+                eprintln!("mist-wall: shader {name} failed");
+            }
+            self.progs.insert(name.to_string(), p);
+            // what the driver's compiler leaves on the heap back to the OS once it is done (it may compile while
+            // drawing): ~5 MB of it
+            TRIM_AT.store(now_ms() as u64 + 2000, Ordering::Relaxed);
+            // not from the driver's shader cache (after a driver update, a changed shader): the driver keeps the
+            // compiler's work as long as the process lives (NVIDIA: 88 MB PSS, 35 MB from the cache), so a
+            // restart from the cache follows when nobody sees it (tick)
+            if t0.elapsed() > Duration::from_millis(25) && COLD_AT.load(Ordering::Relaxed) == 0 && !SOFT.load(Ordering::Relaxed) {
+                eprintln!("mist-wall: shader {name} compiled in {} ms (not cached)", t0.elapsed().as_millis());
+                COLD_AT.store(now_ms() as u64, Ordering::Relaxed);
+            }
+        }
+    }
     // use a program and set its uniforms (1, 2 or 4 floats; 16 = a matrix)
-    fn run(&mut self, name: &str, u: &[(&str, Vec<f32>)], samplers: &[(&str, glow::Texture)], flip: bool) {
-        let Some(p) = self.prog(name) else { return };
-        let (prog, loc) = (p.prog, p.loc.clone());
-        let gl = self.gl();
+    fn run(&mut self, name: &str, u: &[(&str, &[f32])], samplers: &[(&str, glow::Texture)], flip: bool) {
+        self.ensure_prog(name);
+        let Some(Some(p)) = self.progs.get(name) else { return };
+        let prog = p.prog;
+        let loc = &p.loc;
+        let gl = self.gl.as_ref().unwrap();
         unsafe {
             gl.use_program(Some(prog));
             for (k, v) in u {
@@ -468,16 +569,15 @@ impl App {
         }
     }
 
-    fn preset(&self) -> Value {
-        presets::get(&self.presets, &self.live).cloned().or_else(|| self.presets.first().cloned()).unwrap_or(Value::Null)
+    fn preset(&self) -> &Value {
+        presets::get(&self.presets, &self.live).or_else(|| self.presets.first()).unwrap_or(&Value::Null)
     }
 
     // uniforms of LiveWall.qml for the current preset, time, weather and sun
-    fn uniforms(&self, w: f32, h: f32) -> (String, Vec<(&'static str, Vec<f32>)>, f32) {
-        self.uniforms_of(&self.preset(), w, h, self.t)
+    fn uniforms(&self, w: f32, h: f32) -> LiveUniforms {
+        self.uniforms_of(self.preset(), w, h, self.t)
     }
-    fn uniforms_of(&self, p: &Value, w: f32, h: f32, t: f64) -> (String, Vec<(&'static str, Vec<f32>)>, f32) {
-        let p = p.clone();
+    fn uniforms_of(&self, p: &Value, w: f32, h: f32, t: f64) -> LiveUniforms {
         let wx = &self.weather;
         let lat = wx["lat"].as_f64().unwrap_or(51.48);
         let lon = wx["lon"].as_f64().unwrap_or(0.0);
@@ -498,20 +598,28 @@ impl App {
                 (c, st * if mode == 5 || mode == 14 { 0.8 } else { 0.5 })
             }
             _ => {
-                let c = p["c"].as_array().cloned().unwrap_or_default();
+                let c = p["c"].as_array();
                 let mut out = [[0f32; 3]; 4];
-                for (i, v) in c.iter().take(4).enumerate() {
-                    out[i] = presets::hex(v.as_str().unwrap_or("#000000"));
+                if let Some(arr) = c {
+                    for (i, v) in arr.iter().take(4).enumerate() {
+                        out[i] = presets::hex(v.as_str().unwrap_or("#000000"));
+                    }
                 }
                 (out, p["stars"].as_f64().unwrap_or(0.0) as f32)
             }
         };
-        let place = |az: f64, alt: f64, strength: f32| -> Vec<f32> { vec![(0.5 + (az - 180.0) / 140.0).clamp(0.08, 0.92) as f32, (0.64 - alt.max(-5.0) / 60.0 * 0.6) as f32, 0.026, strength] };
-        let none = vec![0.5, 2.0, 0.02, 0.0];
+        let place = |az: f64, alt: f64, strength: f32| -> [f32; 4] { [(0.5 + (az - 180.0) / 140.0).clamp(0.08, 0.92) as f32, (0.64 - alt.max(-5.0) / 60.0 * 0.6) as f32, 0.026, strength] };
+        let none = [0.5f32, 2.0, 0.02, 0.0];
         let sun_v = if mode != 5 && mode != 14 {
-            vec![0.0; 4]
+            [0.0f32; 4]
         } else if !auto {
-            p["sun"].as_array().map(|a| a.iter().map(|x| x.as_f64().unwrap_or(0.0) as f32).collect()).unwrap_or(none.clone())
+            p["sun"].as_array().and_then(|a| {
+                if a.len() >= 4 {
+                    Some([a[0].as_f64().unwrap_or(0.0) as f32, a[1].as_f64().unwrap_or(0.0) as f32, a[2].as_f64().unwrap_or(0.0) as f32, a[3].as_f64().unwrap_or(0.0) as f32])
+                } else {
+                    None
+                }
+            }).unwrap_or(none)
         } else {
             match (sun_p, moon_p) {
                 (Some(s), _) if s.alt > -3.0 => place(s.az, s.alt, 1.0 - 0.75 * cloud),
@@ -519,21 +627,22 @@ impl App {
                 _ => none,
             }
         };
-        let shader = match p["shader"].as_str() { Some("toon") => "toon", Some("fx") => "fx", _ => "live" }.to_string();
+        let shader = match p["shader"].as_str() { Some("toon") => "toon", Some("fx") => "fx", _ => "live" };
         let wind_k = if auto { (0.8 + wx["wind"].as_f64().unwrap_or(0.0) / 25.0).min(2.2) as f32 } else { 1.0 };
-        let c = |i: usize| vec![cols[i][0], cols[i][1], cols[i][2], 1.0];
-        let u = vec![
-            ("time", vec![t as f32]),
-            ("mode", vec![mode as f32]),
-            ("size", vec![w, h]),
-            ("c0", c(0)),
-            ("c1", c(1)),
-            ("c2", c(2)),
-            ("c3", c(3)),
-            ("opt", vec![stars, p["vig"].as_f64().unwrap_or(0.5) as f32, p["bright"].as_f64().unwrap_or(1.0) as f32, self.energy]),
-            ("sun", sun_v),
-        ];
-        (shader, u, wind_k)
+        let c = |i: usize| [cols[i][0], cols[i][1], cols[i][2], 1.0];
+        LiveUniforms {
+            shader,
+            time: [t as f32],
+            mode: [mode as f32],
+            size: [w, h],
+            c0: c(0),
+            c1: c(1),
+            c2: c(2),
+            c3: c(3),
+            opt: [stars, p["vig"].as_f64().unwrap_or(0.5) as f32, p["bright"].as_f64().unwrap_or(1.0) as f32, self.energy],
+            sun: sun_v,
+            wind_k,
+        }
     }
 
     fn make_current(&self, i: usize) -> bool {
@@ -622,7 +731,8 @@ impl App {
                     let a = self.photo.old.get(&key).copied().unwrap_or(b);
                     let t = self.photo.fade.map(|f| (f.elapsed().as_secs_f32() * 1000.0 / FADE_MS).min(1.0)).unwrap_or(1.0);
                     let e = if t < 0.5 { 2.0 * t * t } else { 1.0 - (-2.0 * t + 2.0).powi(2) / 2.0 }; // InOutQuad
-                    self.run("photo", &[("mixk", vec![e])], &[("a", a), ("b", b)], false);
+                    let mixk = [e];
+                    self.run("photo", &[("mixk", &mixk)], &[("a", a), ("b", b)], false);
                 }
                 None => unsafe {
                     self.gl().clear_color(0.0, 0.0, 0.0, 1.0);
@@ -630,8 +740,8 @@ impl App {
                 },
             }
         } else {
-            let (shader, u, _) = self.uniforms(w as f32, h as f32);
-            self.run(&shader, &u, &[], false);
+            let u = self.uniforms(w as f32, h as f32);
+            self.run(u.shader, &u.as_slice(), &[], false);
         }
         // the vignette under the desktop cards (main monitor), premultiplied over the scene
         if primary {
@@ -639,7 +749,8 @@ impl App {
                 self.gl().enable(glow::BLEND);
                 self.gl().blend_func(glow::ONE, glow::ONE_MINUS_SRC_ALPHA);
             }
-            self.run("vignette", &[("size", vec![w as f32, h as f32])], &[], false);
+            let sz = [w as f32, h as f32];
+            self.run("vignette", &[("size", &sz)], &[], false);
             unsafe { self.gl().disable(glow::BLEND) };
         }
     }
@@ -649,10 +760,10 @@ impl App {
         let m = self.sky.model.clone();
         let t = sky::sky_time();
         let b = sky::bolt(t, m.storm_k);
-        let bolt = vec![b[0] as f32, b[1] as f32, b[2] as f32, b[3] as f32];
-        let sm: Vec<f32> = self.sky.sm.iter().map(|s| s.get()).collect();
+        let bolt = [b[0] as f32, b[1] as f32, b[2] as f32, b[3] as f32];
+        let sm: [f32; 10] = std::array::from_fn(|i| self.sky.sm[i].get());
         let (cov, rain, snow, fog, haze, slant, frost, mist, heat, gsnow) = (sm[0], sm[1], sm[2], sm[3], sm[4], sm[5], sm[6], sm[7], sm[8], sm[9]);
-        let wx = vec![cov, rain, snow, fog];
+        let wx = [cov, rain, snow, fog];
         let (tw, th) = ((w + 1) / 2, (h + 1) / 2);
         // clouds every 2nd tick (15 fps), every tick behind windows (5 fps) and while lightning changes
         self.sky.tick = self.sky.tick.wrapping_add(1);
@@ -689,19 +800,19 @@ impl App {
                 self.gl().bind_framebuffer(glow::FRAMEBUFFER, Some(fb));
                 self.gl().viewport(0, 0, tw, th);
             }
-            let u = vec![
-                ("time", vec![self.sky.ct as f32]),
-                ("fov", vec![sky::FOV as f32]),
-                ("pitch", vec![m.pitch as f32]),
-                ("size", vec![w as f32, h as f32]),
-                ("sunDir", vec![d.x as f32, d.y as f32, d.z as f32, m.sun.alt as f32]),
-                ("scene", vec![0.0, 0.0, self.sky.c_off as f32, self.sky.c_evo as f32]),
-                ("wx", wx.clone()),
-                ("wx2", vec![m.storm_k as f32, m.moon_light as f32, m.aurora_k as f32, haze]),
-                ("bolt", bolt.clone()),
-                ("fx", vec![m.bow_k as f32, sky::HOR as f32, gsnow, 0.0]),
-            ];
-            self.run("clouds", &u, &[], true);
+            let u = CloudsUniforms {
+                time: [self.sky.ct as f32],
+                fov: [sky::FOV as f32],
+                pitch: [m.pitch as f32],
+                size: [w as f32, h as f32],
+                sun_dir: [d.x as f32, d.y as f32, d.z as f32, m.sun.alt as f32],
+                scene: [0.0, 0.0, self.sky.c_off as f32, self.sky.c_evo as f32],
+                wx,
+                wx2: [m.storm_k as f32, m.moon_light as f32, m.aurora_k as f32, haze],
+                bolt,
+                fx: [m.bow_k as f32, sky::HOR as f32, gsnow, 0.0],
+            };
+            self.run("clouds", &u.as_slice(), &[], true);
             unsafe {
                 self.gl().bind_framebuffer(glow::FRAMEBUFFER, self.target_fb);
                 self.gl().viewport(0, 0, w, h);
@@ -710,28 +821,28 @@ impl App {
         let (sx, sy) = m.sun_s(w as f64, h as f64);
         let (mx, my) = m.moon_s(w as f64, h as f64);
         let (i, z) = (m.moon.inc, m.moon.limb_zenith);
-        let u = vec![
-            ("time", vec![t as f32]),
-            ("radius", vec![25.0]),
-            ("size", vec![w as f32, h as f32]),
-            ("sun", vec![sx as f32, sy as f32, m.sun.alt as f32, 0.0]),
-            ("moon", vec![mx as f32, my as f32, m.moon.alt as f32, m.moon.fraction as f32]),
-            ("moonLit", vec![(-z.sin() * i.sin()) as f32, (-z.cos() * i.sin()) as f32, i.cos() as f32, m.moon.pa as f32]),
-            ("wx", wx),
-            ("wx2", vec![m.storm_k as f32, m.hail_k as f32, if m.rate < 0.5 { 1.0 } else { 0.0 }, m.wind_k as f32]),
-            ("fx", vec![slant, 0.0, m.meteor_k as f32, haze]),
-            ("bolt", bolt),
-            ("life", vec![1.0, m.leaf_k as f32, m.bird_k as f32, m.ray_k as f32]),
-            ("env", vec![m.temp as f32, (m.hum / 100.0) as f32, frost, heat]),
-            ("env2", vec![gsnow, m.firefly_k as f32, m.mote_k as f32, sky::HOR as f32]),
-            ("env3", vec![m.halo_k as f32, mist, m.curtain_k as f32, m.glass_snow_k as f32]),
-        ];
+        let u = SkyUniforms {
+            time: [t as f32],
+            radius: [25.0],
+            size: [w as f32, h as f32],
+            sun: [sx as f32, sy as f32, m.sun.alt as f32, 0.0],
+            moon: [mx as f32, my as f32, m.moon.alt as f32, m.moon.fraction as f32],
+            moon_lit: [(-z.sin() * i.sin()) as f32, (-z.cos() * i.sin()) as f32, i.cos() as f32, m.moon.pa as f32],
+            wx,
+            wx2: [m.storm_k as f32, m.hail_k as f32, if m.rate < 0.5 { 1.0 } else { 0.0 }, m.wind_k as f32],
+            fx: [slant, 0.0, m.meteor_k as f32, haze],
+            bolt,
+            life: [1.0, m.leaf_k as f32, m.bird_k as f32, m.ray_k as f32],
+            env: [m.temp as f32, (m.hum / 100.0) as f32, frost, heat],
+            env2: [gsnow, m.firefly_k as f32, m.mote_k as f32, sky::HOR as f32],
+            env3: [m.halo_k as f32, mist, m.curtain_k as f32, m.glass_snow_k as f32],
+        };
         let tex = self.sky.fbo.unwrap().1;
         unsafe {
             self.gl().clear_color(0.0, 0.0, 0.0, 0.0);
             self.gl().clear(glow::COLOR_BUFFER_BIT);
         }
-        self.run("sky", &u, &[("src", tex)], false);
+        self.run("sky", &u.as_slice(), &[("src", tex)], false);
     }
 
     // the weather reading / minute changed: new sky model, smoothed inputs glide to it
@@ -749,7 +860,7 @@ impl App {
     fn cur_fps(&self, name: &str) -> f32 {
         // the other monitors at half rate: the eye is on the main one, half the GPU work there
         let soft = SOFT.load(Ordering::Relaxed);
-        if *self.hidden.get(name).unwrap_or(&false) { if soft { 1.0 } else { 5.0 } } else if name != primary_monitor() { if soft { 5.0 } else { 15.0 } } else if soft { 10.0 } else { 30.0 }
+        if *self.hidden.get(name).unwrap_or(&false) { if soft { 1.0 } else { 2.0 } } else if name != primary_monitor() { if soft { 5.0 } else { 15.0 } } else if soft { 10.0 } else { 30.0 }
     }
     fn animate(&self, name: &str) -> bool {
         !self.asleep && !*self.fs.get(name).unwrap_or(&false) && !(self.gallery.0 && self.gallery.1 == name)
@@ -770,23 +881,48 @@ impl App {
         }
         n as f64 / 576.0 >= 0.85
     }
+    // mist-comp's word on one layer: the wallpaper of an output, or the sky
+    fn on_comp_cover(&mut self, out: String, ns: &str, covered: bool, full: bool) {
+        match ns {
+            "mist-live" => {
+                self.hidden.insert(out.clone(), covered);
+                self.fs.insert(out, full);
+            }
+            "mist-sky" => {
+                let was = self.sky.hidden;
+                self.sky.hidden = covered;
+                if was && !covered {
+                    if let Some(s) = self.surfs.iter_mut().find(|s| s.kind == Kind::Sky) {
+                        s.dirty = true;
+                    }
+                }
+            }
+            _ => return,
+        }
+        SHOWN.store(self.animate(primary_monitor()) && !*self.hidden.get(primary_monitor()).unwrap_or(&false), Ordering::Relaxed);
+    }
     fn on_cover(&mut self, mons: Vec<Mon>) {
         self.mons = mons;
         self.hidden.clear();
         self.fs.clear();
-        for m in self.mons.clone() {
+        for m in &self.mons {
             let r = m.reserved;
             self.hidden.insert(m.name.clone(), self.covered(&m.name, m.x + r[0], m.y + r[1], m.w - r[0] - r[2], m.h - r[1] - r[3]));
             self.fs.insert(m.name.clone(), m.fs);
         }
+        let was_sky_hidden = self.sky.hidden;
         self.sky.hidden = match (self.sky.rect, self.mons.iter().find(|m| m.name == primary_monitor())) {
             (Some((x, y, w, h)), Some(m)) => self.covered(primary_monitor(), m.x + x as f64, m.y + y as f64, w as f64, h as f64),
             _ => false,
         };
+        if was_sky_hidden && !self.sky.hidden {
+            if let Some(s) = self.surfs.iter_mut().find(|s| s.kind == Kind::Sky) {
+                s.dirty = true;
+            }
+        }
         SHOWN.store(self.animate(primary_monitor()) && !*self.hidden.get(primary_monitor()).unwrap_or(&false), Ordering::Relaxed);
     }
 
-    // one tick: advance the clocks, draw what is due; returns how long to sleep
     // shaders compiled without the cache (COLD_AT): the same binary again (same pid, the cache now warm), once
     // 10 s on and while nobody sees the wallpaper (monitors off, locked, every monitor covered or fullscreen,
     // the gallery closed), so the surfaces coming back do not flash; once per process chain (MIST_WALL_REEXEC)
@@ -810,6 +946,7 @@ impl App {
         COLD_AT.store(0, Ordering::Relaxed);
     }
 
+    // one tick: advance the clocks, draw what is due; returns how long to sleep
     fn tick(&mut self) -> Duration {
         let dt = self.t_last.elapsed().as_secs_f64().min(0.25);
         self.t_last = Instant::now();
@@ -877,8 +1014,8 @@ impl App {
         } else {
             self.energy += (self.energy_to - self.energy) * (dt as f32 * 4.0).min(1.0);
             let p = self.preset();
-            let (_, _, wind_k) = self.uniforms(1.0, 1.0);
-            let speed = p["speed"].as_f64().unwrap_or(1.0) as f32 * presets::tempo(&self.tempo) * wind_k * (1.0 + 0.4 * self.energy);
+            let u = self.uniforms(1.0, 1.0);
+            let speed = p["speed"].as_f64().unwrap_or(1.0) as f32 * presets::tempo(&self.tempo) * u.wind_k * (1.0 + 0.4 * self.energy);
             if self.animate(primary_monitor()) {
                 self.t += speed as f64 * dt;
             }
@@ -925,10 +1062,10 @@ impl App {
             }
         }
         if let Some(i) = self.surfs.iter().position(|s| s.kind == Kind::Preview && s.egl_surf.is_some()) {
-            let live = self.prev.key.strip_prefix("live:").and_then(|id| presets::get(&self.presets, id)).cloned();
-            if let Some(p) = &live {
-                let (_, _, wind_k) = self.uniforms_of(p, 1.0, 1.0, 0.0);
-                self.prev.t += (p["speed"].as_f64().unwrap_or(1.0) as f32 * presets::tempo(&self.tempo) * wind_k) as f64 * dt;
+            let live = self.prev.key.strip_prefix("live:").and_then(|id| presets::get(&self.presets, id));
+            if let Some(p) = live {
+                let u = self.uniforms_of(p, 1.0, 1.0, 0.0);
+                self.prev.t += (p["speed"].as_f64().unwrap_or(1.0) as f32 * presets::tempo(&self.tempo) * u.wind_k) as f64 * dt;
             }
             let fading = self.prev_fading();
             if !fading && self.prev.fade.is_some() {
@@ -947,15 +1084,15 @@ impl App {
                 }
             }
         }
-        // the weather sky: 30 fps, 5 behind windows, stopped under a fullscreen window
+        // the weather sky: 30 fps, paused under windows (0 fps) or fullscreen window
         if let Some(i) = self.surfs.iter().position(|s| s.kind == Kind::Sky && s.egl_surf.is_some()) {
             if (now_ms() / 60000.0) as i64 != self.sky.model_at {
                 self.sky_model();
             }
             let fs = *self.fs.get(primary_monitor()).unwrap_or(&false) || self.asleep;
             let sdt = self.sky.last.elapsed().as_secs_f64().min(0.25);
-            if !fs || self.surfs[i].dirty {
-                let due = if self.sky.hidden { 0.2 } else if SOFT.load(Ordering::Relaxed) { 1.0 / 10.0 } else { 1.0 / 30.0 };
+            if (!fs && !self.sky.hidden) || self.surfs[i].dirty {
+                let due = if SOFT.load(Ordering::Relaxed) { 1.0 / 10.0 } else { 1.0 / 30.0 };
                 let left = due - self.surfs[i].last.elapsed().as_secs_f32();
                 if left <= 0.002 || self.surfs[i].dirty {
                     self.sky.last = Instant::now();
@@ -983,6 +1120,8 @@ impl App {
         let def = format!("{}/glow-ember.png", paths::wallpaper_dir());
         self.image = c["image"].as_str().filter(|s| !s.is_empty()).unwrap_or(&def).to_string();
         self.tempo = c["tempo"].as_str().unwrap_or("normal").to_string();
+        let music = c["music"].as_bool().unwrap_or(false) && !live.is_empty();
+        MUSIC_ON.store(music, Ordering::Relaxed);
         if live != self.live {
             for s in &mut self.surfs {
                 s.dirty = true;
@@ -1098,12 +1237,15 @@ impl App {
             self.gl().viewport(0, 0, w, h);
         }
         if let Some(id) = key.strip_prefix("live:") {
-            let p = presets::get(&self.presets, id).cloned().unwrap_or(Value::Null);
-            let (shader, u, _) = self.uniforms_of(&p, w as f32, h as f32, self.prev.t);
-            self.run(&shader, &u, &[], true);
+            let p = presets::get(&self.presets, id).or_else(|| self.presets.first()).unwrap_or(&Value::Null);
+            let u = self.uniforms_of(p, w as f32, h as f32, self.prev.t);
+            self.run(u.shader, &u.as_slice(), &[], true);
         } else if let Some(path) = key.strip_prefix("photo:") {
             match self.prev.photo.as_ref().filter(|p| p.0 == path).map(|p| p.1) {
-                Some(t) => self.run("photo", &[("mixk", vec![1.0])], &[("a", t), ("b", t)], true),
+                Some(t) => {
+                    let mixk = [1.0f32];
+                    self.run("photo", &[("mixk", &mixk)], &[("a", t), ("b", t)], true);
+                }
                 None => {
                     if self.prev.asked != path {
                         self.prev.asked = path.to_string();
@@ -1126,7 +1268,8 @@ impl App {
             self.gl().bind_framebuffer(glow::FRAMEBUFFER, self.target_fb);
             self.gl().viewport(0, 0, w, h);
         }
-        self.run("photo", &[("mixk", vec![e])], &[("a", old_tex), ("b", cur_tex)], false);
+        let mixk = [e];
+        self.run("photo", &[("mixk", &mixk)], &[("a", old_tex), ("b", cur_tex)], false);
         unsafe {
             self.gl().enable(glow::BLEND);
             self.gl().blend_func(glow::ONE, glow::ONE_MINUS_SRC_ALPHA);
@@ -1179,8 +1322,8 @@ impl App {
                     gl.bind_vertex_array(vao);
                     gl.disable(glow::BLEND);
                     // a moment into the scene (t = 0 is often still empty)
-                    let (shader, u, _) = self.uniforms_of(p, tw as f32, th as f32, 40.0);
-                    self.run(&shader, &u, &[], false);
+                    let u = self.uniforms_of(p, tw as f32, th as f32, 40.0);
+                    self.run(u.shader, &u.as_slice(), &[], false);
                     let mut px = vec![0u8; (tw * th * 4) as usize];
                     self.gl().read_pixels(0, 0, tw, th, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelPackData::Slice(Some(&mut px)));
                     // GL rows go bottom-up; opaque
@@ -1255,7 +1398,8 @@ impl App {
     }
 }
 
-fn coverage() -> Vec<Mon> {
+fn coverage(refresh_monitors: bool) -> Vec<Mon> {
+    static MONITORS: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
     let req = |cmd: &str| -> Value {
         use std::io::{Read, Write};
         let p = format!("{}/hypr/{}/.socket.sock", std::env::var("XDG_RUNTIME_DIR").unwrap_or_default(), std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_default());
@@ -1265,7 +1409,21 @@ fn coverage() -> Vec<Mon> {
         let _ = s.read_to_string(&mut o);
         serde_json::from_str(&o).unwrap_or(Value::Null)
     };
-    let (mons, clients) = (req("j/monitors"), req("j/clients"));
+    let mons = {
+        let mut lock = MONITORS.lock().unwrap();
+        if refresh_monitors || lock.is_none() {
+            let m = req("j/monitors");
+            if !m.is_null() {
+                *lock = Some(m.clone());
+                m
+            } else {
+                lock.clone().unwrap_or(Value::Null)
+            }
+        } else {
+            lock.clone().unwrap_or(Value::Null)
+        }
+    };
+    let clients = req("j/clients");
     let mut out = Vec::new();
     for m in mons.as_array().cloned().unwrap_or_default() {
         let ws = m["activeWorkspace"]["name"].as_str().unwrap_or("").to_string();
@@ -1304,6 +1462,8 @@ enum Ev {
     Preview,
     Sky,
     Cover(Vec<Mon>),
+    // mistcover>>OUTPUT,NAMESPACE,COVERED,FULLSCREEN
+    CompCover(String, String, bool, bool),
     Screen,
     Level(f32),
 }
@@ -1325,7 +1485,10 @@ fn main() {
     if std::env::var_os("LP_NUM_THREADS").is_none() {
         unsafe { std::env::set_var("LP_NUM_THREADS", "4") };
     }
-    let conn = Connection::connect_to_env().expect("wayland");
+    let Ok(conn) = Connection::connect_to_env() else {
+        eprintln!("mist-wall: no Wayland compositor, exiting");
+        std::process::exit(0);
+    };
     let (globals, queue) = registry_queue_init::<App>(&conn).expect("registry");
     let qh = queue.handle();
     // EGL + desktop GL 3.3 core (the GLSL 150 shaders of the .qsb files)
@@ -1478,8 +1641,8 @@ fn main() {
                         app.sky.off_x += app.sky.model.cloud_speed * dt;
                         app.sky.evo += (0.03 + app.sky.model.wind * 0.001) * dt;
                     } else {
-                        let (_, _, wind_k) = app.uniforms(1.0, 1.0);
-                        app.t += app.preset()["speed"].as_f64().unwrap_or(1.0) * presets::tempo(&app.tempo) as f64 * wind_k as f64 * dt;
+                        let u = app.uniforms(1.0, 1.0);
+                        app.t += app.preset()["speed"].as_f64().unwrap_or(1.0) * presets::tempo(&app.tempo) as f64 * u.wind_k as f64 * dt;
                     }
                     bind(&app);
                     match what.as_str() {
@@ -1550,14 +1713,17 @@ fn main() {
             }
         });
     }
-    // windows over the monitors: on Hyprland events and every 3 s (moving / resizing sends none)
+    // windows over the monitors: on Hyprland events and fallback check every 8 s
     {
         let tx1 = tx.clone();
         std::thread::spawn(move || loop {
-            if tx1.send(Ev::Cover(coverage())).is_err() {
+            std::thread::sleep(Duration::from_secs(8));
+            if COMP_COVER.load(Ordering::Relaxed) {
                 return;
             }
-            std::thread::sleep(Duration::from_secs(3));
+            if tx1.send(Ev::Cover(coverage(true))).is_err() {
+                return;
+            }
         });
         let tx2 = tx.clone();
         std::thread::spawn(move || {
@@ -1565,10 +1731,30 @@ fn main() {
             let p = format!("{}/hypr/{}/.socket2.sock", std::env::var("XDG_RUNTIME_DIR").unwrap_or_default(), std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_default());
             let Ok(s) = std::os::unix::net::UnixStream::connect(p) else { return };
             for l in std::io::BufReader::new(s).lines().map_while(Result::ok) {
-                let e = l.split(">>").next().unwrap_or("");
-                if matches!(e, "openwindow" | "closewindow" | "movewindowv2" | "changefloatingmode" | "fullscreen" | "workspacev2" | "focusedmonv2" | "activespecialv2" | "activewindowv2") {
-                    std::thread::sleep(Duration::from_millis(150));
-                    if tx2.send(Ev::Cover(coverage())).is_err() {
+                let (e, d) = l.split_once(">>").unwrap_or((&l, ""));
+                if e == "mistcover" {
+                    if !COMP_COVER.swap(true, Ordering::Relaxed) {
+                        eprintln!("mist-wall: coverage from mist-comp (mistcover), no window queries");
+                    }
+                    let f: Vec<&str> = d.split(',').collect();
+                    if f.len() == 4 && tx2.send(Ev::CompCover(f[0].into(), f[1].into(), f[2] == "1", f[3] == "1")).is_err() {
+                        return;
+                    }
+                    continue;
+                }
+                if COMP_COVER.load(Ordering::Relaxed) {
+                    continue;
+                }
+                if matches!(e, "openwindow" | "closewindow" | "movewindow" | "movewindowv2" | "changefloatingmode" | "fullscreen" | "activewindow" | "activewindowv2") {
+                    std::thread::sleep(Duration::from_millis(100));
+                    if tx2.send(Ev::Cover(coverage(false))).is_err() {
+                        return;
+                    }
+                } else if matches!(e, "workspace" | "workspacev2" | "focusedmon" | "focusedmonv2" | "activespecial" | "activespecialv2" | "monitoradded" | "monitorremoved") {
+                    // the monitors' active (special) workspace changed: the cached j/monitors is stale (Win+D on an
+                    // empty workspace counted the old one's windows: 2 fps on a bare desktop)
+                    std::thread::sleep(Duration::from_millis(100));
+                    if tx2.send(Ev::Cover(coverage(true))).is_err() {
                         return;
                     }
                 }
@@ -1598,6 +1784,7 @@ fn main() {
                 }
             }
             Ev::Cover(m) => app.on_cover(m),
+            Ev::CompCover(o, ns, c, f) => app.on_comp_cover(o, &ns, c, f),
             Ev::Level(l) => app.energy_to = l,
         }
     })
@@ -1608,7 +1795,11 @@ fn main() {
     })
     .unwrap();
     loop {
-        ev.dispatch(None, &mut app).unwrap();
+        // the compositor is gone (logout, crash): leave quietly
+        if let Err(e) = ev.dispatch(None, &mut app) {
+            eprintln!("mist-wall: wayland connection lost ({e}), exiting");
+            std::process::exit(0);
+        }
         let _ = conn.flush();
     }
 }
@@ -1639,14 +1830,45 @@ fn init_gl(app: &mut App) {
     app.gl = Some(gl);
 }
 
+fn is_mpris_playing(c: &zbus::blocking::Connection) -> bool {
+    let Ok(names) = c
+        .call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), "ListNames", &())
+        .and_then(|m| m.body().deserialize::<Vec<String>>())
+    else {
+        return false;
+    };
+    for n in names {
+        if n.starts_with("org.mpris.MediaPlayer2.") {
+            if let Ok(m) = c.call_method(Some(n.as_str()), "/org/mpris/MediaPlayer2", Some("org.freedesktop.DBus.Properties"), "Get", &("org.mpris.MediaPlayer2.Player", "PlaybackStatus")) {
+                if let Ok(val) = m.body().deserialize::<zbus::zvariant::OwnedValue>() {
+                    if let Ok(s) = String::try_from(val) {
+                        if s == "Playing" {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
 // parec on the default sink monitor -> RMS with automatic gain -> slow envelope (0..1), only while a live
 // scene shows on the main monitor, music is on and a player plays
 fn music_loop(tx: calloop::channel::Sender<Ev>) {
     use std::io::Read;
+    let mut dbus = zbus::blocking::Connection::session().ok();
     loop {
-        let cfg = read_json(&format!("{}/.config/mist/wallpaper.json", home()));
-        let on = cfg["music"].as_bool().unwrap_or(false) && !cfg["live"].as_str().unwrap_or("").is_empty() && SHOWN.load(Ordering::Relaxed);
-        let playing = on && std::process::Command::new("sh").args(["-c", "for p in $(busctl --user list --no-legend | awk '{print $1}' | grep '^org.mpris.MediaPlayer2'); do busctl --user get-property $p /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player PlaybackStatus; done"]).output().map(|o| String::from_utf8_lossy(&o.stdout).contains("Playing")).unwrap_or(false);
+        let on = MUSIC_ON.load(Ordering::Relaxed) && SHOWN.load(Ordering::Relaxed);
+        if !on {
+            let _ = tx.send(Ev::Level(0.0));
+            std::thread::sleep(Duration::from_secs(3));
+            continue;
+        }
+        if dbus.is_none() {
+            dbus = zbus::blocking::Connection::session().ok();
+        }
+        let playing = dbus.as_ref().map(|c| is_mpris_playing(c)).unwrap_or(false);
         if !playing {
             let _ = tx.send(Ev::Level(0.0));
             std::thread::sleep(Duration::from_secs(3));
@@ -1667,7 +1889,7 @@ fn music_loop(tx: calloop::channel::Sender<Ev>) {
                 let _ = ch.kill();
                 return;
             }
-            if start.elapsed().as_secs() >= 10 || !SHOWN.load(Ordering::Relaxed) {
+            if start.elapsed().as_secs() >= 10 || !SHOWN.load(Ordering::Relaxed) || !MUSIC_ON.load(Ordering::Relaxed) {
                 break; // re-check the player / config every 10 s
             }
         }

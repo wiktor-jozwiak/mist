@@ -16,6 +16,8 @@ pub enum Act {
     Exec(Vec<String>),
     // open another popup instead
     Toggle(&'static str),
+    // open another popup at a page (Start -> the session question)
+    Open(&'static str, &'static str),
     // the screenshot toolbar: capture now
     Capture,
     // close, start an app (Apps index)
@@ -128,7 +130,7 @@ pub fn native(name: &str) -> bool {
 pub fn make(name: &str, page: &str) -> Option<Box<dyn Pane>> {
     match name {
         "desk" => Some(Box::new(crate::desksettings::DeskSettings::new(page))),
-        "session" => Some(Box::new(crate::session::Session::new())),
+        "session" => Some(Box::new(crate::session::Session::new(page))),
         "calendar" => Some(Box::new(crate::calendar::Calendar::new())),
         "notifications" => Some(Box::new(crate::notifcenter::NotifCenter::new())),
         "clipboard" => Some(Box::new(crate::clipboard::Clipboard::new())),
@@ -146,6 +148,13 @@ pub fn make(name: &str, page: &str) -> Option<Box<dyn Pane>> {
             let mut p = crate::start::Start::new(crate::phone::Phone::start_idle());
             p.set_page(page);
             Some(Box::new(p))
+        }
+        // tests only (app.rs opens it from maxhover): the hover flyout, `snapfly:<i>` = zone i of flat() hot
+        "snapfly" => {
+            let mut f = crate::snap::Fly::new("0x1", 0.0, 0.0, false, &[]);
+            f.hot(page.parse().unwrap_or(-1));
+            let r = f.surface(0.0, 0.0);
+            Some(Box::new(crate::snap::FlyPane(f, r)))
         }
         _ => None,
     }

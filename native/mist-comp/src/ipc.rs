@@ -107,7 +107,27 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
             }
             "ok".into()
         }
+        // the workspace swipe as libinput drives it (tests): `swipe begin`, `swipe <dx> [dy]`, `swipe end|cancel`
+        "swipe" => {
+            match it.next() {
+                Some("begin") => state.swipe = Some(crate::state::Swipe::default()),
+                Some("end") => state.swipe_end(false),
+                Some("cancel") => state.swipe_end(true),
+                Some(n) => {
+                    if let (Some(s), Ok(d)) = (state.swipe.as_mut(), n.parse::<f64>()) {
+                        s.last = d;
+                        s.dx += d;
+                        s.dy += it.next().and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+                        state.swipe_update();
+                    }
+                }
+                None => {}
+            }
+            "ok\n".into()
+        }
         "key" | "motion" | "button" => {
+            // synthetic input is activity like any other (idle lock / DPMS timers)
+            state.idle.notify_activity(&state.seat);
             let t = state.start_time.elapsed().as_millis() as u32;
             let args: Vec<&str> = it.collect();
             let press = |a: Option<&&str>| a.map(|a| *a == "press");
@@ -129,18 +149,105 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
             state.dirty = true;
             if r.is_some() { "ok\n".into() } else { "usage: key CODE press|release | motion X Y | button left|right press|release\n".into() }
         }
+        // open menus: their window and where their surface is on the desktop
+        "popups" => {
+            let mut s = String::new();
+            for w in state.space.elements() {
+                let (Some(root), Some(loc)) = (smithay::wayland::seat::WaylandFocus::wl_surface(w), state.space.element_location(w)) else { continue };
+                for (p, off) in smithay::desktop::PopupManager::popups_for_surface(&root) {
+                    let at = loc - w.geometry().loc + off;
+                    let g = p.geometry();
+                    s += &format!("{} {},{} {}x{}\n", crate::hyprcompat::app_id(w), at.x + g.loc.x, at.y + g.loc.y, g.size.w, g.size.h);
+                }
+            }
+            s
+        }
         "locked" => format!("{} surfaces={}\n", state.locked, state.lock.surfaces.len()),
-        "stats" => format!("frames {} commits {} windows {} hidden {}\n", state.frames, state.commits, state.space.elements().count(), state.stash.len()),
+        "blurs" => crate::blur::per_cache(),
+        // the open overview's grid: one line per window, its place (output-relative, bar included)
+        "overview" => match state.anim.overview.as_ref() {
+            Some(o) => o
+                .slots
+                .iter()
+                .map(|(w, r)| format!("{} {} {},{} {}x{}{}\n", o.output, crate::hyprcompat::app_id(w), r.loc.x, r.loc.y, r.size.w, r.size.h, if o.closing { " closing" } else { "" }))
+                .collect(),
+            None => "closed\n".into(),
+        },
+        "stats" => {
+            let (calls, runs) = crate::blur::counts();
+            format!("frames {} commits {} windows {} hidden {} wakeups {} blur {runs}/{calls}\n", state.frames, state.commits, state.space.elements().count(), state.stash.len(), state.wakeups)
+        }
+        // commits per client over N seconds (default 3): who keeps the screen busy
+        "top" => {
+            let secs = it.next().and_then(|v| v.parse::<u64>().ok()).unwrap_or(3).clamp(1, 60);
+            state.top = Some(Default::default());
+            let _ = state.loop_handle.insert_source(smithay::reexports::calloop::timer::Timer::from_duration(std::time::Duration::from_secs(secs)), move |_, _, st: &mut crate::state::MistComp| {
+                let mut v: Vec<_> = st.top.take().unwrap_or_default().into_iter().collect();
+                v.sort_by(|a, b| b.1.cmp(&a.1));
+                let s: String = v.iter().map(|(n, c)| format!("{:7.1}/s {n}\n", *c as f64 / secs as f64)).collect();
+                use std::io::Write;
+                let _ = stream.write_all(if s.is_empty() { b"none\n" } else { s.as_bytes() });
+                smithay::reexports::calloop::timer::TimeoutAction::Drop
+            });
+            return;
+        }
+        // each window's xdg geometry against its surfaces' bounding box (what the client draws past its shape)
+        "geom" => state
+            .space
+            .elements()
+            .map(|w| {
+                let opaque = smithay::wayland::seat::WaylandFocus::wl_surface(w).map(|s| {
+                    smithay::wayland::compositor::with_states(&s, |st| {
+                        let mut a = st.cached_state.get::<smithay::wayland::compositor::SurfaceAttributes>();
+                        a.current().opaque_region.as_ref().map(|r| r.rects.iter().map(|(k, r)| format!("{k:?} {}x{}+{}+{}", r.size.w, r.size.h, r.loc.x, r.loc.y)).collect::<Vec<_>>().join(","))
+                    })
+                });
+                format!("{} geometry {:?} bbox {:?} opaque {:?}\n", crate::hyprcompat::app_id(w), w.geometry(), w.bbox(), opaque.flatten())
+            })
+            .collect(),
+        // sizes of what grows with time (memory hunting): collections in the state and the blur's caches
+        "mem" => {
+            let (cache, glass, behind) = crate::blur::sizes();
+            let st = &*state;
+            format!(
+                "windows {} stash {} pending {} listeners {} restore {} ext_ws {} focus_history {} inhibitors {} screencopy {} window_copies {} shortcuts {} fence_waits {} out_seq {} anim.open {} anim.moved {} anim.layers {} anim.closing {} blur.cache {cache} blur.glass {glass} blur.behind {behind}\n",
+                st.space.elements().count(),
+                st.stash.len(),
+                st.pending.len(),
+                st.hypr_listeners.len(),
+                st.restore.len(),
+                st.ext_ws.len(),
+                st.focus_history.len(),
+                st.inhibitors.len(),
+                st.screencopy.len(),
+                st.window_copies.len(),
+                st.shortcuts.len(),
+                st.fence_waits.len(),
+                st.out_seq.len(),
+                st.anim.open.len(),
+                st.anim.moved.len(),
+                st.anim.layers.len(),
+                st.anim.closing.len(),
+            )
+        }
+        "prof" => crate::prof::take(),
+        // render passes per output since start (and how many of them changed pixels)
+        "passes" => {
+            let mut v: Vec<_> = state.out_passes.iter().collect();
+            v.sort();
+            v.iter().map(|(n, p)| format!("{n} {p} {}\n", state.out_seq.get(*n).unwrap_or(&0))).collect()
+        }
         "night" => format!("{}\n", state.night),
         "workspaces" => state.ws_active.iter().map(|(o, w)| format!("{o} {w}\n")).collect(),
         "shot" => match it.next() {
             Some(p) => {
+                state.shot_output = it.next().map(String::from);
                 state.shot = Some((p.into(), stream));
                 state.dirty = true;
                 state.force_full = true;
                 return;
             }
-            None => "usage: shot <out.ppm>\n".into(),
+            None => "usage: shot <out.ppm> [output]\n".into(),
         },
         "focus" => {
             let f = state.seat.get_keyboard().unwrap().current_focus().and_then(|f| smithay::wayland::seat::WaylandFocus::wl_surface(&f).map(|c| c.into_owned()));
@@ -152,14 +259,26 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
                 })
             });
             let lock = f.as_ref().is_some_and(|f| state.lock.surfaces.values().any(|l| l.wl_surface() == f));
+            let popup = f.as_ref().is_some_and(|f| state.popups.find_popup(f).is_some());
             match (f, layer) {
                 (None, _) => "none\n".into(),
+                (Some(_), _) if popup => "popup\n".into(),
                 (Some(_), _) if lock => "lock\n".into(),
                 (Some(_), Some(ns)) => format!("layer {ns}\n"),
                 (Some(_), None) => "window\n".into(),
             }
         }
         "quit" => {
+            state.loop_signal.stop();
+            "ok\n".into()
+        }
+        // a new compositor binary without logging out: exit 75, start-mist starts it again (not in safe mode)
+        // and reopens the windows (the session file is written first)
+        "restart" => {
+            if state.udev.is_some() {
+                state.session_write();
+            }
+            state.restart = true;
             state.loop_signal.stop();
             "ok\n".into()
         }

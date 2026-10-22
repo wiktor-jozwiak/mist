@@ -17,6 +17,8 @@ pub struct MoveSurfaceGrab {
     pub initial_window_location: Point<i32, Logical>,
     /// cursor at the last motion (mistdrag>>end reports it)
     pub last: Point<f64, Logical>,
+    /// when the last mistdrag>>move went out (one per 8 ms at most)
+    pub sent: Option<std::time::Instant>,
 }
 
 impl PointerGrab<MistComp> for MoveSurfaceGrab {
@@ -30,9 +32,18 @@ impl PointerGrab<MistComp> for MoveSurfaceGrab {
         // While the grab is active, no client has pointer focus
         handle.motion(data, None, event);
         self.last = event.location;
+        // mist-ui's snap overlay follows this instead of polling the cursor
+        if self.sent.is_none_or(|t| t.elapsed().as_millis() >= 8) {
+            self.sent = Some(std::time::Instant::now());
+            data.hypr_event("mistdrag", &format!("move,{},{}", event.location.x as i32, event.location.y as i32));
+        }
 
         let delta = event.location - self.start_data.location;
-        let new_location = self.initial_window_location.to_f64() + delta;
+        let mut new_location = self.initial_window_location.to_f64() + delta;
+        // not over the bar / under the island: the title bar stays below the usable area's top
+        if let Some(top) = data.usable_top(event.location) {
+            new_location.y = new_location.y.max((top + data.bar_h(&self.window)) as f64);
+        }
         data.space
             .map_element(self.window.clone(), new_location.to_i32_round(), true);
     }
@@ -55,13 +66,11 @@ impl PointerGrab<MistComp> for MoveSurfaceGrab {
     ) {
         handle.button(data, event);
 
-        // The button is a button code as defined in the
-        // Linux kernel's linux/input-event-codes.h header file, e.g. BTN_LEFT.
-        const BTN_LEFT: u32 = 0x110;
-
-        if !handle.current_pressed().contains(&BTN_LEFT) {
+        // the button that started the drag (evdev code: BTN_LEFT, BTN_RIGHT for Super + right drag) is up
+        if !handle.current_pressed().contains(&self.start_data.button) {
             // No more buttons are pressed, release the grab.
             handle.unset_grab(self, data, event.serial, event.time, true);
+            data.settle_ws(&self.window);
             data.hypr_event("mistdrag", &format!("end,{},{}", self.last.x as i32, self.last.y as i32));
         }
     }

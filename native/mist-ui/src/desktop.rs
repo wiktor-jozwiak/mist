@@ -512,9 +512,12 @@ pub fn caps_style() -> Style {
     st(11.0, 650.0).spaced(1.3)
 }
 
-// the back of a card: its options as chip groups, card order, done (drawn into its own layer, scaled in)
+// the back of a card: its options as chip groups, card order, done (drawn into its own layer, scaled in).
+// The header stays; the groups scroll under it (`scroll` = offset, max; the wheel moves it, see sheet_wheel).
+// A wide card puts the labels in a column left of the chips, a narrow one above them.
+const SHEET_HEAD: f32 = 58.0;
 #[allow(clippy::too_many_arguments)]
-pub fn edit_sheet(c: &mut Canvas, t: &mut Text, fx: &mut Fx, hits: &mut Hits, cfg: &Cfg, card: &'static str, title: &str, x: f32, y: f32, w: f32, h: f32, open: bool, ptr: Option<(f32, f32)>) {
+pub fn edit_sheet(c: &mut Canvas, t: &mut Text, fx: &mut Fx, hits: &mut Hits, cfg: &Cfg, card: &'static str, title: &str, x: f32, y: f32, w: f32, h: f32, open: bool, scroll: &mut (f32, f32), ptr: Option<(f32, f32)>) {
     let o = fx.v(&format!("{card}.sheet.o"), if open { 1.0 } else { 0.0 }, 180.0, Ease::Linear);
     let s = fx.v(&format!("{card}.sheet.s"), if open { 1.0 } else { 0.97 }, 220.0, Ease::OutCubic);
     if o <= 0.0 {
@@ -524,7 +527,8 @@ pub fn edit_sheet(c: &mut Canvas, t: &mut Text, fx: &mut Fx, hits: &mut Hits, cf
     let mut lh: Hits = Vec::new();
     let lp = ptr.map(|p| (p.0 - x, p.1 - y));
     let hov = |r: (f32, f32, f32, f32)| lp.map(|p| p.0 >= r.0 && p.0 < r.0 + r.2 && p.1 >= r.1 && p.1 < r.1 + r.3).unwrap_or(false);
-    rect(&mut l, 0.0, 0.0, w, h, 26.0, Rgba(9.0 / 255.0, 13.0 / 255.0, 24.0 / 255.0, 0.95));
+    // opaque: the card's own content must not show through the options
+    rect(&mut l, 0.0, 0.0, w, h, 26.0, Rgba(13.0 / 255.0, 17.0 / 255.0, 27.0 / 255.0, 1.0));
     border(&mut l, 0.0, 0.0, w, h, 26.0, 1.0, WHITE.alpha(0.1));
     lh.push((0.0, 0.0, w, h, Hit::Sheet));
     // header: title · ‹ › · Gotowe (moves among the shown cards)
@@ -547,27 +551,93 @@ pub fn edit_sheet(c: &mut Canvas, t: &mut Text, fx: &mut Fx, hits: &mut Hits, cf
     let cs = caps_style();
     let clh = line_h(t, &cs);
     text(&mut l, t, 20.0, 16.0 + (26.0 - clh) / 2.0, &title.to_uppercase(), &cs, FG2, true, Some(rx - 6.0 - 20.0));
-    // groups
-    let mut gy = 56.0;
-    for gr in groups(card) {
+    // the groups, into their own layer (body coords: 0 = just under the header)
+    let wide = w >= 440.0;
+    let (lx, ox) = (20.0, if wide { 176.0 } else { 20.0 });
+    let ls = st(12.5, 600.0);
+    let lsh = line_h(t, &ls);
+    let hint_s = st(11.0, 500.0);
+    let grs = groups(card);
+    let mut body = Canvas::new(w.ceil() as u32, 1200);
+    let mut bh: Vec<(f32, f32, f32, f32, Hit)> = Vec::new();
+    let bp = lp.map(|p| (p.0, p.1 - SHEET_HEAD + scroll.0));
+    let bhov = |r: (f32, f32, f32, f32)| bp.map(|p| p.1 >= 0.0 && p.0 >= r.0 && p.0 < r.0 + r.2 && p.1 >= r.1 && p.1 < r.1 + r.3).unwrap_or(false);
+    let mut gy = 4.0;
+    for (gi, gr) in grs.iter().enumerate() {
+        if gi > 0 {
+            rect(&mut body, lx, gy, w - 2.0 * lx, 1.0, 0.0, HAIR);
+            gy += 12.0;
+        }
         let cur = cfg.opt(card, gr.key);
-        let ls = st(11.0, 600.0);
-        let label = if gr.multi && gr.max > 0 { format!("{}  ·  maks. {}", gr.label, gr.max) } else { gr.label.to_string() };
-        text(&mut l, t, 20.0, gy, &label, &ls, MUTED, true, None);
-        let mut cy = gy + line_h(t, &ls) + 6.0;
-        let mut cx = 20.0;
+        // label (+ "maks. N" under it, quieter), then the chips: beside it (wide) or below it
+        let lw = if wide { ox - lx - 12.0 } else { w - 2.0 * lx };
+        text(&mut body, t, lx, gy + if wide { (26.0 - lsh) / 2.0 } else { 0.0 }, gr.label, &ls, FG2, true, Some(lw));
+        let mut ly = gy + if wide { (26.0 - lsh) / 2.0 } else { 0.0 } + lsh;
+        if gr.multi && gr.max > 0 {
+            let hint = format!("maks. {}", gr.max);
+            if wide {
+                text(&mut body, t, lx, ly + 1.0, &hint, &hint_s, FAINT, true, Some(lw));
+                ly += line_h(t, &hint_s) + 1.0;
+            } else {
+                let tw = width(t, gr.label, &ls).min(lw);
+                let hh = line_h(t, &hint_s);
+                text(&mut body, t, lx + tw + 8.0, gy + (lsh - hh) / 2.0, &hint, &hint_s, FAINT, true, None);
+            }
+        }
+        let mut cy = if wide { gy } else { ly + 8.0 };
+        let mut cx = ox;
         for (v, lab) in &gr.opts {
             let on = if gr.multi { cur.as_array().map(|a| a.contains(v)).unwrap_or(false) } else { &cur == v };
             let cw = chip_w(t, lab, on);
-            if cx > 20.0 && cx + cw > w - 20.0 {
-                cx = 20.0;
+            if cx > ox && cx + cw > w - 20.0 {
+                cx = ox;
                 cy += 26.0 + 6.0;
             }
-            chip(&mut l, t, cx, cy, lab, on, hov((cx, cy, cw, 26.0)), 1.0);
-            lh.push((cx, cy, cw, 26.0, Hit::Opt(card, gr.key, v.clone())));
+            chip(&mut body, t, cx, cy, lab, on, bhov((cx, cy, cw, 26.0)), 1.0);
+            bh.push((cx, cy, cw, 26.0, Hit::Opt(card, gr.key, v.clone())));
             cx += cw + 6.0;
         }
-        gy = cy + 26.0 + 12.0;
+        gy = (cy + 26.0).max(if wide { ly } else { 0.0 }) + 14.0;
+    }
+    let content_h = gy + 4.0;
+    let view = h - SHEET_HEAD;
+    scroll.1 = (content_h - view).max(0.0);
+    scroll.0 = scroll.0.clamp(0.0, scroll.1);
+    // the body under the header: clipped to the card's rounded shape, edges faded where more is hidden
+    if let (Some(p), Some(mut mask)) = (crate::gfx::rrect_path(0.0, 0.0, w, h, 26.0), tiny_skia::Mask::new(l.pm.width(), l.pm.height())) {
+        mask.fill_path(&p, FillRule::Winding, true, Transform::identity());
+        let mw = l.pm.width() as usize;
+        let (top, fade) = (SHEET_HEAD as usize, 16.0);
+        for (row, line) in mask.data_mut().chunks_mut(mw).enumerate() {
+            let ry = row as f32 - SHEET_HEAD;
+            let k = if row < top {
+                0.0
+            } else {
+                let a = if scroll.0 > 0.0 { (ry / fade).min(1.0) } else { 1.0 };
+                let b = if scroll.0 < scroll.1 { ((view - ry) / fade).min(1.0) } else { 1.0 };
+                a.min(b).max(0.0)
+            };
+            if k < 1.0 {
+                for m in line.iter_mut() {
+                    *m = (*m as f32 * k) as u8;
+                }
+            }
+        }
+        l.pm.draw_pixmap(0, (SHEET_HEAD - scroll.0).round() as i32, body.pm.as_ref(), &PixmapPaint::default(), Transform::identity(), Some(&mask));
+    }
+    // the header's hairline once something is under it; a thin scroll bar
+    rect(&mut l, 20.0, SHEET_HEAD - 1.0, w - 40.0, 1.0, 0.0, if scroll.0 > 0.0 { WHITE.alpha(0.12) } else { HAIR });
+    if scroll.1 > 0.0 {
+        let track = view - 20.0;
+        let bar = (track * view / content_h).max(24.0);
+        let by = SHEET_HEAD + 8.0 + (track - bar) * (scroll.0 / scroll.1);
+        rect(&mut l, w - 7.0, by, 3.0, bar, 1.5, WHITE.alpha(0.28));
+    }
+    for (bx, by, bw, bhh, hit) in bh {
+        let ry = SHEET_HEAD + by - scroll.0.round();
+        if ry >= SHEET_HEAD - 1.0 && ry + bhh <= h {
+            lh.push((bx, ry, bw, bhh, hit));
+        }
     }
     // scale about the centre, fade
     let tf = Transform::from_translate(x + w / 2.0, y + h / 2.0).pre_scale(s, s).pre_translate(-w / 2.0, -h / 2.0);
@@ -626,6 +696,7 @@ pub struct Desk {
     pub cursor_hand: bool,
     bento_y: f32,
     pub intent: Intent,
+    pub sheet_scroll: HashMap<&'static str, (f32, f32)>,
 }
 
 pub fn stage_h(t: &mut Text) -> f32 {
@@ -662,10 +733,21 @@ impl Desk {
             cursor_hand: false,
             bento_y: 0.0,
             intent: Intent::new(),
+            sheet_scroll: HashMap::new(),
         }
     }
     pub fn editing(&self, card: &str) -> bool {
         *self.editing.get(card).unwrap_or(&false)
+    }
+    // the wheel over a card turned to its settings: scroll them (false = nothing moved)
+    pub fn sheet_wheel(&mut self, dy: f32) -> bool {
+        let zone = self.zone();
+        let Some(k) = ["garmin", "running"].into_iter().find(|k| *k == zone && self.editing(k)) else { return false };
+        let s = self.sheet_scroll.entry(k).or_default();
+        let n = (s.0 + dy).clamp(0.0, s.1);
+        let moved = n != s.0;
+        s.0 = n;
+        moved
     }
     pub fn animating(&self) -> bool {
         self.fx.running() || self.wx.fx.running()
@@ -986,7 +1068,7 @@ impl Desk {
             footer(c, t, cx, cy + FOOT_Y, cw, insight.0, &insight.2, insight.1);
         }
         Self::card_rim(c, x, y, w, BENTO_H);
-        edit_sheet(c, t, &mut self.fx, &mut self.hits, &self.cfg, "garmin", "Garmin", x, y, w, BENTO_H, editing, ptr);
+        edit_sheet(c, t, &mut self.fx, &mut self.hits, &self.cfg, "garmin", "Garmin", x, y, w, BENTO_H, editing, self.sheet_scroll.entry("garmin").or_default(), ptr);
     }
 
     // ---------------- training: the race countdown, the days left, today's session, the last run
@@ -1070,7 +1152,7 @@ impl Desk {
                 let ccx = cx + i as f32 * cwid + cwid / 2.0;
                 let ls = st(11.0, if today { 700.0 } else { 550.0 });
                 // the weekday's initial in the UI language (N P W Ś C P S, S M T W T F S ...)
-                let l: String = crate::i18n::tr(crate::data::DAYS_SHORT[wd]).chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+                let l = crate::i18n::day_initial(wd);
                 let lw = width(t, &l, &ls);
                 text(c, t, (ccx - lw / 2.0).round(), sy, &l, &ls, if today { ACC } else if is_race { WARN } else { MUTED }, true, None);
                 let (rx, ry) = (ccx - 10.0, sy + 18.0);
@@ -1105,7 +1187,7 @@ impl Desk {
             footer(c, t, cx, cy + FOOT_Y, cw, insight.0, &insight.2, insight.1);
         }
         Self::card_rim(c, x, y, w, BENTO_H);
-        edit_sheet(c, t, &mut self.fx, &mut self.hits, &self.cfg, "running", "Bieganie", x, y, w, BENTO_H, editing, ptr);
+        edit_sheet(c, t, &mut self.fx, &mut self.hits, &self.cfg, "running", "Bieganie", x, y, w, BENTO_H, editing, self.sheet_scroll.entry("running").or_default(), ptr);
     }
 
     // what the pointer is over (a change = repaint)

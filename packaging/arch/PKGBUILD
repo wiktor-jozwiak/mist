@@ -19,7 +19,9 @@ optdepends=('inter-font: UI font when SF Pro is not installed'
             'android-tools: phone screen, calls and more over ADB'
             'scrcpy: phone screen on the PC'
             'mpv: Mist Player (libmpv)'
-            'docker: Garmin cards (see docs/guides/garmin.md)')
+            'docker: Garmin cards (see docs/guides/garmin.md)'
+            'xdg-desktop-portal-hyprland: screen sharing and screenshots in the Mist session'
+            'xorg-xwayland: X11 apps in the Mist session')
 provides=('mist-shell')
 conflicts=('mist-shell')
 source=("mist::git+$url.git")
@@ -61,6 +63,12 @@ package() {
     cp -r shaders/glsl "$share/shaders/"
     cp -r examples/hyprland "$share/examples/"
     cp -r docs "$share/"
+    # the Mist session (mist-comp on its own, next to Hyprland in the login manager): start-mist finds
+    # /usr/bin/mist-comp and installs its portal config (screen sharing) per user at login
+    install -d "$share/native/mist-comp/session"
+    install -m755 native/mist-comp/session/start-mist native/mist-comp/session/mist-session "$share/native/mist-comp/session/"
+    install -m644 native/mist-comp/session/mist-portals.conf "$share/native/mist-comp/session/"
+    install -Dm644 packaging/mist.desktop "$pkgdir/usr/share/wayland-sessions/mist.desktop"
 
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
     install -Dm644 NOTICE.md "$pkgdir/usr/share/licenses/$pkgname/NOTICE.md"

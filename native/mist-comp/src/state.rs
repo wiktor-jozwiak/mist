@@ -35,12 +35,26 @@ pub struct MistComp {
 
     pub space: Space<Window>,
     pub loop_signal: LoopSignal,
+    /// IPC `restart`: exit 75 (start-mist restarts with the windows restored)
+    pub restart: bool,
 
     // Smithay State
     pub compositor_state: CompositorState,
     pub xdg_shell_state: XdgShellState,
     pub layer_shell_state: WlrLayerShellState,
     pub protocols: crate::handlers::protocols::Protocols,
+    pub extra: crate::handlers::extra::Extra,
+    pub wlr: crate::wlr::Wlr,
+    pub outman: crate::outman::OutMan,
+    /// monitors on (DPMS), as output-power clients are told
+    pub dpms_on: bool,
+    /// windows or outputs changed: surfaces get their output's scale again (update_scales)
+    pub scales_dirty: bool,
+    /// linux-drm-syncobj (explicit sync): only on a DRM device that supports syncobj eventfd
+    pub syncobj: Option<smithay::wayland::drm_syncobj::DrmSyncobjState>,
+    /// explicit-sync commits waiting for their GPU fence, checked once a second while there are some
+    pub fence_waits: crate::handlers::compositor::FenceWaits,
+    pub fence_timer: bool,
     pub shm_state: ShmState,
     pub output_manager_state: OutputManagerState,
     pub seat_state: SeatState<MistComp>,
@@ -50,6 +64,12 @@ pub struct MistComp {
     pub seat: Seat<Self>,
     /// something changed on screen: request a frame after this loop iteration
     pub dirty: bool,
+    /// a client committed: only these outputs show it (per-output frames; `dirty` = all of them)
+    pub dirty_outputs: std::collections::HashSet<String>,
+    /// cover / ext-workspace / toplevel lists / scales bookkeeping: last run, due, its timer armed
+    pub sync_at: Option<std::time::Instant>,
+    pub sync_due: bool,
+    pub sync_timer: bool,
     /// linux-dmabuf global + the renderer that imports client buffers (set by the backend)
     pub dmabuf: Option<(smithay::wayland::dmabuf::DmabufState, smithay::wayland::dmabuf::DmabufGlobal)>,
     pub gles: Option<crate::winit::Gles>,
@@ -59,6 +79,8 @@ pub struct MistComp {
     /// offscreen test backend
     pub headless: Option<crate::headless::Headless>,
     pub cursor_status: smithay::input::pointer::CursorImageStatus,
+    /// drag and drop: the icon surface the client gave, and its offset from the pointer (wl_surface.offset)
+    pub dnd_icon: Option<(WlSurface, Point<i32, Logical>)>,
     pub config: crate::config::Config,
     /// output name -> shown workspace id
     pub ws_active: std::collections::HashMap<String, u32>,
@@ -74,10 +96,31 @@ pub struct MistComp {
     pub special_on: Option<String>,
     /// Super went down and nothing else since (release binds)
     pub super_alone: bool,
+    /// a workspace swipe in progress
+    pub swipe: Option<Swipe>,
+    /// a button whose press the overview took: its release is the overview's too
+    pub swallow_button: Option<u32>,
+    /// the xkb layout name in use and the output under the pointer, as last announced (activelayout,
+    /// focusedmon events)
+    pub ev_layout: String,
+    pub ev_mon: String,
     /// keys whose press a bind ate: eat their release too
     pub suppressed: std::collections::HashSet<u32>,
+    /// keys holding a `global` bind down (keycode -> APP_ID:ID), released with the key
+    pub globals_held: std::collections::HashMap<u32, String>,
     /// socket2 listeners (hyprcompat)
     pub hypr_listeners: Vec<std::os::unix::net::UnixStream>,
+    /// cover.rs: the geometry the last coverage was computed from, and what was announced per (output, layer)
+    /// watchdog.rs: commits per client since its last check
+    pub commit_rate: std::collections::HashMap<smithay::reexports::wayland_server::backend::ClientId, u32>,
+    /// session.rs: a write is on its way; windows to put back after a crash
+    pub session_timer: bool,
+    pub restore: Vec<crate::session::Slot>,
+    pub cover_sig: u64,
+    /// ext-workspace-v1 clients and the workspace list they were last told (extws.rs)
+    pub ext_ws: Vec<crate::extws::Bound>,
+    pub ext_ws_last: crate::extws::Snap,
+    pub cover_sent: std::collections::HashMap<(String, String), (bool, bool)>,
     /// window addresses, most recently focused first
     pub focus_history: Vec<u64>,
     pub next_addr: u64,
@@ -89,10 +132,23 @@ pub struct MistComp {
     pub inhibitors: Vec<WlSurface>,
     /// wlr-screencopy copies waiting for the next loop iteration
     pub screencopy: Vec<crate::screencopy::Pending>,
+    pub window_copies: Vec<crate::hyprproto::Pending>,
+    pub shortcuts: Vec<crate::hyprproto::Shortcut>,
+    /// frames with damage shown per output (copy_with_damage waits for the next one)
+    pub out_seq: std::collections::HashMap<String, u64>,
+    /// render passes per output, damage or not (IPC `passes`: a commit on one monitor leaves the others alone)
+    pub out_passes: std::collections::HashMap<String, u64>,
+    /// screen casting: the last damage-driven copy served (mist-ui's island: "sharing your screen"), and
+    /// the output frame each client was last given
+    pub cast_last: Option<std::time::Instant>,
+    pub cast_seen: std::collections::HashMap<smithay::reexports::wayland_server::backend::ClientId, u64>,
     /// night light state (gamma ramp on DRM; nested/headless only remember it)
     pub night: bool,
     /// title bar text (loaded with the first server-side bar)
-    pub text: Option<crate::text::Text>,
+    pub keys_seen: bool,
+    pub wakeups: u64, // event-loop iterations (idle cost; `stats`)
+    pub redraw_pending: bool, // nested: request_redraw sent, Redraw not yet handled
+    pub text: Option<Option<crate::text::Text>>, // looked up on first use, inner None = no font
     /// window whose bar buttons are under the pointer (shows their symbols)
     pub bar_hovered: Option<u64>,
     /// window whose green button is hovered (mistsnap>>maxhover sent)
@@ -100,6 +156,8 @@ pub struct MistComp {
     /// IPC `stats`: frames rendered (all outputs) and surface commits since start
     pub frames: u64,
     pub commits: u64,
+    /// IPC `top`: commits per client while counting (None = off, the usual case)
+    pub top: Option<std::collections::HashMap<String, u32>>,
     /// traffic light pressed (acts on release over the same one)
     pub bar_press: Option<(u64, crate::decor::Hit)>,
     /// last bar click (double click maximizes)
@@ -117,6 +175,8 @@ pub struct MistComp {
     pub force_full: bool,
     /// pending `shot` IPC request: written after the next frame
     pub shot: Option<(std::path::PathBuf, std::os::unix::net::UnixStream)>,
+    /// headless: the output `shot` captures (None: the first)
+    pub shot_output: Option<String>,
 }
 
 impl MistComp {
@@ -130,10 +190,15 @@ impl MistComp {
         let layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let config = crate::config::load();
         let protocols = crate::handlers::protocols::Protocols::new(&dh, config.middle_click_paste);
+        let extra = crate::handlers::extra::Extra::new(&dh, config.middle_click_paste.then_some(&protocols.primary_selection), config.fifo);
         let lock_manager = smithay::wayland::session_lock::SessionLockManagerState::new::<Self, _>(&dh, |_| true);
         let idle = smithay::wayland::idle_notify::IdleNotifierState::new(&dh, event_loop.handle());
         let idle_inhibit = smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Self>(&dh);
         crate::screencopy::init(&dh);
+        crate::hyprproto::init(&dh);
+        crate::extws::init(&dh);
+        crate::wlr::init(&dh);
+        crate::outman::init(&dh);
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let mut seat_state = SeatState::new();
@@ -187,12 +252,21 @@ impl MistComp {
 
             space,
             loop_signal,
+            restart: false,
             socket_name,
 
             compositor_state,
             xdg_shell_state,
             layer_shell_state,
             protocols,
+            extra,
+            wlr: Default::default(),
+            outman: Default::default(),
+            dpms_on: true,
+            scales_dirty: true,
+            syncobj: None,
+            fence_waits: Vec::new(),
+            fence_timer: false,
             shm_state,
             output_manager_state,
             seat_state,
@@ -200,12 +274,17 @@ impl MistComp {
             popups,
             seat,
             dirty: false,
+            dirty_outputs: Default::default(),
+            sync_at: None,
+            sync_due: false,
+            sync_timer: false,
             dmabuf: None,
             gles: None,
             vt_switch: None,
             udev: None,
             headless: None,
             cursor_status: smithay::input::pointer::CursorImageStatus::default_named(),
+            dnd_icon: None,
             redraw_after_vblank: false,
             config,
             ws_active: Default::default(),
@@ -215,21 +294,43 @@ impl MistComp {
             special_on: None,
             ws_changed: false,
             super_alone: false,
+            swipe: None,
+            swallow_button: None,
+            ev_layout: String::new(),
+            ev_mon: String::new(),
             suppressed: Default::default(),
+            globals_held: Default::default(),
             locked: false,
             screencopy: Vec::new(),
+            window_copies: Vec::new(),
+            shortcuts: Vec::new(),
+            out_seq: Default::default(),
+            out_passes: Default::default(),
+            cast_last: None,
+            cast_seen: Default::default(),
             night: false,
+            keys_seen: false,
+            wakeups: 0,
+            redraw_pending: false,
             text: None,
             bar_hovered: None,
             max_hovered: None,
             frames: 0,
             commits: 0,
+            top: None,
             bar_press: None,
             bar_click: None,
             edge_cursor: false,
             anim: Default::default(),
             bar_drag: None,
             hypr_listeners: Vec::new(),
+            commit_rate: Default::default(),
+            session_timer: false,
+            restore: Vec::new(),
+            cover_sig: 0,
+            ext_ws: Vec::new(),
+            ext_ws_last: Vec::new(),
+            cover_sent: Default::default(),
             lock_manager,
             lock: Default::default(),
             idle,
@@ -239,6 +340,7 @@ impl MistComp {
             next_addr: 0x5a0000,
             force_full: false,
             shot: None,
+            shot_output: None,
         }
     }
 
@@ -273,9 +375,11 @@ impl MistComp {
                 Generic::new(display, Interest::READ, Mode::Level),
                 |_, display, state| {
                     // Safety: we don't drop the display
+                    let t = std::time::Instant::now();
                     unsafe {
                         display.get_mut().dispatch_clients(state).unwrap();
                     }
+                    crate::prof::add(6, t.elapsed());
                     Ok(PostAction::Continue)
                 },
             )
@@ -299,6 +403,7 @@ impl MistComp {
         }
         for w in self.space.elements() {
             w.set_activated(Some(w) == window);
+            crate::wm::data(w).active.set(Some(w) == window);
             if let Some(t) = w.toplevel() {
                 if t.is_initial_configure_sent() {
                     t.send_pending_configure();
@@ -323,6 +428,31 @@ impl MistComp {
                 self.hypr_event("activewindowv2", "");
             }
         }
+    }
+
+    /// The top of the usable area (below the bar's exclusive zone) of the output under a point, else of the
+    /// nearest one: windows are kept below it (title bar included) when they are moved or resized.
+    pub fn usable_top(&self, pos: Point<f64, Logical>) -> Option<i32> {
+        let o = self.space.outputs().min_by(|a, b| {
+            let d = |o: &smithay::output::Output| {
+                self.space.output_geometry(o).map(|g| {
+                    let g = g.to_f64();
+                    let dx = (g.loc.x - pos.x).max(pos.x - (g.loc.x + g.size.w)).max(0.0);
+                    let dy = (g.loc.y - pos.y).max(pos.y - (g.loc.y + g.size.h)).max(0.0);
+                    dx * dx + dy * dy
+                }).unwrap_or(f64::MAX)
+            };
+            d(a).total_cmp(&d(b))
+        })?;
+        let og = self.space.output_geometry(o)?;
+        Some(og.loc.y + layer_map_for_output(o).non_exclusive_zone().loc.y)
+    }
+
+    /// The drag icon and where it shows (None: no drag, or its surface is gone).
+    pub fn dnd_at(&self) -> Option<crate::scene::Dnd> {
+        let (s, off) = self.dnd_icon.as_ref().filter(|(s, _)| smithay::utils::IsAlive::alive(s))?;
+        let ptr = self.seat.get_pointer()?.current_location().to_i32_round();
+        Some((s.clone(), ptr + *off))
     }
 
     /// The Overlay/Top layer surface under a point (these sit above windows).
@@ -383,9 +513,31 @@ impl MistComp {
 #[derive(Default)]
 pub struct ClientState {
     pub compositor_state: CompositorClientState,
+    /// connected through a sandbox's security-context listener (flatpak): no privileged globals
+    pub security_context: Option<smithay::wayland::security_context::SecurityContext>,
 }
 
 impl ClientData for ClientState {
     fn initialized(&self, _client_id: ClientId) {}
-    fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
+    fn disconnected(&self, _client_id: ClientId, reason: DisconnectReason) {
+        // a protocol error closes the socket silently on the client side: log which request killed it
+        if let DisconnectReason::ProtocolError(e) = reason {
+            tracing::warn!("client killed by protocol error: {e}");
+        }
+    }
+}
+
+/// A touchpad workspace swipe: the next workspace follows the fingers (1:1), lifting them finishes or takes
+/// it back.
+#[derive(Default)]
+pub struct Swipe {
+    /// horizontal distance so far and of the last update
+    pub dx: f64,
+    pub last: f64,
+    pub dy: f64,
+    /// up / down: the overview, not workspaces
+    pub vertical: bool,
+    /// switched on this output, +1 / -1, from this workspace (None: not yet, or nothing to switch to)
+    pub on: Option<(smithay::output::Output, i32, u32)>,
+    pub tried: bool,
 }

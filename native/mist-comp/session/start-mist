@@ -4,7 +4,57 @@
 mkdir -p "$HOME/.cache/mist"
 export XDG_CURRENT_DESKTOP=mist XDG_SESSION_DESKTOP=mist XDG_SESSION_TYPE=wayland
 unset WAYLAND_DISPLAY DISPLAY HYPRLAND_INSTANCE_SIGNATURE
+# greetd / a display manager starts this with the system PATH only: take the one the user's login shell builds
+# (fish / zsh / bash config: ~/.local/bin, cargo, npm…), so key bindings, the Start menu and autostart find
+# what a terminal finds (mist-ui-bin for the Super key, claude, …)
+p=$(timeout 3 "${SHELL:-/bin/sh}" -lc 'printf %s "$PATH"' 2>/dev/null </dev/null) && [ -n "$p" ] && export PATH="$p"
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
 # the Quickshell shim (mist-shell.service, ~210 MB RSS) has nothing left to do: everything is mist-ui now
 systemctl --user stop mist-shell.service 2>/dev/null
-[ -f "$HOME/.cache/mist/comp.log" ] && mv -f "$HOME/.cache/mist/comp.log" "$HOME/.cache/mist/comp.log.old"
-RUST_LOG=${RUST_LOG:-warn,mist_comp=info} exec "$HOME/.local/bin/mist-comp" --tty >"$HOME/.cache/mist/comp.log" 2>&1
+# the user's build (native/install.sh) first, else the packaged one (/usr/bin)
+COMP=$HOME/.local/bin/mist-comp
+[ -x "$COMP" ] || COMP=$(command -v mist-comp) || { echo "start-mist: no mist-comp" >&2; exit 1; }
+# scripts call `hyprctl` (screenshots, monitors): without Hyprland installed, mist-comp answers as it
+if ! command -v hyprctl >/dev/null 2>&1; then
+    mkdir -p "$HOME/.cache/mist/bin"
+    ln -sf "$COMP" "$HOME/.cache/mist/bin/hyprctl"
+    export PATH="$HOME/.cache/mist/bin:$PATH"
+fi
+# screen sharing / screenshots / file dialogs through xdg-desktop-portal: its config for XDG_CURRENT_DESKTOP=mist
+pc=${XDG_CONFIG_HOME:-$HOME/.config}/xdg-desktop-portal
+src=$(dirname "$(readlink -f "$0")")/mist-portals.conf
+[ -f "$src" ] && ! cmp -s "$src" "$pc/mist-portals.conf" && mkdir -p "$pc" && cp "$src" "$pc/mist-portals.conf"
+LOG=$HOME/.cache/mist/comp.log
+[ -f "$LOG" ] && mv -f "$LOG" "$LOG.old"
+# smithay warns "Unable to become drm master" for every fd logind hands over (it cannot tell); mist-comp checks itself
+# NVIDIA only (its kernel module the same version as its libraries): EGL skips Mesa's vendor, which loads
+# gallium + LLVM (~20 MB per GL process: mist-comp, mist-wall, browsers) for llvmpipe nobody uses. After a
+# driver update without a reboot the versions differ and Mesa stays (mist-wall's software fallback).
+nv=/usr/share/glvnd/egl_vendor.d/10_nvidia.json
+if [ -z "$__EGL_VENDOR_LIBRARY_FILENAMES" ] && [ -f "$nv" ] && [ "$(ls /sys/class/drm | grep -c '^card[0-9]*$')" = 1 ] \
+   && kv=$(sed -n 's/.*Kernel Module.*  \([0-9.]*\)  .*/\1/p' /proc/driver/nvidia/version 2>/dev/null) && [ -n "$kv" ] \
+   && [ -e "/usr/lib/libnvidia-eglcore.so.$kv" ]; then
+    export __EGL_VENDOR_LIBRARY_FILENAMES=$nv
+fi
+export RUST_LOG=${RUST_LOG:-warn,mist_comp=info,smithay::backend::drm::device::fd=error} RUST_BACKTRACE=1
+# a crash restarts the compositor in safe mode (no blur, animations, VRR, explicit sync, dmabuf casting) so
+# the session survives a driver-specific failure; three crashes end it. A normal quit or logout ends it at once.
+# After a crash MIST_COMP_RESTORE=1 starts again what ~/.cache/mist/session.json lists, on the same workspace and place.
+crashes=0
+restore=0
+safe=${MIST_COMP_SAFE:-0}
+while :; do
+    echo "--- mist-comp start $(date '+%F %T') safe=$safe" >>"$LOG"
+    MIST_COMP_SAFE=$safe MIST_COMP_RESTORE=$restore "$COMP" --tty >>"$LOG" 2>&1
+    rc=$?
+    echo "--- mist-comp exit $rc $(date '+%F %T')" >>"$LOG"
+    case $rc in
+        0 | 129 | 130 | 143) break ;; # quit, SIGHUP / SIGINT / SIGTERM (logout, shutdown)
+        75) restore=1; sleep 0.5; continue ;; # `restart` over IPC (mist-session restart): the new binary, same mode
+    esac
+    restore=1
+    crashes=$((crashes + 1))
+    [ $crashes -ge 3 ] && break
+    safe=1
+    sleep 1
+done

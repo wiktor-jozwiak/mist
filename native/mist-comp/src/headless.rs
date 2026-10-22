@@ -19,7 +19,6 @@ use smithay::{
             Bind, ImportDma, ImportMemWl, Offscreen,
         },
     },
-    desktop::layer_map_for_output,
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::{calloop::EventLoop, rustix::fs::OFlags},
     utils::{DeviceFd, Transform},
@@ -41,6 +40,8 @@ pub struct Headless {
     /// 60 Hz frame clock: a frame waits for the next tick instead of rendering on every commit
     last: Option<std::time::Instant>,
     tick_armed: bool,
+    /// outputs waiting for the tick (None: all of them), as udev's per-output redraw
+    due: Option<std::collections::HashSet<String>>,
 }
 
 impl Headless {
@@ -51,10 +52,21 @@ impl Headless {
 
 pub fn init(_event_loop: &mut EventLoop<'static, CalloopData>, state: &mut MistComp) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::var("MIST_COMP_RENDER_NODE").unwrap_or_else(|_| "/dev/dri/renderD128".into());
-    let fd = smithay::reexports::rustix::fs::open(path.as_str(), OFlags::RDWR | OFlags::CLOEXEC, smithay::reexports::rustix::fs::Mode::empty())?;
-    let fd = DrmDeviceFd::new(DeviceFd::from(fd));
-    let gbm = GbmDevice::new(fd)?;
-    let egl = unsafe { EGLDisplay::new(gbm)? };
+    let open = || -> Result<EGLDisplay, Box<dyn std::error::Error>> {
+        let fd = smithay::reexports::rustix::fs::open(path.as_str(), OFlags::RDWR | OFlags::CLOEXEC, smithay::reexports::rustix::fs::Mode::empty())?;
+        let gbm = GbmDevice::new(DrmDeviceFd::new(DeviceFd::from(fd)))?;
+        Ok(unsafe { EGLDisplay::new(gbm)? })
+    };
+    // no GPU (CI, containers) or MIST_COMP_SOFTWARE=1: Mesa's software device (llvmpipe), shm clients only
+    let soft = std::env::var_os("MIST_COMP_SOFTWARE").is_some();
+    let egl = match if soft { Err("software requested".into()) } else { open() } {
+        Ok(e) => e,
+        Err(e) => {
+            let dev = EGLDevice::enumerate()?.find(|d| d.is_software()).ok_or(e)?;
+            tracing::info!("headless: software rendering (llvmpipe)");
+            unsafe { EGLDisplay::new(dev)? }
+        }
+    };
     let node = EGLDevice::device_for_display(&egl).ok().and_then(|d| d.try_get_render_node().ok().flatten());
     let ctx = EGLContext::new(&egl)?;
     let mut renderer = unsafe { GlesRenderer::new(ctx)? };
@@ -91,15 +103,21 @@ pub fn init(_event_loop: &mut EventLoop<'static, CalloopData>, state: &mut MistC
         let damage = OutputDamageTracker::from_output(&output);
         outs.push(Out { buffer, output, damage, size: (w, h) });
     }
-    state.headless = Some(Headless { renderer, outs, last: None, tick_armed: false });
+    state.headless = Some(Headless { renderer, outs, last: None, tick_armed: false, due: Some(Default::default()) });
     state.fix_ws();
     println!("WAYLAND_DISPLAY={}", state.socket_name.to_string_lossy());
     Ok(())
 }
 
-pub fn render(state: &mut MistComp) {
+/// Draw the outputs in `part` (None: all) now, or on the next 60 Hz tick.
+pub fn render(state: &mut MistComp, part: Option<&std::collections::HashSet<String>>) {
     const FRAME: Duration = Duration::from_micros(16_667);
     let Some(hl) = state.headless.as_mut() else { return };
+    match (hl.due.as_mut(), part) {
+        (Some(d), Some(p)) => d.extend(p.iter().cloned()),
+        (_, None) => hl.due = None,
+        _ => {}
+    }
     let since = hl.last.map(|t| t.elapsed()).unwrap_or(FRAME);
     if since < FRAME {
         // too early: render on the tick (one timer at a time; clients wait for their frame callback)
@@ -110,28 +128,42 @@ pub fn render(state: &mut MistComp) {
                 if let Some(hl) = st.headless.as_mut() {
                     hl.tick_armed = false;
                 }
-                st.dirty = true;
+                render(st, Some(&Default::default()));
                 smithay::reexports::calloop::timer::TimeoutAction::Drop
             });
         }
         return;
     }
+    if hl.due.as_ref().is_some_and(|d| d.is_empty()) && state.shot.is_none() {
+        return;
+    }
     hl.last = Some(std::time::Instant::now());
     state.frames += 1;
-    let MistComp { headless, space, locked, lock, shot, force_full, start_time, anim, .. } = state;
+    let dnd = state.dnd_at();
+    let ptr = state.seat.get_pointer().unwrap().current_location();
+    let MistComp { headless, space, popups, locked, lock, shot, shot_output: state_shot_output, force_full, start_time, anim, out_seq, out_passes, frames, .. } = state;
     let Some(hl) = headless.as_mut() else { return };
+    let due = std::mem::replace(&mut hl.due, Some(Default::default()));
     let age = if std::mem::take(force_full) { 0 } else { 1 };
     let now = start_time.elapsed();
     for (i, o) in hl.outs.iter_mut().enumerate() {
         let output = o.output.clone();
-        let Ok(mut fb) = hl.renderer.bind(&mut o.buffer) else { continue };
-        let elems = crate::scene::elements(&mut hl.renderer, space, lock.surfaces.get(&output.name()), *locked, &output, anim);
-        let clear = if *locked { [0.0, 0.0, 0.0, 1.0] } else { [0.1, 0.1, 0.1, 1.0] };
-        if let Err(e) = o.damage.render_output(&mut hl.renderer, &mut fb, age, &elems, clear) {
-            tracing::warn!("headless render: {e:?}");
+        // IPC `shot`: the named output, else the first
+        let want = state_shot_output.as_deref().map(|n| n == output.name()).unwrap_or(i == 0);
+        if !(due.as_ref().is_none_or(|d| d.contains(&output.name())) || want && shot.is_some()) {
+            continue;
         }
-        // IPC `shot`: the first output
-        if i == 0 {
+        *out_passes.entry(output.name()).or_insert(0) += 1;
+        let Ok(mut fb) = hl.renderer.bind(&mut o.buffer) else { continue };
+        let elems = crate::scene::elements(&mut hl.renderer, space, lock.surfaces.get(&output.name()), *locked, &output, anim, dnd.as_ref());
+        let elems = crate::scene::view(elems, anim.zoom, crate::scene::pointer_on(space, &output, ptr));
+        let clear = if *locked { [0.0, 0.0, 0.0, 1.0] } else { [0.1, 0.1, 0.1, 1.0] };
+        match o.damage.render_output(&mut hl.renderer, &mut fb, age, &elems, clear) {
+            Ok(r) if r.damage.is_some() => *out_seq.entry(output.name()).or_insert(0) += 1,
+            Ok(_) => {}
+            Err(e) => tracing::warn!("headless render: {e:?}"),
+        }
+        if want {
             if let Some((path, mut reply)) = shot.take() {
                 use std::io::Write;
                 let r = crate::winit::write_shot(&mut hl.renderer, &fb, o.size.into(), &path, false);
@@ -139,15 +171,27 @@ pub fn render(state: &mut MistComp) {
             }
         }
         drop(fb);
-        for l in layer_map_for_output(&output).layers() {
-            l.send_frame(&output, now, Some(Duration::ZERO), |_, _| Some(output.clone()));
-        }
-        if let Some(l) = lock.surfaces.get(&output.name()) {
-            smithay::desktop::utils::send_frames_surface_tree(l.wl_surface(), &output, now, Some(Duration::ZERO), |_, _| Some(output.clone()));
-        }
+        // smithay 0.7 frees the GL textures / EGLImages of destroyed client buffers (and our dropped
+        // textures) only here: without it every closed panel, resized window and dmabuf stayed in memory
+        let _ = smithay::backend::renderer::Renderer::cleanup_texture_cache(&mut hl.renderer);
+        // wp_presentation: shown at this tick (no vblank here)
+        crate::scene::take_feedback(space, lock.surfaces.get(&output.name()), &output).presented::<_, smithay::utils::Monotonic>(
+            smithay::utils::Clock::<smithay::utils::Monotonic>::new().now(),
+            smithay::wayland::presentation::Refresh::fixed(FRAME),
+            *frames,
+            smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback::Kind::empty(),
+        );
+        crate::scene::send_frames(space, lock.surfaces.get(&output.name()), &output, now);
     }
-    if let Some(first) = hl.outs.first().map(|o| o.output.clone()) {
-        space.elements().for_each(|w| w.send_frame(&first, now, Some(Duration::ZERO), |_, _| Some(first.clone())));
+    if let (Some((icon, _)), Some(first)) = (dnd.as_ref(), hl.outs.first()) {
+        smithay::desktop::utils::send_frames_surface_tree(icon, &first.output, now, Some(Duration::ZERO), |_, _| Some(first.output.clone()));
     }
     space.refresh();
+    popups.cleanup();
+    state.fifo_signal();
+}
+
+/// A frame tick is armed (FIFO waiters are released by it, not by the idle loop).
+pub fn frame_pending(state: &MistComp) -> bool {
+    state.headless.as_ref().is_some_and(|h| h.tick_armed)
 }

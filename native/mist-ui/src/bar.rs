@@ -107,6 +107,21 @@ pub fn draw(c: &mut Canvas, t: &mut Text, s: &BarState, hover: Option<&Hit>, pre
     draw_with(c, t, s, hover, pressed, stats_open, &mut |c, ti, x, y, o| tray_px(c, ti, x, y, o), &[])
 }
 
+/// The window title without the app name the bar already shows in bold ("Start — Zen Browser" -> "Start";
+/// a title that is only the app name -> nothing).
+pub fn short_title<'a>(title: &'a str, app: &str) -> &'a str {
+    let t = title.trim();
+    if app.is_empty() || t.eq_ignore_ascii_case(app) {
+        return if app.is_empty() { t } else { "" };
+    }
+    for sep in [" — ", " – ", " - ", " | ", " · "] {
+        if let Some(rest) = t.strip_suffix(app).and_then(|r| r.strip_suffix(sep)) {
+            return rest.trim_end();
+        }
+    }
+    t
+}
+
 // fades: opacity of items in the middle of a hover / press transition
 pub fn draw_with(c: &mut Canvas, t: &mut Text, s: &BarState, hover: Option<&Hit>, pressed: Option<&Hit>, stats_open: bool, tray_px: &mut dyn FnMut(&mut Canvas, &TrayItem, f32, f32, f32), fades: &[(Hit, f32)]) -> Vec<Item> {
     c.clear();
@@ -124,9 +139,10 @@ pub fn draw_with(c: &mut Canvas, t: &mut Text, s: &BarState, hover: Option<&Hit>
     x += 26.0 + 14.0;
     let name = if s.show_win { s.app.as_str() } else { "Pulpit" };
     x += c.text(t, x, cy, name, &Style::ui(13.0, 700.0), T1) + 14.0;
-    if s.show_win && !s.title.is_empty() {
+    let shown = short_title(&s.title, &s.app);
+    if s.show_win && !shown.is_empty() {
         let st = Style::ui(13.0, 500.0);
-        let title = elide(t, &s.title, &st, 420.0);
+        let title = elide(t, shown, &st, 420.0);
         c.text(t, x, cy, &title, &st, T2);
     }
 
@@ -247,4 +263,17 @@ pub fn elide(t: &mut Text, s: &str, st: &Style, max: f32) -> String {
         if t.width(&cand, st) <= max { lo = mid } else { hi = mid - 1 }
     }
     chars[..lo].iter().collect::<String>() + "…"
+}
+
+#[cfg(test)]
+mod title_tests {
+    use super::short_title;
+    #[test]
+    fn strips_app_suffix() {
+        assert_eq!(short_title("Start — Zen Browser", "Zen Browser"), "Start");
+        assert_eq!(short_title("README.md - Visual Studio Code", "Visual Studio Code"), "README.md");
+        assert_eq!(short_title("Zen Browser", "Zen Browser"), "");
+        assert_eq!(short_title("Zen Browser — notes", "Zen Browser"), "Zen Browser — notes");
+        assert_eq!(short_title("kitty", ""), "kitty");
+    }
 }

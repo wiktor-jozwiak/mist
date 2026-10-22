@@ -11,7 +11,7 @@ use smithay::{
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel, wayland_server::protocol::wl_surface::WlSurface,
     },
-    utils::{Logical, Point, Rectangle, Size},
+    utils::{Logical, Point, Rectangle, Serial, Size},
     wayland::{compositor, shell::xdg::SurfaceCachedState},
 };
 use std::cell::RefCell;
@@ -122,6 +122,17 @@ impl PointerGrab<MistComp> for ResizeSurfaceGrab {
         let max_width = if max_size.w == 0 { i32::MAX } else { max_size.w };
         let max_height = if max_size.h == 0 { i32::MAX } else { max_size.h };
 
+        // the top edge stops at the usable area's top (title bar included), not over the bar / under the island
+        if self.edges.intersects(ResizeEdge::TOP) {
+            let r = self.initial_rect;
+            let mid = Point::from(((r.loc.x + r.size.w / 2) as f64, r.loc.y as f64));
+            if let Some(top) = data.usable_top(mid) {
+                let room = r.loc.y + r.size.h - (top + data.bar_h(&self.window));
+                // already over it (placed there by the client): it may shrink, not grow further up
+                new_window_height = new_window_height.min(room.max(r.size.h));
+            }
+        }
+
         self.last_window_size = Size::from((
             new_window_width.max(min_width).min(max_width),
             new_window_height.max(min_height).min(max_height),
@@ -169,11 +180,8 @@ impl PointerGrab<MistComp> for ResizeSurfaceGrab {
     ) {
         handle.button(data, event);
 
-        // The button is a button code as defined in the
-        // Linux kernel's linux/input-event-codes.h header file, e.g. BTN_LEFT.
-        const BTN_LEFT: u32 = 0x110;
-
-        if !handle.current_pressed().contains(&BTN_LEFT) {
+        // the button that started the drag (evdev code: BTN_LEFT, BTN_RIGHT for Super + right drag) is up
+        if !handle.current_pressed().contains(&self.start_data.button) {
             // No more buttons are pressed, release the grab.
             handle.unset_grab(self, data, event.serial, event.time, true);
 
@@ -183,12 +191,13 @@ impl PointerGrab<MistComp> for ResizeSurfaceGrab {
                 state.size = Some(self.last_window_size);
             });
 
-            xdg.send_pending_configure();
+            let serial = xdg.send_pending_configure();
 
             ResizeSurfaceState::with(xdg.wl_surface(), |state| {
                 *state = ResizeSurfaceState::WaitingForLastCommit {
                     edges: self.edges,
                     initial_rect: self.initial_rect,
+                    serial,
                 };
             });
         }
@@ -304,6 +313,8 @@ enum ResizeSurfaceState {
         edges: ResizeEdge,
         /// The initial window size and location.
         initial_rect: Rectangle<i32, Logical>,
+        /// the final configure (Resizing unset)
+        serial: Option<Serial>,
     },
 }
 
@@ -320,12 +331,14 @@ impl ResizeSurfaceState {
         })
     }
 
-    fn commit(&mut self) -> Option<(ResizeEdge, Rectangle<i32, Logical>)> {
+    fn commit(&mut self, acked: Option<Serial>) -> Option<(ResizeEdge, Rectangle<i32, Logical>)> {
         match *self {
             Self::Resizing { edges, initial_rect } => Some((edges, initial_rect)),
-            Self::WaitingForLastCommit { edges, initial_rect } => {
-                // The resize is done, let's go back to idle
-                *self = Self::Idle;
+            Self::WaitingForLastCommit { edges, initial_rect, serial } => {
+                // back to idle once the client committed the final configure (or none was sent)
+                if serial.is_none_or(|f| acked.is_some_and(|a| a.is_no_older_than(&f))) {
+                    *self = Self::Idle;
+                }
 
                 Some((edges, initial_rect))
             }
@@ -334,8 +347,8 @@ impl ResizeSurfaceState {
     }
 }
 
-/// Should be called on `WlSurface::commit`
-pub fn handle_commit(space: &mut Space<Window>, surface: &WlSurface) -> Option<()> {
+/// Should be called on `WlSurface::commit`. Some(window) when this commit ended an interactive resize.
+pub fn handle_commit(space: &mut Space<Window>, surface: &WlSurface) -> Option<Window> {
     let window = space
         .elements()
         .find(|w| w.wl_surface().as_deref() == Some(surface))
@@ -343,26 +356,33 @@ pub fn handle_commit(space: &mut Space<Window>, surface: &WlSurface) -> Option<(
 
     let mut window_loc = space.element_location(&window)?;
     let geometry = window.geometry();
+    // the client may commit a frame or two in the old size after the button is released: the resize ends
+    // with the commit of the final configure (its serial acked), the top / left edge anchored until then
+    let acked = compositor::with_states(surface, |st| {
+        st.data_map.get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>().and_then(|d| d.lock().unwrap().current_serial)
+    });
 
+    let mut done = false;
     let new_loc: Point<Option<i32>, Logical> = ResizeSurfaceState::with(surface, |state| {
-        state
-            .commit()
-            .and_then(|(edges, initial_rect)| {
-                // If the window is being resized by top or left, its location must be adjusted
-                // accordingly.
-                edges.intersects(ResizeEdge::TOP_LEFT).then(|| {
-                    let new_x = edges
-                        .intersects(ResizeEdge::LEFT)
-                        .then_some(initial_rect.loc.x + (initial_rect.size.w - geometry.size.w));
+        let waiting = matches!(state, ResizeSurfaceState::WaitingForLastCommit { .. });
+        let r = state.commit(acked);
+        done = waiting && matches!(state, ResizeSurfaceState::Idle);
+        r.and_then(|(edges, initial_rect)| {
+            // If the window is being resized by top or left, its location must be adjusted
+            // accordingly.
+            edges.intersects(ResizeEdge::TOP_LEFT).then(|| {
+                let new_x = edges
+                    .intersects(ResizeEdge::LEFT)
+                    .then_some(initial_rect.loc.x + (initial_rect.size.w - geometry.size.w));
 
-                    let new_y = edges
-                        .intersects(ResizeEdge::TOP)
-                        .then_some(initial_rect.loc.y + (initial_rect.size.h - geometry.size.h));
+                let new_y = edges
+                    .intersects(ResizeEdge::TOP)
+                    .then_some(initial_rect.loc.y + (initial_rect.size.h - geometry.size.h));
 
-                    (new_x, new_y).into()
-                })
+                (new_x, new_y).into()
             })
-            .unwrap_or_default()
+        })
+        .unwrap_or_default()
     });
 
     if let Some(new_x) = new_loc.x {
@@ -374,8 +394,8 @@ pub fn handle_commit(space: &mut Space<Window>, surface: &WlSurface) -> Option<(
 
     if new_loc.x.is_some() || new_loc.y.is_some() {
         // If TOP or LEFT side of the window got resized, we have to move it
-        space.map_element(window, window_loc, false);
+        space.map_element(window.clone(), window_loc, false);
     }
 
-    Some(())
+    done.then_some(window)
 }

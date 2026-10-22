@@ -128,7 +128,7 @@ caveats: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ### Languages and monitors
 
-The interface speaks **Polski, English, Deutsch and Español**. Pick one in *Customise desktop* (right click on
+The interface speaks **Polski, English, Deutsch, Español and Français**. Pick one in *Customise desktop* (right click on
 the desktop clock) → Appearance → Language, or set `MIST_LANG=en`. *Automatic* follows `$LANG` and falls back
 to English. Translations live in one table, [native/assets/i18n.tsv](native/assets/i18n.tsv): one row per
 string, one column per language. A new language is one more column.
@@ -182,6 +182,9 @@ git clone https://github.com/wiktor-jozwiak/mist ~/src/mist
 
 `native/install.sh` installs `mist-ui-bin`, `mist-wall-bin`, `mist-comp` and, on the first run, the guard
 `mist-ui` into `~/.local/bin`. Tagged releases also carry prebuilt binaries.
+
+To run Mist on its own compositor, `native/mist-comp/session/install-session.sh [BRANCH] [--greeter]` updates
+the checkout, builds and installs everything and adds a **Mist** session to the login screen (Hyprland stays).
 
 Then add [examples/hyprland/mist.lua](examples/hyprland/mist.lua) to your Hyprland config (autostart,
 key bindings, blur rules) and remove other bars, notification daemons and polkit agents.

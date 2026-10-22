@@ -1,3 +1,13 @@
+<div align="right">
+  🌐 <b>Seleccionar idioma:</b>
+  <a href="../../README.md">English</a> ·
+  <a href="README.pl.md">Polski</a> ·
+  <a href="README.de.md">Deutsch</a> ·
+  <a href="README.es.md"><b>Español</b></a> ·
+  <a href="README.zh-CN.md">简体中文</a> ·
+  <a href="README.ja.md">日本語</a>
+</div>
+
 <div align="center">
 
 <img src="../img/banner.svg" alt="Mist" width="100%">
@@ -127,7 +137,7 @@ salvedades: [docs/BENCHMARKS.md](../BENCHMARKS.md).
 
 ### Idiomas y monitores
 
-La interfaz habla **polaco, inglés, alemán y español**. Elígelo en *Personalizar escritorio* (clic derecho en el
+La interfaz habla **polaco, inglés, alemán, español y francés**. Elígelo en *Personalizar escritorio* (clic derecho en el
 reloj del escritorio) → Apariencia → Idioma, o con `MIST_LANG=es`. *Automático* sigue `$LANG` y si no, inglés.
 Las traducciones están en una tabla, [native/assets/i18n.tsv](../../native/assets/i18n.tsv): una fila por texto,
 una columna por idioma. Un idioma nuevo es una columna más.

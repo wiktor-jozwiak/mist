@@ -119,6 +119,95 @@ pub struct PaneSurf {
     configured: bool,
     dirty: bool,
     canvas: Canvas,
+    swap: Swap,
+}
+
+/// Two buffers kept for one big surface (a full-monitor pane, 8 MB each) and used in turn: a frame converts
+/// and copies only the rows that differ from the buffer's old content, and damages only what differs from
+/// that or from the frame on screen, so the compositor uploads that part of its texture (one per buffer).
+#[derive(Default)]
+pub struct Swap {
+    bufs: Vec<smithay_client_toolkit::shm::slot::Buffer>,
+    size: (i32, i32),
+    last: Option<usize>,
+    row: Vec<u32>,
+}
+
+impl Swap {
+    /// false: no buffer free (both still held by the compositor), the caller commits a new one
+    fn commit(&mut self, pool: &mut SlotPool, layer: &LayerSurface, canvas: &Canvas) -> bool {
+        let (w, h) = (canvas.pm.width() as i32, canvas.pm.height() as i32);
+        if self.size != (w, h) {
+            self.bufs.clear();
+            self.last = None;
+            self.size = (w, h);
+        }
+        let free = (0..self.bufs.len()).find(|&i| Some(i) != self.last && self.bufs[i].canvas(pool).is_some());
+        let s = layer.wl_surface();
+        let i = match free {
+            Some(i) => i,
+            None if self.bufs.len() < 2 => {
+                let Ok((b, data)) = pool.create_buffer(w, h, w * 4, wl_shm::Format::Argb8888) else { return false };
+                canvas.to_bgra(data);
+                self.bufs.push(b);
+                let i = self.bufs.len() - 1;
+                s.damage_buffer(0, 0, w, h);
+                let _ = self.bufs[i].attach_to(s);
+                layer.commit();
+                self.last = Some(i);
+                count("commits", 1);
+                return true;
+            }
+            None => return false,
+        };
+        let t0 = Instant::now();
+        let n = w as usize;
+        // the frame on screen (the other buffer, read only while the compositor may read it too)
+        let shown: Option<*const u32> = self.last.map(|l| pool.raw_data_mut(&self.bufs[l].slot()).as_ptr() as *const u32);
+        let dst = pool.raw_data_mut(&self.bufs[i].slot());
+        let (_, dst, _) = unsafe { dst.align_to_mut::<u32>() };
+        let (_, src, _) = unsafe { canvas.pm.data().align_to::<u32>() };
+        self.row.resize(n, 0);
+        let (mut x0, mut x1, mut y0, mut y1) = (n, 0usize, usize::MAX, 0usize);
+        for y in 0..h as usize {
+            let row = &src[y * n..(y + 1) * n];
+            for (d, px) in self.row.iter_mut().zip(row) {
+                *d = (px & 0xFF00FF00) | ((px & 0x000000FF) << 16) | ((px & 0x00FF0000) >> 16);
+            }
+            let old = &mut dst[y * n..(y + 1) * n];
+            let on_screen = shown.map(|p| unsafe { std::slice::from_raw_parts(p.add(y * n), n) });
+            let differs = |a: &[u32]| -> Option<(usize, usize)> {
+                let f = a.iter().zip(&self.row).position(|(a, b)| a != b)?;
+                let l = n - 1 - a.iter().rev().zip(self.row.iter().rev()).position(|(a, b)| a != b).unwrap_or(0);
+                Some((f, l))
+            };
+            let mut span = differs(old);
+            if let Some(d) = on_screen.and_then(|o| differs(o)) {
+                span = Some(span.map_or(d, |s| (s.0.min(d.0), s.1.max(d.1))));
+            }
+            if let Some((f, l)) = span {
+                old.copy_from_slice(&self.row);
+                x0 = x0.min(f);
+                x1 = x1.max(l);
+                y0 = y0.min(y);
+                y1 = y;
+            }
+        }
+        count("commit_us", t0.elapsed().as_micros() as u64);
+        if y0 == usize::MAX {
+            // nothing differs from the frame on screen nor from this buffer: keep the shown one
+            count("commits_same", 1);
+            layer.commit();
+            return true;
+        }
+        count("commits", 1);
+        count("swap_px", ((x1 - x0 + 1) * (y1 - y0 + 1)) as u64);
+        s.damage_buffer(x0 as i32, y0 as i32, (x1 - x0 + 1) as i32, (y1 - y0 + 1) as i32);
+        let _ = self.bufs[i].attach_to(s);
+        layer.commit();
+        self.last = Some(i);
+        true
+    }
 }
 
 pub struct App {
@@ -142,12 +231,17 @@ pub struct App {
     pub apps: Apps,
     pub st: BarState,
     pub hypr: Hypr,
+    /// mist-comp's mistcover for the weather card (None: not on mist-comp, computed from the windows)
+    pub card_cover: Option<bool>,
     pub ui_popup: (String, String),
     pub tray_items: Vec<tray::Item>,
     pub tray_req: std::sync::mpsc::Sender<Req>,
     fades: Vec<(usize, Hit, f32, f32, Instant)>,
     pending_menu: Option<(String, usize, i32, i32)>,
     dock_hide_at: Option<Instant>,
+    /// app key + time of the last left-click launch from the dock: a second click before its window shows
+    /// (Zen takes 1-2 s) would start it again, and the browser opens a second window
+    dock_launched: Option<(String, Instant)>,
     dock_show_at: Option<Instant>,
     island_surf: Option<IslandSurf>,
     pub island: crate::island::Island,
@@ -212,12 +306,14 @@ impl App {
             apps: Apps::load(),
             st: BarState { net: "ethernet".into(), ..Default::default() },
             hypr: Hypr::default(),
+            card_cover: None,
             ui_popup: (String::new(), String::new()),
             tray_items: Vec::new(),
             tray_req,
             fades: Vec::new(),
             pending_menu: None,
             dock_hide_at: None,
+            dock_launched: None,
             dock_show_at: None,
             island_surf: None,
             island: crate::island::Island::new(),
@@ -382,6 +478,33 @@ impl App {
     pub fn intent_due(&self) -> Option<Instant> {
         [self.desk.intent.due(), self.desk.wx.intent.due()].into_iter().flatten().min()
     }
+    /// The weather card 85 % under windows of the shown workspace (mist-wall's rule for its sky): its
+    /// carousel waits, nobody reads it through a window's blur
+    fn card_covered(&mut self) -> bool {
+        if let Some(c) = self.card_cover {
+            return c;
+        }
+        let mon = primary_monitor();
+        let Some((_, mx, my)) = self.hypr.mon_pos.iter().find(|m| m.0 == mon).cloned() else { return false };
+        let Some(ws) = self.hypr.monitors.iter().find(|m| m.1 == mon).map(|m| m.2) else { return false };
+        let (cx, cy) = self.desk.card_at(&mut self.text);
+        let (x, y, w, h) = ((mx + cx as i64) as f64, (my + cy as i64) as f64, crate::desktop::WX_W as f64, crate::desktop::BENTO_H as f64);
+        let rects: Vec<_> = self.hypr.clients.iter().filter(|c| c.ws_id == ws).map(|c| c.rect).collect();
+        if rects.is_empty() {
+            return false;
+        }
+        let mut n = 0;
+        for i in 0..32 {
+            let px = x + (i as f64 + 0.5) * w / 32.0;
+            for j in 0..18 {
+                let py = y + (j as f64 + 0.5) * h / 18.0;
+                if rects.iter().any(|r| px >= r.0 as f64 && px < (r.0 + r.2) as f64 && py >= r.1 as f64 && py < (r.1 + r.3) as f64) {
+                    n += 1;
+                }
+            }
+        }
+        n * 100 >= 576 * 85
+    }
     pub fn intent_tick(&mut self) {
         if self.desk.intent.settle() {
             self.desk.dirty = true;
@@ -400,6 +523,7 @@ impl App {
 
     pub fn slow_tick(&mut self) {
         self.idle.reap();
+        self.idle_hold();
         // the screenshot thumbnail goes after 6 s (not while hovered)
         if self.thumb.as_ref().map(|t| t.0.ptr.0 < 0.0 && t.5.elapsed().as_secs() >= 6).unwrap_or(false) {
             self.thumb = None;
@@ -425,7 +549,7 @@ impl App {
         let outs = self.outs();
         self.wall.slow_tick(&self.compositor, &self.layer_shell, &self.qh, &outs);
         let n = crate::wxcard::Wx::n_insights(&self.desk.weather, &self.desk.garmin, &self.desk.cfg);
-        if self.desk.wx.tick(n) {
+        if !self.card_covered() && self.desk.wx.tick(n) {
             self.desk.card_dirty = true;
         }
         let (ringing, call) = { let s = self.phone.st.lock().unwrap(); (s.ringing(), s.call().is_some()) };
@@ -460,6 +584,12 @@ impl App {
                 self.island_dirty = true;
             }
         }
+    }
+    /// Idle held off: a D-Bus inhibitor, or a fullscreen window while a player plays.
+    fn idle_hold(&mut self) {
+        let held = self.idle.dbus > 0 || (self.island.fullscreen && self.island.playing());
+        let qh = self.qh.clone();
+        self.idle.set_held(held, &qh);
     }
     pub fn tick(&mut self) {
         self.snap_timers();
@@ -659,7 +789,7 @@ impl App {
         layer.commit();
         let mut p = p;
         p.opened(&sname);
-        self.pane = Some(PaneSurf { p, layer, screen: sname, configured: false, dirty: true, canvas: Canvas::new(1, 1) });
+        self.pane = Some(PaneSurf { p, layer, screen: sname, configured: false, dirty: true, canvas: Canvas::new(1, 1), swap: Swap::default() });
         self.set_start_open(start);
         self.mark_all();
         self.dock_rebuild();
@@ -688,6 +818,13 @@ impl App {
                 }
             }
             self.set_start_open(false);
+            // the shared shm pool grew to the pane's full-monitor buffers and never shrinks: a small new one,
+            // the old memfd (tens of MB, mapped here and in the compositor) goes with its last buffer
+            if self.pool.len() > 4 << 20 {
+                if let Ok(p) = SlotPool::new(1920 * 40 * 4, &self.shm) {
+                    self.pool = p;
+                }
+            }
             self.mark_all();
             self.dock_rebuild();
             // the full-monitor buffers (~8 MB each) and the pane's data go back to the OS, not glibc's arena
@@ -752,6 +889,10 @@ impl App {
                 let scr = self.pane.as_ref().map(|p| p.screen.clone()).unwrap_or_default();
                 self.ui_toggle(name, &scr);
             }
+            Act::Open(name, page) => {
+                let scr = self.pane.as_ref().map(|p| p.screen.clone()).unwrap_or_else(|| self.focused_screen());
+                self.pane_open(name, page, &scr);
+            }
         }
     }
     fn draw_pane(&mut self) {
@@ -770,7 +911,11 @@ impl App {
             *d.entry("pane").or_insert(0) += 1;
             *d.entry("pane_ms").or_insert(0) += ms;
         });
-        Self::commit(&mut self.pool, &p.layer, &c);
+        if !p.swap.commit(&mut self.pool, &p.layer, &c) {
+            // both buffers still held: a one-off buffer; the pair starts over (its idea of the shown frame is gone)
+            p.swap = Swap::default();
+            Self::commit(&mut self.pool, &p.layer, &c);
+        }
         p.canvas = c;
     }
     fn pane_pointer(&mut self, e: &PointerEvent) {
@@ -823,6 +968,16 @@ impl App {
                 self.pane_close();
                 self.pane_open_box(Box::new(DragPane(drag)), &scr);
                 self.snap_poll(true);
+            }
+            // mist-comp sends the cursor while a window is dragged: no polling needed
+            ("mistdrag", "move") => {
+                if self.snap.poll.is_some() {
+                    self.snap_poll(false);
+                }
+                let (x, y) = (num(1), num(2));
+                if !x.is_nan() && !y.is_nan() {
+                    self.snap_cursor(x, y);
+                }
             }
             ("mistdrag", "end") => {
                 self.snap_poll(false);
@@ -1235,6 +1390,13 @@ impl App {
                     }
                 }
             }
+            // the stage: a card turned to its settings scrolls them (wheel notch 40 px, touchpad as it moves)
+            PointerEventKind::Axis { vertical, .. } => {
+                let dy = if vertical.discrete != 0 { vertical.discrete as f32 * 40.0 } else { vertical.absolute as f32 };
+                if dy != 0.0 && self.desk.sheet_wheel(dy) {
+                    self.desk.dirty = true;
+                }
+            }
             _ => {}
         }
         let _ = p;
@@ -1297,7 +1459,7 @@ impl App {
         let Some(isf) = self.island_surf.as_mut() else { return };
         let mut cx = crate::island::Ctx { t: &mut self.text, icons: &mut self.icons, imgs: &mut self.imgs, phone: &st, now: crate::data::now() };
         let t0 = Instant::now();
-        self.island.draw(&mut isf.canvas, &mut cx, ringing, call);
+        let damage = self.island.draw(&mut isf.canvas, &mut cx, ringing, call);
         let us = t0.elapsed().as_micros() as u64;
         DRAWS.with(|d| *d.borrow_mut().entry("island_us").or_insert(0) += us);
         drop(st);
@@ -1320,7 +1482,8 @@ impl App {
             isf.focus_kbd = self.island.replying;
             isf.layer.set_keyboard_interactivity(if self.island.replying { KeyboardInteractivity::OnDemand } else { KeyboardInteractivity::None });
         }
-        Self::commit(&mut self.pool, &isf.layer, &isf.canvas);
+        // only the shape's box (old and new) changed: the compositor recomposites that, not 560x240
+        Self::commit_box(&mut self.pool, &isf.layer, &isf.canvas, damage);
     }
 
     // a frame of the equalizer alone: its box repainted over the last frame, only that box damaged
@@ -1355,6 +1518,7 @@ impl App {
         let mode = self.island_mode();
         match e.kind {
             PointerEventKind::Enter { serial } => {
+                crate::snap::keep_below_bar();
                 let shape = if mode == "idle" || mode == "glance" || self.island.ev.as_ref().map(|e| e.act != crate::island::Act::None).unwrap_or(false) { wp_cursor_shape_device_v1::Shape::Pointer } else { wp_cursor_shape_device_v1::Shape::Default };
                 self.set_cursor(serial, shape);
                 self.island.set_hover(true, mode);
@@ -1673,12 +1837,28 @@ impl App {
                 }
             }
             // test hook: a left click (or `wheel <d>`) at x y in the popup's surface coordinates
-            ("ui", "click") | ("ui", "wheel") => {
+            // `rclick x y` the right button; `drag x y x2 y2 [hold]` press, move in steps, release (moves end at x2 y2)
+            ("ui", "click") | ("ui", "wheel") | ("ui", "rclick") | ("ui", "drag") => {
+                use crate::pane::Ptr;
                 let (x, y) = (a(0).parse::<f32>().unwrap_or(0.0), a(1).parse::<f32>().unwrap_or(0.0));
-                let evs = if r.func == "wheel" { vec![crate::pane::Ptr::Motion, crate::pane::Ptr::Wheel(a(2).parse().unwrap_or(1.0))] } else { vec![crate::pane::Ptr::Motion, crate::pane::Ptr::Press(0x110), crate::pane::Ptr::Release(0x110)] };
+                let evs: Vec<(Ptr, f32, f32)> = match r.func.as_str() {
+                    "wheel" => vec![(Ptr::Motion, x, y), (Ptr::Wheel(a(2).parse().unwrap_or(1.0)), x, y)],
+                    "rclick" => vec![(Ptr::Motion, x, y), (Ptr::Press(0x111), x, y), (Ptr::Release(0x111), x, y)],
+                    "drag" => {
+                        let (x2, y2) = (a(2).parse::<f32>().unwrap_or(x), a(3).parse::<f32>().unwrap_or(y));
+                        let mut v = vec![(Ptr::Motion, x, y), (Ptr::Press(0x110), x, y)];
+                        v.extend((1..=8).map(|i| (Ptr::Motion, x + (x2 - x) * i as f32 / 8.0, y + (y2 - y) * i as f32 / 8.0)));
+                        // `drag x y x2 y2 hold`: no release (a frame mid-drag; Esc cancels)
+                        if a(4) != "hold" {
+                            v.push((Ptr::Release(0x110), x2, y2));
+                        }
+                        v
+                    }
+                    _ => vec![(Ptr::Motion, x, y), (Ptr::Press(0x110), x, y), (Ptr::Release(0x110), x, y)],
+                };
                 match self.pane.is_some() {
                     true => {
-                        for ev in evs {
+                        for (ev, x, y) in evs {
                             let Some(p) = self.pane.as_mut() else { break };
                             let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl, st: &self.st, players: &self.island.players, phone_name: &self.island.phone_name, wx: &self.desk.weather };
                             let act = p.p.pointer(ev, x, y, &mut cx);
@@ -1777,10 +1957,28 @@ impl App {
         let (wi, hi) = (canvas.pm.width() as i32, canvas.pm.height() as i32);
         Self::commit_box(pool, layer, canvas, (0, 0, wi, hi));
     }
-    // the whole canvas into a new buffer, `damage` (buffer pixels) marked as changed
+    // the whole canvas into a new buffer, `damage` (buffer pixels) marked as changed. The same pixels as the
+    // buffer on screen: a bare commit (pending surface state still applies), no buffer, no damage, so the
+    // compositor has nothing to redraw (a poll that changed nothing shown costs no frame)
     fn commit_box(pool: &mut SlotPool, layer: &LayerSurface, canvas: &Canvas, damage: (i32, i32, i32, i32)) {
         let (wi, hi) = (canvas.pm.width() as i32, canvas.pm.height() as i32);
         let t0 = Instant::now();
+        // the object id, not the protocol number: a new surface reusing a number is a different key
+        let id = wayland_client::Proxy::id(layer.wl_surface());
+        let sum = (pixel_hash(canvas.pm.data()), wi, hi);
+        let same = SHOWN.with(|m| {
+            let mut m = m.borrow_mut();
+            // popups come and go: forget them all now and then (the next frame of each is simply sent)
+            if m.len() > 256 {
+                m.clear();
+            }
+            m.insert(id, sum) == Some(sum)
+        });
+        if same {
+            count("commits_same", 1);
+            layer.commit();
+            return;
+        }
         let Ok((buffer, data)) = pool.create_buffer(wi, hi, wi * 4, wl_shm::Format::Argb8888) else { return };
         canvas.to_bgra(data);
         count("commit_us", t0.elapsed().as_micros() as u64);
@@ -1938,10 +2136,19 @@ impl App {
                     self.open_dock_menu(i, &app);
                     return;
                 }
-                if button == BTN_MIDDLE || app.wins.is_empty() {
+                if button == BTN_MIDDLE {
                     launch(&app.exec);
                     return;
                 }
+                if app.wins.is_empty() {
+                    if self.dock_launched.as_ref().is_some_and(|(k, t)| *k == key && t.elapsed().as_secs() < 8) {
+                        return;
+                    }
+                    self.dock_launched = Some((key, Instant::now()));
+                    launch(&app.exec);
+                    return;
+                }
+                self.dock_launched = None;
                 // more than one window: pick one (Windows taskbar thumbnails)
                 if app.wins.len() > 1 {
                     self.open_winpick(i, &app);
@@ -2159,6 +2366,7 @@ impl App {
         let (x, _y) = e.position;
         match e.kind {
             PointerEventKind::Enter { serial } => {
+                crate::snap::keep_below_bar();
                 self.set_cursor(serial, wp_cursor_shape_device_v1::Shape::Pointer);
                 let h = Self::hit_at(&self.bars[i], x);
                 self.set_hover(i, h);
@@ -2406,6 +2614,10 @@ fn home() -> String {
 }
 pub fn spawn(argv: &[&str]) {
     use std::os::unix::process::CommandExt;
+    // `hyprctl eval` commands (switcher::hypr and the like): the socket, no process
+    if let ["hyprctl", "eval", lua] = argv {
+        return crate::sys::hypr_eval(lua);
+    }
     let mut c = std::process::Command::new(argv[0]);
     c.args(&argv[1..]).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).process_group(0);
     if let Ok(mut ch) = c.spawn() {
@@ -2418,7 +2630,7 @@ pub fn sh(cmd: &str) {
     spawn(&["sh", "-c", cmd]);
 }
 pub fn hypr(lua: &str) {
-    spawn(&["hyprctl", "eval", lua]);
+    crate::sys::hypr_eval(lua);
 }
 fn focus_win(addr: &str) {
     let a = if addr.starts_with("0x") { addr.to_string() } else { format!("0x{addr}") };
@@ -2436,6 +2648,13 @@ pub fn launch(exec: &str) {
 // ---------------------------------------------------------------- messages from the data threads
 impl App {
     pub fn on_msg(&mut self, m: Msg) {
+        // the island draws none of these (its frame is ~0.1-0.5 ms): Stats alone came every 2 s, the same Audio
+        // state again on every pactl stream event; Hypr only for fullscreen (checked in its arm)
+        let island_too = match &m {
+            Msg::Stats(..) | Msg::Tray(..) | Msg::Pins | Msg::Cursor(..) | Msg::Wall(..) | Msg::WinThumb(..) | Msg::Lock | Msg::IdleCfg | Msg::Polkit(..) | Msg::Net(..) | Msg::Bt(..) | Msg::Hypr(..) => false,
+            Msg::Audio(a) => *a != self.island.audio,
+            _ => true,
+        };
         // the bars and the dock draw only st, hypr, the tray and the popup: these messages touch none of it
         // (with music on, Audio + Players alone redrew both bars and the dock ~8 times a second)
         let bars_too = !matches!(&m, Msg::Players(..) | Msg::Audio(..) | Msg::Data(..) | Msg::Cursor(..) | Msg::HyprEv(..) | Msg::Note(..) | Msg::Phone2(..) | Msg::Profile(..) | Msg::Sys(..) | Msg::NmLine(..) | Msg::BtDevs(..) | Msg::WinThumb(..));
@@ -2464,6 +2683,7 @@ impl App {
             Msg::Cursor(..) => "Cursor",
             Msg::Wall(..) => "Wall",
             Msg::Lock => "Lock",
+            Msg::IdleInhibit(..) => "IdleInhibit",
             Msg::IdleCfg => "IdleCfg",
             Msg::Polkit(..) => "Polkit",
             Msg::Shot(..) => "Shot",
@@ -2476,7 +2696,12 @@ impl App {
                 self.dock_rebuild();
                 // only real fullscreen (mode 2) on the island's monitor hides the idle pill
                 let mon = self.hypr.monitors.iter().find(|m| m.1 == primary_monitor()).map(|m| m.2);
-                self.island.fullscreen = self.hypr.clients.iter().any(|c| Some(c.ws_id) == mon && c.fullscreen == 2);
+                let fs = self.hypr.clients.iter().any(|c| Some(c.ws_id) == mon && c.fullscreen == 2);
+                if fs != self.island.fullscreen {
+                    self.island.fullscreen = fs;
+                    self.island_dirty = true;
+                }
+                self.island.focus_class = self.hypr.clients.iter().find(|c| c.focus == 0).map(|c| c.class.to_lowercase()).unwrap_or_default();
             }
             Msg::Net(n) => self.st.net = n,
             Msg::Bt(on, dev) => {
@@ -2518,6 +2743,10 @@ impl App {
                 }
             }
             Msg::Lock => self.idle.lock(None),
+            Msg::IdleInhibit(n) => {
+                self.idle.dbus = n;
+                self.idle_hold();
+            }
             Msg::Polkit(ev) => self.on_polkit(ev),
             Msg::Shot(f) => self.thumb_show(f),
             Msg::WinThumb(a, pm) => {
@@ -2585,6 +2814,13 @@ impl App {
             },
             Msg::Cursor(x, y) => self.snap_cursor(x, y),
             Msg::HyprEv(n, d) if n == "mistdrag" || n == "mistsnap" => self.snap_event(&n, &d),
+            // mist-comp: a desktop layer under windows (OUTPUT,NAMESPACE,COVERED,FULLSCREEN)
+            Msg::HyprEv(n, d) if n == "mistcover" => {
+                let f: Vec<&str> = d.split(',').collect();
+                if f.len() == 4 && f[1] == "mist-desktop-card" && f[0] == primary_monitor() {
+                    self.card_cover = Some(f[2] == "1");
+                }
+            }
             Msg::HyprEv(n, d) => {
                 let active = self.hypr.clients.iter().find(|c| c.focus == 0).map(|c| c.address.clone()).unwrap_or_default();
                 self.island.on_hypr(&n, &d, &self.apps, &self.hypr.clients, &active);
@@ -2603,7 +2839,9 @@ impl App {
         if bars_too {
             self.mark_all();
         }
-        self.island_dirty = true;
+        if island_too {
+            self.island_dirty = true;
+        }
     }
 }
 
@@ -2829,6 +3067,23 @@ wayland_client::delegate_noop!(App: ignore wp_cursor_shape_manager_v1::WpCursorS
 wayland_client::delegate_noop!(App: ignore wp_cursor_shape_device_v1::WpCursorShapeDeviceV1);
 wayland_client::delegate_noop!(App: ignore wp_viewporter::WpViewporter);
 wayland_client::delegate_noop!(App: ignore wp_viewport::WpViewport);
+
+thread_local! {
+    // surface protocol id -> (pixel hash, size) of the buffer last attached
+    static SHOWN: std::cell::RefCell<std::collections::HashMap<wayland_client::backend::ObjectId, (u64, i32, i32)>> = Default::default();
+}
+// fast, not cryptographic: a changed frame differs in its sum (8 bytes at a time, ~10 GB/s)
+fn pixel_hash(d: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325 ^ d.len() as u64;
+    let mut it = d.chunks_exact(8);
+    for c in &mut it {
+        h = (h ^ u64::from_le_bytes(c.try_into().unwrap())).wrapping_mul(0x9e37_79b9_7f4a_7c15).rotate_left(29);
+    }
+    for &b in it.remainder() {
+        h = (h ^ b as u64).wrapping_mul(0x100_0000_01b3);
+    }
+    h
+}
 
 pub fn count(k: &'static str, v: u64) {
     DRAWS.with(|d| *d.borrow_mut().entry(k).or_insert(0) += v);

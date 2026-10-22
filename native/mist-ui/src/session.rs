@@ -23,7 +23,7 @@ const ACTIONS: [Action; 5] = [
     Action { id: "poweroff", icon: "power", t: "Wyłącz", q: "Czy na pewno chcesz teraz wyłączyć komputer?", n: "komputer wyłączy się" },
 ];
 
-fn cmd(id: &str) -> Vec<String> {
+pub fn cmd(id: &str) -> Vec<String> {
     let bin = crate::paths::self_bin();
     let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
     match id {
@@ -45,11 +45,15 @@ pub struct Session {
     hits: Vec<((f32, f32, f32, f32), u8)>, // 0..4 actions, 10 cancel, 11 ok, 20 card
     ptr: (f32, f32),
     pressed_outside: bool,
+    // opened straight at a question (Start's power buttons): cancel closes instead of showing the menu
+    direct: bool,
 }
 
 impl Session {
-    pub fn new() -> Session {
-        Session { sel: 4, ask: None, asked_at: Instant::now(), name: full_name(), h: Anim::new(292.0), hover: None, hits: Vec::new(), ptr: (-1.0, -1.0), pressed_outside: false }
+    // page: an action id with a question ("logout", "reboot", "poweroff") opens on that question
+    pub fn new(page: &str) -> Session {
+        let ask = ACTIONS.iter().position(|a| a.id == page && !a.q.is_empty());
+        Session { sel: ask.unwrap_or(4), ask, asked_at: Instant::now(), name: full_name(), h: Anim::new(if ask.is_some() { 250.0 } else { 292.0 }), hover: None, hits: Vec::new(), ptr: (-1.0, -1.0), pressed_outside: false, direct: ask.is_some() }
     }
     fn left(&self) -> i64 {
         60 - self.asked_at.elapsed().as_secs() as i64
@@ -191,6 +195,7 @@ impl Pane for Session {
             Ptr::Release(_) => match h {
                 None if self.pressed_outside => Act::Close,
                 Some(n) if n < 5 => self.pick(n as usize),
+                Some(10) if self.direct => Act::Close,
                 Some(10) => {
                     self.unask();
                     Act::Redraw
@@ -204,7 +209,7 @@ impl Pane for Session {
     fn key(&mut self, ev: &KeyEvent, _cx: &mut Ctx) -> Act {
         match ev.keysym {
             Keysym::Escape => {
-                if self.ask.is_some() {
+                if self.ask.is_some() && !self.direct {
                     self.unask();
                     Act::Redraw
                 } else {

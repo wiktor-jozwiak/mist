@@ -132,6 +132,7 @@ pub struct Ev {
     pub codes: Vec<String>,
     pub desktop_actions: Vec<(String, String)>,
     pub note_id: u32,
+    pub burst: u32, // notifications of one app in a row shown by this card
 }
 fn info(key: &str, prio: i32, dur: u64, icon: &str, color: Rgba, title: &str, sub: &str) -> Ev {
     Ev { view: "info", key: key.into(), prio, dur, icon: icon.into(), color: Some(color), title: title.into(), sub: sub.into(), value: -1, ..Default::default() }
@@ -194,6 +195,8 @@ pub struct Island {
     submap: String,
     shot_at: Option<Instant>,
     pub fullscreen: bool,
+    pub focus_class: String, // the active window's class: its own notifications don't pop up
+    burst: (String, u32, Option<Instant>), // app, count, last: a run of notifications from one app updates one card
     // devices
     bt_on: Option<bool>,
     bt_devs: Vec<BtDev>,
@@ -231,6 +234,8 @@ pub struct Island {
     eq_pos: Option<(f32, f32, bool)>, // where the view being drawn put the equalizer (view coords), running
     eq_spot: Option<EqSpot>,          // the settled frame's equalizer: redrawn alone (see eq_frame)
     hidden: bool,                     // last frame was hidden under a fullscreen window
+    drawn: (i32, i32, i32, i32),      // window pixels the last frame touched (shape + shadow): cleared and damaged next time
+    shadow_px: Option<([u32; 6], (i32, i32, i32, i32), Vec<u8>)>, // the last shadow (geometry bits, box, pixels): reused at rest
     pub hits: Vec<(f32, f32, f32, f32, Hit)>,
     pub hover_hit: Option<Hit>,
     pub seek_drag: Option<f32>,
@@ -247,11 +252,12 @@ impl Island {
             open_at: None, close_at: None, replying: false, reply: String::new(), players: Vec::new(), pick: None, self_until: None, last_track: String::new(),
             last_playing: false, track_at: None, state_at: None, audio: Audio::default(), audio_seen: false, dev_armed_at: Some(now), vol_recent_until: None,
             layout: String::new(), sharing: false, cast_on: false, share_since: now, share_at: None, submap: String::new(), shot_at: None, fullscreen: false,
+            focus_class: String::new(), burst: (String::new(), 0, None),
             bt_on: None, bt_devs: Vec::new(), bt_low: HashMap::new(), profile: String::new(), caps: false, num: true, cam_busy: false, cam_apps: Vec::new(),
             conn: "full".into(), primary: String::new(), last_call: None, keypad: false, call_at: None, last_note: (String::new(), None),
             weather: Value::Null, calendar: Value::Null, reminded: HashMap::new(), rain_at: None, timer_end: 0.0, timer_total: 0.0, timer_label: String::new(),
             w: Spring::new(120.0, 3.4, 0.3, 0.25), h: Spring::new(30.0, 3.4, 0.3, 0.25), y: Spring::new(5.0, 3.0, 0.32, 0.25), bump_at: None,
-            panes: HashMap::new(), shadow: Anim::new(0.0), eq: [Anim::new(4.0); 4], eq_at: now, eq_pos: None, eq_spot: None, hidden: false, hits: Vec::new(), hover_hit: None, seek_drag: None,
+            panes: HashMap::new(), shadow: Anim::new(0.0), eq: [Anim::new(4.0); 4], eq_at: now, eq_pos: None, eq_spot: None, hidden: false, drawn: (0, 0, WIN_W as i32, WIN_H as i32), shadow_px: None, hits: Vec::new(), hover_hit: None, seek_drag: None,
             phone_name: String::new(), track_h: Anim::new(5.0), note_bar: Anim::new(0.0),
         }
     }
@@ -263,6 +269,10 @@ impl Island {
         }
         if e.dur == 0 {
             e.dur = 3000;
+        }
+        // over a fullscreen game / film only what matters (notifications, prio 2+) comes down
+        if self.fullscreen && e.prio <= 1 && e.view != "notif" {
+            return;
         }
         if self.replying && !(self.ev.as_ref().map(|v| !e.key.is_empty() && v.key == e.key).unwrap_or(false)) {
             self.queue.push(e);
@@ -373,6 +383,14 @@ impl Island {
             self.pick = Some((i + 1) % n);
         }
     }
+    // the player's own window has the focus: its track / play / pause changes are seen there already
+    fn player_in_front(&self) -> bool {
+        let f = self.focus_class.as_str();
+        !f.is_empty() && self.player().map(|p| {
+            let (bus, ent) = (p.bus.to_lowercase(), p.entry.to_lowercase());
+            bus.trim_start_matches("org.mpris.mediaplayer2.").split('.').next() == Some(f) || ent == f || p.identity.to_lowercase() == f
+        }).unwrap_or(false)
+    }
     pub fn mine(&mut self) {
         self.self_until = Some(Instant::now() + Duration::from_millis(1200));
     }
@@ -444,7 +462,7 @@ impl Island {
                 let k = p.title.clone() + "|" + &p.artist;
                 if !p.title.is_empty() && k != self.last_track {
                     self.last_track = k;
-                    if self.armed && p.playing && !self.expanded {
+                    if self.armed && p.playing && !self.expanded && !self.player_in_front() {
                         self.push(Ev { view: "track", key: "track".into(), prio: 1, dur: 3500, value: -1, ..Default::default() });
                         changed = true;
                     }
@@ -457,7 +475,7 @@ impl Island {
             if p != self.last_playing {
                 self.last_playing = p;
                 let mine = self.self_until.map(|t| now < t).unwrap_or(false);
-                if self.armed && !mine && !self.expanded && self.player().map(|p| !p.title.is_empty()).unwrap_or(false) {
+                if self.armed && !mine && !self.expanded && !self.player_in_front() && self.player().map(|p| !p.title.is_empty()).unwrap_or(false) {
                     self.push(Ev { view: "track", key: "track".into(), prio: 1, dur: 1800, state: if p { "play".into() } else { "pause".into() }, value: -1, ..Default::default() });
                     changed = true;
                 }
@@ -594,8 +612,7 @@ impl Island {
                 if !self.armed {
                     return;
                 }
-                let out = std::process::Command::new("hyprctl").args(["configerrors", "-j"]).output().ok();
-                let errs: Vec<String> = out.and_then(|o| serde_json::from_slice::<Vec<String>>(&o.stdout).ok()).unwrap_or_default().into_iter().filter(|x| !x.trim().is_empty()).collect();
+                let errs: Vec<String> = crate::sys::hypr_request("j/configerrors").and_then(|v| serde_json::from_value::<Vec<String>>(v).ok()).unwrap_or_default().into_iter().filter(|x| !x.trim().is_empty()).collect();
                 if !errs.is_empty() {
                     let mut e = info("cfg", 3, 7000, "alert", DANGER, &format!("Błędy konfiguracji Hyprland ({})", errs.len()), &errs[0].split_whitespace().collect::<Vec<_>>().join(" "));
                     e.hold = true;
@@ -789,7 +806,7 @@ impl Island {
         }
         let urgent = n.urgency == 2;
         let icon = if !n.icon.is_empty() { n.icon.clone() } else { ent.map(|e| e.icon.clone()).unwrap_or("dialog-information".into()) };
-        if kde.contains("kdeconnect") {
+        if kde.contains("kdeconnect") || kde.contains("kde connect") {
             self.phone_note(&n.summary, &n.body, &icon, urgent, phone_notes);
             return;
         }
@@ -798,6 +815,14 @@ impl Island {
             return;
         }
         self.last_note = (sig, Some(Instant::now()));
+        // the app is in front already (its window has the focus): no card, the history keeps it
+        if !urgent && n.value < 0 && !self.focus_class.is_empty() {
+            let f = self.focus_class.as_str();
+            let same = apps.lookup(f).zip(ent).map(|(a, b)| a.id == b.id).unwrap_or(false) || n.app.to_lowercase() == f || n.entry.to_lowercase() == f;
+            if same {
+                return;
+            }
+        }
         let mut key = if !n.sync.is_empty() { format!("s:{app}{}", n.sync) } else if n.value >= 0 { format!("v:{app}{title}") } else { String::new() };
         if key.is_empty() && n.replaced {
             if let Some(e) = &self.ev {
@@ -807,6 +832,19 @@ impl Island {
             }
             if key.is_empty() {
                 key = format!("r:{app}{}", n.id);
+            }
+        }
+        // a run from one app (a chat, a mail sync) while its card is up: one card updated in place, counted
+        let run = key.is_empty() && self.burst.0 == app && self.burst.2.map(|t| t.elapsed().as_secs() < 10).unwrap_or(false);
+        let cur_same = self.ev.as_ref().map(|e| e.view == "notif" && e.app == app).unwrap_or(false);
+        let burst = if run && cur_same { self.burst.1 + 1 } else { 1 };
+        self.burst = (app.clone(), burst, Some(Instant::now()));
+        if burst > 1 {
+            if let Some(e) = self.ev.as_mut() {
+                if e.key.is_empty() {
+                    e.key = format!("b:{app}");
+                }
+                key = e.key.clone();
             }
         }
         let full_text = format!("{title} {body}");
@@ -819,7 +857,9 @@ impl Island {
             view: "notif",
             key,
             prio: if urgent { 3 } else { 2 },
-            dur: if urgent { 9000 } else if has_smart { 7500 } else if n.value >= 0 { 6000 } else { 4500 },
+            // long enough to read: ~50 ms a character over the base, at most 9 s
+            dur: if urgent { 9000 } else if has_smart { 7500 } else if n.value >= 0 { 6000 } else { (3000 + 50 * full_text.chars().count() as u64).clamp(4500, 9000) },
+            burst,
             app: app.clone(),
             icon,
             title: if self.sharing { app.clone() } else if title.is_empty() { body.clone() } else { title.clone() },
@@ -876,6 +916,29 @@ impl Island {
         let has_smart = !links.is_empty() || !codes.is_empty();
 
         let app_display = if clean_app.is_empty() { "Telefon".to_string() } else { clean_app.clone() };
+
+        let note_img = _notes.iter().find(|n| {
+            n["app"].as_str() == Some(clean_app.as_str()) && {
+                let t = n["text"].as_str().filter(|s| !s.is_empty()).or(n["title"].as_str()).unwrap_or("");
+                raw_body.contains(&t.chars().take(48).collect::<String>())
+            }
+        }).and_then(|n| n["icon"].as_str().filter(|s| !s.is_empty()).map(String::from));
+
+        let icon = if !img.is_empty() && (img.starts_with("file://") || img.starts_with('/')) {
+            img.to_string()
+        } else if let Some(ni) = note_img.filter(|s| s.starts_with("file://") || s.starts_with('/')) {
+            ni
+        } else {
+            let app_icon = clean_app.to_lowercase().replace(' ', "-");
+            if !app_icon.is_empty() {
+                app_icon
+            } else if !img.is_empty() && img != "kdeconnect" {
+                img.to_string()
+            } else {
+                "smartphone".into()
+            }
+        };
+
         let e = Ev {
             view: "notif",
             key: format!("ph:{clean_app}|{title}"),
@@ -883,7 +946,7 @@ impl Island {
             dur: if urgent { 9000 } else if has_smart { 8000 } else { 7000 },
             app: format!("{app_display}{}", if dev.is_empty() { String::new() } else { format!(" · {dev}") }),
             phone: Some((clean_app.clone(), raw_body.to_string())),
-            icon: [clean_app.to_lowercase().replace(' ', "-"), img.to_string(), "smartphone".into()].into_iter().find(|s| !s.is_empty()).unwrap_or_default(),
+            icon,
             title: if self.sharing { clean_app.clone() } else { title },
             body: if self.sharing { "treść ukryta · udostępniasz ekran".into() } else { display_body },
             urgent,
@@ -1175,13 +1238,19 @@ impl Island {
     pub fn eq_only(&self) -> bool {
         self.eq_spot.is_some() && !self.animating_but_eq()
     }
+    // a new surface / canvas: the next frame clears and damages the whole window
+    pub fn redraw_all(&mut self) {
+        self.drawn = (0, 0, WIN_W as i32, WIN_H as i32);
+    }
     pub fn is_hidden(&self) -> bool {
         self.hidden
     }
     // anything tick() still has to time (or a clock it shows): the slow tick stays at 250 ms
     pub fn pending(&self) -> bool {
-        let at = [self.ev_until, self.open_at, self.close_at, self.self_until, self.track_at, self.state_at, self.dev_armed_at, self.vol_recent_until, self.share_at, self.shot_at, self.call_at, self.rain_at, self.bump_at, self.last_note.1];
-        !self.armed || self.ev.is_some() || !self.queue.is_empty() || at.iter().any(|t| t.is_some()) || self.timer_on() || self.playing() || self.hover || self.expanded || self.replying
+        // deadlines tick() acts on; "since" stamps (dev_armed_at, shot_at, call_at, rain_at, last_note...) are only
+        // compared when an event comes, and they are never cleared: counting them kept the tick at 250 ms for good
+        let at = [self.ev_until, self.open_at, self.close_at, self.track_at, self.state_at, self.share_at];
+        !self.armed || self.ev.is_some() || !self.queue.is_empty() || at.iter().any(|t| t.is_some()) || self.vol_recent() || self.timer_on() || self.playing() || self.hover || self.expanded || self.replying
     }
     // the equalizer alone over the last full frame: the box goes back to the black shape, the bars are drawn
     // into a small layer at the view's pixel phase and composited like the view (same transform, opacity).
@@ -1317,8 +1386,11 @@ impl Island {
     }
 
     // the whole window: the shape (springing to the size of the shown view) and the views fading in / out
-    pub fn draw(&mut self, c: &mut Canvas, cx: &mut Ctx, ringing: bool, call: bool) {
-        c.clear();
+    // returns the window pixels to damage: what the last frame and this one touched
+    pub fn draw(&mut self, c: &mut Canvas, cx: &mut Ctx, ringing: bool, call: bool) -> (i32, i32, i32, i32) {
+        // everything outside the last frame's box is still transparent
+        let prev = self.drawn;
+        clear_box(c, prev);
         self.hits.clear();
         let mode = self.mode(ringing, call);
         let (tw, th) = self.size(mode, cx);
@@ -1340,8 +1412,20 @@ impl Island {
         // shadow + black shape (scaled about the top centre while bumping)
         let (sx, sw, sh) = (WIN_W as f32 / 2.0 - w * k / 2.0, w * k, h * k);
         let so = self.shadow.value();
+        // the shadow and the shape stay inside this box (blur 24, spread -4, 8 px down)
+        let cur = clip_box(((sx - 26.0).floor() as i32, (y - 26.0).floor() as i32, (sw + 52.0).ceil() as i32 + 1, (sh + 60.0).ceil() as i32 + 1));
+        self.drawn = cur;
         if so > 0.01 {
-            crate::glass::shadow(c, sx, y + 8.0, sw, sh, r * k, 24.0, -4.0, Rgba(0.0, 0.0, 0.0, 0.45 * so));
+            // a frame at rest (1 Hz player progress, minutnik, hover) reuses the last shadow's pixels: drawn
+            // first onto a cleared box, so its rows are copied back as they were
+            let key = [sx.to_bits(), y.to_bits(), sw.to_bits(), sh.to_bits(), (r * k).to_bits(), so.to_bits()];
+            match &self.shadow_px {
+                Some((kk, bx, px)) if *kk == key && *bx == cur => put_box(c, cur, px),
+                _ => {
+                    crate::glass::shadow(c, sx, y + 8.0, sw, sh, r * k, 24.0, -4.0, Rgba(0.0, 0.0, 0.0, 0.45 * so));
+                    self.shadow_px = Some((key, cur, get_box(c, cur)));
+                }
+            }
         }
         c.rrect(sx, y, sw, sh, r * k, Rgba(0.0, 0.0, 0.0, 1.0));
         // views (each drawn into its own layer, then faded / scaled into the shape, clipped to it)
@@ -1393,6 +1477,7 @@ impl Island {
             }
         }
         let _ = x;
+        union_box(prev, cur)
     }
 
     fn hit(&mut self, x: f32, y: f32, w: f32, h: f32, hit: Hit) {
@@ -1767,10 +1852,15 @@ impl Island {
         let pn = phone_note(e.phone.as_ref(), cx.phone);
         let iy = if open { 14.0 } else { (h - 38.0) / 2.0 };
         c.rrect(14.0, iy, 38.0, 38.0, 11.0, FILL);
-        let src = pn.as_ref().and_then(|n| n["icon"].as_str().filter(|s| !s.is_empty()).map(|s| s.to_string())).unwrap_or(e.icon.clone());
-        let pad = if pn.as_ref().map(|n| n["icon"].as_str().map(|s| !s.is_empty()).unwrap_or(false)).unwrap_or(false) { 0.0 } else { 3.0 };
+        let src = if e.icon.starts_with("file://") || e.icon.starts_with('/') {
+            e.icon.clone()
+        } else {
+            pn.as_ref().and_then(|n| n["icon"].as_str().filter(|s| !s.is_empty()).map(|s| s.to_string())).unwrap_or(e.icon.clone())
+        };
+        let is_avatar = src.starts_with("file://") || src.starts_with('/');
+        let pad = if is_avatar { 0.0 } else { 3.0 };
         if let Some(pm) = cx.imgs.get(&src, 96, cx.icons) {
-            img::draw(c, &pm, 14.0 + pad, iy + pad, 38.0 - 2.0 * pad, 38.0 - 2.0 * pad, 11.0, false, 1.0);
+            img::draw(c, &pm, 14.0 + pad, iy + pad, 38.0 - 2.0 * pad, 38.0 - 2.0 * pad, 11.0, is_avatar, 1.0);
         }
         if e.phone.is_some() {
             c.rrect(14.0 + 38.0 - 13.0, iy + 38.0 - 13.0, 17.0, 17.0, 8.5, Rgba(0.0, 0.0, 0.0, 1.0));
@@ -1782,7 +1872,8 @@ impl Island {
         let sa = Style::ui(11.0, 600.0);
         let app = crate::bar::elide(cx.t, &e.app, &sa, cw - 110.0);
         let aw = c.text(cx.t, x, y + 7.0, &app, &sa, T3);
-        let nw = c.text(cx.t, x + aw + 6.0, y + 7.0, "teraz", &Style::ui(11.0, 450.0), T4);
+        let when = if e.burst > 1 { format!("{} {}", e.burst, if (2..=4).contains(&(e.burst % 10)) && !(12..=14).contains(&(e.burst % 100)) { "nowe" } else { "nowych" }) } else { "teraz".into() };
+        let nw = c.text(cx.t, x + aw + 6.0, y + 7.0, &when, &Style::ui(11.0, 450.0), T4);
         if e.urgent {
             c.rrect(x + aw + 6.0 + nw + 6.0, y + 3.5, 7.0, 7.0, 3.5, DANGER);
         }
@@ -1996,6 +2087,48 @@ impl Island {
             }
         }
         let _ = w;
+    }
+}
+
+// window-pixel boxes (x, y, w, h) of the island's partial frames
+fn clip_box(b: (i32, i32, i32, i32)) -> (i32, i32, i32, i32) {
+    let (x0, y0) = (b.0.clamp(0, WIN_W as i32), b.1.clamp(0, WIN_H as i32));
+    let (x1, y1) = ((b.0 + b.2).clamp(0, WIN_W as i32), (b.1 + b.3).clamp(0, WIN_H as i32));
+    (x0, y0, x1 - x0, y1 - y0)
+}
+fn union_box(a: (i32, i32, i32, i32), b: (i32, i32, i32, i32)) -> (i32, i32, i32, i32) {
+    if a.2 <= 0 || a.3 <= 0 {
+        return b;
+    }
+    if b.2 <= 0 || b.3 <= 0 {
+        return a;
+    }
+    let (x0, y0) = (a.0.min(b.0), a.1.min(b.1));
+    (x0, y0, (a.0 + a.2).max(b.0 + b.2) - x0, (a.1 + a.3).max(b.1 + b.3) - y0)
+}
+fn box_rows(c: &Canvas, b: (i32, i32, i32, i32)) -> impl Iterator<Item = std::ops::Range<usize>> {
+    let stride = c.pm.width() as usize * 4;
+    let (x, w) = (b.0.max(0) as usize * 4, b.2.max(0) as usize * 4);
+    (b.1.max(0) as usize..(b.1 + b.3).max(0) as usize).map(move |row| row * stride + x..row * stride + x + w)
+}
+fn clear_box(c: &mut Canvas, b: (i32, i32, i32, i32)) {
+    for r in box_rows(c, b).collect::<Vec<_>>() {
+        c.pm.data_mut()[r].fill(0);
+    }
+}
+fn get_box(c: &Canvas, b: (i32, i32, i32, i32)) -> Vec<u8> {
+    let mut v = Vec::with_capacity((b.2.max(0) * b.3.max(0) * 4) as usize);
+    for r in box_rows(c, b) {
+        v.extend_from_slice(&c.pm.data()[r]);
+    }
+    v
+}
+fn put_box(c: &mut Canvas, b: (i32, i32, i32, i32), px: &[u8]) {
+    let mut o = 0;
+    for r in box_rows(c, b).collect::<Vec<_>>() {
+        let n = r.len();
+        c.pm.data_mut()[r].copy_from_slice(&px[o..o + n]);
+        o += n;
     }
 }
 
@@ -2302,6 +2435,7 @@ pub fn extract_codes(text: &str, links: &[String]) -> Vec<String> {
 
     codes
 }
+
 
 #[cfg(test)]
 mod special_tests {

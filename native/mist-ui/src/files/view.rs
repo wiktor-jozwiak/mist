@@ -151,7 +151,7 @@ impl Files {
         // window: dark translucent gradient (Hyprland blurs behind)
         if let Some(r) = tiny_skia::Rect::from_xywh(0.0, 0.0, ww, wh) {
             let path = tiny_skia::PathBuilder::from_rect(r);
-            crate::desktop::fill_lin(p.c, &path, (0.0, 0.0), (0.0, wh), &[(0.0, Rgba::rgb8(20, 26, 38, 0.80)), (1.0, Rgba::rgb8(9, 12, 19, 0.84))]);
+            crate::desktop::fill_lin(p.c, &path, (0.0, 0.0), (0.0, wh), &[(0.0, tok(crate::tokens::WINDOW_TOP)), (1.0, tok(crate::tokens::WINDOW_BOTTOM))]);
         }
         let mx = main_x(self.sidebar);
         // empty chrome drags the window
@@ -1005,4 +1005,8 @@ pub fn cols(pw: f32) -> (f32, f32, f32, f32) {
 
 fn p_shadow(c: &mut Canvas, x: f32, y: f32, w: f32, h: f32) {
     glass::shadow(c, x, y + 2.0, w, h, 5.0, 6.0, 0.0, Rgba(0.0, 0.0, 0.0, 0.35));
+}
+
+fn tok(c: (u8, u8, u8, f32)) -> Rgba {
+    Rgba::rgb8(c.0, c.1, c.2, c.3)
 }

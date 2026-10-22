@@ -35,6 +35,8 @@ impl SessionLockHandler for MistComp {
         self.force_full = true;
         self.dirty = true;
         confirmation.lock();
+        // a cursor an app hid (a video, a game) must not stay hidden over the lock screen
+        self.cursor_status = smithay::input::pointer::CursorImageStatus::default_named();
         let kb = self.seat.get_keyboard().unwrap();
         kb.set_focus(self, None, SERIAL_COUNTER.next_serial());
     }
@@ -43,7 +45,7 @@ impl SessionLockHandler for MistComp {
         tracing::info!("session unlocked");
         self.locked = false;
         self.lock.surfaces.clear();
-        let top = self.space.elements().last().cloned();
+        let top = self.top_window(None);
         self.focus_window(top.as_ref());
         self.force_full = true;
         self.dirty = true;
@@ -98,3 +100,18 @@ impl smithay::wayland::idle_inhibit::IdleInhibitHandler for MistComp {
     }
 }
 smithay::delegate_idle_inhibit!(MistComp);
+
+impl MistComp {
+    /// Inhibitors whose surface is gone (the player crashed or closed without destroying its inhibitor)
+    /// stop holding idle off; Smithay only reports explicit removals.
+    pub fn prune_inhibitors(&mut self) {
+        let n = self.inhibitors.len();
+        if n == 0 {
+            return;
+        }
+        self.inhibitors.retain(|s| smithay::reexports::wayland_server::Resource::is_alive(s));
+        if self.inhibitors.len() != n {
+            self.idle.set_is_inhibited(!self.inhibitors.is_empty());
+        }
+    }
+}

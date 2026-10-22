@@ -47,6 +47,18 @@ impl SnapData {
     }
 }
 
+/// Zone `f` of work area `a`: both edges rounded from the fractions (not origin + floored width), so
+/// neighbours keep exactly GAP between them and the last zone ends on the area's edge (2/3 + 1/3 used to
+/// stop 1 px short of it). Same formula as mist-ui snap.rs zone_rect (the preview).
+pub fn zone_rect(a: Rect, f: [f64; 4]) -> Rect {
+    let (cw, ch) = ((a.size.w + GAP) as f64, (a.size.h + GAP) as f64);
+    let x0 = (a.loc.x as f64 + f[0] * cw).round() as i32;
+    let y0 = (a.loc.y as f64 + f[1] * ch).round() as i32;
+    let x1 = (a.loc.x as f64 + (f[0] + f[2]) * cw).round() as i32 - GAP;
+    let y1 = (a.loc.y as f64 + (f[1] + f[3]) * ch).round() as i32 - GAP;
+    Rectangle::new((x0, y0).into(), ((x1 - x0).max(1), (y1 - y0).max(1)).into())
+}
+
 fn near(a: i32, b: i32) -> bool {
     (a - b).abs() <= 3
 }
@@ -98,7 +110,7 @@ impl MistComp {
         }
     }
 
-    fn snap_state(&self, w: &Window) -> Option<Snapped> {
+    pub fn snap_state(&self, w: &Window) -> Option<Snapped> {
         let d = &data(w).snap;
         let s = d.snapped.get()?;
         let g = self.space.element_geometry(w)?;
@@ -139,11 +151,7 @@ impl MistComp {
     /// Place a window into zone `f` of output `o`, remember `restore`.
     fn snap_into(&mut self, w: &Window, restore: Rect, f: [f64; 4], o: &Output) {
         let a = self.workarea(o);
-        let (cw, ch) = ((a.size.w + GAP) as f64, (a.size.h + GAP) as f64);
-        let r = Rectangle::new(
-            ((a.loc.x as f64 + f[0] * cw).floor() as i32, (a.loc.y as f64 + f[1] * ch).floor() as i32).into(),
-            ((f[2] * cw - GAP as f64).floor() as i32, (f[3] * ch - GAP as f64).floor() as i32).into(),
-        );
+        let r = zone_rect(a, f);
         let at = self.place(w, r);
         let max = f[2] == 1.0 && f[3] == 1.0;
         let d = &data(w).snap;
@@ -351,7 +359,7 @@ impl MistComp {
         let addr = crate::hyprcompat::addr(&w);
         self.hypr_event("mistdrag", &format!("begin,{addr},{},{},{},{}", loc.x, loc.y, size.w, size.h));
         let start_data = smithay::input::pointer::GrabStartData { focus: None, button, location: m };
-        let grab = crate::grabs::MoveSurfaceGrab { start_data, window: w, initial_window_location: loc, last: m };
+        let grab = crate::grabs::MoveSurfaceGrab { start_data, window: w, initial_window_location: loc, last: m, sent: None };
         pointer.set_grab(self, grab, serial, smithay::input::pointer::Focus::Clear);
     }
 
@@ -395,5 +403,29 @@ impl MistComp {
             let addr = crate::hyprcompat::addr(&w);
             self.hypr_event("mistsnap", &format!("maxhover,{addr},{},{}", at.x as i32, at.y as i32));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zones_tile_the_area_exactly() {
+        let a: Rect = Rectangle::new((8, 42).into(), (1904, 1030).into());
+        let right = |r: Rect| r.loc.x + r.size.w;
+        let ls: [&[f64]; 4] = [&[0.0, 0.667, 1.0], &[0.0, 0.333, 0.667, 1.0], &[0.0, 0.25, 0.75, 1.0], &[0.0, 0.5, 1.0]];
+        for l in ls {
+            let zs: Vec<Rect> = l.windows(2).map(|p| zone_rect(a, [p[0], 0.0, p[1] - p[0], 1.0])).collect();
+            assert_eq!(zs[0].loc.x, a.loc.x, "{l:?}");
+            assert_eq!(right(*zs.last().unwrap()), right(a), "{l:?} ends on the edge");
+            for p in zs.windows(2) {
+                assert_eq!(p[1].loc.x - right(p[0]), GAP, "{l:?} gap");
+            }
+            assert!(zs.iter().all(|z| z.size.h == a.size.h));
+        }
+        assert_eq!(zone_rect(a, [0.0, 0.0, 1.0, 1.0]), a);
+        // the old layout fractions (0.667 + 0.333) still reach the edge
+        assert_eq!(right(zone_rect(a, [0.667, 0.0, 0.333, 1.0])), right(a));
     }
 }

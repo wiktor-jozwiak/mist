@@ -46,9 +46,14 @@ impl WlrLayerShellHandler for MistComp {
         // a popup that had the keys gives them back to the top window
         let keyboard = self.seat.get_keyboard().unwrap();
         if keyboard.current_focus().is_some_and(|f| f.is(surface.wl_surface())) {
-            let top = self.space.elements().last().and_then(crate::focus::of_window);
-            keyboard.set_focus(self, top, SERIAL_COUNTER.next_serial());
+            let top = self.top_window(None);
+            self.focus_window(top.as_ref());
         }
+    }
+
+    // a panel's menu (tray, a bar's dropdown): its parent is set only now, keep it on the panel's monitor
+    fn new_popup(&mut self, _parent: WlrLayerSurface, popup: smithay::wayland::shell::xdg::PopupSurface) {
+        self.unconstrain_popup(&popup);
     }
 }
 
@@ -64,10 +69,17 @@ pub fn handle_commit(state: &mut MistComp, surface: &WlSurface) -> bool {
     let sent = with_states(surface, |s| {
         s.data_map.get::<LayerSurfaceData>().unwrap().lock().unwrap().initial_configure_sent
     });
-    let mut map = layer_map_for_output(output);
+    let output = output.clone();
+    let mut map = layer_map_for_output(&output);
+    let zone = map.non_exclusive_zone();
     map.arrange();
+    let moved = map.non_exclusive_zone().loc.y > zone.loc.y;
     let layer = map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL).unwrap().clone();
     drop(map);
+    // a bar that appeared (or grew) after windows were placed: push them out from under it
+    if moved {
+        state.keep_below_zone(&output);
+    }
     if !sent {
         layer.layer_surface().send_configure();
     }
@@ -82,8 +94,16 @@ pub fn handle_commit(state: &mut MistComp, surface: &WlSurface) -> bool {
     let exclusive = layer.cached_state().keyboard_interactivity == KeyboardInteractivity::Exclusive;
     let keyboard = state.seat.get_keyboard().unwrap();
     let focused = keyboard.current_focus().is_some_and(|f| f.is(surface));
-    if exclusive && !focused && sent {
+    if exclusive && !focused && sent && has {
         keyboard.set_focus(state, Some(surface.clone().into()), SERIAL_COUNTER.next_serial());
+    }
+    // hidden (a null buffer) or no longer taking keys while it has them: back to the top window, else the
+    // keys would go to a surface nobody sees
+    let none = layer.cached_state().keyboard_interactivity == KeyboardInteractivity::None;
+    if focused && (!has || none) {
+        let top = state.top_window(None);
+        tracing::info!("layer {} gave the keyboard back", layer.namespace());
+        state.focus_window(top.as_ref());
     }
     true
 }

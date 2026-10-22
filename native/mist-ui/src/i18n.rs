@@ -2,13 +2,13 @@
 // it draws, so every surface follows without touching its code. Table: native/assets/i18n.tsv, one row per
 // source string, one column per language; `{}` / `{name}` in a key matches any text (numbers, names) and is
 // put back in order. Lookup, on a shape-cache miss only: whole string, template, " · " segments, dates.
-// Language: ~/.config/mist/settings.json {"lang": "auto"|"pl"|"en"|"de"|"es"}, MIST_LANG overrides; auto
+// Language: ~/.config/mist/settings.json {"lang": "auto"|"pl"|"en"|"de"|"es"|"fr"}, MIST_LANG overrides; auto
 // follows $LANG and falls back to English.
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock, RwLock};
 
-pub const LANGS: [(&str, &str); 4] = [("pl", "Polski"), ("en", "English"), ("de", "Deutsch"), ("es", "Español")];
+pub const LANGS: [(&str, &str); 5] = [("pl", "Polski"), ("en", "English"), ("de", "Deutsch"), ("es", "Español"), ("fr", "Français")];
 const TSV: &str = include_str!("../../assets/i18n.tsv");
 
 struct Table {
@@ -250,6 +250,33 @@ fn date(t: &Table, lang: &str, s: &str) -> Option<String> {
     Some(out)
 }
 
+// One-letter weekday initials, Sunday first (tm_wday). Single letters are too ambiguous for the table, so each
+// language lists its own; a language without a list takes the first letter of its short day names.
+const DAY_INITIALS: [(&str, [&str; 7]); 5] = [
+    ("pl", ["N", "P", "W", "Ś", "C", "P", "S"]),
+    ("en", ["S", "M", "T", "W", "T", "F", "S"]),
+    ("de", ["S", "M", "D", "M", "D", "F", "S"]),
+    ("es", ["D", "L", "M", "X", "J", "V", "S"]), // X: miércoles, as Spanish calendars write it
+    ("fr", ["D", "L", "M", "M", "J", "V", "S"]),
+];
+
+fn day_initial_in(lang: &str, t: &Table, wd: usize) -> String {
+    let wd = wd % 7;
+    if let Some((_, l)) = DAY_INITIALS.iter().find(|(c, _)| *c == lang) {
+        return l[wd].to_string();
+    }
+    // data::DAYS_SHORT (mist-comp shares this file, without data.rs)
+    let short = ["nd", "pon", "wt", "śr", "czw", "pt", "sob"][wd];
+    let name = if lang == "pl" { None } else { one(t, short) }.unwrap_or_else(|| short.to_string());
+    name.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default()
+}
+
+// the weekday's initial in the UI language (0 = Sunday)
+pub fn day_initial(wd: usize) -> String {
+    let (lang, t) = current();
+    day_initial_in(lang, t, wd)
+}
+
 // what to draw for `s`
 pub fn tr(s: &str) -> std::borrow::Cow<'_, str> {
     let (lang, t) = current();
@@ -286,6 +313,19 @@ fn miss(s: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn day_initials() {
+        for (lang, l) in DAY_INITIALS {
+            assert!(LANGS.iter().any(|x| x.0 == lang), "{lang}");
+            let got: Vec<String> = (0..7).map(|wd| day_initial_in(lang, load(lang), wd)).collect();
+            assert_eq!(got, l, "{lang}");
+        }
+        // every language has initials, listed or taken from its short day names
+        for (lang, _) in LANGS {
+            assert!((0..7).all(|wd| day_initial_in(lang, load(lang), wd).chars().count() == 1), "{lang}");
+        }
+    }
+
     fn with(lang: &'static str, s: &str) -> String {
         *CUR.write().unwrap() = Some((lang, load(lang)));
         tr(s).into_owned()
@@ -294,11 +334,17 @@ mod tests {
     fn translates() {
         assert_eq!(with("en", "Nie przeszkadzać"), "Do not disturb");
         assert_eq!(with("en", "5 min temu"), "5 min ago");
+        // composite strings: templates, segments split at " · ", headings in capitals
+        assert_eq!(with("en", "3 wydarzenia przed tobą"), "3 events ahead");
+        assert_eq!(with("en", "wolny dzień · następne jutro"), "free day · next tomorrow");
+        assert_eq!(with("de", "NAJBLIŻSZE"), "DEMNÄCHST");
+        assert_eq!(with("en", "Bez większych opadów · porywy do 40 km/h"), "No significant rain · gusts up to 40 km/h");
         assert_eq!(with("en", "3 d 4 godz."), "3 d 4 h");
         assert_eq!(with("en", "Połączono · 80%"), "Connected · 80%");
         assert_eq!(with("en", "Piątek, 16 października"), "Friday, 16 October");
         assert_eq!(with("de", "Piątek, 16 października"), "Freitag, 16. Oktober");
         assert_eq!(with("es", "Piątek, 16 października"), "Viernes, 16 de octubre");
+        assert_eq!(with("fr", "Piątek, 16 października"), "Vendredi, 16 octobre");
         assert_eq!(with("en", "Firefox"), "Firefox");
         assert_eq!(with("en", "PON"), "MON");
         assert_eq!(with("de", "Wydmy"), "Dünen");
@@ -313,6 +359,38 @@ mod tests {
         assert_eq!(with("en", "pochmurno"), "cloudy");
         assert_eq!(with("en", "Jutro 9°/3° · pochmurno, 5° chłodniej"), "Tomorrow 9°/3° · cloudy, 5° cooler");
     }
+    // every literal passed to tr("…") in mist-ui and mist-comp has a row (a typo or a new string without one
+    // stays Polish in every other language)
+    #[test]
+    fn every_tr_literal_has_a_row() {
+        let keys: std::collections::HashSet<&str> = TSV.lines().filter(|l| !l.starts_with('#')).filter_map(|l| l.split('\t').next()).collect();
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
+        let mut missing = Vec::new();
+        let mut dirs = vec![format!("{root}/mist-ui/src"), format!("{root}/mist-comp/src")];
+        while let Some(d) = dirs.pop() {
+            for e in std::fs::read_dir(&d).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    dirs.push(p.to_string_lossy().into());
+                } else if p.extension().is_some_and(|x| x == "rs") && !p.ends_with("i18n.rs") {
+                    let src = std::fs::read_to_string(&p).unwrap();
+                    for (i, _) in src.match_indices("tr(\"") {
+                        if src[..i].ends_with(|c: char| c.is_alphanumeric() || c == '_') {
+                            continue;
+                        }
+                        let rest = &src[i + 4..];
+                        let Some(end) = rest.find('"') else { continue };
+                        let k = &rest[..end];
+                        if !k.contains('\\') && !keys.contains(k) {
+                            missing.push(format!("{}: {k}", p.display()));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(missing.is_empty(), "no i18n.tsv row for:\n{}", missing.join("\n"));
+    }
+
     #[test]
     fn table_is_well_formed() {
         let mut lines = TSV.lines();

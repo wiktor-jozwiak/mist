@@ -1,3 +1,13 @@
+<div align="right">
+  🌐 <b>选择语言:</b>
+  <a href="../../README.md">English</a> ·
+  <a href="README.pl.md">Polski</a> ·
+  <a href="README.de.md">Deutsch</a> ·
+  <a href="README.es.md">Español</a> ·
+  <a href="README.zh-CN.md"><b>简体中文</b></a> ·
+  <a href="README.ja.md">日本語</a>
+</div>
+
 <div align="center">
 
 <img src="../img/banner.svg" alt="Mist" width="100%">
@@ -125,7 +135,7 @@ Hyprland 0.56.2，2 × 1920x1080 (165 + 75 Hz)。使用 [bench/measure.sh](../..
 
 ### 语言和显示器
 
-界面支持 **波兰语、英语、德语和西班牙语**。在 *自定义桌面*（右键单击桌面时钟）→ 外观 → 语言 中选择，
+界面支持 **波兰语、英语、德语、西班牙语和法语**。在 *自定义桌面*（右键单击桌面时钟）→ 外观 → 语言 中选择，
 或设置 `MIST_LANG=en`。*自动* 跟随 `$LANG`，否则使用英语。翻译放在一张表里：
 [native/assets/i18n.tsv](../../native/assets/i18n.tsv)，每个字符串一行，每种语言一列。新增语言只需多加一列。
 

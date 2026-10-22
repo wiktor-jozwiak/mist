@@ -25,6 +25,7 @@ pub struct Client {
     pub ws_id: i64,
     pub focus: i64, // focusHistoryID, 0 = the active window
     pub fullscreen: i64,
+    pub rect: (i64, i64, i64, i64), // at + size, global layout px
 }
 
 #[derive(Debug, Clone, Default)]
@@ -33,6 +34,7 @@ pub struct Hypr {
     pub focused_ws: i64,
     pub active: Option<Win>,
     pub monitors: Vec<(i64, String, i64)>, // id, name, active workspace id
+    pub mon_pos: Vec<(String, i64, i64)>,  // name, x, y
     pub ws_windows: Vec<(i64, i64)>,       // workspace id, window count
 }
 
@@ -62,6 +64,8 @@ pub enum Msg {
     NmLine(String),
     Wall(String, String),
     Lock,
+    /// D-Bus idle inhibitors alive (idle::screensaver)
+    IdleInhibit(u32),
     IdleCfg,
     Polkit(crate::polkit::Ev),
     Shot(String),
@@ -105,6 +109,22 @@ pub fn hypr_request(cmd: &str) -> Option<Value> {
     s.read_to_string(&mut out).ok()?;
     serde_json::from_str(&out).ok()
 }
+// `hyprctl eval <lua>` without the process: the same request straight on the socket (Hyprland and mist-comp
+// both take it); blocks until the compositor answers, so call it off the UI thread or use hypr_eval
+pub fn hypr_eval_sync(lua: &str) -> Option<String> {
+    let mut s = UnixStream::connect(format!("{}/.socket.sock", hypr_dir())).ok()?;
+    let _ = s.set_read_timeout(Some(Duration::from_secs(2)));
+    s.write_all(format!("eval {lua}").as_bytes()).ok()?;
+    let mut out = String::new();
+    s.read_to_string(&mut out).ok()?;
+    Some(out)
+}
+pub fn hypr_eval(lua: &str) {
+    let lua = lua.to_string();
+    let _ = std::thread::Builder::new().name("hypr-eval".into()).stack_size(64 * 1024).spawn(move || {
+        let _ = hypr_eval_sync(&lua);
+    });
+}
 pub fn hypr_now() -> Hypr {
     hypr_state()
 }
@@ -122,6 +142,7 @@ fn hypr_state() -> Hypr {
     if let Some(Value::Array(ms)) = hypr_request("j/monitors") {
         for m in ms {
             h.monitors.push((m["id"].as_i64().unwrap_or(0), m["name"].as_str().unwrap_or("").into(), m["activeWorkspace"]["id"].as_i64().unwrap_or(0)));
+            h.mon_pos.push((m["name"].as_str().unwrap_or("").into(), m["x"].as_i64().unwrap_or(0), m["y"].as_i64().unwrap_or(0)));
         }
     }
     if let Some(Value::Array(cs)) = hypr_request("j/clients") {
@@ -137,6 +158,10 @@ fn hypr_state() -> Hypr {
                 ws_id: c["workspace"]["id"].as_i64().unwrap_or(0),
                 focus: c["focusHistoryID"].as_i64().unwrap_or(99),
                 fullscreen: c["fullscreen"].as_i64().unwrap_or(0),
+                rect: {
+                    let v = |k: &str, i: usize| c[k][i].as_i64().unwrap_or(0);
+                    (v("at", 0), v("at", 1), v("size", 0), v("size", 1))
+                },
             });
         }
     }
@@ -202,7 +227,7 @@ pub fn hyprland(tx: Sender<Msg>) {
                 break;
             }
             let ev = line.split(">>").next().unwrap_or("");
-            if matches!(ev, "activelayout" | "screencast" | "fullscreen" | "submap" | "urgent" | "activespecial" | "configreloaded" | "monitoraddedv2" | "monitorremovedv2" | "pin" | "mistdrag" | "mistsnap") {
+            if matches!(ev, "activelayout" | "screencast" | "fullscreen" | "submap" | "urgent" | "activespecial" | "configreloaded" | "monitoraddedv2" | "monitorremovedv2" | "pin" | "mistdrag" | "mistsnap" | "mistcover") {
                 let data = line.trim_end().splitn(2, ">>").nth(1).unwrap_or("").to_string();
                 let _ = tx.send(Msg::HyprEv(ev.to_string(), data));
             }
@@ -212,7 +237,7 @@ pub fn hyprland(tx: Sender<Msg>) {
                     if d.ends_with(",1") {
                         let a = d.split(',').next().unwrap_or("");
                         let a = if a.starts_with("0x") { a.to_string() } else { format!("0x{a}") };
-                        let _ = Command::new("hyprctl").args(["eval", &format!("MistMinimize('{a}')")]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+                        let _ = hypr_eval_sync(&format!("MistMinimize('{a}')"));
                     }
                 }
             }
@@ -321,11 +346,7 @@ fn pactl_json(args: &[&str]) -> Value {
 fn vol_of(d: &Value) -> f32 {
     d["volume"].as_object().and_then(|m| m.values().next()).and_then(|c| c["value"].as_f64()).map(|v| (v / 65536.0) as f32).unwrap_or(0.0)
 }
-pub fn audio_state() -> Audio {
-    let mut a = Audio::default();
-    let info = pactl_json(&["info"]);
-    a.sink = info["default_sink_name"].as_str().unwrap_or("").into();
-    a.source = info["default_source_name"].as_str().unwrap_or("").into();
+fn update_sink(a: &mut Audio) {
     if let Value::Array(s) = pactl_json(&["list", "sinks"]) {
         if let Some(d) = s.iter().find(|d| d["name"].as_str() == Some(&a.sink)) {
             a.sink_desc = d["description"].as_str().unwrap_or("").into();
@@ -333,6 +354,17 @@ pub fn audio_state() -> Audio {
             a.mute = d["mute"].as_bool().unwrap_or(false);
         }
     }
+}
+fn update_source(a: &mut Audio) {
+    if let Value::Array(s) = pactl_json(&["list", "sources"]) {
+        if let Some(d) = s.iter().find(|d| d["name"].as_str() == Some(&a.source)) {
+            a.src_desc = d["description"].as_str().unwrap_or("").into();
+            a.src_vol = vol_of(d);
+            a.src_mute = d["mute"].as_bool().unwrap_or(false);
+        }
+    }
+}
+fn update_mic_users(a: &mut Audio) {
     let mut monitor_ids = Vec::new();
     if let Value::Array(s) = pactl_json(&["list", "sources"]) {
         for d in &s {
@@ -340,14 +372,9 @@ pub fn audio_state() -> Audio {
                 monitor_ids.push(d["index"].as_i64().unwrap_or(-1));
             }
         }
-        if let Some(d) = s.iter().find(|d| d["name"].as_str() == Some(&a.source)) {
-            a.src_desc = d["description"].as_str().unwrap_or("").into();
-            a.src_vol = vol_of(d);
-            a.src_mute = d["mute"].as_bool().unwrap_or(false);
-        }
     }
-    // apps recording from a microphone (not sink monitors, not the Mist EQ chain)
     if let Value::Array(o) = pactl_json(&["list", "source-outputs"]) {
+        a.mic_users.clear();
         for so in o {
             if monitor_ids.contains(&so["source"].as_i64().unwrap_or(-2)) {
                 continue;
@@ -362,6 +389,15 @@ pub fn audio_state() -> Audio {
             }
         }
     }
+}
+pub fn audio_state() -> Audio {
+    let mut a = Audio::default();
+    let info = pactl_json(&["info"]);
+    a.sink = info["default_sink_name"].as_str().unwrap_or("").into();
+    a.source = info["default_source_name"].as_str().unwrap_or("").into();
+    update_sink(&mut a);
+    update_source(&mut a);
+    update_mic_users(&mut a);
     a
 }
 // ------------------------------------------------------------------ default sink volume (PipeWire via pactl)
@@ -377,7 +413,18 @@ pub fn audio(tx: Sender<Msg>) {
         let _ = tx.send(Msg::Volume(v, m));
         let mut a = audio_state();
         let _ = tx.send(Msg::Audio(a.clone()));
-        let Ok(mut ch) = Command::new("pactl").arg("subscribe").stdout(Stdio::piped()).stderr(Stdio::null()).spawn() else { return };
+        use std::os::unix::process::CommandExt;
+        let mut c = Command::new("pactl");
+        c.arg("subscribe").stdout(Stdio::piped()).stderr(Stdio::null());
+        // without it every mist-ui restart left an orphaned `pactl subscribe`; at 64 of them pipewire-pulse
+        // refuses new clients and apps lose sound
+        unsafe {
+            c.pre_exec(|| {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+                Ok(())
+            });
+        }
+        let Ok(mut ch) = c.spawn() else { return };
         let r = BufReader::new(ch.stdout.take().unwrap());
         // the lines come through a channel, so a burst (a browser stream starts, moves, changes volume: a dozen
         // events) is gathered for up to 300 ms and pactl is asked once per kind, not once per line
@@ -400,9 +447,22 @@ pub fn audio(tx: Sender<Msg>) {
                 }
             }
             let has = |k: &str| lines.iter().any(|l| l.contains(k));
-            if has("on sink #") || has("on server") || has("on source #") || has("on source-output") {
+            let (is_sink, is_source, is_source_output, is_server) = (has("on sink #"), has("on source #"), has("on source-output"), has("on server"));
+            if is_sink || is_source || is_source_output || is_server {
                 let before = a.clone();
-                a = audio_state();
+                if is_server {
+                    a = audio_state();
+                } else {
+                    if is_sink {
+                        update_sink(&mut a);
+                    }
+                    if is_source {
+                        update_source(&mut a);
+                    }
+                    if is_source_output {
+                        update_mic_users(&mut a);
+                    }
+                }
                 let now = (a.vol, a.mute);
                 if now != last {
                     last = now;
@@ -419,20 +479,82 @@ pub fn audio(tx: Sender<Msg>) {
     });
 }
 
-// ------------------------------------------------------------------ mistd stats
+// ------------------------------------------------------------------ inlined stats (was mistd stats)
+fn stats_cpu() -> Option<(u64, u64)> {
+    let s = std::fs::read_to_string("/proc/stat").ok()?;
+    let v: Vec<u64> = s.lines().next()?.split_whitespace().skip(1).filter_map(|x| x.parse().ok()).collect();
+    if v.len() < 5 {
+        return None;
+    }
+    Some((v.iter().sum(), v[3] + v[4]))
+}
+
+fn stats_mem() -> (f64, f64) {
+    let s = std::fs::read_to_string("/proc/meminfo").unwrap_or_default();
+    let (mut tot, mut avail) = (0.0, 0.0);
+    for l in s.lines() {
+        let mut it = l.split_whitespace();
+        match (it.next(), it.next().and_then(|v| v.parse::<f64>().ok())) {
+            (Some("MemTotal:"), Some(v)) => tot = v,
+            (Some("MemAvailable:"), Some(v)) => avail = v,
+            _ => {}
+        }
+    }
+    (tot - avail, tot)
+}
+
+fn stats_net() -> (u64, u64) {
+    let s = std::fs::read_to_string("/proc/net/dev").unwrap_or_default();
+    let (mut rx, mut tx) = (0, 0);
+    for l in s.lines().skip(2) {
+        let Some((name, rest)) = l.split_once(':') else { continue };
+        let n = name.trim();
+        if n == "lo" || n.starts_with("docker") || n.starts_with("veth") || n.starts_with("br-") {
+            continue;
+        }
+        let f: Vec<u64> = rest.split_whitespace().filter_map(|x| x.parse().ok()).collect();
+        if f.len() > 8 {
+            rx += f[0];
+            tx += f[8];
+        }
+    }
+    (rx, tx)
+}
+
+fn stats_round_rate(b: f64) -> f64 {
+    if b < 1024.0 {
+        b.round()
+    } else if b < 1048576.0 {
+        (b / 102.4).round() * 102.4
+    } else {
+        (b / 104857.6).round() * 104857.6
+    }
+}
+
 pub fn stats(tx: Sender<Msg>) {
-    spawn("stats", move || loop {
-        let bin = crate::paths::mistd();
-        let Ok(mut ch) = Command::new(bin).arg("stats").stdout(Stdio::piped()).stderr(Stdio::null()).spawn() else { return };
-        for l in BufReader::new(ch.stdout.take().unwrap()).lines() {
-            let Ok(l) = l else { break };
-            let v: Vec<&str> = l.split(' ').collect();
-            if v.len() >= 5 {
-                let _ = tx.send(Msg::Stats(v[0].parse().unwrap_or(0), v[1].parse().unwrap_or(0.0), v[2].parse().unwrap_or(0.0), v[3].parse().unwrap_or(0.0)));
+    spawn("stats", move || {
+        let mut pc = stats_cpu();
+        let mut pn = (stats_net(), std::time::Instant::now());
+        let mut last = (0i32, 0.0f32, 0.0f32, 0.0f64);
+        loop {
+            std::thread::sleep(Duration::from_secs(2));
+            let c = stats_cpu();
+            let pct = match (pc, c) {
+                (Some((t0, i0)), Some((t1, i1))) if t1 > t0 => (100.0 * (1.0 - (i1 - i0) as f64 / (t1 - t0) as f64)).round() as i32,
+                _ => 0,
+            };
+            pc = c;
+            let (used, tot) = stats_mem();
+            let (n, t) = (stats_net(), std::time::Instant::now());
+            let dt = t.duration_since(pn.1).as_secs_f64().max(0.1);
+            let rx = stats_round_rate(n.0.saturating_sub(pn.0 .0) as f64 / dt);
+            pn = (n, t);
+            let cur = (pct, (used / 1048576.0) as f32, (tot / 1048576.0) as f32, rx);
+            if cur != last {
+                let _ = tx.send(Msg::Stats(cur.0, cur.1, cur.2, cur.3));
+                last = cur;
             }
         }
-        let _ = ch.wait();
-        std::thread::sleep(Duration::from_secs(2));
     });
 }
 

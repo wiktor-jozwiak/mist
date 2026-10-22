@@ -29,6 +29,24 @@ impl From<WlSurface> for KbFocus {
     }
 }
 
+// popup grabs: the keys go to the open menu
+impl From<smithay::desktop::PopupKind> for KbFocus {
+    fn from(p: smithay::desktop::PopupKind) -> Self {
+        KbFocus::Surface(p.wl_surface().clone())
+    }
+}
+
+// popup grabs hand the pointer what had the keys: a menu or its xdg / layer root (never an X11 window,
+// X11 menus are override-redirect windows of their own)
+impl From<KbFocus> for WlSurface {
+    fn from(f: KbFocus) -> Self {
+        match f {
+            KbFocus::Surface(s) => s,
+            KbFocus::X11(x) => x.wl_surface().expect("X11 window without a wl_surface as a popup root"),
+        }
+    }
+}
+
 impl KbFocus {
     /// Is this focus that surface (an X11 window: its wl_surface)?
     pub fn is(&self, s: &WlSurface) -> bool {

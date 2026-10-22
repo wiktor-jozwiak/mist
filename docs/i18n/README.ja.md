@@ -1,3 +1,13 @@
+<div align="right">
+  🌐 <b>言語を選択:</b>
+  <a href="../../README.md">English</a> ·
+  <a href="README.pl.md">Polski</a> ·
+  <a href="README.de.md">Deutsch</a> ·
+  <a href="README.es.md">Español</a> ·
+  <a href="README.zh-CN.md">简体中文</a> ·
+  <a href="README.ja.md"><b>日本語</b></a>
+</div>
+
 <div align="center">
 
 <img src="../img/banner.svg" alt="Mist" width="100%">
@@ -127,7 +137,7 @@ Hyprland 0.56.2、2 × 1920x1080 (165 + 75 Hz)。[bench/measure.sh](../../bench/
 
 ### 言語とモニター
 
-UI は **ポーランド語、英語、ドイツ語、スペイン語** に対応しています。*デスクトップをカスタマイズ*（デスクトップの
+UI は **ポーランド語、英語、ドイツ語、スペイン語、フランス語** に対応しています。*デスクトップをカスタマイズ*（デスクトップの
 時計を右クリック）→ 外観 → 言語、または `MIST_LANG=en` で選びます。*自動* は `$LANG` に従い、なければ英語です。
 翻訳は 1 つの表 [native/assets/i18n.tsv](../../native/assets/i18n.tsv) にあり、1 行が 1 つの文字列、1 列が 1 言語です。
 新しい言語は列を 1 つ足すだけです。

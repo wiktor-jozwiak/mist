@@ -1,7 +1,10 @@
 use smithay::wayland::seat::WaylandFocus as _;
 use smithay::{
     delegate_xdg_shell,
-    desktop::{find_popup_root_surface, get_popup_toplevel_coords, PopupKind, PopupManager, Space, Window},
+    desktop::{
+        find_popup_root_surface, get_popup_toplevel_coords, PopupKeyboardGrab, PopupKind, PopupManager, PopupPointerGrab,
+        PopupUngrabStrategy, Space, Window,
+    },
     input::{
         pointer::{Focus, GrabStartData as PointerGrabStartData},
         Seat,
@@ -93,13 +96,9 @@ impl XdgShellHandler for MistComp {
         if let Some(start_data) = check_grab(&seat, wl_surface, serial) {
             let pointer = seat.get_pointer().unwrap();
 
-            let window = self
-                .space
-                .elements()
-                .find(|w| w.wl_surface().as_deref() == Some(wl_surface))
-                .unwrap()
-                .clone();
-            let initial_window_location = self.space.element_location(&window).unwrap();
+            // only a window on screen (one on a hidden workspace or not mapped yet has no place to resize from)
+            let Some(window) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(wl_surface)).cloned() else { return };
+            let Some(initial_window_location) = self.space.element_location(&window) else { return };
             let initial_window_size = window.geometry().size;
 
             surface.with_pending_state(|state| {
@@ -127,6 +126,9 @@ impl XdgShellHandler for MistComp {
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
+        if self.wish_at_map(surface.wl_surface(), Some(crate::rules::Wish::Max)) {
+            return;
+        }
         let found = self.win_of(&surface);
         if let Some(w) = found {
             // the client's own maximize (CSD double click, green dot): Mist's maximize (work area, gaps)
@@ -141,6 +143,9 @@ impl XdgShellHandler for MistComp {
     }
 
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
+        if self.wish_at_map(surface.wl_surface(), None) {
+            return;
+        }
         let found = self.win_of(&surface);
         if let Some(w) = found {
             if crate::wm::data(&w).restore.borrow().is_some() {
@@ -152,6 +157,9 @@ impl XdgShellHandler for MistComp {
     }
 
     fn fullscreen_request(&mut self, surface: ToplevelSurface, _output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>) {
+        if self.wish_at_map(surface.wl_surface(), Some(crate::rules::Wish::Full)) {
+            return;
+        }
         let found = self.win_of(&surface);
         if let Some(w) = found {
             if crate::wm::data(&w).restore.borrow().is_none() {
@@ -161,6 +169,9 @@ impl XdgShellHandler for MistComp {
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
+        if self.wish_at_map(surface.wl_surface(), None) {
+            return;
+        }
         let found = self.win_of(&surface);
         if let Some(w) = found {
             if crate::wm::data(&w).restore.borrow().is_some() {
@@ -177,8 +188,29 @@ impl XdgShellHandler for MistComp {
         self.toplevel_info_changed(&surface);
     }
 
-    fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
-        // TODO popup grabs
+    /// A menu (right click, menu bar): keys and pointer stay with it and its children until a click lands
+    /// outside them, which closes the whole chain (as on every desktop).
+    fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
+        let Some(seat) = Seat::<MistComp>::from_resource(&seat) else { return };
+        let kind = PopupKind::Xdg(surface);
+        let Ok(root) = find_popup_root_surface(&kind) else { return };
+        let Ok(mut grab) = self.popups.grab_popup(crate::focus::KbFocus::Surface(root), kind, &seat, serial) else { return };
+        let prev = grab.previous_serial().unwrap_or(serial);
+        if let Some(keyboard) = seat.get_keyboard() {
+            if keyboard.is_grabbed() && !(keyboard.has_grab(serial) || keyboard.has_grab(prev)) {
+                grab.ungrab(PopupUngrabStrategy::All);
+                return;
+            }
+            keyboard.set_focus(self, grab.current_grab(), serial);
+            keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), serial);
+        }
+        if let Some(pointer) = seat.get_pointer() {
+            if pointer.is_grabbed() && !(pointer.has_grab(serial) || pointer.has_grab(grab.previous_serial().unwrap_or_else(|| grab.serial()))) {
+                grab.ungrab(PopupUngrabStrategy::All);
+                return;
+            }
+            pointer.set_grab(self, PopupPointerGrab::new(&grab), serial, Focus::Keep);
+        }
     }
 }
 
@@ -248,27 +280,36 @@ pub fn handle_commit(popups: &mut PopupManager, space: &Space<Window>, surface: 
 }
 
 impl MistComp {
-    fn unconstrain_popup(&self, popup: &PopupSurface) {
-        let Ok(root) = find_popup_root_surface(&PopupKind::Xdg(popup.clone())) else {
+    /// Keep a menu on the monitor its window (or panel) is on: flipped / slid inside that output, as the
+    /// client's positioner allows.
+    pub(crate) fn unconstrain_popup(&self, popup: &PopupSurface) {
+        let kind = PopupKind::Xdg(popup.clone());
+        let Ok(root) = find_popup_root_surface(&kind) else {
             return;
         };
-        let Some(window) = self
-            .space
-            .elements()
-            .find(|w| w.wl_surface().as_deref() == Some(&root))
-        else {
+        // where the popup's coordinates start: the window's geometry origin, or the layer surface's corner
+        let win = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(&root));
+        let (origin, output) = if let Some(w) = win {
+            let Some(loc) = self.space.element_location(w) else { return };
+            (loc, self.output_of(w))
+        } else {
+            let layer = self.space.outputs().find_map(|o| {
+                let map = smithay::desktop::layer_map_for_output(o);
+                let l = map.layer_for_surface(&root, smithay::desktop::WindowSurfaceType::TOPLEVEL)?;
+                Some((o.clone(), map.layer_geometry(l)?.loc))
+            });
+            let Some((o, at)) = layer else { return };
+            let Some(og) = self.space.output_geometry(&o) else { return };
+            (og.loc + at, Some(o))
+        };
+        let Some(output_geo) = output.or_else(|| self.space.outputs().next().cloned()).and_then(|o| self.space.output_geometry(&o)) else {
             return;
         };
 
-        let output = self.space.outputs().next().unwrap();
-        let output_geo = self.space.output_geometry(output).unwrap();
-        let window_geo = self.space.element_geometry(window).unwrap();
-
-        // The target geometry for the positioner should be relative to its parent's geometry, so
-        // we will compute that here.
+        // The target geometry for the positioner is relative to the popup's parent.
         let mut target = output_geo;
-        target.loc -= get_popup_toplevel_coords(&PopupKind::Xdg(popup.clone()));
-        target.loc -= window_geo.loc;
+        target.loc -= get_popup_toplevel_coords(&kind);
+        target.loc -= origin;
 
         popup.with_pending_state(|state| {
             state.geometry = state.positioner.get_unconstrained_geometry(target);
@@ -288,6 +329,7 @@ impl MistComp {
             let a = crate::wm::data(&w).addr.get();
             let t = crate::hyprcompat::title(&w);
             self.hypr_event("windowtitlev2", &format!("{a:x},{t}"));
+            self.list_update(&w);
         }
     }
 }

@@ -36,8 +36,14 @@ pub struct WinData {
     pub snap: crate::snap::SnapData,
     /// on every workspace (Picture-in-Picture)
     pub pinned: Cell<bool>,
+    /// has the focus (its shadow is the full one)
+    pub active: Cell<bool>,
     /// the terminal this window was started from, hidden while it lives (swallow.rs)
     pub swallowed: RefCell<Option<Window>>,
+    /// drop shadow of a window with glass (shadow.rs) per output, kept between frames
+    pub shadow: RefCell<std::collections::HashMap<String, smithay::backend::renderer::gles::element::PixelShaderElement>>,
+    /// last frame callback while fully covered (scene::send_frames: covered windows draw once a second)
+    pub covered_frame: Cell<Option<std::time::Instant>>,
 }
 
 /// Which monitor (left to right) a workspace belongs to: three each.
@@ -59,6 +65,19 @@ impl MistComp {
             .find(|o| self.space.output_geometry(o).is_some_and(|g| g.to_f64().contains(p)))
             .or_else(|| self.space.outputs().next())
             .cloned()
+    }
+
+    /// focusedmon / focusedmonv2 when the pointer moves onto another output (mist-ui: the bar's window title,
+    /// which monitor Spotlight opens on)
+    pub fn note_pointer_output(&mut self) {
+        let Some(o) = self.active_output() else { return };
+        if self.ev_mon == o.name() {
+            return;
+        }
+        self.ev_mon = o.name();
+        let ws = self.active_ws(&o);
+        self.hypr_event("focusedmon", &format!("{},{ws}", o.name()));
+        self.hypr_event("focusedmonv2", &format!("{},{ws}", o.name()));
     }
 
     pub fn active_ws(&mut self, output: &Output) -> u32 {
@@ -100,9 +119,114 @@ impl MistComp {
         }
     }
 
+    /// Every window and layer surface prefers its output's scale and transform (wp-fractional-scale,
+    /// wl_surface.preferred_buffer_scale): sharp text on a 1.25 monitor next to a 1.0 one, after a move too.
+    pub fn update_scales(&mut self) {
+        if !std::mem::take(&mut self.scales_dirty) {
+            return;
+        }
+        let apply = |surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface, states: &smithay::wayland::compositor::SurfaceData, o: &Output| {
+            let s = o.current_scale();
+            smithay::wayland::fractional_scale::with_fractional_scale(states, |f| f.set_preferred_scale(s.fractional_scale()));
+            smithay::wayland::compositor::send_surface_state(surface, states, s.integer_scale(), o.current_transform());
+        };
+        let wins: Vec<Window> = self.space.elements().cloned().collect();
+        for w in wins {
+            if let Some(o) = self.output_of(&w) {
+                w.with_surfaces(|surface, states| apply(surface, states, &o));
+            }
+        }
+        for o in self.space.outputs() {
+            for l in smithay::desktop::layer_map_for_output(o).layers() {
+                l.with_surfaces(|surface, states| apply(surface, states, o));
+            }
+        }
+    }
+
+    /// The configured monitor setup (position, scale, transform, mode) onto the outputs there now.
+    pub fn apply_output_conf(&mut self) {
+        let confs = crate::config::outputs(&self.config);
+        let outputs: Vec<Output> = self.space.outputs().cloned().collect();
+        let mut changed = false;
+        for o in outputs {
+            let Some(c) = confs.iter().find(|c| c.name == o.name()) else { continue };
+            if let Some((w, h, hz)) = c.mode {
+                let best = o.modes().into_iter().filter(|m| m.size.w == w && m.size.h == h).min_by_key(|m| match hz {
+                    Some(hz) => (m.refresh - hz).abs(),
+                    None => -m.refresh,
+                });
+                if let Some(m) = best.filter(|m| o.current_mode() != Some(*m)) {
+                    let name = o.name();
+                    if !self.udev.as_mut().is_some_and(|u| u.set_mode(&name, m)) {
+                        tracing::warn!("output {name}: mode {w}x{h} not applied");
+                    }
+                }
+            }
+            let scale = c.scale.map(smithay::output::Scale::Fractional);
+            o.change_current_state(None, c.transform, scale, Some(c.pos.into()));
+            self.space.map_output(&o, c.pos);
+            smithay::desktop::layer_map_for_output(&o).arrange();
+            changed = true;
+        }
+        if changed {
+            self.fix_ws();
+            self.outman_changed();
+            self.force_full = true;
+            self.dirty = true;
+        }
+    }
+
+    /// Ask a window to close (xdg close / X11 WM_DELETE).
+    pub fn close_window(&mut self, w: &Window) {
+        if let Some(t) = w.toplevel() {
+            t.send_close();
+        } else if let Some(x) = w.x11_surface() {
+            let _ = x.close();
+        }
+    }
+
+    /// hl.dsp.window.move: the outer top-left (title bar included) to x, y (or by x, y), kept below the bar.
+    pub fn move_window_outer(&mut self, w: &Window, x: f64, y: f64, relative: bool) {
+        let bar = self.bar_h(w);
+        let Some(loc) = self.space.element_location(w) else { return };
+        let (mut nx, mut ny) = if relative { (loc.x as f64 + x, loc.y as f64 + y) } else { (x, y + bar as f64) };
+        if let Some(top) = self.usable_top((nx, ny).into()) {
+            ny = ny.max((top + bar) as f64);
+        }
+        nx = nx.round();
+        let p = smithay::utils::Point::from((nx as i32, ny.round() as i32));
+        if let Some(x11) = w.x11_surface() {
+            let _ = x11.configure(smithay::utils::Rectangle::new(p, w.geometry().size));
+        }
+        self.space.map_element(w.clone(), p, false);
+        self.dirty = true;
+    }
+
+    /// hl.dsp.window.resize: the outer size (title bar included) to x, y (or by x, y); the top-left stays.
+    pub fn resize_window_outer(&mut self, w: &Window, x: f64, y: f64, relative: bool) {
+        let bar = self.bar_h(w);
+        let cur = w.geometry().size;
+        let (nw, nh) = if relative { (cur.w as f64 + x, cur.h as f64 + y) } else { (x, y - bar as f64) };
+        let size: smithay::utils::Size<i32, smithay::utils::Logical> = ((nw.round() as i32).max(1), (nh.round() as i32).max(1)).into();
+        if let Some(t) = w.toplevel() {
+            t.with_pending_state(|s| s.size = Some(size));
+            t.send_pending_configure();
+        } else if let Some(x11) = w.x11_surface() {
+            let loc = self.space.element_location(w).unwrap_or_default();
+            let _ = x11.configure(smithay::utils::Rectangle::new(loc, size));
+        }
+        self.dirty = true;
+    }
+
     pub fn focused_window(&self) -> Option<Window> {
         let kb = self.seat.get_keyboard().unwrap();
-        let f = kb.current_focus()?;
+        let mut f = kb.current_focus()?;
+        // an open menu has the keys: its window is still the focused one
+        if let crate::focus::KbFocus::Surface(s) = &f {
+            if let Some(root) = self.popups.find_popup(s).and_then(|p| smithay::desktop::find_popup_root_surface(&p).ok()) {
+                f = crate::focus::KbFocus::Surface(root);
+            }
+        }
         self.space.elements().find(|w| crate::focus::of_window(w).as_ref() == Some(&f)).cloned()
     }
 
@@ -121,7 +245,7 @@ impl MistComp {
             .map(|(_, o)| o.clone())
     }
 
-    fn resolve(&mut self, output: &Output, arg: WsArg) -> u32 {
+    pub fn resolve(&mut self, output: &Output, arg: WsArg) -> u32 {
         let group = |st: &mut Self| {
             let cur = st.active_ws(output);
             match st.ws_home(cur) {
@@ -179,6 +303,10 @@ impl MistComp {
             return;
         }
         let og = self.space.output_geometry(output).unwrap_or_default();
+        // the overview shows the old workspace's windows: gone with them
+        if self.anim.overview.as_ref().is_some_and(|o| o.output == output.name()) {
+            self.anim.overview = None;
+        }
         // hide the current one
         let leaving: Vec<Window> = self
             .space
@@ -304,7 +432,9 @@ impl MistComp {
         data(&window).addr.set(self.next_addr);
         let class = crate::hyprcompat::app_id(&window);
         self.hypr_event("openwindow", &format!("{:x},{ws},{class},", self.next_addr));
+        self.list_window(&window);
         self.space.map_element(window.clone(), loc, true);
+        self.fill_to_max(&window);
         self.anim.opened(self.next_addr);
         if focus {
             self.focus_window(Some(&window));
@@ -330,6 +460,7 @@ impl MistComp {
         self.stash.retain(|(x, _)| x != w);
         self.focus_history.retain(|x| *x != a);
         self.hypr_event("closewindow", &format!("{a:x}"));
+        self.unlist_window(w);
         let next = self.space.elements().filter(|w| w.alive()).next_back().cloned();
         self.focus_window(next.as_ref());
         self.unswallow(w);
@@ -355,6 +486,8 @@ impl MistComp {
     /// Screens off / on (idle). Nested: nothing to switch.
     pub fn set_dpms(&mut self, on: bool) {
         tracing::info!("dpms {}", if on { "on" } else { "off" });
+        self.dpms_on = on;
+        self.power_note();
         if let Some(u) = self.udev.as_mut() {
             u.set_active(on);
         }
@@ -371,8 +504,30 @@ impl MistComp {
     }
 
     fn focus_top_on(&mut self, output: &Output) {
-        let top = self.space.elements().rev().find(|w| self.output_of(w).as_ref() == Some(output)).cloned();
+        let top = self.top_window(Some(output));
         self.focus_window(top.as_ref());
+    }
+
+    /// The topmost window that can take the keys (not an X11 menu / tooltip), on that output if given.
+    pub fn top_window(&self, output: Option<&Output>) -> Option<Window> {
+        self.space.elements().rev().find(|w| data(w).addr.get() != 0 && output.is_none_or(|o| self.output_of(w).as_ref() == Some(o))).cloned()
+    }
+
+    /// A window dragged onto another output joins the workspace shown there (as on Hyprland); otherwise it
+    /// would stay in a workspace of the monitor it left, and vanish when that one switches.
+    pub fn settle_ws(&mut self, w: &Window) {
+        let ws = data(w).ws.get();
+        if ws == SPECIAL || ws == MINIMIZED || data(w).pinned.get() {
+            return;
+        }
+        let Some(o) = self.output_of(w) else { return };
+        let shown = self.active_ws(&o);
+        if shown != ws {
+            data(w).ws.set(shown);
+            self.ws_changed = true;
+            tracing::info!("{} moved to {}: workspace {ws} -> {shown}", crate::hyprcompat::app_id(w), o.name());
+            self.hypr_event("movewindowv2", &format!("{},{shown},{shown}", crate::hyprcompat::addr(w).trim_start_matches("0x")));
+        }
     }
 
     pub fn move_to_ws(&mut self, w: &Window, ws: u32) {
@@ -427,6 +582,8 @@ impl MistComp {
             Action::Reload => {
                 self.config = crate::config::load();
                 tracing::info!("config reloaded: {} binds", self.config.binds.len());
+                self.apply_output_conf();
+                self.hypr_event("configreloaded", "");
             }
             Action::Workspace(arg) => {
                 if let Some(o) = output {
@@ -479,6 +636,19 @@ impl MistComp {
                     self.focus_window(Some(&w));
                 }
             }
+            Action::Overview => self.overview_toggle(),
+            Action::Zoom(d) => {
+                // 1.25x a step, up to 8x; out from 1.25 or `off`: off
+                let z = self.anim.zoom.max(1.0);
+                self.anim.zoom = match d {
+                    0 => 1.0,
+                    d if d > 0 => (z * 1.25).min(8.0),
+                    _ if z / 1.25 < 1.01 => 1.0,
+                    _ => z / 1.25,
+                };
+                tracing::info!("zoom {:.2}", self.anim.zoom);
+                self.dirty = true;
+            }
             Action::Cycle => {
                 // bottom-most window on this output comes up
                 let o = output;
@@ -487,11 +657,26 @@ impl MistComp {
             }
             Action::Vt(n) => self.change_vt(n),
             Action::Nothing => return,
+            Action::Global(n) => return self.global_shortcut(&n, true),
+            Action::GlobalUp(n) => return self.global_shortcut(&n, false),
         }
         self.dirty = true;
     }
 
     /// A fullscreen window (xdg Fullscreen state / X11 _NET_WM_STATE_FULLSCREEN) is shown on this output.
+    /// A fullscreen game (rules.rs) on the output: its frames may go to the screen without composition.
+    pub fn game_fullscreen_on(&self, o: &Output) -> bool {
+        let Some(og) = self.space.output_geometry(o) else { return false };
+        self.space.elements().any(|w| {
+            let full = match (w.toplevel(), w.x11_surface()) {
+                (Some(t), _) => t.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Fullscreen)),
+                (_, Some(x)) => x.is_fullscreen(),
+                _ => false,
+            };
+            full && self.space.element_location(w).is_some_and(|l| og.contains(l)) && self.rule_of(w).game
+        })
+    }
+
     pub fn fullscreen_on(&self, o: &Output) -> bool {
         let Some(og) = self.space.output_geometry(o) else { return false };
         self.space.elements().any(|w| {
@@ -514,6 +699,10 @@ impl MistComp {
         let d = data(w);
         let og = self.space.output_geometry(&output).unwrap_or_default();
         if let Some(prev) = d.restore.borrow_mut().take() {
+            let was_full = t.as_ref().is_some_and(|t| t.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Fullscreen))) || x.as_ref().is_some_and(|x| x.is_fullscreen());
+            if was_full {
+                self.hypr_event("fullscreen", "0");
+            }
             if let Some(t) = &t {
                 t.with_pending_state(|s| {
                     s.size = Some(prev.size);
@@ -532,6 +721,9 @@ impl MistComp {
         }
         let cur = Rectangle::new(self.space.element_location(w).unwrap_or_default(), w.geometry().size);
         *d.restore.borrow_mut() = Some(cur);
+        if full {
+            self.hypr_event("fullscreen", "1");
+        }
         let area = if full {
             og
         } else {
@@ -555,6 +747,32 @@ impl MistComp {
         }
         // Space locations are window-geometry origins (CSD shadows are outside them)
         self.space.map_element(w.clone(), area.loc, true);
+    }
+
+/// A normal window that covers nearly all of the usable area (>= 97 % both ways: opened that big or resized
+    /// to it) is maximized instead of floating with thin accidental gaps; un-maximizing gives it 70 % of the
+    /// area, centred.
+    pub fn fill_to_max(&mut self, w: &Window) {
+        let d = data(w);
+        if d.restore.borrow().is_some() || d.snap.is_snapped() || d.pinned.get() || self.parent_of(w).is_some() {
+            return;
+        }
+        if w.toplevel().is_none() && w.x11_surface().is_none_or(|x| x.is_override_redirect()) {
+            return;
+        }
+        let Some(output) = self.output_of(w) else { return };
+        let og = self.space.output_geometry(&output).unwrap_or_default();
+        let z = layer_map_for_output(&output).non_exclusive_zone();
+        let bar = self.bar_h(w);
+        let g = w.geometry().size;
+        if z.size.w <= 0 || g.w * 100 < z.size.w * 97 || (g.h + bar) * 100 < z.size.h * 97 {
+            return;
+        }
+        tracing::info!("{} fills the screen ({}x{}): maximized", crate::hyprcompat::app_id(w), g.w, g.h);
+        self.toggle_max(w, false);
+        let (rw, rh) = (z.size.w * 7 / 10, (z.size.h - bar) * 7 / 10);
+        let at = og.loc + z.loc + Point::from(((z.size.w - rw) / 2, bar + (z.size.h - bar - rh) / 2));
+        *data(w).restore.borrow_mut() = Some(Rectangle::new(at, (rw, rh).into()));
     }
 
     /// X11 windows learn where Mist put them (override-redirect menus are placed in root coordinates).

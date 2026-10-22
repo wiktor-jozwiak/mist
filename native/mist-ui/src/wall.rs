@@ -302,6 +302,18 @@ impl Wall {
             if s.buf.as_ref().map(|b| b.height() != h || b.stride() != w * 4).unwrap_or(true) {
                 s.buf = pool.create_buffer(w, h, w * 4, wl_shm::Format::Xrgb8888).ok().map(|(b, _)| b);
             }
+            // the monitor was resized (a scale change) after these pixels were made: they no longer fit, the
+            // picture for the new size is on its way (the layer's configure asked for it)
+            let need = (w * h * 4) as usize;
+            if s.new.as_ref().is_some_and(|n| n.len() != need) {
+                s.new = None;
+                s.old = None;
+                s.fade = None;
+                continue;
+            }
+            if s.old.as_ref().is_some_and(|o| o.len() != need) {
+                s.old = None;
+            }
             let Some(buf) = s.buf.as_ref() else { continue };
             let Some(data) = buf.canvas(pool) else { continue }; // still in use: next frame
             let new = s.new.as_ref().unwrap();

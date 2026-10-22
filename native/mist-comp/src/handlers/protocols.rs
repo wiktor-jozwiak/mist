@@ -100,9 +100,11 @@ impl smithay::wayland::tablet_manager::TabletSeatHandler for MistComp {}
 delegate_cursor_shape!(MistComp);
 
 impl FractionalScaleHandler for MistComp {
+    // the output under the pointer until the surface is placed (update_scales then follows its own output)
     fn new_fractional_scale(&mut self, surface: WlSurface) {
-        let scale = self.space.outputs().next().map(|o| o.current_scale().fractional_scale()).unwrap_or(1.0);
+        let scale = self.active_output().map(|o| o.current_scale().fractional_scale()).unwrap_or(1.0);
         with_states(&surface, |states| with_fractional_scale(states, |f| f.set_preferred_scale(scale)));
+        self.scales_dirty = true;
     }
 }
 delegate_fractional_scale!(MistComp);
@@ -130,7 +132,8 @@ impl PointerConstraintsHandler for MistComp {
                 .space
                 .elements()
                 .find(|w| w.toplevel().is_some_and(|t| t.wl_surface() == surface))
-                .and_then(|w| self.space.element_location(w))
+                // the hint is surface-local: from where the surface is drawn (CSD shadows included)
+                .and_then(|w| Some(self.space.element_location(w)? - w.geometry().loc))
                 .unwrap_or_default()
                 .to_f64();
             pointer.set_location(origin + location);
@@ -153,6 +156,11 @@ impl XdgActivationHandler for MistComp {
         if data.timestamp.elapsed().as_secs() < 10 {
             let w = self.space.elements().find(|w| w.toplevel().is_some_and(|t| t.wl_surface() == &surface)).cloned();
             if let Some(w) = w {
+                // not focused: raised, and mist-ui's island asks for attention (Hyprland's urgent)
+                if self.focused_window().as_ref() != Some(&w) {
+                    let a = crate::wm::data(&w).addr.get();
+                    self.hypr_event("urgent", &format!("{a:x}"));
+                }
                 self.space.raise_element(&w, true);
                 self.dirty = true;
             }

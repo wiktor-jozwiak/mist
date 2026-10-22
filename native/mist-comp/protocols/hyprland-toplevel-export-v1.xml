@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- hyprland-protocols' hyprland-toplevel-export-v1 (BSD-3-Clause), reduced to what mist-ui uses (without the last manager request, capture_toplevel_with_wlr_toplevel_handle); request and
+     event order matches /usr/include/hyprland/protocols/hyprland-toplevel-export-v1.hpp (opcodes) -->
+<protocol name="hyprland_toplevel_export_v1">
+  <interface name="hyprland_toplevel_export_manager_v1" version="2">
+    <request name="capture_toplevel">
+      <arg name="frame" type="new_id" interface="hyprland_toplevel_export_frame_v1"/>
+      <arg name="overlay_cursor" type="int"/>
+      <arg name="handle" type="uint" summary="the window address, lower 32 bits"/>
+    </request>
+    <request name="destroy" type="destructor"/>
+  </interface>
+  <interface name="hyprland_toplevel_export_frame_v1" version="2">
+    <enum name="error">
+      <entry name="already_used" value="0"/>
+      <entry name="invalid_buffer" value="1"/>
+    </enum>
+    <enum name="flags">
+      <entry name="y_invert" value="1"/>
+    </enum>
+    <event name="buffer">
+      <arg name="format" type="uint"/>
+      <arg name="width" type="uint"/>
+      <arg name="height" type="uint"/>
+      <arg name="stride" type="uint"/>
+    </event>
+    <request name="copy">
+      <arg name="buffer" type="object" interface="wl_buffer"/>
+      <arg name="ignore_damage" type="int"/>
+    </request>
+    <event name="damage">
+      <arg name="x" type="uint"/>
+      <arg name="y" type="uint"/>
+      <arg name="width" type="uint"/>
+      <arg name="height" type="uint"/>
+    </event>
+    <event name="flags">
+      <arg name="flags" type="uint"/>
+    </event>
+    <event name="ready">
+      <arg name="tv_sec_hi" type="uint"/>
+      <arg name="tv_sec_lo" type="uint"/>
+      <arg name="tv_nsec" type="uint"/>
+    </event>
+    <event name="failed"/>
+    <request name="destroy" type="destructor"/>
+    <event name="linux_dmabuf" since="2">
+      <arg name="format" type="uint"/>
+      <arg name="width" type="uint"/>
+      <arg name="height" type="uint"/>
+    </event>
+    <event name="buffer_done" since="2"/>
+  </interface>
+</protocol>

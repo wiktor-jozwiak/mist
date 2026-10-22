@@ -41,3 +41,6 @@ launch-posts.md
 .claude/
 CLAUDE.md
 claude.md
+
+# Zen Browser theme: local only, never in the repo (history purged 2026-10-22)
+integrations/zen/
