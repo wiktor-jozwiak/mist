@@ -18,7 +18,8 @@ jobs:
       - name: System packages
         run: |
           pacman -Syu --noconfirm --needed base-devel git rust cargo-deny pkgconf libxkbcommon tzdata pam wayland mesa \
-            libinput seatd libdrm systemd-libs noto-fonts adwaita-cursors socat wl-clipboard wtype grim wlr-randr wev
+            libinput seatd libdrm systemd-libs noto-fonts adwaita-cursors socat wl-clipboard wtype grim wlr-randr wev \
+            kitty imagemagick python-gobject gtk3 qt6-declarative xorg-xwayland
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
         with:
@@ -37,12 +38,38 @@ jobs:
           XCURSOR_THEME: Adwaita # mist-comp's cursor test needs a real theme
         run: |
           cargo build --release --locked
+          cargo build --release --locked -p mist-comp --examples # test clients of the nested tests
           cargo test --release --locked
           cargo clippy --release --locked --workspace --all-targets -- $CLIPPY
       # mist-comp headless on Mesa's software renderer, mist-ui as the client: lock screen on two outputs,
       # shell surfaces, windows kept below the bar, workspaces
       - name: mist-comp scenarios
         run: OUT=$RUNNER_TEMP/mist-comp-ci native/mist-comp/tests/ci.sh
+      # every nested test (native/mist-comp/tests/t-*.sh) on the software renderer: windows, bars, glass,
+      # snapping, popups, X11, lock, mist-ui panes and mist-wall; one line each, the .out files on failure
+      - name: mist-comp nested tests
+        env:
+          XCURSOR_THEME: Adwaita
+        run: CI=1 native/mist-comp/tests/run-all.sh
+      # compositor and pane cost on the software renderer, in the job summary (compare runs, not machines)
+      - name: benchmarks
+        continue-on-error: true
+        run: |
+          export XDG_RUNTIME_DIR=$(mktemp -d) MIST_COMP_SOFTWARE=1 LIBGL_ALWAYS_SOFTWARE=1
+          chmod 700 $XDG_RUNTIME_DIR; mkdir -p $XDG_RUNTIME_DIR/mist
+          {
+            echo '### mist-comp benchmarks (llvmpipe)'; echo '```'
+            native/mist-comp/tests/bench.sh kitty 6 2>&1 | tail -1
+            native/mist-comp/tests/bench.sh zen 6 2>&1 | tail -1
+            native/mist-comp/tests/bench-pane.sh 2>&1 | tail -3
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+      - name: nested test output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mist-comp-nested
+          path: native/mist-comp/tests/*.out
       - name: mist-comp scenario shots and logs
         if: failure()
         uses: actions/upload-artifact@v4

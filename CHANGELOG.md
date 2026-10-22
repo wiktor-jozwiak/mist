@@ -5,7 +5,35 @@ nothing is released yet.
 
 ## Unreleased
 
+### Added
+- mist-comp: Overview (Mission Control): `overview` action, SUPER+O, three fingers up. The monitor's windows side by side over the dimmed desktop, a click brings one forward, Escape goes back; drawn from the windows' own surfaces, no frames while it stands still.
+- mist-comp: the workspace swipe follows the fingers (1:1): the next workspace slides in as they move, lifting past a third (or still moving on) finishes it, a short swipe slides back.
+- mist-comp: magnifier (`zoom in|out|off`, SUPER+= / SUPER+-): the screen scaled around the pointer up to 8x; the point under the pointer stays put, so clicks need no mapping.
+- mist-comp: windows come back after a compositor crash: start-mist restarts it with `MIST_COMP_RESTORE=1`, which starts each app again and puts its window on its old workspace, place and size (`~/.cache/mist/session.json`).
+- mist-comp: watchdog in the log for clients that draw on hidden workspaces (over 20 frames/s) or busy-loop (over 300 commits/s).
+- mist-comp: ext-workspace-v1 for other bars (waybar `ext/workspaces`, ironbar): one group per monitor, activate switches.
+- mist-ui: high contrast (`"contrast": "high"` in settings.json): secondary text near full opacity, glass panels opaque.
+- Packaging: the Arch package installs the Mist session (login manager entry, start-mist finds the packaged mist-comp); Fedora spec in `packaging/fedora` (COPR).
+- CI runs every nested mist-comp test on the software renderer and prints compositor and panel benchmarks in the job summary (docs/BENCHMARKS.md has this machine's numbers).
+
+### Changed
+- One window shape everywhere: corner radius 12 (mist-comp bars, rounded windows and the window shadow, mist-ui app windows, Zen) from `native/common/tokens.rs`, which also holds the window and bar colours; a test keeps Zen's tokens.css equal. Windows with a Mist bar get the window shadow too.
+- mist-comp: `direct_scanout game` is the default: a fullscreen game's frames go to the primary plane without composition (one frame less latency, no GPU pass); other windows stay composited.
+- start-mist: on an NVIDIA-only machine EGL skips Mesa's vendor (gallium + LLVM, ~20 MB in every GL process).
+
+### Performance
+- mist-comp announces which desktop layers are hidden under windows (`mistcover` events); mist-wall and mist-ui pause what nobody sees from them, without window queries or the 8 s check (resizes included).
+- mist-comp: a window's surfaces share one blur (Zen: half the blur passes); `stats` counts blur runs, IPC `blurs` per surface, `top` commits per client.
+- mist-ui: full-monitor panels reuse two buffers and send only the rows that changed (typing in Spotlight: ~6 % of the screen per frame instead of all 8 MB); the shared buffer pool shrinks when a panel closes.
+- mist-ui: the weather card's carousel waits while windows cover the card.
+- mist-comp: a client's commit redraws only the monitors its window is on; the other monitor stays idle (two monitors with a browser animating on one: half the render passes). Window, cursor and workspace bookkeeping runs at most 10 times a second while only clients commit, not on every commit.
+- mist-comp: a window fully covered by opaque windows gets a frame callback once a second instead of every refresh: a browser or chat app behind a maximized window stops drawing (its CPU and GPU, and our frames) and answers again as soon as it shows. Glass windows (Zen, Mist Files) and X11 windows never cover others.
+
 ### Fixed
+- mist-comp: Zen (and every glass window) drew a square grey frame around its rounded corners: Firefox leaves a 24 px margin around the window for GTK's own frame and shadow, which mist-comp showed under its rounded shadow. A glass window's own surfaces are now cut at its geometry (menus and popups are not), and the glass under its antialiased corners fades with the surface's alpha instead of a hard edge.
+- mist-comp leaked memory: the GL textures and EGL images of every destroyed client buffer stayed until the session ended (smithay 0.7 frees them only on `cleanup_texture_cache`, which was never called), and a closed panel's blur textures stayed for 600 frames. A live session grew about 4 MB a minute (520 MB after two hours); opening and closing panels now levels off at ~80 MB (test t-texleak).
+- Screen sharing and screenshots through the portal in the Mist session: xdg-desktop-portal found no ScreenCast backend for `XDG_CURRENT_DESKTOP=mist` (xdph only lists Hyprland and wlroots desktops); start-mist now installs `mist-portals.conf`.
+- Translations: the Start menu agenda ("3 events ahead", "next …"), copy / cut notices, "resume at" in the player, weather insights and "no device" were Polish in every language; a test now fails for any `tr("…")` without a row.
 - The screen no longer locks or turns off during a video in apps that inhibit idle over D-Bus (Chromium, VLC, Spotify, Flatpak apps): mist-ui serves `org.freedesktop.ScreenSaver` and `org.freedesktop.PowerManagement.Inhibit` as hypridle did, dropping an app's inhibit when it exits; a fullscreen window while a player plays also holds idle off. `mist-ui-bin --inhibit` keeps the screen on by hand.
 - mist-comp: an idle inhibitor whose window died without removing it no longer keeps the screen on forever.
 - mist-comp: wp_presentation feedback is sent (presented at the frame's vblank, discarded when nothing changed). It was advertised and never answered, so a client that paces its frames on it stopped drawing after a few frames.

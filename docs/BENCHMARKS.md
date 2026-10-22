@@ -69,3 +69,31 @@ started alone next to the running Mist, settles for 3 minutes, is measured for 3
 `dock`, `island`, `stage`, `card`) and their time in µs. Between two calls 10 s apart, with music playing:
 122 wake-ups, 33 ms of drawing (0.33 % of a core). Offline frame benchmarks: `mist-ui --island-bench <demo|eq>`,
 `MIST_BENCH=n mist-ui --dock-png out.png [slot]`.
+
+## mist-comp (the compositor)
+
+Measured headless and nested (`native/mist-comp/tests`, a 1920×1080 output, no real monitor), 2026-10-22,
+on the machine above. CI runs the same scripts on Mesa's software renderer and prints them in the job
+summary (`.github/workflows/ci.yml`, step "benchmarks"); those numbers compare runs with each other, not
+with this table.
+
+| What | Script | Result |
+|---|---|---|
+| Compositor CPU per frame, a client redrawing nonstop under a Mist bar (kitty) | `tests/bench.sh kitty 8` | 0.25 ms/frame (480 frames in 8 s), RSS 105 MB |
+| Same, a translucent window with glass + shadow (Zen rule) | `tests/bench.sh zen 8` | 0.25 ms/frame, RSS 109 MB |
+| mist-ui full-monitor pane (Spotlight, 12 letters typed) | `tests/bench-pane.sh` | 31 frames: 4.2 ms paint, 1.4 ms commit, 125 k px uploaded per frame (6 % of the screen) |
+| Blur passes per frame, Zen (several surfaces per window) | IPC `stats` (`blur runs/calls`) | 1.92 → 0.96 (one blur per window since 2026-10-22) |
+| Nested mist-comp RSS, NVIDIA EGL only vs. glvnd loading Mesa too | `ps` | 91 → 67 MB |
+| Weather card redraws while covered by windows | `tests/t-cardcover.sh` | 28 → 0 per 20 s |
+| mist-wall CPU under a maximized window | `tests/t-wall.sh` | 0 ticks / 2 s |
+| Overview (Mission Control) open and idle | `tests/t-overview.sh` | 0 frames / s |
+| Magnifier on, pointer still | `tests/t-zoom.sh` | 0 frames / s |
+| Workspace swipe held still | `tests/t-swipe.sh` | 1 frame / 0.5 s (the screenshot's) |
+| Render passes on an idle monitor while a client animates on the other one | `tests/t-perout.sh` | 180 → 0 per 3 s |
+| Frame callbacks to an animating client covered by an opaque window | `tests/t-occlude.sh` | 60 → 1 per s (60 again once uncovered) |
+| Memory while panels open and close (2 × 30 s) | `tests/t-texleak.sh` | levels off: 110 → 132 → 139 MB on llvmpipe, ~80 MB on NVIDIA (grew ~4 MB/min before 2026-10-22) |
+
+Watching it live: `hyprctl` is mist-comp in its session, and its IPC socket answers `stats` (frames,
+commits, wake-ups, blur runs), `passes` (render passes per monitor, and how many changed pixels), `top 5` (commits per client over 5 s: who keeps the screen busy) and `blurs`.
+The watchdog logs `watchdog: <app> draws N frames/s while hidden` to `~/.cache/mist/comp.log` when a client
+keeps drawing on a hidden workspace (`MIST_COMP_WATCHDOG_SECS`, default 60).
