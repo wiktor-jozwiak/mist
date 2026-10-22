@@ -1237,7 +1237,7 @@ dependencies = [
 
 [[package]]
 name = "mist-comp"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "bitflags 2.13.2",
  "libc",
@@ -1256,7 +1256,7 @@ dependencies = [
 
 [[package]]
 name = "mist-ui"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "async-io",
  "calloop 0.14.5",
@@ -1277,7 +1277,7 @@ dependencies = [
 
 [[package]]
 name = "mist-wall"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "calloop 0.14.5",
  "calloop-wayland-source 0.4.1",

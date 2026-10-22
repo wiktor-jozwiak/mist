@@ -2,6 +2,44 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [SemVer](https://semver.org).
 
+## [0.2.0] - 2026-10-23
+
+### Added
+- Settings: one window for language, weather place, wallpaper, desktop layout (a live preview, click a card to
+  swap it), widgets, night light, high contrast, lock and sleep, notifications. Right click on the desktop,
+  Start, Spotlight or the control centre open it; it opens by itself on the first start.
+- System settings app (`mist-ui-bin settings`): display, sound, Bluetooth, power, mouse and touchpad, apps,
+  accounts, date and time, language and keyboard, accent colour; CPU drawn, nothing polled while idle.
+- Desktop cards: music (the player the island follows), calendar, system (CPU, memory, disk, network) and world
+  clocks, next to weather, Garmin readiness and running.
+- Live wallpapers: aurora over a mountain lake, liquid chrome and gold, neon city in the rain, ringed planet,
+  layered waves.
+- mist-comp: its own session (`install-session.sh`, greeter, `mist-session`), restart in safe mode after a
+  crash with the windows restored, `mist-session restart` without logging out (`session/restart-check` guards it).
+- mist-comp: ext-background-effect-v1, so a full-screen panel blurs only under its cards; glass re-blurs only
+  the damaged part; Win + D shows the desktop; Spotify and other apps that cannot move themselves are dragged
+  by their top strip.
+- mist-comp: Windows 11 snapping with exact zone edges, Overview, magnifier, 1:1 workspace swipe,
+  wlr-output-management, screencopy, foreign-toplevel, explicit sync, input methods, Hyprland toplevel export
+  and global shortcuts. Its default config is `native/assets/comp-default.conf`.
+- Lock screen on every monitor; French UI.
+
+### Changed
+- Garmin: `mistd garmin sync` talks to Garmin Connect itself and keeps the data in SQLite
+  (`~/.local/share/mist/garmin.db`, 0600) instead of InfluxDB. No container, server or password stays behind;
+  garmin-grafana is needed once, for the first login. A database from the first builds in `~/.config/mist`
+  is moved on first use. Setup: [docs/guides/garmin.md](docs/guides/garmin.md).
+- Translations moved from `native/assets/i18n.tsv` to one JSON file per language in `native/assets/i18n/`,
+  with user overrides in `~/.config/mist/i18n/<lang>.json`.
+- The dock keeps each app where it was when focus or minimizing reorders the compositor's window list.
+- READMEs rewritten in every language: shorter, with the Settings window.
+
+### Fixed
+- Garmin steps: Connect's 15-minute intervals carry no time zone and were all stored at noon, overwriting
+  each other (today's steps read 0).
+- mist-comp tests: the stale `xdg_toplevel_icon_manager_v1` check (the global is off on purpose: Smithay 0.7
+  kills Electron clients that drop the icon buffer) and waits for workspace switches on slow CI runners.
+
 ## [0.1.1] - 2026-10-18
 
 ### Fixed
