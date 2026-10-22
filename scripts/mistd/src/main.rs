@@ -11,6 +11,7 @@ mod common;
 mod data;
 mod filemanager;
 mod garmin;
+mod garmin_db;
 mod island;
 mod notify;
 mod phone;

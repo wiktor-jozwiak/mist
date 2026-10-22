@@ -1,0 +1,9 @@
+[Unit]
+Description=Mist: Garmin Connect sync every 20 minutes
+
+[Timer]
+OnBootSec=1m
+OnUnitActiveSec=20m
+
+[Install]
+WantedBy=timers.target

@@ -1,64 +1,58 @@
-# Garmin cards: sync from Garmin Connect
+# Garmin cards
 
 [Polski](garmin.pl.md)
 
-The **readiness** card (Training Readiness, Body Battery curve, sleep, resting HR, stress, HRV, steps) and
-the **running** card (week dots, last run, month / year distance, 5 km prediction, days to the race) read a
-local InfluxDB filled by [garmin-grafana]'s `garmin-fetch-data`. Nothing is sent anywhere except the login to
-Garmin Connect done by that container.
+The **readiness** card (Training Readiness, Body Battery curve, sleep, resting HR, stress, HRV, steps) and the
+**running** card (week dots, last run, month and year distance, 5 km prediction, days to the race) read a local
+SQLite file that `mistd garmin sync` fills from Garmin Connect.
 
 ```
-Garmin watch ─ Garmin Connect ─ garmin-fetch-data (docker) ─ InfluxDB 127.0.0.1:8086 ─ mistd data garmin|running ─ cards
+watch ─ Garmin Connect ─ mistd garmin sync (every 20 min) ─ ~/.local/share/mist/garmin.db ─ mistd data garmin|running ─ cards
 ```
 
-Without this setup the two cards stay empty; hide them in *Dostosuj pulpit* (right click on the desktop
-clock) or keep only the weather card.
+No server, no container, no password stored. The only thing Mist cannot do itself is the first login with 2FA,
+so that step borrows the login of [garmin-grafana] once. Without any of this the two cards are simply not shown.
 
-## 1. Containers
+## 1. Log in once
 
-Needs `docker` with the compose plugin (`sudo pacman -S docker docker-compose`, `sudo systemctl enable --now docker`).
+Needs `docker` with the compose plugin, only for this step.
 
 ```bash
-mkdir -p ~/garmin-mist && cp ~/.config/quickshell/mist/integrations/garmin/{compose.yml,.env.example} ~/garmin-mist/
-```
-
-```bash
-cd ~/garmin-mist && cp .env.example .env && mkdir garminconnect-tokens && sudo chown -R 1000:1000 garminconnect-tokens
-```
-
-Edit `~/garmin-mist/.env`: set `INFLUXDB_PASSWORD` (long and random, e.g. `openssl rand -hex 24`) and `TZ`.
-
-## 2. First login (once, interactive)
-
-```bash
-cd ~/garmin-mist && docker compose run --rm garmin-fetch-data
-```
-
-It asks for the Garmin Connect e-mail, password and the 2FA code, then stores session tokens in
-`garminconnect-tokens/` (your password is not stored). Stop it with `Ctrl+C` once it starts fetching.
-
-## 3. Run in the background
-
-```bash
-cd ~/garmin-mist && docker compose up -d
-```
-
-The first run back-fills recent days; afterwards it fetches every few minutes. Grafana dashboards are optional:
-`docker compose --profile grafana up -d`, then http://127.0.0.1:3000.
-
-## 4. Tell Mist where the data is
-
-`~/.config/mist/influx.json`, readable only by you:
-
-```json
-{ "url": "http://127.0.0.1:8086/query", "db": "GarminStats", "user": "mist", "password": "<INFLUXDB_PASSWORD from .env>" }
+mkdir -p ~/garmin-mist && cp ~/.config/quickshell/mist/integrations/garmin/compose.yml ~/garmin-mist/
 ```
 
 ```bash
-chmod 600 ~/.config/mist/influx.json
+cd ~/garmin-mist && mkdir -p garminconnect-tokens && sudo chown 1000:1000 garminconnect-tokens && docker compose run --rm garmin-fetch-data
 ```
 
-## 5. Check
+Enter the Garmin Connect e-mail, password and 2FA code. When it starts fetching, the tokens are in
+`~/garmin-mist/garminconnect-tokens/garmin_tokens.json`; stop it with `Ctrl+C` and clean up:
+
+```bash
+cd ~/garmin-mist && docker compose down -v
+```
+
+Your password is not stored. mistd refreshes the tokens by itself from now on.
+
+## 2. Sync in the background
+
+```bash
+cp ~/.config/quickshell/mist/integrations/garmin/mist-garmin-sync.{service,timer} ~/.config/systemd/user/
+```
+
+```bash
+systemctl --user daemon-reload && systemctl --user enable --now mist-garmin-sync.timer
+```
+
+The first run writes today's data; every run after that adds to it. Sync now by hand:
+
+```bash
+~/.config/quickshell/mist/scripts/bin/mistd garmin sync
+```
+
+It prints `{"status": "ok", "rows": …, "coach": {…}}`.
+
+## 3. Check
 
 ```bash
 ~/.config/quickshell/mist/scripts/bin/mistd data garmin
@@ -68,21 +62,25 @@ chmod 600 ~/.config/mist/influx.json
 ~/.config/quickshell/mist/scripts/bin/mistd data running
 ```
 
-Both print JSON (`ready`, `bb`, `sleepSec`, … / `weekKm`, `last`, …). mist-ui asks for `garmin` every 5 min and
-`running` every 10 min, so the cards fill in by themselves. `{"error": ...}` means:
+mist-ui asks for `garmin` every 5 minutes and `running` every 10, so the cards fill in by themselves.
 
-| Error | Fix |
+| Output | Fix |
 |---|---|
-| `brak …/influx.json` | step 4 |
-| `connection refused` | `docker compose ps`: InfluxDB not running |
-| `brak danych w InfluxDB` | the fetcher has not written anything yet: `docker compose logs garmin-fetch-data` |
-| `401` / `authorization failed` | user / password in `influx.json` differ from `.env` |
+| `"status": "disabled"` | no token file: step 1 |
+| `cannot read …garmin_tokens.json` | the token file is not readable by you: `sudo chown $USER` it |
+| `GET …: http status: 401` on sync | tokens revoked (password change, logout everywhere): step 1 again |
+| cards empty, sync ok | the watch has not synced to Garmin Connect today yet |
 
-## Daily suggested workout (optional)
+## Suggested workout
 
-The **Dziś** line on the running card and the readiness footer use the `SuggestedWorkout` measurement
-(`title`, `detail`, `race_days`). Garmin does not export the watch's suggestion, so it comes from a small
-script (`coach.py`) that rebuilds it from readiness, recovery time, Body Battery, the 4-week load mix and the
-race date, every 30 min. Without it the cards just skip that line.
+The **Dziś** line on the running card comes from a small rule set inside `mistd garmin sync`: readiness,
+recovery time, Body Battery, the last weeks of runs and the race date pick rest, recovery, base, tempo or intervals.
+The race is set in `~/.config/mist/coach.json`: `{"race_date": "2027-04-12", "race_name":
+"Marathon"}`; without it the countdown is hidden.
+
+## Data
+
+`~/.local/share/mist/garmin.db`, mode 0600. Plain SQLite: `sqlite3 ~/.local/share/mist/garmin.db .tables`.
+Delete it to start over; the next sync writes it again.
 
 [garmin-grafana]: https://github.com/arpanghosh8453/garmin-grafana

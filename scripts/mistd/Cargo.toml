@@ -16,6 +16,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 resvg = { version = "0.45", default-features = false, features = ["raster-images"] }
 libc = "0.2"
 base64 = "0.22"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
 
 [profile.release]
 opt-level = 3

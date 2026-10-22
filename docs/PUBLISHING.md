@@ -31,7 +31,7 @@ would have been to skip a point; the open points are still to do.
       English fallback; `MIST_I18N_MISS=file` logs every string without a row (only the place name Kraków left
       in the demo renders); week initials, wrapped text and wallpaper presets are translated; app names
       reload when the language changes.
-- [x] **Personal integrations.** Garmin and running cards only with `~/.config/mist/influx.json` or a cache
+- [x] **Personal integrations.** Garmin and running cards only with a Garmin Connect token file or a cache
       (no `mistd` call without one, the cards are not offered); the KDE Connect test walks every paired
       device; ADB call detection documented as optional ([CONFIG.md](CONFIG.md)).
 - [x] **Legacy QML.** Root `*.qml` and `components/` are off `main`, kept under the tag `legacy-qml`. Done: `mist-wall` reads GLSL 150 from

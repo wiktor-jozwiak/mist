@@ -3,7 +3,7 @@
 // Cache in ~/.cache/mist/<src>.json (last good result is returned with "stale": true on failure).
 use crate::common::*;
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveDateTime, TimeZone, Utc};
-use serde_json::{Map, Value as J, json};
+use serde_json::{Value as J, json};
 use std::collections::{HashMap, HashSet};
 
 type R<T> = Result<T, String>;
@@ -60,16 +60,12 @@ fn get_json(url: &str, timeout: u64) -> R<J> {
 }
 
 /// Python's round(): ties to even.
-fn r0(x: f64) -> i64 {
+pub(crate) fn r0(x: f64) -> i64 {
     x.round_ties_even() as i64
 }
 
-fn r1(x: f64) -> f64 {
+pub(crate) fn r1(x: f64) -> f64 {
     (x * 10.0).round_ties_even() / 10.0
-}
-
-fn f(v: &J) -> Option<f64> {
-    v.as_f64()
 }
 
 /// Python's `v or 0`: the value as it came (int stays int), 0 for null / 0.
@@ -81,51 +77,12 @@ fn fz(v: &J) -> f64 {
     v.as_f64().unwrap_or(0.0)
 }
 
-type Rows = Vec<Map<String, J>>;
-
-// InfluxDB 1.x of garmin-grafana; connection in ~/.config/mist/influx.json (kept out of the repo):
-// {"url": "http://127.0.0.1:8086/query", "db": "GarminStats", "user": "...", "password": "..."}
-fn influx(qs: &[String]) -> R<Vec<Rows>> {
-    let path = format!("{}/.config/mist/influx.json", home());
-    let cfg: J = std::fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str(&s).ok()).ok_or(format!("brak {path}"))?;
-    let s = |k: &str, d: &str| cfg[k].as_str().unwrap_or(d).to_string();
-    let q = qs.join(";");
-    let res = agent(8)
-        .get(&s("url", "http://127.0.0.1:8086/query"))
-        .query("db", &s("db", "GarminStats"))
-        .query("q", &q)
-        .query("epoch", "s")
-        .query("u", &s("user", ""))
-        .query("p", &s("password", ""))
-        .header("User-Agent", "mist-shell/1.0")
-        .call()
-        .map_err(|e| e.to_string())?
-        .body_mut()
-        .read_json::<J>()
-        .map_err(|e| e.to_string())?;
-    let mut out = vec![];
-    for r in res["results"].as_array().ok_or("influx: no results")? {
-        let mut rows = vec![];
-        if let Some(s) = r["series"].as_array().and_then(|a| a.first()) {
-            let cols: Vec<String> = s["columns"].as_array().map(|c| c.iter().map(|x| x.as_str().unwrap_or("").to_string()).collect()).unwrap_or_default();
-            for v in s["values"].as_array().into_iter().flatten() {
-                let mut m = Map::new();
-                for (c, x) in cols.iter().zip(v.as_array().into_iter().flatten()) {
-                    m.insert(c.clone(), x.clone());
-                }
-                rows.push(m);
-            }
-        }
-        out.push(rows);
-    }
-    Ok(out)
-}
-
+#[cfg(test)]
 fn local(ts: i64) -> DateTime<Local> {
     Local.timestamp_opt(ts, 0).single().unwrap_or_else(Local::now)
 }
 
-fn local_midnight(d: NaiveDate) -> DateTime<Local> {
+pub(crate) fn local_midnight(d: NaiveDate) -> DateTime<Local> {
     zoned(&Zone::Local, d.and_hms_opt(0, 0, 0).unwrap())
 }
 
@@ -227,131 +184,6 @@ fn weather() -> R<J> {
         "snowDepth": cur.map(|x| x["depth"].clone()).unwrap_or(json!(0)),
         // for the sky scene: observer (sun / moon positions) and the planetary K index (aurora)
         "lat": loc.lat, "lon": loc.lon, "kp": kp()}))
-}
-
-// ---------------------------------------------------------------- garmin
-fn opt_round(v: &J) -> J {
-    f(v).map(|x| json!(r0(x))).unwrap_or(J::Null)
-}
-
-fn garmin() -> R<J> {
-    let mid = local_midnight(Local::now().date_naive()).timestamp();
-    let r = influx(&[
-        r#"SELECT last("score"), last("level") FROM "TrainingReadiness" WHERE time > now() - 2d"#.into(),
-        r#"SELECT mean("BodyBatteryLevel") FROM "BodyBatteryIntraday" WHERE time > now() - 24h GROUP BY time(30m) fill(none)"#.into(),
-        r#"SELECT "sleepTimeSeconds","sleepScore","avgOvernightHrv","restingHeartRate" FROM "SleepSummary" WHERE time > now() - 9d ORDER BY time DESC"#.into(),
-        r#"SELECT last("stressLevel") FROM "StressIntraday" WHERE time > now() - 1d AND "stressLevel" >= 0"#.into(),
-        r#"SELECT "title","detail" FROM "SuggestedWorkout" WHERE time > now() - 1d ORDER BY time DESC LIMIT 1"#.into(),
-        format!(r#"SELECT sum("StepsCount") FROM "StepsIntraday" WHERE time >= {}s"#, mid),
-        r#"SELECT last("Device_Name") FROM "DeviceSync""#.into(),
-        r#"SELECT last("BodyBatteryLevel") FROM "BodyBatteryIntraday" WHERE time > now() - 24h"#.into(),
-    ])?;
-    if r.len() < 8 {
-        return Err("influx: za mało wyników".into());
-    }
-    if r.iter().all(|x| x.is_empty()) {
-        return Err("brak danych w InfluxDB".into());
-    }
-    let (ready, bbs, sleep, stress, work, steps, dev, bblast) = (&r[0], &r[1], &r[2], &r[3], &r[4], &r[5], &r[6], &r[7]);
-    let empty = Map::new();
-    let sl = sleep.first().unwrap_or(&empty);
-    let hrv7: Vec<f64> = sleep.iter().skip(1).take(7).filter_map(|s| f(s.get("avgOvernightHrv").unwrap_or(&J::Null))).filter(|x| *x != 0.0).collect();
-    let rd = ready.first().unwrap_or(&empty);
-    let l1 = match rd.get("last_1") {
-        Some(J::String(s)) => s.clone(),
-        Some(J::Null) | None => String::new(),
-        Some(o) => o.to_string(),
-    };
-    let level = match l1.to_uppercase().as_str() {
-        "PRIME" => "najwyższa".to_string(), "HIGH" => "wysoka".into(), "MODERATE" => "umiarkowana".into(),
-        "LOW" => "niska".into(), "POOR" => "słaba".into(), _ => l1.to_lowercase(),
-    };
-    let g = |m: &Map<String, J>, k: &str| m.get(k).cloned().unwrap_or(J::Null);
-    let steps_v = steps.first().and_then(|s| f(s.get("sum").unwrap_or(&J::Null))).filter(|x| *x != 0.0).map(r0).unwrap_or(0);
-    Ok(json!({
-        "device": dev.first().map(|d| g(d, "last")).unwrap_or(json!("Garmin")),
-        "ready": opt_round(rd.get("last").unwrap_or(&J::Null)),
-        "level": level,
-        "bb": bblast.first().map(|b| opt_round(b.get("last").unwrap_or(&J::Null))).unwrap_or(J::Null),
-        "bbSeries": bbs.iter().filter_map(|x| f(x.get("mean").unwrap_or(&J::Null))).map(r0).collect::<Vec<_>>(),
-        "sleepSec": g(sl, "sleepTimeSeconds"), "sleepScore": g(sl, "sleepScore"),
-        "hrv": g(sl, "avgOvernightHrv"),
-        "hrv7": if hrv7.is_empty() { J::Null } else { json!(r0(hrv7.iter().sum::<f64>() / hrv7.len() as f64)) },
-        "rhr": g(sl, "restingHeartRate"),
-        "stress": stress.first().map(|s| opt_round(s.get("last").unwrap_or(&J::Null))).unwrap_or(J::Null),
-        "steps": steps_v,
-        "workout": work.first().map(|w| g(w, "title")).unwrap_or(J::Null),
-        "workoutDetail": work.first().map(|w| g(w, "detail")).unwrap_or(J::Null),
-    }))
-}
-
-// ---------------------------------------------------------------- running
-fn running() -> R<J> {
-    let now_l = Local::now();
-    let today_d = now_l.date_naive();
-    let wd = today_d.weekday().num_days_from_monday() as i64;
-    let mon_d = today_d - Duration::days(wd);
-    let mon = local_midnight(mon_d);
-    let prev_mon = local_midnight(mon_d - Duration::days(7));
-    let iso = |t: DateTime<Local>| t.with_timezone(&Utc).format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let month_start = local_midnight(today_d.with_day(1).unwrap());
-    let year_start = local_midnight(NaiveDate::from_ymd_opt(today_d.year(), 1, 1).unwrap());
-    let r = influx(&[
-        format!(r#"SELECT sum("distance") FROM "ActivitySummary" WHERE "activityType" = 'running' AND time >= '{}' GROUP BY time(1d) tz('Europe/Warsaw')"#, iso(prev_mon)),
-        r#"SELECT "activityName","distance","movingDuration","averageSpeed","averageHR" FROM "ActivitySummary" WHERE "activityType" = 'running' ORDER BY time DESC LIMIT 1"#.into(),
-        format!(r#"SELECT sum("distance"), count("distance") FROM "ActivitySummary" WHERE "activityType" = 'running' AND time >= '{}'"#, iso(month_start)),
-        format!(r#"SELECT sum("distance"), count("distance") FROM "ActivitySummary" WHERE "activityType" = 'running' AND time >= '{}'"#, iso(year_start)),
-        r#"SELECT last("time5K") FROM "RacePredictions" WHERE time > now() - 7d"#.into(),
-        r#"SELECT "race_days" FROM "SuggestedWorkout" WHERE time > now() - 1d ORDER BY time DESC LIMIT 1"#.into(),
-    ])?;
-    if r.len() < 6 {
-        return Err("influx: za mało wyników".into());
-    }
-    let (days, last, month, year, p5, race) = (&r[0], &r[1], &r[2], &r[3], &r[4], &r[5]);
-    let mut week = [0.0f64; 7];
-    let mut prev = 0.0;
-    for d in days {
-        let t = local(d.get("time").and_then(|x| x.as_i64()).unwrap_or(0));
-        let km = d.get("sum").and_then(|x| x.as_f64()).unwrap_or(0.0) / 1000.0;
-        if t >= mon {
-            let i = (t - mon).num_seconds().div_euclid(86400) as usize;
-            if i < 7 {
-                week[i] += km;
-            }
-        } else {
-            prev += km;
-        }
-    }
-    let gf = |rows: &Rows, k: &str| rows.first().and_then(|m| m.get(k)).and_then(|x| x.as_f64());
-    let mut out = json!({"week": week.iter().map(|x| r1(*x)).collect::<Vec<_>>(), "weekKm": r1(week.iter().sum()), "prevKm": r1(prev),
-        "today": wd, "isoWeek": now_l.iso_week().week(),
-        "monthKm": if month.is_empty() { json!(0) } else { json!(r1(gf(month, "sum").unwrap_or(0.0) / 1000.0)) },
-        "monthN": if month.is_empty() { json!(0) } else { month[0].get("count").cloned().unwrap_or(json!(0)) },
-        "yearKm": if year.is_empty() { json!(0) } else { json!(r1(gf(year, "sum").unwrap_or(0.0) / 1000.0)) },
-        "yearN": if year.is_empty() { json!(0) } else { year[0].get("count").cloned().unwrap_or(json!(0)) },
-        "p5": null, "last": null,
-        "raceDays": gf(race, "race_days").filter(|x| *x >= 0.0).map(|_| race[0]["race_days"].clone()).unwrap_or(J::Null)});
-    if let Some(s) = gf(p5, "last").filter(|x| *x != 0.0) {
-        let s = s as i64;
-        out["p5"] = json!(format!("{}:{:02}", s / 60, s % 60));
-    }
-    if let Some(l) = last.first() {
-        let lf = |k: &str| l.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0);
-        let km = lf("distance") / 1000.0;
-        let sp = lf("averageSpeed");
-        let pace = if sp != 0.0 {
-            let x = 1000.0 / sp;
-            format!("{}:{:02}", (x / 60.0).floor() as i64, (x % 60.0) as i64)
-        } else {
-            "—".into()
-        };
-        let ago = (today_d - local(l.get("time").and_then(|x| x.as_i64()).unwrap_or(0)).date_naive()).num_days();
-        let name = l.get("activityName").and_then(|x| x.as_str()).filter(|s| !s.is_empty()).unwrap_or("Bieg");
-        out["last"] = json!({"name": name, "km": r1(km), "pace": pace, "min": r0(lf("movingDuration") / 60.0),
-            "hr": r0(lf("averageHR")),
-            "ago": match ago { 0 => "dziś".to_string(), 1 => "wczoraj".to_string(), n => format!("{} dni temu", n) }});
-    }
-    Ok(out)
 }
 
 // ---------------------------------------------------------------- calendar (iCal feeds)
@@ -620,8 +452,8 @@ pub fn main(name: &str) {
     let path = format!("{}/{}.json", cache, name);
     let res = match name {
         "weather" => weather(),
-        "garmin" => garmin(),
-        "running" => running(),
+        "garmin" => crate::garmin_db::query_garmin(), // SQLite filled by `mistd garmin sync`
+        "running" => crate::garmin_db::query_running(),
         "calendar" => calendar(),
         "sys" => sysinfo(),
         _ => Err(format!("nieznane źródło: {}", name)),

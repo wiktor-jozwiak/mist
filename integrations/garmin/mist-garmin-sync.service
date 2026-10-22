@@ -1,0 +1,7 @@
+[Unit]
+Description=Mist: sync Garmin Connect into ~/.local/share/mist/garmin.db
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.config/quickshell/mist/scripts/bin/mistd garmin sync

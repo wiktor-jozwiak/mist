@@ -1,7 +1,7 @@
 // Native Garmin Connect sync & workout recommendation engine for Mist.
 // Replaces the heavy garmin-fetch-data and garmin-coach Python containers.
 use crate::common::*;
-use base64::Engine;
+use crate::garmin_db as db;
 use chrono::{DateTime, Local, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as J, json};
@@ -17,36 +17,13 @@ struct TokenFile {
     di_client_id: String,
 }
 
-struct InfluxCfg {
-    url: String,
-    db: String,
-    user: String,
-    pass: String,
-}
-
-fn influx_cfg() -> R<InfluxCfg> {
-    let path = format!("{}/.config/mist/influx.json", home());
-    let cfg: J = fs::read_to_string(&path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .ok_or_else(|| format!("brak {}", path))?;
-    let s = |k: &str, d: &str| cfg[k].as_str().unwrap_or(d).to_string();
-    let query_url = s("url", "http://127.0.0.1:8086/query");
-    let write_url = query_url.replace("/query", "/write");
-    Ok(InfluxCfg {
-        url: write_url,
-        db: s("db", "GarminStats"),
-        user: s("user", ""),
-        pass: s("password", ""),
-    })
-}
-
+// written by garmin-fetch-data's first interactive login (docs/guides/garmin.md)
 fn tokens_path() -> String {
-    let p1 = format!("{}/garmin-grafana/garminconnect-tokens/garmin_tokens.json", home());
-    if fs::metadata(&p1).is_ok() {
-        return p1;
-    }
-    format!("{}/.config/mist/garmin_tokens.json", home())
+    let h = home();
+    [format!("{h}/garmin-mist/garminconnect-tokens/garmin_tokens.json"), format!("{h}/garmin-grafana/garminconnect-tokens/garmin_tokens.json")]
+        .into_iter()
+        .find(|p| fs::metadata(p).is_ok())
+        .unwrap_or_else(|| format!("{h}/.config/mist/garmin_tokens.json"))
 }
 
 fn load_tokens() -> R<(TokenFile, String)> {
@@ -152,18 +129,9 @@ fn garmin_get(agent: &ureq::Agent, token: &str, url: &str) -> R<J> {
     res.body_mut().read_json::<J>().map_err(|e| format!("JSON {}: {}", url, e))
 }
 
-fn escape_tag(s: &str) -> String {
-    s.replace(',', "\\,").replace(' ', "\\ ").replace('=', "\\=")
-}
-
-fn escape_str(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
 pub fn sync() -> R<J> {
     let (mut tokens, token_path) = load_tokens()?;
     let token = ensure_token(&mut tokens, &token_path)?;
-    let icfg = influx_cfg()?;
 
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(25)))
@@ -185,45 +153,37 @@ pub fn sync() -> R<J> {
         .and_then(|a| a.first())
         .and_then(|d| d["productDisplayName"].as_str())
         .unwrap_or("Garmin Watch");
-    let dev_tag = escape_tag(device_name);
 
-    let mut points: Vec<String> = Vec::new();
     let now_ts = Utc::now().timestamp();
-
-    // DeviceSync point
-    points.push(format!(
-        "DeviceSync,Database_Name={},Device={} Device_Name=\"{}\" {}",
-        icfg.db, dev_tag, escape_str(device_name), now_ts
-    ));
 
     // 3. Training Readiness
     let tr_url = format!("https://connectapi.garmin.com/metrics-service/metrics/trainingreadiness/{}", today);
+    let mut snap = db::Snapshot { device: Some((now_ts, device_name.to_string())), ..Default::default() };
     let mut tr_score: Option<i64> = None;
-    let mut tr_level = "MODERATE".to_string();
     let mut rec_hours: i64 = 0;
     if let Ok(tr_val) = garmin_get(&agent, &token, &tr_url) {
         if let Some(entry) = tr_val.as_array().and_then(|a| a.first()) {
             if let Some(score) = entry["score"].as_i64() {
                 tr_score = Some(score);
-                if let Some(l) = entry["level"].as_str() {
-                    tr_level = l.to_string();
-                }
+                let tr_level = entry["level"].as_str().unwrap_or("MODERATE");
                 rec_hours = entry["recoveryTime"].as_i64().unwrap_or(0);
                 let ts = DateTime::parse_from_rfc3339(entry["timestamp"].as_str().unwrap_or(""))
                     .map(|dt| dt.timestamp())
                     .unwrap_or(now_ts);
-                points.push(format!(
-                    "TrainingReadiness,Database_Name={},Device={} score={}i,level=\"{}\",recoveryTime={}i,acuteLoad={}i,acwrFactorPercent={}i,hrvFactorPercent={}i,sleepScore={}i,sleepScoreFactorPercent={}i,stressHistoryFactorPercent={}i,recoveryTimeFactorPercent={}i {}",
-                    icfg.db, dev_tag, score, tr_level, rec_hours,
-                    entry["acuteLoad"].as_i64().unwrap_or(0),
-                    entry["acwrFactorPercent"].as_i64().unwrap_or(0),
-                    entry["hrvFactorPercent"].as_i64().unwrap_or(0),
-                    entry["sleepScore"].as_i64().unwrap_or(0),
-                    entry["sleepScoreFactorPercent"].as_i64().unwrap_or(0),
-                    entry["stressHistoryFactorPercent"].as_i64().unwrap_or(0),
-                    entry["recoveryTimeFactorPercent"].as_i64().unwrap_or(0),
-                    ts
-                ));
+                let n = |k: &str| entry[k].as_i64().unwrap_or(0);
+                snap.readiness = Some(db::Readiness {
+                    ts,
+                    score,
+                    level: tr_level.to_string(),
+                    recovery_time: rec_hours,
+                    acute_load: n("acuteLoad"),
+                    acwr_factor: n("acwrFactorPercent"),
+                    hrv_factor: n("hrvFactorPercent"),
+                    sleep_score: n("sleepScore"),
+                    sleep_factor: n("sleepScoreFactorPercent"),
+                    stress_factor: n("stressHistoryFactorPercent"),
+                    recovery_factor: n("recoveryTimeFactorPercent"),
+                });
             }
         }
     }
@@ -238,10 +198,7 @@ pub fn sync() -> R<J> {
                     if arr.len() >= 3 {
                         if let (Some(ts_ms), Some(level)) = (arr[0].as_i64(), arr[2].as_i64()) {
                             last_bb = Some(level);
-                            points.push(format!(
-                                "BodyBatteryIntraday,Database_Name={},Device={} BodyBatteryLevel={}i {}",
-                                icfg.db, dev_tag, level, ts_ms / 1000
-                            ));
+                            snap.body_battery.push((ts_ms / 1000, level));
                         }
                     }
                 }
@@ -252,10 +209,7 @@ pub fn sync() -> R<J> {
                 if let Some(arr) = item.as_array() {
                     if arr.len() >= 2 {
                         if let (Some(ts_ms), Some(level)) = (arr[0].as_i64(), arr[1].as_i64()) {
-                            points.push(format!(
-                                "StressIntraday,Database_Name={},Device={} stressLevel={}i {}",
-                                icfg.db, dev_tag, level, ts_ms / 1000
-                            ));
+                            snap.stress.push((ts_ms / 1000, level));
                         }
                     }
                 }
@@ -277,19 +231,20 @@ pub fn sync() -> R<J> {
                 .unwrap_or(0);
             let hrv = sl_val["avgOvernightHrv"].as_f64().unwrap_or(0.0);
             let rhr = sl_val["restingHeartRate"].as_i64().unwrap_or(0);
-
             let avg_stress = dto["avgSleepStress"].as_f64().unwrap_or(0.0);
-            points.push(format!(
-                "SleepSummary,Database_Name={},Device={} sleepTimeSeconds={}i,sleepScore={}i,avgOvernightHrv={},restingHeartRate={}i,deepSleepSeconds={}i,lightSleepSeconds={}i,remSleepSeconds={}i,awakeSleepSeconds={}i,avgSleepStress={},restlessMomentsCount={}i {}",
-                icfg.db, dev_tag, sleep_sec, score, hrv, rhr,
-                dto["deepSleepSeconds"].as_i64().unwrap_or(0),
-                dto["lightSleepSeconds"].as_i64().unwrap_or(0),
-                dto["remSleepSeconds"].as_i64().unwrap_or(0),
-                dto["awakeSleepSeconds"].as_i64().unwrap_or(0),
+            snap.sleep = Some(db::Sleep {
+                ts: end_ms / 1000,
+                seconds: sleep_sec,
+                score,
+                hrv,
+                rhr,
+                deep: dto["deepSleepSeconds"].as_i64().unwrap_or(0),
+                light: dto["lightSleepSeconds"].as_i64().unwrap_or(0),
+                rem: dto["remSleepSeconds"].as_i64().unwrap_or(0),
+                awake: dto["awakeSleepSeconds"].as_i64().unwrap_or(0),
                 avg_stress,
-                sl_val["restlessMomentsCount"].as_i64().unwrap_or(0),
-                end_ms / 1000
-            ));
+                restless: sl_val["restlessMomentsCount"].as_i64().unwrap_or(0),
+            });
         }
     }
 
@@ -302,24 +257,10 @@ pub fn sync() -> R<J> {
         if let Some(steps_arr) = steps_val.as_array() {
             for entry in steps_arr {
                 if let (Some(start_str), Some(cnt)) = (entry["startGMT"].as_str(), entry["steps"].as_i64()) {
-                    let ts = DateTime::parse_from_rfc3339(start_str)
-                        .map(|dt| dt.timestamp())
-                        .ok()
-                        .or_else(|| {
-                            if start_str.len() >= 10 {
-                                NaiveDate::parse_from_str(&start_str[..10], "%Y-%m-%d")
-                                    .ok()
-                                    .and_then(|d| d.and_hms_opt(12, 0, 0))
-                                    .map(|dt| dt.and_utc().timestamp())
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or(now_ts);
-                    points.push(format!(
-                        "StepsIntraday,Database_Name={},Device={} StepsCount={}i {}",
-                        icfg.db, dev_tag, cnt, ts
-                    ));
+                    // "2026-10-22T05:00:00.0": UTC without a zone (one row per 15 min)
+                    let Ok(t) = chrono::NaiveDateTime::parse_from_str(start_str, "%Y-%m-%dT%H:%M:%S%.f") else { continue };
+                    let ts = t.and_utc().timestamp();
+                    snap.steps.push((ts, cnt));
                 }
             }
         }
@@ -332,14 +273,13 @@ pub fn sync() -> R<J> {
     );
     if let Ok(rp_val) = garmin_get(&agent, &token, &race_url) {
         if let Some(t5) = rp_val["time5K"].as_i64() {
-            points.push(format!(
-                "RacePredictions,Database_Name={},Device={} time5K={}i,time10K={}i,timeHalfMarathon={}i,timeMarathon={}i {}",
-                icfg.db, dev_tag, t5,
-                rp_val["time10K"].as_i64().unwrap_or(0),
-                rp_val["timeHalfMarathon"].as_i64().unwrap_or(0),
-                rp_val["timeMarathon"].as_i64().unwrap_or(0),
-                now_ts
-            ));
+            snap.race = Some(db::Race {
+                ts: now_ts,
+                t5k: t5,
+                t10k: rp_val["time10K"].as_i64().unwrap_or(0),
+                half: rp_val["timeHalfMarathon"].as_i64().unwrap_or(0),
+                marathon: rp_val["timeMarathon"].as_i64().unwrap_or(0),
+            });
         }
     }
 
@@ -394,58 +334,40 @@ pub fn sync() -> R<J> {
                     }
                 }
 
-                let act_type_tag = escape_tag(act_type);
-                points.push(format!(
-                    "ActivitySummary,Database_Name={},Device={},activityType={} ActivityID=\"{}\",activityName=\"{}\",distance={},movingDuration={},averageSpeed={},averageHR={},activityTrainingLoad={},aerobicTrainingEffect={},anaerobicTrainingEffect={},hrZoneLowBoundary_1={}i,hrZoneLowBoundary_2={}i,hrZoneLowBoundary_3={}i,hrZoneLowBoundary_4={}i,hrZoneLowBoundary_5={}i {}",
-                    icfg.db, dev_tag, act_type_tag, act_id, escape_str(act_name), dist, moving, speed, hr, load, ae, an,
-                    z.0, z.1, z.2, z.3, z.4, act_ts
-                ));
+                snap.activities.push(db::Activity {
+                    id: act_id.to_string(),
+                    ts: act_ts,
+                    kind: act_type.to_string(),
+                    name: act_name.to_string(),
+                    dist,
+                    moving,
+                    speed,
+                    hr,
+                    load,
+                    ae,
+                    an,
+                    zones: z,
+                });
             }
         }
     }
 
     // 9. Coach suggestion (computed in Rust directly)
     let plan = compute_coach(tr_score, rec_hours, last_bb, &acts_data, hr_zones);
-    let rd_val = plan.readiness.unwrap_or(0) as f64;
-    let race_days_val = plan.race_days as f64;
-    points.push(format!(
-        "SuggestedWorkout,Database_Name={},Device={} title=\"{}\",detail=\"{}\",reason=\"{}\",kind=\"{}\",readiness={},race_days={} {}",
-        icfg.db, dev_tag, escape_str(&plan.title), escape_str(&plan.detail), escape_str(&plan.reason),
-        escape_str(&plan.kind), rd_val, race_days_val, now_ts
-    ));
-
-    // Post all points to InfluxDB in one shot
-    if !points.is_empty() {
-        let body = points.join("\n");
-        let write_url = format!("{}?db={}&precision=s", icfg.url, icfg.db);
-        let mut req = agent.post(&write_url);
-        if !icfg.user.is_empty() {
-            req = req.header(
-                "Authorization",
-                &format!(
-                    "Basic {}",
-                    base64::prelude::BASE64_STANDARD.encode(format!("{}:{}", icfg.user, icfg.pass))
-                ),
-            );
-        }
-        match req.header("Content-Type", "text/plain").send(body.as_bytes()) {
-            Ok(_) => {}
-            Err(e) => {
-                let err_msg = match e {
-                    ureq::Error::StatusCode(code) => {
-                        format!("http status: {}", code)
-                    }
-                    other => other.to_string(),
-                };
-                let _ = std::fs::write("/tmp/garmin_points_debug.txt", &body);
-                return Err(format!("InfluxDB write failed: {} (points written to /tmp/garmin_points_debug.txt)", err_msg));
-            }
-        }
-    }
+    snap.workout = Some(db::Workout {
+        ts: now_ts,
+        title: plan.title.clone(),
+        detail: plan.detail.clone(),
+        reason: plan.reason.clone(),
+        kind: plan.kind.clone(),
+        readiness: plan.readiness.unwrap_or(0) as f64,
+        race_days: plan.race_days,
+    });
+    let rows = db::save(&snap).map_err(|e| format!("garmin.db: {e}"))?;
 
     Ok(json!({
         "status": "ok",
-        "points": points.len(),
+        "rows": rows,
         "device": device_name,
         "coach": {
             "title": plan.title,
@@ -586,10 +508,9 @@ pub fn main(args: &[String]) {
     let mode = args.first().map(|s| s.as_str()).unwrap_or("sync");
     match mode {
         "sync" => {
-            let inf = format!("{}/.config/mist/influx.json", home());
             let tp = tokens_path();
-            if !std::path::Path::new(&inf).exists() || !std::path::Path::new(&tp).exists() {
-                out(json!({"status": "disabled", "reason": "brak konfiguracji Garmin lub InfluxDB (karty Garmin są opcjonalne)"}));
+            if !std::path::Path::new(&tp).exists() {
+                out(json!({"status": "disabled", "reason": "brak konfiguracji Garmin (karty Garmin są opcjonalne)"}));
                 return;
             }
             match sync() {
