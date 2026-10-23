@@ -84,6 +84,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let as_hyprctl = argv.first().is_some_and(|a| a.rsplit('/').next() == Some("hyprctl"));
     if as_hyprctl || argv.get(1).map(String::as_str) == Some("hyprctl") {
         let rest = if as_hyprctl { &argv[1..] } else { &argv[2..] };
+        // `hyprctl clients | grep -q x` closes the pipe early: die quietly like the C tool, not a println! panic
+        unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
         std::process::exit(hyprcompat::cli(rest));
     }
     if argv.get(1).map(String::as_str) == Some("migrate") {
