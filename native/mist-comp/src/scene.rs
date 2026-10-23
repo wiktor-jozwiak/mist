@@ -185,6 +185,9 @@ fn opaque_rects(w: &Window, loc: Point<i32, Logical>) -> Vec<Rectangle<i32, Logi
 /// A drag-and-drop icon: its surface, and where it is on the desktop (the pointer + the icon's offset).
 pub type Dnd = (smithay::reexports::wayland_server::protocol::wl_surface::WlSurface, Point<i32, Logical>);
 
+/// Behind everything on the headless and nested backends (black on a real screen); screencopy clears the same
+pub const NESTED_CLEAR: [f32; 4] = [0.1, 0.1, 0.1, 1.0];
+
 pub fn elements(r: &mut GlesRenderer, space: &Space<Window>, lock: Option<&LockSurface>, locked: bool, output: &Output, anim: &crate::anim::Anims, dnd: Option<&Dnd>) -> Vec<SceneElem> {
     let mut out = Vec::new();
     let scale = Scale::from(output.current_scale().fractional_scale());

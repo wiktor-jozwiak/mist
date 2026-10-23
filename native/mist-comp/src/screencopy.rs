@@ -153,14 +153,14 @@ pub fn process(state: &mut MistComp) {
         let scale = smithay::utils::Scale::from(output.current_scale().fractional_scale());
         let MistComp { space, gles, udev, headless, anim, cursor_status, .. } = state;
         let ok = {
-            let copy = |r: &mut GlesRenderer, extra: Vec<OutElem>| copy_into(r, space, anim, &output, region, &p.buffer, extra);
+            let copy = |r: &mut GlesRenderer, extra: Vec<OutElem>, clear| copy_into(r, space, anim, &output, region, &p.buffer, extra, clear);
             if let Some(h) = headless.as_mut() {
-                copy(&mut h.renderer, Vec::new())
+                copy(&mut h.renderer, Vec::new(), crate::scene::NESTED_CLEAR)
             } else if let Some(u) = udev.as_mut() {
                 let extra = if cursor { crate::udev::pointer_elements(&mut u.renderer, &mut u.cursors, cursor_status, ptr, og, scale) } else { Vec::new() };
-                copy(&mut u.renderer, extra)
+                copy(&mut u.renderer, extra, [0.0, 0.0, 0.0, 1.0])
             } else if let Some(g) = gles.as_ref() {
-                copy(g.borrow_mut().renderer(), Vec::new())
+                copy(g.borrow_mut().renderer(), Vec::new(), crate::scene::NESTED_CLEAR)
             } else {
                 false
             }
@@ -184,7 +184,7 @@ pub fn process(state: &mut MistComp) {
 }
 
 /// Render `region` of one output into the client's buffer: dmabuf on the GPU, shm read back.
-fn copy_into(r: &mut GlesRenderer, space: &smithay::desktop::Space<smithay::desktop::Window>, anim: &crate::anim::Anims, output: &Output, region: Rectangle<i32, Physical>, buffer: &WlBuffer, extra: Vec<OutElem>) -> bool {
+fn copy_into(r: &mut GlesRenderer, space: &smithay::desktop::Space<smithay::desktop::Window>, anim: &crate::anim::Anims, output: &Output, region: Rectangle<i32, Physical>, buffer: &WlBuffer, extra: Vec<OutElem>, clear: [f32; 4]) -> bool {
     if let Ok(dmabuf) = get_dmabuf(buffer) {
         let mut dmabuf = dmabuf.clone();
         let size = smithay::backend::allocator::Buffer::size(&dmabuf);
@@ -195,13 +195,13 @@ fn copy_into(r: &mut GlesRenderer, space: &smithay::desktop::Space<smithay::desk
         elements.extend(crate::scene::elements(r, space, None, false, output, anim, None).into_iter().map(|e| OutElem::Scene(crate::scene::ViewElem::Plain(e))));
         let mut tracker = OutputDamageTracker::new((size.w, size.h), 1.0, Transform::Normal);
         let Ok(mut fb) = r.bind(&mut dmabuf) else { return false };
-        let Ok(res) = tracker.render_output(r, &mut fb, 0, &elements, [0.0, 0.0, 0.0, 1.0]) else { return false };
+        let Ok(res) = tracker.render_output(r, &mut fb, 0, &elements, clear) else { return false };
         // the client reads it as soon as `ready` arrives
         let _ = res.sync.wait();
         return true;
     }
     // shm: BGRA rows (the buffer's byte order) when the driver reads them back so, else RGBA swapped here
-    let Some((px, swap)) = grab(r, space, anim, output, region, extra) else { return false };
+    let Some((px, swap)) = grab(r, space, anim, output, region, extra, clear) else { return false };
     with_buffer_contents_mut(buffer, |ptr, len, d| {
         if d.width != region.size.w || d.height != region.size.h || d.stride < d.width * 4 {
             return false;
@@ -253,14 +253,14 @@ fn cast_note(state: &mut MistComp) {
 
 /// Render one output's space (windows + layers, `extra` on top) offscreen once and read `region` back: BGRA when
 /// the driver reads it so (`false`), else RGBA (`true`: bytes to swap).
-fn grab(r: &mut GlesRenderer, space: &smithay::desktop::Space<smithay::desktop::Window>, anim: &crate::anim::Anims, output: &Output, region: Rectangle<i32, Physical>, extra: Vec<OutElem>) -> Option<(Vec<u8>, bool)> {
+fn grab(r: &mut GlesRenderer, space: &smithay::desktop::Space<smithay::desktop::Window>, anim: &crate::anim::Anims, output: &Output, region: Rectangle<i32, Physical>, extra: Vec<OutElem>, clear: [f32; 4]) -> Option<(Vec<u8>, bool)> {
     let size = output.current_mode()?.size;
     let mut tex: GlesTexture = r.create_buffer(Fourcc::Abgr8888, (size.w, size.h).into()).ok()?;
     let mut elements = extra;
     elements.extend(crate::scene::elements(r, space, None, false, output, anim, None).into_iter().map(|e| OutElem::Scene(crate::scene::ViewElem::Plain(e))));
     let mut tracker = OutputDamageTracker::new(size, 1.0, Transform::Normal);
     let mut fb = r.bind(&mut tex).ok()?;
-    tracker.render_output(r, &mut fb, 0, &elements, [0.0, 0.0, 0.0, 1.0]).ok()?;
+    tracker.render_output(r, &mut fb, 0, &elements, clear).ok()?;
     let rect = Rectangle::new((region.loc.x, region.loc.y).into(), (region.size.w, region.size.h).into());
     for (format, swap) in [(Fourcc::Argb8888, false), (Fourcc::Abgr8888, true)] {
         if let Ok(map) = r.copy_framebuffer(&fb, rect, format) {

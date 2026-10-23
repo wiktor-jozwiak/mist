@@ -139,7 +139,7 @@ pub fn init_winit(
                         swap_interval_set = true;
                     }
                     let elems = crate::scene::elements(renderer, &state.space, state.lock.surfaces.get(&output.name()), state.locked, &output, &state.anim, state.dnd_at().as_ref());
-                    let clear = if state.locked { [0.0, 0.0, 0.0, 1.0] } else { [0.1, 0.1, 0.1, 1.0] };
+                    let clear = if state.locked { [0.0, 0.0, 0.0, 1.0] } else { crate::scene::NESTED_CLEAR };
                     let damage = damage_tracker.render_output(renderer, &mut framebuffer, age, &elems, clear).unwrap().damage.cloned();
                     // GL objects of destroyed buffers are freed only here (smithay 0.7)
                     let _ = smithay::backend::renderer::Renderer::cleanup_texture_cache(renderer);

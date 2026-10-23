@@ -157,7 +157,7 @@ pub fn render(state: &mut MistComp, part: Option<&std::collections::HashSet<Stri
         let Ok(mut fb) = hl.renderer.bind(&mut o.buffer) else { continue };
         let elems = crate::scene::elements(&mut hl.renderer, space, lock.surfaces.get(&output.name()), *locked, &output, anim, dnd.as_ref());
         let elems = crate::scene::view(elems, anim.zoom, crate::scene::pointer_on(space, &output, ptr));
-        let clear = if *locked { [0.0, 0.0, 0.0, 1.0] } else { [0.1, 0.1, 0.1, 1.0] };
+        let clear = if *locked { [0.0, 0.0, 0.0, 1.0] } else { crate::scene::NESTED_CLEAR };
         match o.damage.render_output(&mut hl.renderer, &mut fb, age, &elems, clear) {
             Ok(r) if r.damage.is_some() => *out_seq.entry(output.name()).or_insert(0) += 1,
             Ok(_) => {}
