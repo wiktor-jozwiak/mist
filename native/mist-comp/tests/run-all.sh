@@ -25,7 +25,9 @@ failed=0
 for t in ${ONLY:-t-*.sh}; do
   t=${t%.sh}.sh
   case " ${SKIP:-} " in *" ${t%.sh} "*) echo "$t skipped"; continue ;; esac
-  timeout 120 ./$t > ${t%.sh}.out 2>&1; ./unnest.sh >/dev/null 2>&1
+  timeout 120 ./$t > ${t%.sh}.out 2>&1; rc=$?; ./unnest.sh >/dev/null 2>&1
+  # killed half way: the output may hold no error word at all
+  [ $rc -eq 124 ] && echo "TIMEOUT: killed after 120 s" >> ${t%.sh}.out
   # kitty without a session bus (the runner): its D-Bus / systemd complaints are not test failures
   bad=$(grep -viE 'dbus|systemd user bus' ${t%.sh}.out | grep -ciE 'panic|fail|error|timeout')
   [ "$bad" -gt 0 ] && failed=$((failed + 1))
