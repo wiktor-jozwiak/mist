@@ -5,7 +5,7 @@
 // hands its page to the running one). Nothing is polled while idle: data is read when a page opens or the
 // window gets focus, after each change, and every 2 s only while a Bluetooth scan runs.
 pub(crate) mod backend;
-mod pages;
+pub(crate) mod pages;
 mod paint;
 
 use crate::appwin::{self, Cmd, Cx, Ev, Logic, WinId, LEFT};
@@ -32,6 +32,8 @@ pub enum Fid {
     Keys,
     // the command of a new shortcut
     BindCmd,
+    // a workspace's name (0 = workspace 1)
+    WsName(u8),
 }
 
 // the sliders
@@ -79,6 +81,10 @@ pub struct Data {
     pub face: String,
     pub night: bool,
     pub dnd: bool,
+    // settings.json "dnd_auto": quiet hours, fullscreen, screen sharing
+    pub dnd_auto: Value,
+    // settings.json "accent": "wallpaper"
+    pub accent_wall: bool,
     pub notif_count: usize,
     pub idle: (u32, u32),
     pub wall: Value,
@@ -112,6 +118,8 @@ pub struct Settings {
     pub tz_q: LineEdit,
     pub keys_q: LineEdit,
     pub bind_cmd: LineEdit,
+    // workspace names 1-6 (settings.json "workspace_names")
+    pub ws_names: Vec<LineEdit>,
     // a shortcut being recorded: for this bind (None: a new one for bind_cmd)
     pub grabbing: Option<Option<(String, String)>>,
     pub place_q: LineEdit,
@@ -157,6 +165,7 @@ impl Settings {
             tz_q: LineEdit::default(),
             keys_q: LineEdit::default(),
             bind_cmd: LineEdit::default(),
+            ws_names: (1..=6).map(|i| LineEdit::new(backend::read_json("settings.json")["workspace_names"][i.to_string()].as_str().unwrap_or(""))).collect(),
             grabbing: None,
             place_q: LineEdit::default(),
             geo_at: None,
@@ -186,6 +195,12 @@ impl Settings {
         let d = &mut self.d;
         let st = backend::read_json("settings.json");
         d.contrast = st["contrast"] == "high";
+        d.dnd_auto = st["dnd_auto"].clone();
+        d.accent_wall = st["accent"] == "wallpaper";
+        // normally the shell has worked it out already (then this only reads the cache)
+        if d.accent_wall && crate::theme::wall_accent_update() {
+            crate::theme::reload_accent();
+        }
         let idle = backend::read_json("idle.json");
         d.idle = (idle["lock"].as_u64().unwrap_or(600) as u32, idle["off"].as_u64().unwrap_or(900) as u32);
         d.wall = backend::read_json("wallpaper.json");
@@ -358,6 +373,7 @@ impl Settings {
             }
             Act::Accent(c) => {
                 backend::patch_json("settings.json", json!({ "accent": format!("#{c:06x}") }));
+                self.d.accent_wall = false;
                 crate::theme::reload_accent();
                 self.tell_shell();
             }
@@ -524,6 +540,23 @@ impl Settings {
                 self.d.profile = p.clone();
                 self.send(run(&["powerprofilesctl", "set", &p], "profile"));
             }
+            Act::Setting(k, v) => {
+                backend::patch_json("settings.json", json!({ k: v.clone() }));
+                if k == "dnd_auto" {
+                    self.d.dnd_auto = v;
+                } else if k == "accent" {
+                    // this window draws with it too: worked out here (one decode), the shell reads the cache
+                    self.d.accent_wall = true;
+                    crate::theme::wall_accent_update();
+                    crate::theme::reload_accent();
+                }
+                self.tell_shell();
+            }
+            Act::ChargeLimit(on) => {
+                if let Some((dir, _)) = backend::charge_limit() {
+                    self.send(Req::Run(backend::charge_limit_cmd(&dir, if on { 80 } else { 100 }), "profile"));
+                }
+            }
             Act::SessionMenu => backend::shell_msg(&["mist", "toggle", "session"]),
             Act::Lock => appwin::spawn(&[&backend::bin(), "lock"]),
             Act::LockPreview => appwin::spawn(&[&backend::bin(), "lock", "preview", "6"]),
@@ -613,6 +646,7 @@ impl Settings {
             Fid::Keys => &mut self.keys_q,
             Fid::BindCmd => &mut self.bind_cmd,
             Fid::Place => &mut self.place_q,
+            Fid::WsName(i) => &mut self.ws_names[i as usize],
         }
     }
 
@@ -660,6 +694,13 @@ impl Settings {
                         }
                     }
                     Fid::Keys => self.field = None,
+                    Fid::WsName(_) => {
+                        self.field = None;
+                        let names: serde_json::Map<String, Value> = self.ws_names.iter().enumerate().filter(|(_, e)| !e.text.trim().is_empty()).map(|(i, e)| ((i + 1).to_string(), Value::String(e.text.trim().to_string()))).collect();
+                        backend::patch_json("settings.json", json!({ "workspace_names": names }));
+                        self.tell_shell();
+                        self.say("Zapisano", cx);
+                    }
                     Fid::BindCmd => {
                         self.field = None;
                         return self.act(Act::KeyGrab(None), cx);

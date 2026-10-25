@@ -448,7 +448,8 @@ pub const COMP_DEFAULT: &str = include_str!("../../../assets/comp-default.conf")
 const COMP_KEYS: [&str; 7] = ["keyboard", "numlock", "pointer", "swipe", "middle_click_paste", "vrr", "swallow"];
 
 fn directive<'a>(text: &'a str, key: &str) -> Option<&'a str> {
-    text.lines().rev().map(str::trim).filter(|l| !l.starts_with('#')).filter_map(|l| l.split_once(char::is_whitespace).filter(|(k, _)| *k == key).map(|(_, v)| v.trim())).next()
+    // a key of two words (`corner tl`) matches lines starting with both
+    text.lines().rev().map(str::trim).filter(|l| !l.starts_with('#')).filter_map(|l| l.strip_prefix(key).filter(|v| v.starts_with(char::is_whitespace)).map(str::trim)).next()
 }
 // the effective value of a comp.conf flag ("" when neither file has it)
 pub fn comp_get(key: &str) -> String {
@@ -473,7 +474,7 @@ pub fn comp_set(key: &str, val: &str) {
         }
     };
     let line = format!("{key} {val}");
-    match lines.iter().rposition(|l| l.trim().split_once(char::is_whitespace).map(|(k, _)| k == key).unwrap_or(l.trim() == key)) {
+    match lines.iter().rposition(|l| l.trim() == key || l.trim().strip_prefix(key).is_some_and(|v| v.starts_with(char::is_whitespace))) {
         Some(i) => lines[i] = line,
         None => lines.push(line),
     }
@@ -575,6 +576,22 @@ mod tests {
 }
 
 // back to the default shortcuts: comp.conf without its own bind lines
+// the battery's charge limit (charge_control_end_threshold, %): its folder and value; None without one
+pub fn charge_limit() -> Option<(String, u32)> {
+    let root = std::env::var("MIST_POWER_SUPPLY").unwrap_or_else(|_| "/sys/class/power_supply".into());
+    let mut dirs: Vec<_> = std::fs::read_dir(&root).ok()?.flatten().map(|e| e.path()).filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("BAT"))).collect();
+    dirs.sort();
+    dirs.into_iter().find_map(|d| {
+        let v = std::fs::read_to_string(d.join("charge_control_end_threshold")).ok()?.trim().parse().ok()?;
+        Some((d.to_string_lossy().into_owned(), v))
+    })
+}
+// root writes the limit now and a tmpfiles.d line that sets it again at every boot (100: the line goes)
+pub fn charge_limit_cmd(dir: &str, pct: u32) -> Vec<String> {
+    let script = r#"f="$1/charge_control_end_threshold"; echo "$2" > "$f" || exit 1; c=/etc/tmpfiles.d/mist-charge-limit.conf; if [ "$2" -lt 100 ]; then printf 'w %s - - - - %s\n' "$f" "$2" > "$c"; else rm -f "$c"; fi"#;
+    ["pkexec", "sh", "-c", script, "sh", dir, &pct.to_string()].iter().map(|s| s.to_string()).collect()
+}
+
 pub fn binds_reset() {
     let path = cfg("comp.conf");
     let Ok(user) = std::fs::read_to_string(&path) else { return };

@@ -60,6 +60,9 @@ pub enum Msg {
     Audio(Audio),
     BtDevs(Vec<BtDev>),
     Profile(String),
+    Battery(Option<Bat>),
+    // the accent taken from the wallpaper changed (theme::wall_accent_update)
+    Accent,
     Sys(Value),
     NmLine(String),
     Wall(String, String),
@@ -651,6 +654,61 @@ pub fn power_profile(tx: Sender<Msg>) {
             if p != last {
                 last = p.clone();
                 let _ = tx.send(Msg::Profile(p));
+            }
+        }
+    });
+}
+
+// ------------------------------------------------------------------ laptop battery (UPower DisplayDevice)
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Bat {
+    pub pct: f32,
+    pub charging: bool,
+    pub full: bool,
+    /// to empty (discharging) or to full (charging), 0 = unknown
+    pub secs: i64,
+}
+
+// the battery on its PropertiesChanged signal; no battery (desktops): one call and the thread ends
+pub fn battery(tx: Sender<Msg>) {
+    spawn("battery", move || {
+        let Ok(c) = zbus::blocking::Connection::system() else { return };
+        const PATH: &str = "/org/freedesktop/UPower/devices/DisplayDevice";
+        let get = || -> Option<Bat> {
+            let m = c.call_method(Some("org.freedesktop.UPower"), PATH, Some("org.freedesktop.DBus.Properties"), "GetAll", &("org.freedesktop.UPower.Device",)).ok()?;
+            let p: std::collections::HashMap<String, zbus::zvariant::OwnedValue> = m.body().deserialize().ok()?;
+            let u = |k: &str| p.get(k).and_then(|v| u32::try_from(v).ok()).unwrap_or(0);
+            let x = |k: &str| p.get(k).and_then(|v| i64::try_from(v).ok()).unwrap_or(0);
+            // Type 2: a battery; IsPresent false on a desktop's empty DisplayDevice
+            if !p.get("IsPresent").and_then(|v| bool::try_from(v).ok()).unwrap_or(false) || u("Type") != 2 {
+                return None;
+            }
+            // State: 1 charging, 2 discharging, 4 full, 5 pending charge (a charge limit reached)
+            let st = u("State");
+            Some(Bat {
+                pct: p.get("Percentage").and_then(|v| f64::try_from(v).ok()).unwrap_or(0.0) as f32,
+                charging: st == 1,
+                full: st == 4 || st == 5,
+                secs: if st == 1 { x("TimeToFull") } else { x("TimeToEmpty") },
+            })
+        };
+        let Some(mut last) = get() else { return };
+        let _ = tx.send(Msg::Battery(Some(last)));
+        let rule = format!("type='signal',sender='org.freedesktop.UPower',path='{PATH}',member='PropertiesChanged'");
+        let _ = c.call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), "AddMatch", &(rule.as_str(),));
+        for m in zbus::blocking::MessageIterator::from(&c) {
+            let Ok(m) = m else { continue };
+            let h = m.header();
+            if h.message_type() != zbus::message::Type::Signal || h.member().map(|x| x.as_str()) != Some("PropertiesChanged") {
+                continue;
+            }
+            let b = get();
+            if b != Some(last) {
+                let _ = tx.send(Msg::Battery(b));
+                match b {
+                    Some(b) => last = b,
+                    None => return,
+                }
             }
         }
     });

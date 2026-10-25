@@ -30,7 +30,13 @@ pub struct BarState {
     pub vol: f32,
     pub muted: bool,
     pub dnd: bool,
+    /// automatic Do Not Disturb on (schedule, fullscreen, screen sharing)
+    pub dnd_auto: bool,
     pub control_open: bool,
+    /// the shown workspace's name (settings.json "workspace_names"), "" = Pulpit
+    pub desk: String,
+    /// the laptop battery (None: no battery)
+    pub battery: Option<crate::sys::Bat>,
 }
 
 #[derive(Clone, Default)]
@@ -51,6 +57,7 @@ pub enum Hit {
     Volume,
     Bell,
     Adjust,
+    Battery,
     Power,
 }
 
@@ -137,7 +144,7 @@ pub fn draw_with(c: &mut Canvas, t: &mut Text, s: &BarState, hover: Option<&Hit>
     draw_btn(c, t, &start, x, 26.0, h(&start.hit), p(&start.hit), fade(&start.hit));
     items.push(Item { hit: Hit::Start, x, w: 26.0 });
     x += 26.0 + 14.0;
-    let name = if s.show_win { s.app.as_str() } else { "Pulpit" };
+    let name = if s.show_win { s.app.as_str() } else if s.desk.is_empty() { "Pulpit" } else { s.desk.as_str() };
     x += c.text(t, x, cy, name, &Style::ui(13.0, 700.0), T1) + 14.0;
     let shown = short_title(&s.title, &s.app);
     if s.show_win && !shown.is_empty() {
@@ -202,7 +209,12 @@ pub fn draw_with(c: &mut Canvas, t: &mut Text, s: &BarState, hover: Option<&Hit>
         icon_size: 15.0,
         fixed_w: None,
     });
-    g.push(Btn { hit: Hit::Bell, icon: if s.dnd { "bellOff" } else { "bell" }, text: String::new(), tint: if s.dnd { T3 } else { T1 }, icon_size: 15.0, fixed_w: None });
+    if let Some(b) = s.battery {
+        let (icon, tint) = bat_look(&b);
+        g.push(Btn { hit: Hit::Battery, icon, text: format!("{}%", b.pct.round()), tint, icon_size: 15.0, fixed_w: None });
+    }
+    let quiet = s.dnd || s.dnd_auto;
+    g.push(Btn { hit: Hit::Bell, icon: if quiet { "bellOff" } else { "bell" }, text: String::new(), tint: if quiet { T3 } else { T1 }, icon_size: 15.0, fixed_w: None });
     g.push(Btn { hit: Hit::Adjust, icon: "adjust", text: String::new(), tint: if s.control_open { accent() } else { T1 }, icon_size: 15.0, fixed_w: None });
     groups.push(g);
     groups.push(vec![Btn { hit: Hit::Power, icon: "power", text: String::new(), tint: DANGER, icon_size: 15.0, fixed_w: Some(24.0) }]);
@@ -235,6 +247,33 @@ pub fn draw_with(c: &mut Canvas, t: &mut Text, s: &BarState, hover: Option<&Hit>
         x -= 2.0;
     }
     items
+}
+
+// the battery glyph by level (tabler battery-1..4), green while charging, yellow / red when low
+pub fn bat_look(b: &crate::sys::Bat) -> (&'static str, Rgba) {
+    let icon = if b.charging {
+        "charging"
+    } else if b.pct > 80.0 {
+        "battery4"
+    } else if b.pct > 55.0 {
+        "battery3"
+    } else if b.pct > 30.0 {
+        "battery2"
+    } else if b.pct > 10.0 {
+        "battery1"
+    } else {
+        "battery"
+    };
+    let tint = if b.charging || b.full {
+        GREEN
+    } else if b.pct <= 10.0 {
+        DANGER
+    } else if b.pct <= 20.0 {
+        YELLOW
+    } else {
+        T1
+    };
+    (icon, tint)
 }
 
 pub fn phone_color(p: &Phone) -> Rgba {

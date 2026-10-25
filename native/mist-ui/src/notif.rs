@@ -31,6 +31,8 @@ pub struct Note {
 pub enum Cmd {
     Invoke(u32, String),
     Dnd(bool),
+    // automatic quiet (schedule, fullscreen, screen sharing): like Do Not Disturb, not saved
+    Quiet(bool),
     Clear,
 }
 
@@ -38,6 +40,7 @@ struct Shared {
     next: u32,
     live: HashMap<u32, (Note, std::time::Instant, bool)>, // note, since, resident
     dnd: bool,
+    quiet: bool,
     history: Vec<Value>,
 }
 
@@ -157,7 +160,7 @@ impl Server {
             let mut sh = self.sh.lock().unwrap();
             let replaced = replaces_id > 0 && sh.live.contains_key(&replaces_id);
             let id = if replaced { replaces_id } else { sh.next += 1; sh.next };
-            (id, replaced, sh.dnd)
+            (id, replaced, sh.dnd || sh.quiet)
         };
         let mut n = Note {
             id,
@@ -249,7 +252,7 @@ pub fn spawn(tx: Sender<Msg>, cmds: std::sync::mpsc::Receiver<Cmd>) {
         let st: Value = std::fs::read_to_string(format!("{}/notifications.json", state_dir())).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(json!({}));
         let history = st["entries"].as_array().cloned().unwrap_or_default();
         let next = history.iter().filter_map(|e| e["id"].as_u64()).max().unwrap_or(0) as u32;
-        let sh = Arc::new(Mutex::new(Shared { next, live: HashMap::new(), dnd: st["dnd"].as_bool().unwrap_or(false), history }));
+        let sh = Arc::new(Mutex::new(Shared { next, live: HashMap::new(), dnd: st["dnd"].as_bool().unwrap_or(false), quiet: false, history }));
         let _ = std::fs::create_dir_all(format!("{}/notif-img", state_dir()));
         sweep_images(&sh.lock().unwrap().history);
         let mut swept = std::time::Instant::now();
@@ -285,6 +288,7 @@ pub fn spawn(tx: Sender<Msg>, cmds: std::sync::mpsc::Receiver<Cmd>) {
                         }
                     }
                 }
+                Ok(Cmd::Quiet(on)) => sh.lock().unwrap().quiet = on,
                 Ok(Cmd::Dnd(on)) => {
                     let mut s = sh.lock().unwrap();
                     s.dnd = on;

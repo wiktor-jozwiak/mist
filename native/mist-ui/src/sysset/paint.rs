@@ -31,6 +31,11 @@ fn glyph(name: &str) -> Option<char> {
         "app-window" => 0xefe6,
         "arrows-maximize" => 0xea28,
         "bell-off" => 0xece9,
+        "moon" => 0xeaf8,
+        "photo" => 0xeb0a,
+        "screen-share" => 0xed18,
+        "border-corners" => 0xf7a0,
+        "battery-charging" => 0xea33,
         "brand-github" => 0xec1c,
         "brush" => 0xebb8,
         "circle-check" => 0xea67,
@@ -839,21 +844,9 @@ impl Settings {
                     m.select(k * 3, k * 3);
                     m.paint(c, &mut self.text, fx + 12.0, fy, fw - 24.0, fh, &fs, FG, ph, on, false);
                 } else {
-                    let mut e = std::mem::take(match f {
-                        Fid::Tz => &mut self.tz_q,
-                        Fid::Keys => &mut self.keys_q,
-                        Fid::BindCmd => &mut self.bind_cmd,
-                        Fid::Place => &mut self.place_q,
-                        _ => &mut self.search,
-                    });
+                    let mut e = std::mem::take(self.edit_of(*f));
                     e.paint(c, &mut self.text, fx + 12.0, fy, fw - 24.0, fh, &fs, FG, ph, on, false);
-                    *match f {
-                        Fid::Tz => &mut self.tz_q,
-                        Fid::Keys => &mut self.keys_q,
-                        Fid::BindCmd => &mut self.bind_cmd,
-                        Fid::Place => &mut self.place_q,
-                        _ => &mut self.search,
-                    } = e;
+                    *self.edit_of(*f) = e;
                 }
             }
             Ctl::Bar(frac, label) => {

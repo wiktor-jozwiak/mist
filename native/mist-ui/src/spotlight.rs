@@ -1,6 +1,6 @@
 // Spotlight (was Spotlight.qml; Super+Space / S / R): a glass search capsule in the upper third, results
-// drop out of it. Apps (ranked by ~/.config/mist/usage.json, shared with Start), calculator, commands,
-// emoji, web. Emoji mode (Super+.: popup "emoji", or a ":" prefix) -> an emoji grid, Enter copies.
+// drop out of it. Apps (ranked by ~/.config/mist/usage.json, shared with Start), open windows by title,
+// calculator, units / currencies / time zones (quick.rs), commands, emoji, web. Emoji mode (Super+.: popup "emoji", or a ":" prefix) -> an emoji grid, Enter copies.
 // Keys: ↑↓ (←→ in the emoji grid), Enter, Esc.
 use crate::anim::{Anim, Ease};
 use crate::gfx::{Canvas, Rgba};
@@ -15,6 +15,10 @@ const SOFT: Rgba = Rgba(10.0 / 255.0, 132.0 / 255.0, 1.0, 0.18);
 #[derive(Clone)]
 enum Kind {
     Calc(String),
+    // a quick answer (units, currency, time zone): Enter copies it
+    Answer(String),
+    // an open window: Enter focuses it (address, minimized)
+    Win(String, bool),
     App(usize),
     Cmd(Vec<String>),
     Emoji(String),
@@ -90,6 +94,33 @@ pub fn calc(src: &str) -> Option<String> {
 fn bin() -> String {
     crate::paths::self_bin()
 }
+// saved window layouts (mist-comp `layout save|load`): "układ" lists them, "układ NAME" also saves one
+fn layouts(raw: &str, q: &str) -> Vec<Res> {
+    if std::env::var("XDG_CURRENT_DESKTOP").as_deref() != Ok("mist") {
+        return vec![];
+    }
+    let Some(p) = ["uklad", "layout"].into_iter().find(|p| q.starts_with(p) || (q.len() >= 3 && p.starts_with(q))) else { return vec![] };
+    // norm keeps the char count: the name as typed
+    let name: String = raw.chars().skip(p.chars().count().min(raw.chars().count())).collect::<String>().trim().to_string();
+    let name = if q.starts_with(p) { name } else { String::new() };
+    let dir = format!("{}/.config/mist/layouts", std::env::var("HOME").unwrap_or_default());
+    let mut saved: Vec<String> = std::fs::read_dir(dir).into_iter().flatten().flatten().filter_map(|e| e.file_name().to_str()?.strip_suffix(".json").map(String::from)).collect();
+    saved.sort();
+    let hc = |a: &str, n: &str| vec!["hyprctl".to_string(), "dispatch".into(), "layout".into(), a.into(), n.into()];
+    let mut out: Vec<Res> = saved
+        .iter()
+        .filter(|s| norm(s).starts_with(&norm(&name)))
+        .map(|s| Res { kind: Kind::Cmd(hc("load", s)), title: format!("{} {s}", crate::i18n::tr("Przywróć układ:")), sub: crate::i18n::tr("Okna wracają na swoje pulpity i miejsca").into_owned(), icon: "layoutGrid".into() })
+        .collect();
+    if !name.is_empty() && !name.starts_with('.') && !name.contains('/') {
+        let exists = saved.iter().any(|s| *s == name);
+        out.push(Res { kind: Kind::Cmd(hc("save", &name)), title: format!("{} „{name}”", crate::i18n::tr(if exists { "Nadpisz układ" } else { "Zapisz układ jako" })), sub: crate::i18n::tr("Otwarte okna, ich pulpity i miejsca").into_owned(), icon: "floppy".into() });
+    } else if saved.is_empty() {
+        out.push(Res { kind: Kind::Answer(String::new()), title: crate::i18n::tr("Wpisz nazwę, by zapisać układ okien").into_owned(), sub: crate::i18n::tr("np. „układ Praca”").into_owned(), icon: "layoutGrid".into() });
+    }
+    out
+}
+
 fn commands() -> Vec<(&'static str, &'static str, &'static str, Vec<String>)> {
     let m = |a: &[&str]| -> Vec<String> { let mut v = vec![bin(), "msg".into()]; v.extend(a.iter().map(|s| s.to_string())); v };
     vec![
@@ -97,7 +128,11 @@ fn commands() -> Vec<(&'static str, &'static str, &'static str, Vec<String>)> {
         ("wylacz uruchom ponownie restart reboot shutdown uspij sleep wyloguj logout sesja", "Wyłącz / uruchom ponownie…", "power", m(&["mist", "toggle", "session"])),
         ("tapeta wallpaper tlo", "Zmień tapetę", "photo", m(&["mist", "toggle", "wallpaper"])),
         ("schowek clipboard historia", "Historia schowka", "clipboard", m(&["mist", "toggle", "clipboard"])),
+        ("schowek telefon wyslij clipboard phone send kde connect", "Wyślij schowek na telefon", "phone", m(&["phone", "send", r#"{"c":"clip"}"#])),
         ("zrzut ekranu screenshot", "Zrzut ekranu", "screenshot", m(&["shot", "toolbar"])),
+        ("nagraj nagrywanie ekranu record screen video wideo", "Nagraj ekran", "rec", vec![crate::paths::mist_path("scripts/record.sh").into(), "region".into()]),
+        ("tekst z ekranu ocr rozpoznaj text recognition", "Tekst z ekranu (OCR)", "textScan", vec![crate::paths::mist_path("scripts/ocr.sh").into()]),
+        ("kolor probnik pipeta color picker hex", "Próbnik koloru", "colorPicker", vec![crate::paths::mist_path("scripts/pick.sh").into()]),
         ("powiadomienia notifications", "Centrum powiadomień", "bell", m(&["mist", "toggle", "notifications"])),
         ("ustawienia settings preferencje mist pulpit widzety desktop widgets", "Ustawienia Mist", "settings", m(&["mist", "toggle", "settings"])),
         ("ustawienia settings centrum sterowania control", "Centrum sterowania", "settings", m(&["mist", "toggle", "control"])),
@@ -133,6 +168,21 @@ pub struct Spotlight {
     etop: usize,
     // opened as "emoji" (Super+.): the same name toggles it closed
     as_emoji: bool,
+    // the open windows (address, class, title, workspace), read on the first search
+    wins: std::cell::OnceCell<Vec<(String, String, String, String)>>,
+}
+
+fn open_windows() -> Vec<(String, String, String, String)> {
+    let out = std::process::Command::new("hyprctl").args(["clients", "-j"]).output().map(|o| o.stdout).unwrap_or_default();
+    let v: Value = serde_json::from_slice(&out).unwrap_or_default();
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .filter(|c| c["mapped"].as_bool().unwrap_or(true) && !c["title"].as_str().unwrap_or("").is_empty())
+                .map(|c| (c["address"].as_str().unwrap_or("").to_string(), c["class"].as_str().unwrap_or("").to_string(), c["title"].as_str().unwrap_or("").to_string(), c["workspace"]["name"].as_str().unwrap_or("").to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn usage_path() -> String {
@@ -143,7 +193,7 @@ impl Spotlight {
     pub fn new(emoji_mode: bool) -> Spotlight {
         let usage = std::fs::read_to_string(usage_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
         let emoji = std::fs::read_to_string(crate::paths::mist_path("native/assets/emoji.json")).or_else(|_| std::fs::read_to_string("/usr/share/noctalia/assets/emoji.json")).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).and_then(|v| v.as_array().cloned()).unwrap_or_default();
-        Spotlight { field: Field { text: if emoji_mode { ":".into() } else { String::new() } }, sel: 0, cat_sel: 0, cat_rows: Vec::new(), usage, emoji, h: Anim::new(60.0), ptr: (-1.0, -1.0), rows: Vec::new(), card: (0.0, 0.0, 0.0, 0.0), pressed_outside: false, etop: 0, as_emoji: emoji_mode }
+        Spotlight { field: Field { text: if emoji_mode { ":".into() } else { String::new() } }, sel: 0, cat_sel: 0, cat_rows: Vec::new(), usage, emoji, h: Anim::new(60.0), ptr: (-1.0, -1.0), rows: Vec::new(), card: (0.0, 0.0, 0.0, 0.0), pressed_outside: false, etop: 0, as_emoji: emoji_mode, wins: std::cell::OnceCell::new() }
     }
     fn emoji_mode(&self) -> bool {
         self.field.text.starts_with(':')
@@ -157,6 +207,16 @@ impl Spotlight {
         let mut out = Vec::new();
         if let Some(v) = calc(raw) {
             out.push(Res { kind: Kind::Calc(v.clone()), title: v, sub: format!("{raw} ="), icon: "calc".into() });
+        }
+        if let Some((v, how)) = crate::quick::units(raw) {
+            out.push(Res { kind: Kind::Answer(v.clone()), title: v, sub: how, icon: "ruler".into() });
+        } else if let Some(c) = crate::quick::currency(raw, crate::quick::rates().as_ref()) {
+            match c {
+                Some((v, how)) => out.push(Res { kind: Kind::Answer(v.clone()), title: v, sub: how, icon: "coin".into() }),
+                None => out.push(Res { kind: Kind::Answer(String::new()), title: "Pobieram kursy walut…".into(), sub: "EBC, raz dziennie".into(), icon: "coin".into() }),
+            }
+        } else if let Some((v, how)) = crate::quick::time_zone(raw) {
+            out.push(Res { kind: Kind::Answer(v.clone()), title: v, sub: how, icon: "clock".into() });
         }
         let mut scored: Vec<(f64, usize)> = Vec::new();
         for (i, a) in apps.entries.iter().enumerate() {
@@ -176,11 +236,26 @@ impl Spotlight {
             let sub = if !a.generic.is_empty() { a.generic.clone() } else if !a.comment.is_empty() { a.comment.clone() } else { "Aplikacja".into() };
             out.push(Res { kind: Kind::App(i), title: a.name.clone(), sub, icon: a.icon.clone() });
         }
+        // open windows whose title or app matches (five terminals: the one with that folder in its title)
+        if q.chars().count() >= 2 {
+            let wins = self.wins.get_or_init(open_windows);
+            for (addr, class, title, ws) in wins.iter().filter(|w| norm(&w.2).contains(&q) || norm(&w.1).contains(&q)).take(4) {
+                let lc = class.to_lowercase();
+                let icon = apps
+                    .lookup(class)
+                    .or_else(|| apps.entries.iter().find(|e| !lc.is_empty() && e.id.to_lowercase().contains(&lc)))
+                    .map(|e| e.icon.clone())
+                    .unwrap_or_else(|| "window".into());
+                let wsl = if ws.starts_with("special:") { crate::i18n::tr("zminimalizowane").into_owned() } else { format!("{} {ws}", crate::i18n::tr("Pulpit")) };
+                out.push(Res { kind: Kind::Win(addr.clone(), ws == "special:minimized"), title: title.clone(), sub: format!("{} · {wsl}", crate::i18n::tr("Okno")), icon });
+            }
+        }
         for (k, title, icon, cmd) in commands() {
             if k.split(' ').any(|w| w.starts_with(&q)) {
                 out.push(Res { kind: Kind::Cmd(cmd), title: title.into(), sub: "Polecenie".into(), icon: icon.into() });
             }
         }
+        out.extend(layouts(raw, &q));
         if q.chars().count() >= 2 {
             // an exact name first ("fire" -> 🔥, not 🧑‍🚒 firefighter), then a prefix / keyword
             let exact = self.emoji.iter().find(|e| norm(e["name"].as_str().unwrap_or("")) == q);
@@ -252,6 +327,11 @@ impl Spotlight {
                 Act::Launch(ix)
             }
             Kind::Calc(v) => copy(&v),
+            Kind::Answer(v) if v.is_empty() => Act::None,
+            Kind::Answer(v) => copy(&v),
+            // back from the minimized drawer onto the active workspace (windows-like.lua), like the switcher
+            Kind::Win(addr, true) => Act::Run(vec!["sh".into(), "-c".into(), format!("hyprctl eval \"MistRestore('0x{}', $(hyprctl activeworkspace -j | jq .id))\"", addr.trim_start_matches("0x"))]),
+            Kind::Win(addr, false) => Act::Run(crate::switcher::hypr(&format!("hl.dispatch(hl.dsp.focus({{ window = \"address:0x{}\" }})); hl.dispatch(hl.dsp.window.bring_to_top())", addr.trim_start_matches("0x")))),
             Kind::Emoji(g) => type_emoji(&g),
             Kind::Cmd(c) => Act::Run(c),
             Kind::Web(q) => {
@@ -268,6 +348,10 @@ impl Pane for Spotlight {
     }
     fn namespace(&self) -> &'static str {
         "mist-spotlight"
+    }
+    // the currency rates arrive: one repaint a second while they are fetched
+    fn slow(&mut self) -> bool {
+        crate::quick::fetching()
     }
     fn animating(&self) -> bool {
         self.h.running()
@@ -410,6 +494,14 @@ impl Pane for Spotlight {
                             crate::img::draw(&mut l, &pm, ix, iy, 32.0, 32.0, 0.0, false, 1.0);
                         }
                     }
+                    // a window: its app's icon, else a window glyph
+                    Kind::Win(..) => match cx.imgs.get(&r.icon, 32, cx.icons) {
+                        Some(pm) => crate::img::draw(&mut l, &pm, ix, iy, 32.0, 32.0, 0.0, false, 1.0),
+                        None => {
+                            crate::desktop::rect(&mut l, ix, iy, 32.0, 32.0, 9.0, FILL2);
+                            l.icon(t, ix + 16.0, iy + 16.0, "window", 18.0, T1);
+                        }
+                    },
                     Kind::Emoji(g) => {
                         crate::desktop::rect(&mut l, ix, iy, 32.0, 32.0, 9.0, FILL2);
                         let es = Style::ui(20.0, 400.0);

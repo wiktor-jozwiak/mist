@@ -222,6 +222,10 @@ pub enum Act {
     NetEditor,
     Idle(&'static str, u32),
     Profile(String),
+    // a settings.json key (the shell re-reads it)
+    Setting(&'static str, Value),
+    // the battery charge limit: 80 % on, 100 % off
+    ChargeLimit(bool),
     SessionMenu,
     Lock,
     LockPreview,
@@ -520,7 +524,26 @@ impl Settings {
                     Row::new("bell-off", "Nie przeszkadzać", "Powiadomienia trafiają tylko do centrum, bez dźwięku i dymków", Ctl::Toggle(d.dnd, Act::Dnd(!d.dnd))),
                     Row::new("history", "Historia powiadomień", &format!("W centrum powiadomień: {}", d.notif_count), Ctl::Button("Wyczyść".into(), Act::NotifClear, Btn::Plain)),
                 ]));
-                b.push(Block::Note("Centrum powiadomień otworzysz klawiszami Super+A.".into()));
+                // automatic quiet: hours, fullscreen, screen sharing (settings.json "dnd_auto")
+                let a = &d.dnd_auto;
+                let hours = a["hours"].as_str().unwrap_or("").to_string();
+                let fs = a["fullscreen"].as_bool().unwrap_or(true);
+                let share = a["sharing"].as_bool().unwrap_or(true);
+                let set = |k: &str, v: Value| {
+                    let mut o = a.clone();
+                    if !o.is_object() {
+                        o = serde_json::json!({});
+                    }
+                    o[k] = v;
+                    Act::Setting("dnd_auto", o)
+                };
+                b.push(Block::Caption("Automatycznie".into()));
+                b.push(Block::Card(vec![
+                    Row::new("moon", "W godzinach ciszy", "Bez dymków i dźwięku, powiadomienia czekają w centrum", Ctl::Seg([("", "Nigdy"), ("22:00-07:00", "22–7"), ("23:00-07:00", "23–7"), ("00:00-08:00", "0–8")].iter().map(|(v, l)| (l.to_string(), hours == *v, set("hours", Value::String(v.to_string())))).collect())),
+                    Row::new("device-desktop", "Przy pełnym ekranie", "Gra lub film na pełnym ekranie", Ctl::Toggle(fs, set("fullscreen", Value::Bool(!fs)))),
+                    Row::new("screen-share", "Gdy udostępniasz ekran", "Prezentacja, rozmowa wideo", Ctl::Toggle(share, set("sharing", Value::Bool(!share)))),
+                ]));
+                b.push(Block::Note("Pilne powiadomienia przychodzą zawsze. Centrum powiadomień otworzysz klawiszami Super+A.".into()));
             }
             Power => {
                 let (lock, off) = (d.idle.0, d.idle.1);
@@ -540,6 +563,11 @@ impl Settings {
                     .to_string();
                     b.push(Block::Caption("Zasilanie".into()));
                     b.push(Block::Card(vec![Row::new("gauge", "Profil zasilania", "power-profiles-daemon", Ctl::Seg(d.profiles.iter().map(|p| (name(p), *p == d.profile, Act::Profile(p.clone()))).collect()))]));
+                }
+                // laptops whose battery takes a limit: stop at 80 % (longer battery life when mostly plugged in)
+                if let Some((_, v)) = backend::charge_limit() {
+                    let on = v < 100;
+                    b.push(Block::Card(vec![Row::new("battery-charging", "Ładuj do 80%", &if on { format!("Ładowanie kończy się na {v}% · bateria starzeje się wolniej") } else { "Bateria starzeje się wolniej, gdy laptop zwykle jest podłączony".into() }, Ctl::Toggle(on, Act::ChargeLimit(!on)))]));
                 }
                 b.push(Block::Card(vec![Row::new("power", "Wyłącz, uruchom ponownie, uśpij", "Menu sesji (Super+Alt+C)", Ctl::Button("Otwórz".into(), Act::SessionMenu, Btn::Plain))]));
             }
@@ -568,8 +596,26 @@ impl Settings {
                             Ctl::Toggle(v, Act::Comp("workspaces", if v { "horizontal".into() } else { "vertical".into() }))
                         }),
                         Row::new("terminal", "Ukrywaj terminal", "Okno uruchomione z terminala zastępuje go, aż się zamknie", Ctl::Toggle(sw, Act::Comp("swallow", if sw { "off".into() } else { "on".into() }))),
-                        Row::new("layout-grid", "Przegląd okien", "Wszystkie okna pulpitu obok siebie (Super+G)", Ctl::Button("Pokaż".into(), Act::Comp("__overview", String::new()), Btn::Plain)),
+                        Row::new("layout-grid", "Przegląd okien", "Wszystkie pulpity i ich okna; strzałki, Tab i Enter (Super+G)", Ctl::Button("Pokaż".into(), Act::Comp("__overview", String::new()), Btn::Plain)),
                     ]));
+                    // hot corners: what pushing the pointer into a screen corner does
+                    let spot = "exec mist-ui-bin msg mist toggle spotlight".to_string();
+                    let opts = [("off".to_string(), "Nic"), ("overview".to_string(), "Przegląd"), (spot, "Spotlight"), ("showdesktop".to_string(), "Pulpit")];
+                    let mut rows = Vec::new();
+                    for (k, label) in [("tl", "Lewy górny róg"), ("tr", "Prawy górny róg"), ("bl", "Lewy dolny róg"), ("br", "Prawy dolny róg")] {
+                        let key: &'static str = match k { "tl" => "corner tl", "tr" => "corner tr", "bl" => "corner bl", _ => "corner br" };
+                        let cur = backend::comp_get(key);
+                        let cur = if cur.is_empty() { "off".to_string() } else { cur };
+                        rows.push(Row::new("border-corners", label, "", Ctl::Seg(chips(&opts, &cur, move |v| Act::Comp(key, v)))));
+                    }
+                    b.push(Block::Caption("Gorące rogi".into()));
+                    b.push(Block::Card(rows));
+                }
+                // workspace names: the bar shows the name over an empty desktop (Enter saves)
+                {
+                    const NAMES: [&str; 6] = ["Pulpit 1", "Pulpit 2", "Pulpit 3", "Pulpit 4", "Pulpit 5", "Pulpit 6"];
+                    b.push(Block::Caption("Nazwy pulpitów".into()));
+                    b.push(Block::Card((0..6u8).map(|i| Row::new("layout-dashboard", NAMES[i as usize], "", Ctl::Field(super::Fid::WsName(i), "Np. Praca"))).collect()));
                 }
                 b.push(Block::Caption("Przyciąganie okien".into()));
                 b.push(Block::Card(vec![
@@ -786,6 +832,8 @@ impl Settings {
                 b.push(Block::Note("Zmiany widać od razu na pulpicie.".into()));
             }
             Colors => {
+                let from_wall = self.d.accent_wall;
+                b.push(Block::Card(vec![Row::new("photo", "Kolor z tapety", "Akcent dobiera się do zdjęcia na pulpicie", Ctl::Toggle(from_wall, if from_wall { Act::Accent(self.accent_now()) } else { Act::Setting("accent", Value::String("wallpaper".into())) }))]));
                 b.push(Block::Caption("Kolor akcentu".into()));
                 b.push(Block::Swatches(ACCENTS.iter().map(|(c, n)| (*c, *n, *c == self.accent_now())).collect()));
                 b.push(Block::Note("Akcent barwi przełączniki, zaznaczenia, suwaki i aktywne elementy całej powłoki.".into()));
@@ -995,7 +1043,7 @@ pub fn initials(name: &str) -> String {
     name.split_whitespace().filter_map(|w| w.chars().next()).take(2).collect::<String>().to_uppercase()
 }
 
-fn key_name(k: &str) -> String {
+pub fn key_name(k: &str) -> String {
     match k {
         "SUPER" => "Super".into(),
         "SHIFT" => "Shift".into(),
@@ -1004,6 +1052,7 @@ fn key_name(k: &str) -> String {
         "Return" => "Enter".into(),
         "Escape" => "Esc".into(),
         "period" => ".".into(),
+        "slash" => "/".into(),
         "equal" => "=".into(),
         "minus" => "−".into(),
         "grave" => "`".into(),
@@ -1041,6 +1090,8 @@ pub fn describe(act: &str) -> (&'static str, String) {
         ("Mist", "Centrum powiadomień")
     } else if msg("wallpaper") {
         ("Mist", "Galeria tapet")
+    } else if msg("keys") {
+        ("Mist", "Ściąga skrótów")
     } else if msg("session") {
         ("Mist", "Menu sesji")
     } else if a.contains("mist-ui-bin settings") {
@@ -1049,12 +1100,22 @@ pub fn describe(act: &str) -> (&'static str, String) {
         ("Mist", "Zablokuj ekran")
     } else if a.contains("switcher next") {
         ("Okna", "Przełącznik okien")
+    } else if a.contains("switcher windows") {
+        ("Okna", "Okna tej aplikacji")
+    } else if a.contains("mist-ui-bin default-app") {
+        ("Aplikacje", "Przeglądarka")
     } else if a.contains("switcher prev") {
         ("Okna", "Przełącznik okien wstecz")
     } else if a.contains("screenshot.sh region") {
         ("Aplikacje", "Zrzut zaznaczonego obszaru")
     } else if a.contains("screenshot.sh full") {
         ("Aplikacje", "Zrzut całego ekranu")
+    } else if a.contains("record.sh") {
+        ("Aplikacje", "Nagrywanie ekranu")
+    } else if a.contains("ocr.sh") {
+        ("Aplikacje", "Tekst z ekranu")
+    } else if a.contains("pick.sh") || a.contains("hyprpicker") {
+        ("Aplikacje", "Próbnik koloru")
     } else if a.contains("media toggle") {
         ("Multimedia", "Odtwarzaj / pauza")
     } else if a.contains("media next") {
@@ -1086,6 +1147,9 @@ pub fn describe(act: &str) -> (&'static str, String) {
             "maximize" => ("Okna", "Maksymalizuj".into()),
             "float" => ("Okna", "Okno pływające".into()),
             "overview" => ("Okna", "Przegląd okien".into()),
+            "showdesktop" => ("Okna", "Pokaż pulpit".into()),
+            "pin" => ("Okna", "Zawsze na wierzchu".into()),
+            "dropdown" => ("Aplikacje", "Terminal rozwijany".into()),
             "cycle" => ("Okna", "Następne okno".into()),
             "togglespecial" => ("Pulpity", "Notatnik (pulpit specjalny)".into()),
             "focus" => ("Okna", format!("Fokus: {}", dir(rest))),

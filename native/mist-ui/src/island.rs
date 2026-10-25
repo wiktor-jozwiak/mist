@@ -134,6 +134,26 @@ pub struct Ev {
     pub note_id: u32,
     pub burst: u32, // notifications of one app in a row shown by this card
 }
+impl Island {
+    // record.sh: started (with the file) / stopped
+    pub fn recording(&mut self, on: bool, file: &str) {
+        if on {
+            self.rec = Some((Instant::now(), file.to_string()));
+            self.push(info("rec", 2, 2000, "rec", DANGER, "Nagrywanie ekranu", "zatrzymasz tym samym skrótem"));
+        } else if let Some((at, f)) = self.rec.take() {
+            let name = f.rsplit('/').next().unwrap_or("").to_string();
+            self.push(info("rec", 2, 3500, "rec", DANGER, "Nagranie zapisane", &format!("{} · {}", fmt_dur(at.elapsed().as_secs_f64()), name)));
+        }
+    }
+    // pick.sh: the colour, as a swatch
+    pub fn picked(&mut self, hex: &str) {
+        let h = hex.trim_start_matches('#');
+        let v = u32::from_str_radix(h, 16).unwrap_or(0);
+        let col = Rgba::rgb8((v >> 16) as u8, (v >> 8) as u8, v as u8, 1.0);
+        self.push(info("color", 2, 2600, "colorPicker", col, &format!("#{}", h.to_lowercase()), "skopiowano do schowka"));
+    }
+}
+
 fn info(key: &str, prio: i32, dur: u64, icon: &str, color: Rgba, title: &str, sub: &str) -> Ev {
     Ev { view: "info", key: key.into(), prio, dur, icon: icon.into(), color: Some(color), title: title.into(), sub: sub.into(), value: -1, ..Default::default() }
 }
@@ -189,6 +209,8 @@ pub struct Island {
     // Hyprland
     layout: String,
     pub sharing: bool,
+    // screen recording (scripts/record.sh): since when, the file
+    pub rec: Option<(Instant, String)>,
     cast_on: bool,
     share_since: Instant,
     share_at: Option<Instant>,
@@ -202,6 +224,9 @@ pub struct Island {
     bt_devs: Vec<BtDev>,
     bt_low: HashMap<String, u8>,
     profile: String,
+    // the laptop battery last seen, and the low warning shown this discharge (1: 20 %, 2: 10 %, 3: 5 %)
+    bat: Option<crate::sys::Bat>,
+    bat_low: u8,
     caps: bool,
     num: bool,
     cam_busy: bool,
@@ -251,9 +276,9 @@ impl Island {
             ev: None, queue: Vec::new(), last: HashMap::new(), ev_until: None, start: now, armed: false, expanded: false, glance_demo: false, hover: false,
             open_at: None, close_at: None, replying: false, reply: String::new(), players: Vec::new(), pick: None, self_until: None, last_track: String::new(),
             last_playing: false, track_at: None, state_at: None, audio: Audio::default(), audio_seen: false, dev_armed_at: Some(now), vol_recent_until: None,
-            layout: String::new(), sharing: false, cast_on: false, share_since: now, share_at: None, submap: String::new(), shot_at: None, fullscreen: false,
+            layout: String::new(), sharing: false, rec: None, cast_on: false, share_since: now, share_at: None, submap: String::new(), shot_at: None, fullscreen: false,
             focus_class: String::new(), burst: (String::new(), 0, None),
-            bt_on: None, bt_devs: Vec::new(), bt_low: HashMap::new(), profile: String::new(), caps: false, num: true, cam_busy: false, cam_apps: Vec::new(),
+            bt_on: None, bt_devs: Vec::new(), bt_low: HashMap::new(), profile: String::new(), bat: None, bat_low: 0, caps: false, num: true, cam_busy: false, cam_apps: Vec::new(),
             conn: "full".into(), primary: String::new(), last_call: None, keypad: false, call_at: None, last_note: (String::new(), None),
             weather: Value::Null, calendar: Value::Null, reminded: HashMap::new(), rain_at: None, timer_end: 0.0, timer_total: 0.0, timer_label: String::new(),
             w: Spring::new(120.0, 3.4, 0.3, 0.25), h: Spring::new(30.0, 3.4, 0.3, 0.25), y: Spring::new(5.0, 3.0, 0.32, 0.25), bump_at: None,
@@ -486,7 +511,10 @@ impl Island {
             if self.cast_on && !self.sharing {
                 self.sharing = true;
                 self.share_since = now;
-                self.push(info("share", 2, 2600, "screenshot", PURPLE, "Udostępniasz ekran", ""));
+                // our own recording casts too: the red dot says it already
+                if self.rec.is_none() {
+                    self.push(info("share", 2, 2600, "screenshot", PURPLE, "Udostępniasz ekran", ""));
+                }
                 changed = true;
             }
         }
@@ -574,7 +602,9 @@ impl Island {
                 } else if self.sharing {
                     self.sharing = false;
                     let s = fmt_dur(self.share_since.elapsed().as_secs_f64());
-                    self.push(info("share", 2, 2600, "screenshot", PURPLE, "Koniec udostępniania", &s));
+                    if self.rec.is_none() {
+                        self.push(info("share", 2, 2600, "screenshot", PURPLE, "Koniec udostępniania", &s));
+                    }
                 } else {
                     self.share_at = None;
                     self.shot_at = Some(Instant::now());
@@ -670,6 +700,36 @@ impl Island {
             }
         }
         self.bt_devs = devs;
+    }
+
+    // charger in / out, full, and 20 / 10 / 5 % left (each once a discharge)
+    pub fn on_battery(&mut self, b: crate::sys::Bat) {
+        let prev = self.bat.replace(b);
+        let pct = format!("{}%", b.pct.round());
+        let left = bat_time(b.secs);
+        if b.charging || b.full {
+            self.bat_low = 0;
+        }
+        let Some(p) = prev.filter(|_| self.armed) else { return };
+        if b.charging && !p.charging && !p.full {
+            let sub = if left.is_empty() { pct.clone() } else { format!("{pct} · do pełna {left}") };
+            self.push(info("battery", 2, 2500, "charging", GREEN, "Ładowanie", &sub));
+        } else if !b.charging && !b.full && (p.charging || p.full) {
+            let sub = if left.is_empty() { pct.clone() } else { format!("{pct} · zostało {left}") };
+            self.push(info("battery", 2, 2500, "battery3", T1, "Zasilanie z baterii", &sub));
+        } else if b.full && !p.full {
+            self.push(info("battery", 1, 2500, "battery4", GREEN, "Bateria naładowana", &pct));
+        }
+        if !b.charging && !b.full {
+            let lvl = if b.pct <= 5.0 { 3 } else if b.pct <= 10.0 { 2 } else if b.pct <= 20.0 { 1 } else { 0 };
+            if lvl > self.bat_low {
+                self.bat_low = lvl;
+                let sub = if left.is_empty() { pct.clone() } else { format!("{pct} · zostało {left}") };
+                // 5 %: stays until dismissed by time, louder
+                let (dur, col) = if lvl == 3 { (12000, DANGER) } else if lvl == 2 { (8000, DANGER) } else { (6000, ORANGE_I) };
+                self.push(info("battery", 4, dur, "battery1", col, "Słaba bateria", &sub));
+            }
+        }
     }
 
     pub fn on_profile(&mut self, p: String) {
@@ -1119,6 +1179,10 @@ impl Island {
         let a = accent();
         let e = match kind {
             "volume" => Ev { view: "osd", key: "vol".into(), prio: 3, dur: 2500, value: -1, ..Default::default() },
+            "battlow" => info("battery", 4, 8000, "battery1", DANGER, "Słaba bateria", "9% · zostało 24 min"),
+            "rec" => info("rec", 2, 3500, "rec", DANGER, "Nagranie zapisane", "1:42 · Nagranie ekranu 2026-10-25 o 12.10.03.mp4"),
+            "color" => info("color", 2, 2600, "colorPicker", Rgba::rgb8(0x8a, 0xd6, 0xd0, 1.0), "#8ad6d0", "skopiowano do schowka"),
+            "ocr" => info("info", 2, 3500, "textScan", accent(), "Tekst w schowku", "Plan treningowy na październik: dwa akcenty w tygodniu"),
             "brightness" => Ev { view: "osd", key: "vol".into(), prio: 3, dur: 2500, icon: "bright".into(), value: 60, ..Default::default() },
             "mic-volume" => Ev { view: "osd", key: "vol".into(), prio: 3, dur: 2500, mic: true, value: -1, ..Default::default() },
             "notif" => Ev { view: "notif", prio: 2, dur: 5000, app: "Zen Browser".into(), icon: "zen-browser".into(), title: crate::i18n::tr("Nowa wiadomość od Kasi").into_owned(), body: crate::i18n::tr("Hej! Widzimy się dziś o 18 na bieganiu? Weź bidon, bo ma być ciepło.").into_owned(), value: -1, ..Default::default() },
@@ -1182,6 +1246,19 @@ pub fn fmt(s: f64) -> String {
     let s = s.max(0.0).floor() as i64;
     format!("{}:{:02}", s / 60, s % 60)
 }
+// "2 h 05 min" / "40 min" ("" when UPower does not know yet)
+pub fn bat_time(secs: i64) -> String {
+    if secs <= 60 {
+        return String::new();
+    }
+    let m = secs / 60;
+    if m >= 60 {
+        format!("{} h {:02} min", m / 60, m % 60)
+    } else {
+        format!("{m} min")
+    }
+}
+
 pub fn fmt_dur(s: f64) -> String {
     let s = s.round() as i64;
     if s < 60 { format!("{s} s") } else if s < 3600 { format!("{} min {} s", s / 60, s % 60) } else { format!("{} h {} min", s / 3600, s % 3600 / 60) }
@@ -1365,7 +1442,8 @@ impl Island {
         if self.caps { items.push(Canvas::icon_w(t, "capsLock", 14.0)); }
         if self.cam_busy { items.push(7.0); }
         if self.mic_busy() { items.push(7.0); }
-        if self.sharing { items.push(7.0); }
+        if self.sharing && self.rec.is_none() { items.push(7.0); }
+        if self.rec.is_some() { items.push(7.0); }
         if self.playing() { items.push(18.0); }
         items.iter().sum::<f32>() + 8.0 * (items.len().saturating_sub(1)) as f32
     }
@@ -1553,7 +1631,7 @@ impl Island {
             c.icon(cx.t, x + iw / 2.0, cy, "capsLock", 14.0, accent());
             x += iw + 8.0;
         }
-        for (on, col) in [(self.cam_busy, GREEN), (self.mic_busy(), ORANGE_I), (self.sharing, PURPLE)] {
+        for (on, col) in [(self.cam_busy, GREEN), (self.mic_busy(), ORANGE_I), (self.sharing && self.rec.is_none(), PURPLE), (self.rec.is_some(), DANGER)] {
             if on {
                 c.rrect(x, cy - 3.5, 7.0, 7.0, 3.5, col);
                 x += 7.0 + 8.0;
@@ -2475,6 +2553,49 @@ mod special_tests {
         assert!(isl.ev.is_none() && isl.queue.is_empty());
         isl.on_hypr("activespecial", "special:scratch,DP-3", &apps, &[], "");
         assert_eq!(isl.ev.as_ref().map(|e| e.key.as_str()), Some("special"));
+    }
+
+    // the battery: unplug, 20 / 10 % once each, nothing in between, plug in, full
+    #[test]
+    fn battery_events() {
+        let mut isl = Island::new();
+        isl.armed = true;
+        let mut step = |pct: f32, charging: bool, full: bool| -> String {
+            isl.on_battery(crate::sys::Bat { pct, charging, full, secs: 0 });
+            let t = isl.ev.take().map(|e| format!("{} {}", e.title, e.sub)).unwrap_or_default();
+            isl.queue.clear();
+            t
+        };
+        let got: Vec<String> = [(100.0, false, true), (99.0, false, false), (21.0, false, false), (20.0, false, false), (19.0, false, false), (10.0, false, false), (12.0, true, false), (100.0, false, true)]
+            .into_iter()
+            .map(|(p, c, f)| step(p, c, f))
+            .collect();
+        assert_eq!(got, ["", "Zasilanie z baterii 99%", "", "Słaba bateria 20%", "", "Słaba bateria 10%", "Ładowanie 12%", "Bateria naładowana 100%"]);
+        assert_eq!(bat_time(5400), "1 h 30 min");
+        assert_eq!(bat_time(30), "");
+    }
+
+    #[test]
+    fn recording_is_not_sharing() {
+        let mut isl = Island::new();
+        isl.armed = true;
+        let mut cast = |isl: &mut Island| -> String {
+            isl.cast_on = true;
+            isl.share_at = Some(Instant::now() - Duration::from_millis(1));
+            isl.tick(false, false);
+            let t = isl.ev.take().map(|e| e.title).unwrap_or_default();
+            isl.queue.clear();
+            isl.sharing = false;
+            t
+        };
+        isl.recording(true, "/v/a.mp4");
+        isl.ev = None;
+        isl.queue.clear();
+        assert_eq!(cast(&mut isl), "");
+        isl.recording(false, "");
+        assert_eq!(isl.ev.take().map(|e| e.title).unwrap_or_default(), "Nagranie zapisane");
+        isl.queue.clear();
+        assert_eq!(cast(&mut isl), "Udostępniasz ekran");
     }
 }
 

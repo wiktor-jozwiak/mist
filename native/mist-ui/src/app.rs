@@ -235,6 +235,11 @@ pub struct App {
     pub icons: Icons,
     pub apps: Apps,
     pub st: BarState,
+    // automatic Do Not Disturb (settings.json "dnd_auto"): quiet hours (minutes from midnight), over a
+    // fullscreen window, while the screen is shared
+    pub dnd_cfg: (Option<(u32, u32)>, bool, bool),
+    // workspace names from settings.json (the bar over an empty desktop)
+    pub ws_names: std::collections::HashMap<i64, String>,
     pub hypr: Hypr,
     /// mist-comp's mistcover for the weather card (None: not on mist-comp, computed from the windows)
     pub card_cover: Option<bool>,
@@ -312,6 +317,8 @@ impl App {
             icons: Icons::new(),
             apps: Apps::load(),
             st: BarState { net: "ethernet".into(), ..Default::default() },
+            ws_names: ws_names(),
+            dnd_cfg: dnd_cfg(),
             hypr: Hypr::default(),
             card_cover: None,
             ui_popup: (String::new(), String::new()),
@@ -446,6 +453,7 @@ impl App {
             _ => false,
         };
         s.show_win = !bare && focused_here;
+        s.desk = mon.and_then(|m| self.ws_names.get(&m.2)).cloned().unwrap_or_default();
         if let Some(a) = &self.hypr.active {
             s.app = self.apps.lookup(&a.class).map(|e| e.name.clone()).unwrap_or(a.class.clone());
             s.title = a.title.clone();
@@ -538,6 +546,7 @@ impl App {
     }
 
     pub fn slow_tick(&mut self) {
+        self.dnd_auto();
         self.idle.reap();
         self.idle_hold();
         // the screenshot thumbnail goes after 6 s (not while hovered)
@@ -1791,6 +1800,8 @@ impl App {
                 None => format!("no dock slot {}", a(0)),
             },
             ("island", "timer") => { self.island.timer_start(a(0).parse().unwrap_or(0.0), &a(1)); String::new() }
+            ("island", "rec") => { self.island.recording(a(0) == "1", &a(1)); String::new() }
+            ("island", "color") => { self.island.picked(&a(0)); String::new() }
             ("island", "timerStop") => { self.island.timer_stop(); String::new() }
             ("island", "dismiss") => { self.island.clear_all(); String::new() }
             ("island", "click") => { if let Some(e) = self.island.ev.clone() { self.island_act(&e); self.island.next(); } String::new() }
@@ -1807,6 +1818,18 @@ impl App {
             ("notif", "invoke") => { let _ = self.notif_tx.send(crate::notif::Cmd::Invoke(a(0).parse().unwrap_or(0), if a(1).is_empty() { "default".into() } else { a(1) })); String::new() }
             ("phone", "send") => { let v: serde_json::Value = serde_json::from_str(&a(0)).unwrap_or_default(); self.phone.send(v["c"].as_str().unwrap_or(""), v.get("a").cloned()); String::new() }
             ("phone", "tel") => { let v: serde_json::Value = serde_json::from_str(&a(0)).unwrap_or_default(); self.phone.tel(v["c"].as_str().unwrap_or(""), v.get("a").cloned()); String::new() }
+            // Mist Files: files to the phone
+            ("phone", "share") => {
+                if self.phone.st.lock().unwrap().online() {
+                    let n = r.args.len();
+                    self.phone.send("share", Some(serde_json::json!(r.args.clone())));
+                    let what = if n == 1 { r.args[0].rsplit('/').next().unwrap_or("").to_string() } else { format!("{n} {}", crate::i18n::tr("pliki")) };
+                    self.island.push(crate::island::Ev { view: "info", prio: 2, dur: 2600, icon: "phone".into(), color: Some(crate::theme::accent()), title: crate::i18n::tr("Wysłano na telefon").into_owned(), sub: what, value: -1, ..Default::default() });
+                } else {
+                    self.island.push(crate::island::Ev { view: "info", prio: 2, dur: 3000, icon: "phone".into(), color: Some(crate::theme::DANGER), title: crate::i18n::tr("Telefon niedostępny").into_owned(), sub: crate::i18n::tr("sparuj go w KDE Connect").into_owned(), value: -1, ..Default::default() });
+                }
+                String::new()
+            }
             ("phone", "answer") => { self.phone.answer(); String::new() }
             ("phone", "hangup") => { self.phone.hangup(); String::new() }
             ("phone", "call") => { self.phone.call_number(&a(0)); String::new() }
@@ -1822,6 +1845,10 @@ impl App {
             // Mist Settings saved settings.json: language, accent, contrast again, everything repainted
             ("ui", "settings") => {
                 crate::i18n::reload();
+                self.ws_names = ws_names();
+                self.dnd_cfg = dnd_cfg();
+                self.dnd_auto();
+                wall_accent(self.tx.clone());
                 crate::theme::reload_accent();
                 crate::theme::reload_contrast();
                 self.pane_act(crate::pane::Act::DeskCfg);
@@ -2499,6 +2526,18 @@ impl App {
         }
     }
 
+    // automatic Do Not Disturb: told to the notification server only when it changes
+    pub fn dnd_auto(&mut self) {
+        let (hours, fs, share) = self.dnd_cfg;
+        let t = crate::data::local(crate::data::now());
+        let quiet = hours.is_some_and(|h| in_hours(h, (t.tm_hour * 60 + t.tm_min) as u32)) || (fs && self.island.fullscreen) || (share && self.island.sharing);
+        if quiet != self.st.dnd_auto {
+            self.st.dnd_auto = quiet;
+            let _ = self.notif_tx.send(crate::notif::Cmd::Quiet(quiet));
+            self.mark_all();
+        }
+    }
+
     fn bar_action(&mut self, i: usize, h: &Hit, button: u32, item: (f32, f32)) {
         let scr = self.bars[i].name.clone();
         let mid = button == BTN_MIDDLE;
@@ -2513,6 +2552,7 @@ impl App {
             Hit::Bell => if right { let on = !self.st.dnd; let _ = self.notif_tx.send(crate::notif::Cmd::Dnd(on)); self.st.dnd = on; self.mark_all(); } else { self.ui_toggle("notifications", &scr) },
             Hit::Adjust => self.ui_control("", &scr),
             Hit::Power => self.ui_toggle("session", &scr),
+            Hit::Battery => spawn(&[&crate::paths::self_bin(), "settings", "power"]),
             Hit::Tray(key) => {
                 let Some(it) = self.tray_items.iter().find(|t| &t.key == key).cloned() else { return };
                 if right || it.item_is_menu {
@@ -2688,6 +2728,45 @@ fn draw_tray_icon(c: &mut Canvas, icons: &mut Icons, t: &tray::Item, cx: f32, cy
 fn home() -> String {
     std::env::var("HOME").unwrap_or_default()
 }
+// "accent": "wallpaper": the colour worked out in a thread (once per photo), the surfaces redrawn when it changed
+pub fn wall_accent(tx: Option<calloop::channel::Sender<Msg>>) {
+    let Some(tx) = tx else { return };
+    std::thread::spawn(move || {
+        if crate::theme::wall_accent_update() {
+            let _ = tx.send(Msg::Accent);
+        }
+    });
+}
+
+// settings.json "dnd_auto": {"hours": "22:00-07:00" | "", "fullscreen": true, "sharing": true}
+pub fn dnd_cfg() -> (Option<(u32, u32)>, bool, bool) {
+    let p = format!("{}/.config/mist/settings.json", std::env::var("HOME").unwrap_or_default());
+    let v: serde_json::Value = std::fs::read_to_string(p).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    let a = &v["dnd_auto"];
+    (dnd_hours(a["hours"].as_str().unwrap_or("")), a["fullscreen"].as_bool().unwrap_or(true), a["sharing"].as_bool().unwrap_or(true))
+}
+// "22:00-07:00" -> (1320, 420)
+pub fn dnd_hours(s: &str) -> Option<(u32, u32)> {
+    let (a, b) = s.split_once('-')?;
+    let m = |t: &str| -> Option<u32> {
+        let (h, mi) = t.trim().split_once(':')?;
+        let (h, mi): (u32, u32) = (h.parse().ok()?, mi.parse().ok()?);
+        (h < 24 && mi < 60).then_some(h * 60 + mi)
+    };
+    Some((m(a)?, m(b)?))
+}
+// inside quiet hours (they may run past midnight)
+pub fn in_hours(h: (u32, u32), now: u32) -> bool {
+    if h.0 <= h.1 { now >= h.0 && now < h.1 } else { now >= h.0 || now < h.1 }
+}
+
+// settings.json "workspace_names": {"1": "Praca", ...}
+pub fn ws_names() -> std::collections::HashMap<i64, String> {
+    let p = format!("{}/.config/mist/settings.json", std::env::var("HOME").unwrap_or_default());
+    let v: serde_json::Value = std::fs::read_to_string(p).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    v["workspace_names"].as_object().map(|o| o.iter().filter_map(|(k, v)| Some((k.parse().ok()?, v.as_str()?.to_string()))).collect()).unwrap_or_default()
+}
+
 pub fn spawn(argv: &[&str]) {
     use std::os::unix::process::CommandExt;
     // `hyprctl eval` commands (switcher::hypr and the like): the socket, no process
@@ -2733,7 +2812,7 @@ impl App {
         };
         // the bars and the dock draw only st, hypr, the tray and the popup: these messages touch none of it
         // (with music on, Audio + Players alone redrew both bars and the dock ~8 times a second)
-        let bars_too = !matches!(&m, Msg::Players(..) | Msg::Audio(..) | Msg::Data(..) | Msg::Cursor(..) | Msg::HyprEv(..) | Msg::Note(..) | Msg::Phone2(..) | Msg::Profile(..) | Msg::Sys(..) | Msg::NmLine(..) | Msg::BtDevs(..) | Msg::WinThumb(..));
+        let bars_too = !matches!(&m, Msg::Players(..) | Msg::Audio(..) | Msg::Data(..) | Msg::Cursor(..) | Msg::HyprEv(..) | Msg::Note(..) | Msg::Phone2(..) | Msg::Profile(..) | Msg::Battery(..) | Msg::Sys(..) | Msg::NmLine(..) | Msg::BtDevs(..) | Msg::WinThumb(..));
         let k: &'static str = match &m {
             Msg::Hypr(..) => "Hypr",
             Msg::Net(..) => "Net",
@@ -2754,6 +2833,8 @@ impl App {
             Msg::Audio(..) => "Audio",
             Msg::BtDevs(..) => "BtDevs",
             Msg::Profile(..) => "Profile",
+            Msg::Battery(..) => "Battery",
+            Msg::Accent => "Accent",
             Msg::Sys(..) => "Sys",
             Msg::NmLine(..) => "NmLine",
             Msg::Cursor(..) => "Cursor",
@@ -2848,6 +2929,7 @@ impl App {
                 }
             }
             Msg::Wall(live, image) => {
+                wall_accent(self.tx.clone());
                 let outs = self.outs();
                 self.wall.set(live, image, &self.compositor, &self.layer_shell, &self.qh, &outs);
             }
@@ -2928,6 +3010,22 @@ impl App {
             Msg::Audio(a) => self.island.on_audio(a),
             Msg::BtDevs(d) => { let on = self.st.bt_on; self.island.on_bt(on, Some(d)); }
             Msg::Profile(p) => self.island.on_profile(p),
+            Msg::Accent => {
+                crate::theme::reload_accent();
+                self.mark_all();
+                self.island_dirty = true;
+            }
+            Msg::Battery(b) => {
+                if let Some(b) = b {
+                    self.island.on_battery(b);
+                }
+                if self.st.battery.map(|x| (x.pct.round(), x.charging, x.full)) != b.map(|x| (x.pct.round(), x.charging, x.full)) {
+                    self.st.battery = b;
+                    self.mark_all();
+                } else {
+                    self.st.battery = b;
+                }
+            }
             Msg::Sys(v) => self.island.on_sys(&v),
             Msg::NmLine(l) => self.island.on_nm(&l),
             Msg::Pins => {
@@ -3194,4 +3292,18 @@ thread_local! { static DRAWS: std::cell::RefCell<std::collections::BTreeMap<&'st
 
 pub fn tick_interval() -> Duration {
     Duration::from_millis(16)
+}
+
+#[cfg(test)]
+mod dnd_tests {
+    #[test]
+    fn quiet_hours() {
+        let h = super::dnd_hours("22:00-07:00").unwrap();
+        assert_eq!(h, (1320, 420));
+        assert!(super::in_hours(h, 23 * 60) && super::in_hours(h, 3 * 60) && !super::in_hours(h, 7 * 60) && !super::in_hours(h, 12 * 60));
+        let d = super::dnd_hours("09:00-17:30").unwrap();
+        assert!(super::in_hours(d, 600) && !super::in_hours(d, 17 * 60 + 30));
+        assert_eq!(super::dnd_hours(""), None);
+        assert_eq!(super::dnd_hours("25:00-07:00"), None);
+    }
 }

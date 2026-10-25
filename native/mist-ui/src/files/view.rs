@@ -73,6 +73,7 @@ pub fn glyph(name: &str) -> Option<char> {
         "eyeOff" => 0xecf0,
         "undo" => 0xeb77,
         "link" => 0xeade,
+        "phone" => 0xea8a,
         "preview" => 0xf007,
         "minus" => 0xeaf2,
         "app" => 0xefe6,

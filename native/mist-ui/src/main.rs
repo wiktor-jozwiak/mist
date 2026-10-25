@@ -35,6 +35,8 @@ mod idle;
 mod polkit;
 mod pane;
 mod session;
+mod keys;
+mod quick;
 mod calendar;
 mod notifcenter;
 mod switcher;
@@ -448,6 +450,8 @@ fn main() {
     media::spawn(tx.clone(), mdrx);
     data::spawn(tx.clone());
     sys::power_profile(tx.clone());
+    sys::battery(tx.clone());
+    app::wall_accent(Some(tx.clone()));
     sys::island_events(tx.clone());
     sys::nm_monitor(tx.clone());
     idle::logind(tx.clone());
@@ -501,6 +505,9 @@ fn png(args: &[String]) {
         bt_on: g("bt").as_bool().unwrap_or(false),
         net: "ethernet".into(),
         vol: g("vol").as_f64().unwrap_or(0.5) as f32,
+        desk: g("desk").as_str().unwrap_or("").into(),
+        // "bat": [percent, charging]
+        battery: g("bat").as_array().map(|a| sys::Bat { pct: a[0].as_f64().unwrap_or(0.0) as f32, charging: a.get(1).and_then(|v| v.as_bool()).unwrap_or(false), ..Default::default() }),
         ..Default::default()
     };
     let mut t = text::Text::new();

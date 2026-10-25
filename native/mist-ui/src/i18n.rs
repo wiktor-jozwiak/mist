@@ -363,6 +363,12 @@ pub fn tr(s: &str) -> std::borrow::Cow<'_, str> {
     if let Some(v) = date(t, lang, s) {
         return v.into();
     }
+    // a numbered one ("Pulpit 3", "Pulpit 1–6"): the words translated, the number kept
+    if let Some((head, tail)) = s.rsplit_once(' ').filter(|(_, n)| n.starts_with(|c: char| c.is_ascii_digit())) {
+        if let Some(h) = one(t, head) {
+            return format!("{h} {tail}").into();
+        }
+    }
     miss(s);
     s.into()
 }

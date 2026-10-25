@@ -161,6 +161,8 @@ pub enum Act {
     PasteInto(String),
     Rename,
     CopyPath,
+    // the selected files to the paired phone (KDE Connect, through mist-ui)
+    SendPhone,
     Trash,
     Delete,
     DeleteNow,
@@ -1231,6 +1233,16 @@ impl Files {
             }
         });
     }
+    fn send_phone(&mut self, wid: WinId, cx: &mut Cx) {
+        let Some(w) = self.wins.iter().find(|w| w.id == wid) else { return };
+        let files: Vec<String> = w.cur().selected().iter().filter(|e| !e.dir).map(|e| e.path.clone()).collect();
+        if files.is_empty() {
+            return;
+        }
+        // mist-ui holds the phone connection; it answers on the island (sent / phone not reachable)
+        let _ = std::process::Command::new(crate::paths::self_bin()).args(["msg", "phone", "share"]).args(&files).spawn();
+        self.say(wid, "Wysyłam na telefon", cx);
+    }
     fn copy_path(&mut self, wid: WinId, cx: &mut Cx) {
         let Some(w) = self.wins.iter().find(|w| w.id == wid) else { return };
         let s = w.cur().selected();
@@ -1307,6 +1319,10 @@ impl Files {
             v.push(sep());
             v.push(me("Zmień nazwę", "rename", "F2", Act::Rename).enabled(one.is_some()));
             v.push(me("Kopiuj ścieżkę", "link", "Ctrl+Shift+C", Act::CopyPath));
+            // KDE Connect installed and files (not folders) selected
+            if std::path::Path::new("/usr/bin/kdeconnectd").exists() && s.iter().any(|e| !e.dir) {
+                v.push(me("Wyślij na telefon", "phone", "", Act::SendPhone));
+            }
             v.push(sep());
             v.push(me("Przenieś do kosza", "trash", "Del", Act::Trash).danger());
             v
@@ -1408,6 +1424,7 @@ impl Files {
             Act::PasteInto(p) => self.paste(wid, Some(p), cx),
             Act::Rename => self.start_rename(wid),
             Act::CopyPath => self.copy_path(wid, cx),
+            Act::SendPhone => self.send_phone(wid, cx),
             Act::Trash => self.trash_sel(wid, cx),
             Act::Delete => self.ask_delete(wid),
             Act::DeleteNow => self.delete_now(wid, cx),
