@@ -48,6 +48,7 @@ enum Hit {
     Tempo(usize),
     Music,
     Folder,
+    Pick,
     Tile(usize),
     Shelf,
 }
@@ -275,6 +276,12 @@ impl Drop for Wallpapers {
 }
 
 impl Pane for Wallpapers {
+    // --pane-png wallpaper ... <filter>: open on that filter (photos)
+    fn seed(&mut self, q: &str) {
+        if let Some(i) = FILTERS.iter().position(|f| f.0 == q) {
+            self.set_filter(i);
+        }
+    }
     fn name(&self) -> &'static str {
         "wallpaper"
     }
@@ -360,6 +367,11 @@ impl Pane for Wallpapers {
             let fill = white(if self.hovered(Hit::Folder) { 0.14 } else { 0.07 });
             Self::pill(c, t, rx, sy + 18.0, "folder", "Otwórz folder", None, fill, white(0.86), white(0.4));
             self.hits.push(((rx, sy + 18.0, fw, 34.0), Hit::Folder));
+            let pw = Self::pill_w(t, "Zmień folder", None);
+            rx -= pw + 6.0;
+            let fill = white(if self.hovered(Hit::Pick) { 0.14 } else { 0.07 });
+            Self::pill(c, t, rx, sy + 18.0, "dots", "Zmień folder", None, fill, white(0.86), white(0.4));
+            self.hits.push(((rx, sy + 18.0, pw, 34.0), Hit::Pick));
         } else {
             let music = self.cfg["music"].as_bool().unwrap_or(false);
             let mw = Self::pill_w(t, "Rytm muzyki", None);
@@ -580,6 +592,8 @@ impl Pane for Wallpapers {
                         Act::Redraw
                     }
                     Some(Hit::Folder) => Act::Run(vec!["xdg-open".into(), presets::photo_dir()]),
+                    // the gallery closes for the dialog (an overlay over it) and comes back on the new photos
+                    Some(Hit::Pick) => Act::Run(vec![crate::paths::self_bin(), "wallpaper-folder".into()]),
                     Some(Hit::Tile(i)) => {
                         let dbl = self.last_click.0 == i && self.last_click.1.elapsed().as_millis() < 400;
                         self.last_click = (i, std::time::Instant::now());

@@ -194,3 +194,27 @@ pub fn spawn(tx: Tx) {
         }
     });
 }
+
+/// Client side: a folder from the FileChooser portal (whichever backend the desktop uses, Mist Files here), None
+/// when cancelled or there is no portal. Blocks until the dialog closes.
+pub fn pick_folder(title: &str) -> Option<String> {
+    let c = zbus::blocking::Connection::session().ok()?;
+    let token = format!("mist{}", std::process::id());
+    let sender = c.unique_name()?.as_str().trim_start_matches(':').replace('.', "_");
+    let path = format!("/org/freedesktop/portal/desktop/request/{sender}/{token}");
+    // subscribe before the call, so a fast Response cannot be missed
+    let rule = zbus::MatchRule::builder().msg_type(zbus::message::Type::Signal).interface("org.freedesktop.portal.Request").ok()?.member("Response").ok()?.path(path.as_str()).ok()?.build();
+    let mut it = zbus::blocking::MessageIterator::for_match_rule(rule, &c, Some(4)).ok()?;
+    let mut opts: HashMap<&str, Value> = HashMap::new();
+    opts.insert("handle_token", Value::from(token.as_str()));
+    opts.insert("directory", Value::from(true));
+    opts.insert("modal", Value::from(true));
+    c.call_method(Some("org.freedesktop.portal.Desktop"), "/org/freedesktop/portal/desktop", Some("org.freedesktop.portal.FileChooser"), "OpenFile", &("", title, opts)).ok()?;
+    let m = it.next()?.ok()?;
+    let (code, res): (u32, HashMap<String, OwnedValue>) = m.body().deserialize().ok()?;
+    if code != 0 {
+        return None;
+    }
+    let uris: Vec<String> = res.get("uris")?.try_clone().ok()?.try_into().ok()?;
+    uris.first().map(|u| crate::appwin::uri_to_path(u))
+}

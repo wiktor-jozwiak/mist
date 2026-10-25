@@ -58,9 +58,10 @@ pub fn get<'a>(list: &'a [Value], id: &str) -> Option<&'a Value> {
     list.iter().find(|p| p["id"].as_str() == Some(id) && p.get("mode").is_some())
 }
 
-// the wallpaper gallery: photos in Pictures/Wallpapers (paths.rs, 2 levels), sorted
+// the wallpaper gallery: photos in Pictures/Wallpapers and the other photo folders (paths.rs, 2 levels), sorted;
+// "Otwórz folder" opens the picked folder, else Mist's own
 pub fn photo_dir() -> String {
-    crate::paths::wallpaper_dir()
+    crate::paths::picked_wallpaper_dir().unwrap_or_else(crate::paths::wallpaper_dir)
 }
 pub fn photos() -> Vec<String> {
     fn walk(d: &std::path::Path, depth: u32, out: &mut Vec<String>) {
@@ -77,8 +78,11 @@ pub fn photos() -> Vec<String> {
         }
     }
     let mut out = Vec::new();
-    walk(std::path::Path::new(&photo_dir()), 1, &mut out);
+    for d in crate::paths::photo_dirs() {
+        walk(std::path::Path::new(&d), 1, &mut out);
+    }
     out.sort();
+    out.dedup(); // the picked folder can hold one of the others
     out
 }
 // the gallery's still thumbnail of "live:<id>" / "photo:<path>" (rendered by mist-wall)

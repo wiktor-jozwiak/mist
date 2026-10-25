@@ -30,6 +30,33 @@ pub fn data_dirs() -> Vec<String> {
     v
 }
 
+/// The desktop id (without .desktop) set as the default for `mime` (x-scheme-handler/https: the browser):
+/// [Default Applications] of mimeapps.list in the config dirs, then in the data dirs' applications/, then
+/// the distribution's defaults.list; the first entry that is installed wins.
+pub fn default_handler(mime: &str) -> Option<String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut files = vec![std::env::var("XDG_CONFIG_HOME").ok().filter(|d| !d.is_empty()).unwrap_or(format!("{home}/.config"))];
+    files.extend(std::env::var("XDG_CONFIG_DIRS").unwrap_or("/etc/xdg".into()).split(':').filter(|d| !d.is_empty()).map(String::from));
+    let mut files: Vec<String> = files.into_iter().map(|d| format!("{d}/mimeapps.list")).collect();
+    files.extend(data_dirs().iter().map(|d| format!("{d}/applications/mimeapps.list")));
+    files.extend(data_dirs().iter().map(|d| format!("{d}/applications/defaults.list")));
+    let installed = |id: &str| data_dirs().iter().any(|d| std::path::Path::new(&format!("{d}/applications/{id}")).exists());
+    files.iter().filter_map(|f| std::fs::read_to_string(f).ok()).find_map(|t| {
+        let mut sec = "";
+        t.lines().find_map(|l| {
+            let l = l.trim();
+            if l.starts_with('[') {
+                sec = l;
+                return None;
+            }
+            let (k, v) = l.split_once('=')?;
+            (sec == "[Default Applications]" && k.trim() == mime)
+                .then(|| v.split(';').map(str::trim).find(|id| !id.is_empty() && installed(id)).map(|id| id.trim_end_matches(".desktop").to_string()))
+                .flatten()
+        })
+    })
+}
+
 pub struct Apps {
     pub entries: Vec<Entry>,
     pub lang: &'static str, // the UI language the names were read in
@@ -136,6 +163,23 @@ pub struct Image {
     pub rgba: Vec<u8>, // premultiplied
 }
 
+/// The icon theme the user picked: qt6ct (Mist's own settings write it), else GTK's settings.ini, else KDE's
+/// kdeglobals, else hicolor.
+fn user_icon_theme() -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let cfg = std::env::var("XDG_CONFIG_HOME").ok().filter(|d| !d.is_empty()).unwrap_or(format!("{home}/.config"));
+    let key = |file: &str, prefix: &str| {
+        std::fs::read_to_string(format!("{cfg}/{file}")).ok().and_then(|t| {
+            t.lines().find_map(|l| l.trim().strip_prefix(prefix).map(|s| s.trim().trim_matches('"').to_string())).filter(|s| !s.is_empty())
+        })
+    };
+    key("qt6ct/qt6ct.conf", "icon_theme=")
+        .or_else(|| key("gtk-3.0/settings.ini", "gtk-icon-theme-name="))
+        .or_else(|| key("gtk-4.0/settings.ini", "gtk-icon-theme-name="))
+        .or_else(|| key("kdeglobals", "Theme="))
+        .unwrap_or("hicolor".into())
+}
+
 fn icon_bases() -> Vec<String> {
     let home = std::env::var("HOME").unwrap_or_default();
     let mut v = vec![format!("{home}/.icons")];
@@ -147,14 +191,10 @@ fn icon_bases() -> Vec<String> {
 
 impl Icons {
     pub fn new() -> Icons {
-        let home = std::env::var("HOME").unwrap_or_default();
-        let theme = std::fs::read_to_string(format!("{home}/.config/qt6ct/qt6ct.conf"))
-            .ok()
-            .and_then(|t| t.lines().find_map(|l| l.strip_prefix("icon_theme=").map(|s| s.trim().to_string())))
-            .unwrap_or("hicolor".into());
         let mut ic = Icons { themes: HashMap::new(), order: Vec::new(), cache: HashMap::new() };
-        // breadth-first inheritance order, hicolor last
-        let mut queue = vec![theme];
+        // breadth-first inheritance order; the common full themes after the user's (an app icon missing from a
+        // partial theme, or no theme set at all), hicolor last
+        let mut queue = vec![user_icon_theme(), "Adwaita".into(), "breeze".into()];
         while let Some(t) = queue.first().cloned() {
             queue.remove(0);
             if ic.order.contains(&t) || t == "hicolor" {

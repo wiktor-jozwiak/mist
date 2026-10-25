@@ -53,6 +53,44 @@ pub fn wallpaper_dir() -> String {
     })
 }
 
+// the folder picked in the wallpaper gallery ("wallpapers" in ~/.config/mist/settings.json), when there is one
+#[allow(dead_code)]
+pub fn picked_wallpaper_dir() -> Option<String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let cfg = std::env::var("XDG_CONFIG_HOME").ok().filter(|d| !d.is_empty()).unwrap_or_else(|| format!("{home}/.config"));
+    let s = std::fs::read_to_string(format!("{cfg}/mist/settings.json")).ok()?;
+    let r = &s[s.find("\"wallpapers\"")? + 12..];
+    let r = &r[r.find('"')? + 1..];
+    Some(r[..r.find('"')?].to_string()).filter(|d| !d.is_empty())
+}
+
+// every folder the gallery shows photos from: Mist's own (wallpaper_dir, which holds the default), the picked
+// one, and the folders other shells use in Pictures in any letter case (wallpapers, Wallpaper, backgrounds)
+#[allow(dead_code)]
+pub fn photo_dirs() -> Vec<String> {
+    let mut v = vec![wallpaper_dir()];
+    v.extend(picked_wallpaper_dir());
+    if let Ok(rd) = std::fs::read_dir(pictures_dir()) {
+        let mut more: Vec<String> = rd
+            .flatten()
+            .filter(|e| e.path().is_dir())
+            .filter(|e| matches!(e.file_name().to_string_lossy().to_lowercase().as_str(), "wallpapers" | "wallpaper" | "backgrounds" | "tapety"))
+            .map(|e| e.path().to_string_lossy().into_owned())
+            .collect();
+        more.sort();
+        v.extend(more);
+    }
+    // one entry per real folder (a symlink, or the picked folder being one of the others)
+    let mut seen = Vec::new();
+    v.retain(|d| {
+        let c = std::fs::canonicalize(d).map(|p| p.to_string_lossy().into_owned()).unwrap_or(d.clone());
+        let new = !seen.contains(&c);
+        seen.push(c);
+        new
+    });
+    v
+}
+
 // the main monitor (dock, island, desktop, the weather sky): $MIST_PRIMARY, else "primary" in
 // ~/.config/mist/settings.json, else Hyprland's first monitor. Asked once per process.
 #[allow(dead_code)]

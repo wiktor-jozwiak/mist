@@ -94,6 +94,32 @@ fn main() {
         // client of the running mist-ui: mist-ui-bin msg <target> <function> [args...]
         std::process::exit(ipc::call(&args[2..]));
     }
+    if args.get(1).map(|s| s.as_str()) == Some("default-app") {
+        // mist-ui-bin default-app [mime]: start the default app for a MIME type / URL scheme (the browser by
+        // default), for binds that should follow the user's choice instead of naming one browser
+        let mime = args.get(2).map(|s| s.as_str()).unwrap_or("x-scheme-handler/https");
+        let apps = apps::Apps::load();
+        let Some(e) = apps::default_handler(mime).and_then(|id| apps.entries.into_iter().find(|e| e.id == id)) else {
+            eprintln!("no default app for {mime}");
+            std::process::exit(1);
+        };
+        let argv: Vec<&str> = e.exec.split_whitespace().filter(|a| !(a.len() == 2 && a.starts_with('%'))).collect();
+        let ok = std::os::unix::process::CommandExt::process_group(std::process::Command::new("sh").args(["-c", &argv.join(" ")]), 0).spawn().is_ok();
+        std::process::exit(if ok { 0 } else { 1 });
+    }
+    if args.get(1).map(|s| s.as_str()) == Some("wallpaper-folder") {
+        // "Zmień folder" in the wallpaper gallery (which closed for the dialog): pick a folder through the portal,
+        // keep it in settings.json {"wallpapers": path}, open the gallery again on its photos
+        let Some(dir) = files::portal::pick_folder(&i18n::tr("Wybierz folder z tapetami")) else { std::process::exit(1) };
+        let p = format!("{}/.config/mist/settings.json", std::env::var("HOME").unwrap_or_default());
+        let mut v: serde_json::Value = std::fs::read_to_string(&p).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(serde_json::json!({}));
+        v["wallpapers"] = serde_json::Value::String(dir);
+        let tmp = format!("{p}.tmp");
+        if std::fs::write(&tmp, serde_json::to_string_pretty(&v).unwrap_or_default()).is_ok() {
+            let _ = std::fs::rename(&tmp, &p);
+        }
+        std::process::exit(ipc::call(&["mist".into(), "toggle".into(), "wallpaper".into()]));
+    }
     if args.get(1).map(|s| s.as_str()) == Some("player") {
         std::process::exit(player::run(&args[2..]));
     }
