@@ -239,13 +239,50 @@ pub fn elements(r: &mut GlesRenderer, space: &Space<Window>, lock: Option<&LockS
     layers(&mut out, r, Layer::Top);
     let name = output.name();
     if let Some(ov) = anim.overview.as_ref().filter(|o| o.output == name) {
+        use smithay::backend::renderer::element::solid::SolidColorRenderElement;
+        use smithay::utils::IsAlive as _;
         let p = ov.progress(now);
         let lerp = |a: i32, b: i32| a + ((b - a) as f64 * p).round() as i32;
-        for w in space.elements().rev() {
-            let (Some(to), Some(loc)) = (ov.slot(w), space.element_location(w)) else { continue };
-            let from = crate::overview::visual(w, loc, og.loc);
-            let now_at = Rectangle::new((lerp(from.loc.x, to.loc.x), lerp(from.loc.y, to.loc.y)).into(), (lerp(from.size.w, to.size.w), lerp(from.size.h, to.size.h)).into());
-            out.extend(overview_elements(r, w, from, now_at, scale));
+        let solid = |id: &Id, rect: Rectangle<i32, Logical>, color: [f32; 4]| {
+            SceneElem::Solid(SolidColorRenderElement::new(id.clone(), rect.to_physical_precise_round(scale), (color[3] * 1000.0) as usize, color, Kind::Unspecified))
+        };
+        let sel = ov.selected().cloned();
+        // the hidden workspaces' cards slide in from below / above the shown one
+        let slide = |row: usize| ((1.0 - p) * og.size.h as f64 * 0.35 * (row as f64 - ov.home as f64).signum()).round() as i32;
+        for (row, w, to) in ov.places(now) {
+            if !w.alive() {
+                continue;
+            }
+            let at = if row == ov.home {
+                // the shown workspace's windows fly from where they are into the grid
+                let Some(loc) = space.element_location(w) else { continue };
+                let from = crate::overview::visual(w, loc, og.loc);
+                let now_at = Rectangle::new((lerp(from.loc.x, to.loc.x), lerp(from.loc.y, to.loc.y)).into(), (lerp(from.size.w, to.size.w), lerp(from.size.h, to.size.h)).into());
+                out.extend(overview_elements(r, w, from, now_at, scale));
+                now_at
+            } else {
+                // hidden: drawn at its grid place from its own size (its location is the stash's)
+                let g = w.geometry().size;
+                let bar = if crate::wm::data(w).deco.bar.borrow().is_some() { BAR } else { 0 };
+                let from = Rectangle::new((0, 0).into(), (g.w, g.h + bar).into());
+                let now_at = Rectangle::new(to.loc + Point::from((0, slide(row))), to.size);
+                out.extend(overview_elements(r, w, from, now_at, scale));
+                now_at
+            };
+            // the selection: a ring behind the picked window
+            if sel.as_ref() == Some(w) && p > 0.5 {
+                let a = ((p - 0.5) * 2.0) as f32;
+                out.push(solid(&ov.ring, Rectangle::new(at.loc - Point::from((4, 4)), (at.size.w + 8, at.size.h + 8).into()), [0.38 * a, 0.62 * a, 1.0 * a, a]));
+            }
+        }
+        // the workspace cards (several workspaces only), the selected one lighter
+        if ov.rows.len() > 1 {
+            for (i, row) in ov.rows.iter().enumerate() {
+                let Some(c) = ov.card(i, now) else { continue };
+                let c = Rectangle::new(c.loc + Point::from((0, slide(i))), c.size);
+                let a = (if i == ov.sel.0 { 0.16 } else { 0.07 } * p) as f32;
+                out.push(solid(&row.id, c, [a, a, a, a]));
+            }
         }
         let dim = (0.55 * p) as f32;
         let full = Rectangle::new((0, 0).into(), og.size).to_physical_precise_round(scale);
@@ -265,12 +302,12 @@ pub fn elements(r: &mut GlesRenderer, space: &Space<Window>, lock: Option<&LockS
     for w in space.elements().rev() {
         let Some(loc) = space.element_location(w) else { continue };
         let on_output = space.element_bbox(w).is_some_and(|b| b.overlaps(og));
-        let (off, alpha) = anim.window(crate::wm::data(w).addr.get(), if on_output { &name } else { "" }, og.size.w, now);
+        let (off, alpha) = anim.window(crate::wm::data(w).addr.get(), if on_output { &name } else { "" }, og.size, now);
         if reaches(w, loc + off, og) {
             out.extend(window_elements(r, w, loc + off - og.loc, scale, alpha, Some(&name)));
         }
     }
-    for (w, loc) in anim.leaving(&name, og.size.w, now) {
+    for (w, loc) in anim.leaving(&name, og.size, now) {
         if reaches(&w, loc, og) {
             out.extend(window_elements(r, &w, loc - og.loc, scale, 1.0, Some(&name)));
         }

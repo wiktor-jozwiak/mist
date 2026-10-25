@@ -16,6 +16,8 @@
 //!   explicit_sync off                           no linux-drm-syncobj (default: on where the GPU supports it)
 //!   screencopy_dmabuf on                        screen casting straight into the client's GPU buffer
 //!   swipe 3|4|off                               touchpad: N-finger horizontal swipe switches workspaces (default 3)
+//!   workspaces vertical                         workspaces stacked top to bottom (niri): the slide and the
+//!                                               swipe go up / down (default horizontal)
 //!   fifo on                                     wp-fifo for Vulkan FIFO presentation (games); opt-in
 //!   direct_scanout game|on|off                  a client's buffer straight to the screen (Hyprland
 //!                                               render:direct_scanout): game (default) = a fullscreen game's, on
@@ -49,6 +51,8 @@ pub enum Action {
     ShowDesktop,
     /// Mission Control: the shown workspace's windows side by side (overview.rs)
     Overview,
+    /// a key the open overview takes (keysym, Shift held): input.rs only, no bind
+    OverviewKey(u32, bool),
     /// the magnifier: +1 in, -1 out, 0 off
     Zoom(i32),
     Vt(i32),
@@ -203,6 +207,8 @@ pub struct Config {
     pub screencopy_dmabuf: bool,
     /// fingers of the horizontal touchpad swipe that switches workspaces (`swipe 3|4|off`, 0 = off)
     pub swipe_fingers: u32,
+    /// workspaces above / below each other (`workspaces vertical`): slides and swipes run up / down
+    pub ws_vertical: bool,
     /// wp-fifo for Vulkan FIFO clients (`fifo on`; off until tested on each driver)
     pub fifo: bool,
     /// client buffers straight to a scanout plane: `direct_scanout game` (default), `on`, `off`
@@ -318,6 +324,10 @@ pub fn parse(text: &str) -> Config {
                 c.swipe_fingers = if rest == "off" { 0 } else { rest.parse().unwrap_or(3) };
                 true
             }
+            "workspaces" => {
+                c.ws_vertical = rest == "vertical";
+                true
+            }
             "screencopy_dmabuf" => {
                 c.screencopy_dmabuf = rest == "on";
                 true
@@ -349,6 +359,19 @@ pub fn parse(text: &str) -> Config {
         }
     }
     c
+}
+
+/// A key combination as comp.conf writes it (SUPER+SHIFT+B, XF86AudioMute): what parse_bind reads back.
+pub fn combo_name(m: Mods, sym: u32) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for (on, n) in [(m.logo, "SUPER"), (m.ctrl, "CTRL"), (m.alt, "ALT"), (m.shift, "SHIFT")] {
+        if on {
+            parts.push(n.into());
+        }
+    }
+    let name = xkb::keysym_get_name(xkb::Keysym::new(lower(sym)));
+    parts.push(if name.chars().count() == 1 { name.to_uppercase() } else { name });
+    parts.join("+")
 }
 
 fn parse_bind(rest: &str, release: bool, locked: bool) -> Option<Bind> {

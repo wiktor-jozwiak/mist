@@ -122,10 +122,12 @@ The experimental compositor's key bindings, autostart, monitors and switches; fu
 | `explicit_sync off` | no linux-drm-syncobj (default: on where the GPU supports it); try it when a window freezes and the log says a frame waits for its GPU fence |
 | `direct_scanout game\|on\|off` | a client's buffer goes straight to the screen (Hyprland `render:direct_scanout`). `game` (default): a fullscreen game's, primary plane only; `on`: any window, overlay planes too (on NVIDIA that showed torn or stale windows); `off`: everything composited |
 | `screencopy_dmabuf on` | screen casting into the client's GPU buffer (opt-in) |
+| `workspaces vertical` | workspaces stacked top to bottom (niri): the switch slides up / down and the touchpad swipe goes up / down (fingers up bring the next one); default horizontal |
 | `fifo on` | wp-fifo + wp-commit-timing: Vulkan FIFO (vsync) and Proton-paced clients are paced by the display refresh instead of frame callbacks (opt-in; off in safe mode) |
 
-Actions worth a bind besides Hyprland's: `overview` (Mission Control, SUPER+O by default: the monitor's windows
-side by side, a click picks one, Escape goes back), `zoom in|out|off` (the magnifier around the pointer,
+Actions worth a bind besides Hyprland's: `overview` (Mission Control, SUPER+G by default: the monitor's
+workspaces one under another, each with its windows side by side; ← → pick a window, ↑ ↓ the workspace above /
+below, Tab every window in turn, Enter or a click goes there, Escape goes back), `zoom in|out|off` (the magnifier around the pointer,
 SUPER+= / SUPER+-, 1.25x a step up to 8x; screenshots and screen sharing stay unmagnified).
 
 `mist-comp migrate [~/.config/hypr/hyprland.lua]` prints comp.conf lines for the binds (exec and common

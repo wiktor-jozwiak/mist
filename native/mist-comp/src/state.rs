@@ -160,6 +160,9 @@ pub struct MistComp {
     pub commits: u64,
     /// IPC `top`: commits per client while counting (None = off, the usual case)
     pub top: Option<std::collections::HashMap<String, u32>>,
+    /// IPC `grabkey`: the next key combination goes to this caller (Mist Settings recording a shortcut), not
+    /// to binds or clients; (grab number, its connection)
+    pub key_grab: Option<(u64, std::os::unix::net::UnixStream)>,
     /// traffic light pressed (acts on release over the same one)
     pub bar_press: Option<(u64, crate::decor::Hit)>,
     /// last bar click (double click maximizes)
@@ -322,6 +325,7 @@ impl MistComp {
             frames: 0,
             commits: 0,
             top: None,
+            key_grab: None,
             bar_press: None,
             bar_click: None,
             edge_cursor: false,
@@ -539,6 +543,7 @@ pub struct Swipe {
     pub dx: f64,
     pub last: f64,
     pub dy: f64,
+    pub last_y: f64,
     /// up / down: the overview, not workspaces
     pub vertical: bool,
     /// switched on this output, +1 / -1, from this workspace (None: not yet, or nothing to switch to)

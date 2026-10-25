@@ -161,7 +161,8 @@ impl MistComp {
                 if let Some(s) = self.swipe.as_mut() {
                     s.last = GestureSwipeUpdateEvent_::delta_x(&event);
                     s.dx += s.last;
-                    s.dy += GestureSwipeUpdateEvent_::delta_y(&event);
+                    s.last_y = GestureSwipeUpdateEvent_::delta_y(&event);
+                    s.dy += s.last_y;
                     self.swipe_update();
                     return;
                 }
@@ -291,9 +292,28 @@ impl MistComp {
                         st.suppressed.insert(kc);
                         return FilterResult::Intercept(Action::Vt((modified - keysyms::KEY_XF86Switch_VT_1 + 1) as i32));
                     }
+                    // a shortcut being recorded (IPC grabkey): the combination to the caller, Escape cancels
+                    let is_mod = matches!(
+                        sym,
+                        keysyms::KEY_Super_L | keysyms::KEY_Super_R | keysyms::KEY_Control_L | keysyms::KEY_Control_R | keysyms::KEY_Alt_L | keysyms::KEY_Alt_R | keysyms::KEY_Shift_L | keysyms::KEY_Shift_R | keysyms::KEY_ISO_Level3_Shift
+                    );
+                    if st.key_grab.is_some() && !is_mod {
+                        if let Some((_, mut stream)) = st.key_grab.take() {
+                            use std::io::Write;
+                            let reply = if sym == keysyms::KEY_Escape && !m.logo && !m.ctrl && !m.alt { "cancel".to_string() } else { crate::config::combo_name(m, sym) };
+                            let _ = stream.write_all(format!("{reply}\n").as_bytes());
+                        }
+                        st.suppressed.insert(kc);
+                        return FilterResult::Intercept(Action::Nothing);
+                    }
                     if sym == keysyms::KEY_Escape && st.overview_open() {
                         st.suppressed.insert(kc);
                         return FilterResult::Intercept(Action::Overview);
+                    }
+                    // arrows / hjkl / Tab / Enter move and pick in the overview (no client hears them)
+                    if st.overview_wants(sym) && !m.logo && !m.ctrl && !m.alt {
+                        st.suppressed.insert(kc);
+                        return FilterResult::Intercept(Action::OverviewKey(sym, m.shift));
                     }
                     if let Some(b) = st.config.find(m, sym, false) {
                         if !st.locked || b.locked {
@@ -574,10 +594,16 @@ impl MistComp {
     /// Fingers moving left bring the next workspace (macOS, Hyprland's default direction): it is switched at
     /// the first movement and the slide follows the fingers.
     pub fn swipe_update(&mut self) {
+        let vertical_ws = self.config.ws_vertical;
         let Some(s) = self.swipe.as_mut() else { return };
-        let dx = s.dx;
+        // vertical workspaces: up / down is the workspace axis (fingers up bring the next one), sideways nothing
+        let (dx, cross) = if vertical_ws { (s.dy, s.dx) } else { (s.dx, s.dy) };
+        if vertical_ws && !s.tried && cross.abs() > dx.abs() && cross.abs() > 12.0 {
+            s.tried = true;
+            return;
+        }
         // up or down first: the overview (on release)
-        if !s.tried && s.dy.abs() > dx.abs() && s.dy.abs() > 12.0 {
+        if !vertical_ws && !s.tried && s.dy.abs() > dx.abs() && s.dy.abs() > 12.0 {
             s.tried = true;
             s.vertical = true;
         }
@@ -611,7 +637,11 @@ impl MistComp {
     /// Fingers lifted: past a third of the way (or still moving on) the slide finishes, else the old
     /// workspace slides back from where the fingers left it.
     pub fn swipe_end(&mut self, cancelled: bool) {
-        let Some(s) = self.swipe.take() else { return };
+        let Some(mut s) = self.swipe.take() else { return };
+        if self.config.ws_vertical {
+            // the workspace axis is the vertical one: the rest below reads dx / last as along it
+            (s.dx, s.dy, s.last, s.last_y) = (s.dy, s.dx, s.last_y, s.last);
+        }
         if s.vertical {
             // three fingers up: Mission Control, down: back
             if !cancelled && (s.dy < -50.0) != self.overview_open() && s.dy.abs() > 50.0 {

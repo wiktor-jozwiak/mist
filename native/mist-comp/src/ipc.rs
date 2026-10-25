@@ -117,7 +117,8 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
                     if let (Some(s), Ok(d)) = (state.swipe.as_mut(), n.parse::<f64>()) {
                         s.last = d;
                         s.dx += d;
-                        s.dy += it.next().and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+                        s.last_y = it.next().and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+                        s.dy += s.last_y;
                         state.swipe_update();
                     }
                 }
@@ -169,11 +170,15 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
             "ok\n".into()
         }
         // the open overview's grid: one line per window, its place (output-relative, bar included)
+        // (+ its workspace, " sel" on the selected one)
         "overview" => match state.anim.overview.as_ref() {
             Some(o) => o
-                .slots
-                .iter()
-                .map(|(w, r)| format!("{} {} {},{} {}x{}{}\n", o.output, crate::hyprcompat::app_id(w), r.loc.x, r.loc.y, r.size.w, r.size.h, if o.closing { " closing" } else { "" }))
+                .places(std::time::Instant::now())
+                .into_iter()
+                .map(|(row, w, r)| {
+                    let sel = if o.selected() == Some(w) { " sel" } else { "" };
+                    format!("{} {} {},{} {}x{} ws{}{sel}{}\n", o.output, crate::hyprcompat::app_id(w), r.loc.x, r.loc.y, r.size.w, r.size.h, o.rows[row].ws, if o.closing { " closing" } else { "" })
+                })
                 .collect(),
             None => "closed\n".into(),
         },
@@ -191,6 +196,27 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
                 let s: String = v.iter().map(|(n, c)| format!("{:7.1}/s {n}\n", *c as f64 / secs as f64)).collect();
                 use std::io::Write;
                 let _ = stream.write_all(if s.is_empty() { b"none\n" } else { s.as_bytes() });
+                smithay::reexports::calloop::timer::TimeoutAction::Drop
+            });
+            return;
+        }
+        // the next key combination pressed (Mist Settings recording a shortcut): "SUPER+B", "cancel" (Escape) or
+        // "timeout" after N seconds (default 10); a newer grab replaces an older one
+        "grabkey" => {
+            let secs = it.next().and_then(|v| v.parse::<u64>().ok()).unwrap_or(10).clamp(1, 60);
+            static GRABS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let n = GRABS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if let Some((_, mut old)) = state.key_grab.replace((n, stream)) {
+                use std::io::Write;
+                let _ = old.write_all(b"cancel\n");
+            }
+            let _ = state.loop_handle.insert_source(smithay::reexports::calloop::timer::Timer::from_duration(std::time::Duration::from_secs(secs)), move |_, _, st: &mut crate::state::MistComp| {
+                if st.key_grab.as_ref().is_some_and(|g| g.0 == n) {
+                    if let Some((_, mut s)) = st.key_grab.take() {
+                        use std::io::Write;
+                        let _ = s.write_all(b"timeout\n");
+                    }
+                }
                 smithay::reexports::calloop::timer::TimeoutAction::Drop
             });
             return;

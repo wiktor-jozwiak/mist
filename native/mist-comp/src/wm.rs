@@ -323,7 +323,7 @@ impl MistComp {
             self.space.unmap_elem(&w);
             self.stash.push((w, at - og.loc));
         }
-        self.anim.ws_switch(output.name(), slide, if ws > cur { 1 } else { -1 });
+        self.anim.ws_switch(output.name(), slide, if ws > cur { 1 } else { -1 }, self.config.ws_vertical);
         // show the target (positions are relative to the output they were hidden on)
         let (show, keep): (Vec<_>, Vec<_>) = std::mem::take(&mut self.stash).into_iter().partition(|(w, _)| data(w).ws.get() == ws);
         self.stash = keep;
@@ -542,7 +542,7 @@ impl MistComp {
         }
     }
 
-    fn focus_top_on(&mut self, output: &Output) {
+    pub fn focus_top_on(&mut self, output: &Output) {
         let top = self.top_window(Some(output));
         self.focus_window(top.as_ref());
     }
@@ -684,6 +684,7 @@ impl MistComp {
                 }
             }
             Action::Overview => self.overview_toggle(),
+            Action::OverviewKey(sym, shift) => self.overview_key(sym, shift),
             Action::Zoom(d) => {
                 // 1.25x a step, up to 8x; out from 1.25 or `off`: off
                 let z = self.anim.zoom.max(1.0);

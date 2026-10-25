@@ -21,7 +21,7 @@ use smithay::{
         },
     },
     desktop::Window,
-    utils::{Logical, Point, Rectangle, Scale, Transform},
+    utils::{Logical, Point, Rectangle, Scale, Size, Transform},
 };
 
 use crate::MistComp;
@@ -58,8 +58,9 @@ pub struct Closing {
 pub struct WsSlide {
     /// the hidden workspace's windows and where they were (global)
     pub leaving: Vec<(Window, Point<i32, Logical>)>,
-    /// +1: the new workspace comes in from the right
+    /// +1: the new workspace comes in from the right (from below when vertical)
     pub dir: i32,
+    pub vertical: bool,
     pub start: Instant,
     /// a touchpad swipe holds the slide here (0..1) until the fingers lift
     pub manual: Option<f64>,
@@ -129,9 +130,9 @@ impl Anims {
         self.layers.get(id).map_or(1.0, |s| progress(*s, LAYER, now) as f32)
     }
 
-    pub fn ws_switch(&mut self, output: String, leaving: Vec<(Window, Point<i32, Logical>)>, dir: i32) {
+    pub fn ws_switch(&mut self, output: String, leaving: Vec<(Window, Point<i32, Logical>)>, dir: i32, vertical: bool) {
         if enabled() {
-            self.ws.insert(output, WsSlide { leaving, dir, start: Instant::now(), manual: None });
+            self.ws.insert(output, WsSlide { leaving, dir, vertical, start: Instant::now(), manual: None });
         }
     }
 
@@ -170,7 +171,7 @@ impl Anims {
     }
 
     /// A window's (offset, alpha) right now.
-    pub fn window(&self, addr: u64, output: &str, width: i32, now: Instant) -> (Point<i32, Logical>, f32) {
+    pub fn window(&self, addr: u64, output: &str, size: Size<i32, Logical>, now: Instant) -> (Point<i32, Logical>, f32) {
         let mut off = Point::<i32, Logical>::from((0, 0));
         let mut alpha = 1.0;
         if let Some(s) = self.open.get(&addr) {
@@ -183,17 +184,22 @@ impl Anims {
         }
         if let Some(s) = self.ws.get(output) {
             let p = ws_progress(s, now);
-            off.x += (s.dir as f64 * (1.0 - p) * width as f64).round() as i32;
+            if s.vertical {
+                off.y += (s.dir as f64 * (1.0 - p) * size.h as f64).round() as i32;
+            } else {
+                off.x += (s.dir as f64 * (1.0 - p) * size.w as f64).round() as i32;
+            }
         }
         (off, alpha)
     }
 
     /// The leaving windows of a workspace slide on `output`: (window, location now).
-    pub fn leaving(&self, output: &str, width: i32, now: Instant) -> Vec<(Window, Point<i32, Logical>)> {
+    pub fn leaving(&self, output: &str, size: Size<i32, Logical>, now: Instant) -> Vec<(Window, Point<i32, Logical>)> {
         let Some(s) = self.ws.get(output) else { return Vec::new() };
         let p = ws_progress(s, now);
-        let dx = (-(s.dir as f64) * p * width as f64).round() as i32;
-        s.leaving.iter().map(|(w, l)| (w.clone(), *l + Point::from((dx, 0)))).collect()
+        let d = |len: i32| (-(s.dir as f64) * p * len as f64).round() as i32;
+        let off = if s.vertical { Point::from((0, d(size.h))) } else { Point::from((d(size.w), 0)) };
+        s.leaving.iter().map(|(w, l)| (w.clone(), *l + off)).collect()
     }
 }
 
