@@ -21,6 +21,8 @@ const MAIN_APPS: [&str; 8] = ["kitty", "alacritty", "org.kde.dolphin", "io.eleme
 const GAP: i32 = 8;
 
 const PRIMARY: &str = "DP-3";
+/// The app id of the dropdown terminal (`dropdown` action): its command must set it (kitty --class).
+pub const DROPDOWN: &str = "mist-dropdown";
 
 /// Size from windowrules.lua: a fraction of (max, min) of the monitor's sides, or of (w, h).
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -36,6 +38,7 @@ pub struct Rule {
     pub game: bool,
     pub primary: bool,
     pub no_focus: bool,
+    pub dropdown: bool,
 }
 
 /// The rule for a new window by (lowercased) app id / X11 class and title.
@@ -44,6 +47,9 @@ pub fn rule(app: &str, title: &str, x11: bool) -> Rule {
     if is_pip(title) {
         r.pip = true;
         r.size = Some(Size::MaxMin(0.25, 0.25));
+    } else if app == DROPDOWN {
+        r.dropdown = true;
+        r.size = Some(Size::Wh(0.7, 0.45));
     } else if MAIN_APPS.contains(&app) {
         r.size = Some(Size::Wh(0.62, 0.72));
     } else if app.contains("calc") {
@@ -232,7 +238,7 @@ impl MistComp {
 
     /// Map a placed new window with its rule (pin, fullscreen, focus).
     pub fn adopt_ruled(&mut self, w: Window, loc: Point<i32, Logical>, r: Rule) {
-        crate::wm::data(&w).pinned.set(r.pip);
+        crate::wm::data(&w).pinned.set(r.pip || r.dropdown);
         self.adopt_window(w.clone(), loc, !r.no_focus);
         self.swallow(&w);
         if r.game {
@@ -265,6 +271,10 @@ impl MistComp {
         if pip {
             return Point::from((area.loc.x + area.size.w - ow - GAP, area.loc.y + area.size.h - oh - GAP + bar));
         }
+        // the dropdown terminal: under the bar, centred
+        if r.dropdown {
+            return Point::from((area.loc.x + ((area.size.w - ow) / 2).max(0), area.loc.y + GAP + bar));
+        }
         // a dialog: centred on its parent, kept inside the usable area
         if let Some((pl, pg)) = self.parent_of(w).and_then(|p| Some((self.space.element_location(&p)?, p.geometry()))) {
             let pbar = self.bar_h(&self.parent_of(w).unwrap());
@@ -296,6 +306,8 @@ mod tests {
         assert!(rule("battle.net.exe", "x", true).primary && rule("vesktop", "Discord", false).primary);
         assert!(rule("", "", true).no_focus && !rule("", "", false).no_focus);
         assert_eq!(rule("gedit", "x", false), Rule::default());
+        let dd = rule(DROPDOWN, "zsh", false);
+        assert!(dd.dropdown && dd.size.map(|s| s.on(og)) == Some((1344, 486)));
     }
 }
 

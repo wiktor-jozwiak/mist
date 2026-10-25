@@ -159,6 +159,7 @@ impl MistComp {
         let bar = self.bar_h(w);
         d.grab_size.set(Some((restore.size.w, restore.size.h - bar)));
         self.space.raise_element(w, true);
+        self.keep_pins_on_top(Some(w));
         if !max {
             let addr = crate::hyprcompat::addr(w);
             self.hypr_event("mistsnap", &format!("snapped,{addr},{},{},{},{},{}", o.name(), f[0], f[1], f[2], f[3]));

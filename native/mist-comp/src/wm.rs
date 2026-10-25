@@ -394,6 +394,20 @@ impl MistComp {
         self.focus_top_on(&o);
     }
 
+    /// The dropdown terminal: started the first time, then hidden when it has the focus and brought back
+    /// (onto the active workspace, focused) otherwise. It is pinned, so it stays over every workspace.
+    pub fn dropdown(&mut self, cmd: &str) {
+        let is_dd = |w: &Window| crate::hyprcompat::app_id(w) == crate::rules::DROPDOWN;
+        let shown = self.space.elements().find(|w| is_dd(w)).cloned();
+        let hidden = self.stash.iter().map(|(w, _)| w).find(|w| is_dd(w)).cloned();
+        match (shown, hidden) {
+            (Some(w), _) if self.focused_window().as_ref() == Some(&w) => self.minimize(&w),
+            (Some(w), _) => self.focus_window(Some(&w)),
+            (None, Some(w)) => self.restore(&w, None),
+            (None, None) => spawn(cmd),
+        }
+    }
+
     /// Win+D: windows on screen (all outputs) go down; with none left on screen, the ones it hid come back
     /// onto their workspaces, the top one focused last (Windows "Show desktop").
     pub fn show_desktop(&mut self) {
@@ -668,6 +682,18 @@ impl MistComp {
             Action::Fullscreen => {
                 if let Some(w) = focused {
                     self.toggle_max(&w, true);
+                }
+            }
+            Action::Dropdown(cmd) => self.dropdown(&cmd),
+            Action::LayoutSave(n) => self.layout_save(&n),
+            Action::LayoutLoad(n) => self.layout_load(&n),
+            Action::Pin => {
+                if let Some(w) = focused {
+                    let d = data(&w);
+                    d.pinned.set(!d.pinned.get());
+                    tracing::info!("pin {}: {}", d.addr.get(), d.pinned.get());
+                    self.focus_window(Some(&w));
+                    self.hypr_event("pin", &format!("{:x},{}", d.addr.get(), d.pinned.get() as u8));
                 }
             }
             // everything floats in Mist

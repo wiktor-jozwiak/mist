@@ -55,6 +55,15 @@ impl MistComp {
     }
 
     pub fn session_write(&self) {
+        let out = self.windows_json();
+        let tmp = format!("{}.tmp", path());
+        if std::fs::write(&tmp, Value::Array(out).to_string()).is_ok() {
+            let _ = std::fs::rename(&tmp, path());
+        }
+    }
+
+    /// Each window as session.json keeps it (also a saved layout, layouts.rs).
+    pub fn windows_json(&self) -> Vec<Value> {
         let mut out = Vec::new();
         let all = self.space.elements().map(|w| (w, self.space.element_geometry(w))).chain(self.stash.iter().map(|(w, at)| (w, Some(Rectangle::new(*at, w.geometry().size)))));
         for (w, g) in all {
@@ -67,10 +76,7 @@ impl MistComp {
             let r = d.restore.borrow().unwrap_or(g);
             out.push(json!({ "app": app, "cmd": cmd, "ws": d.ws.get(), "at": [r.loc.x, r.loc.y], "size": [r.size.w, r.size.h], "max": d.restore.borrow().is_some() }));
         }
-        let tmp = format!("{}.tmp", path());
-        if std::fs::write(&tmp, Value::Array(out).to_string()).is_ok() {
-            let _ = std::fs::rename(&tmp, path());
-        }
+        out
     }
 
     /// After a crash (MIST_COMP_RESTORE=1): start what was open, keep where each app's window was.

@@ -30,6 +30,8 @@ mod blur;
 mod shadow;
 mod anim;
 mod overview;
+mod hotcorner;
+mod layouts;
 mod bgeffect;
 mod extws;
 mod rules;

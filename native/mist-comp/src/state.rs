@@ -169,6 +169,8 @@ pub struct MistComp {
     pub bar_click: Option<(u64, std::time::Instant)>,
     /// the pointer shows a resize cursor over a window frame
     pub edge_cursor: bool,
+    /// the hot corner the pointer is in (fired; re-armed when it leaves)
+    pub corner_in: Option<crate::hotcorner::Corner>,
     pub anim: crate::anim::Anims,
     /// title bar pressed: the move starts once the pointer travels (a click keeps the snap state)
     pub bar_drag: Option<(smithay::desktop::Window, Point<f64, Logical>, u32)>,
@@ -329,6 +331,7 @@ impl MistComp {
             bar_press: None,
             bar_click: None,
             edge_cursor: false,
+            corner_in: None,
             anim: Default::default(),
             bar_drag: None,
             hypr_listeners: Vec::new(),
@@ -403,12 +406,21 @@ impl MistComp {
         }
     }
 
+    /// Pinned windows (always on top, PiP) go back above a window just raised.
+    pub fn keep_pins_on_top(&mut self, raised: Option<&Window>) {
+        let pins: Vec<Window> = self.space.elements().filter(|x| crate::wm::data(x).pinned.get() && Some(*x) != raised).cloned().collect();
+        for p in pins {
+            self.space.raise_element(&p, false);
+        }
+    }
+
     /// Raise, activate and give the keyboard to a window (None: nothing focused).
     pub fn focus_window(&mut self, window: Option<&Window>) {
         let serial = smithay::utils::SERIAL_COUNTER.next_serial();
         if let Some(w) = window {
             self.space.raise_element(w, true);
         }
+        self.keep_pins_on_top(window);
         for w in self.space.elements() {
             w.set_activated(Some(w) == window);
             crate::wm::data(w).active.set(Some(w) == window);

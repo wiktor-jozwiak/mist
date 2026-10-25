@@ -73,6 +73,7 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
                 .map(|w| {
                     let g = state.space.element_geometry(w).unwrap_or_default();
                     let bar = if state.bar_h(w) > 0 { " bar" } else { "" };
+                    let bar = if crate::wm::data(w).pinned.get() { format!("{bar} pinned") } else { bar.to_string() };
                     format!("{} ws{} {},{} {}x{}{bar}\n", title(w), crate::wm::data(w).ws.get(), g.loc.x, g.loc.y, g.size.w, g.size.h)
                 })
                 .collect();

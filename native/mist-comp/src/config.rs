@@ -18,6 +18,8 @@
 //!   swipe 3|4|off                               touchpad: N-finger horizontal swipe switches workspaces (default 3)
 //!   workspaces vertical                         workspaces stacked top to bottom (niri): the slide and the
 //!                                               swipe go up / down (default horizontal)
+//!   corner tl|tr|bl|br ACTION                   hot corner: the pointer pushed into that screen corner runs
+//!                                               ACTION (`corner tl overview`); `off` removes it
 //!   fifo on                                     wp-fifo for Vulkan FIFO presentation (games); opt-in
 //!   direct_scanout game|on|off                  a client's buffer straight to the screen (Hyprland
 //!                                               render:direct_scanout): game (default) = a fullscreen game's, on
@@ -25,7 +27,7 @@
 //!                                               (on NVIDIA that showed torn or stale windows); off = all composited
 //!
 //! Actions: exec CMD | close | kill | quit | reload | workspace N|+1|-1 | movetoworkspace N|+1|-1
-//!          | maximize | fullscreen | float | focus left|right|up|down | cycle | overview | zoom in|out|off | vt N
+//!          | maximize | fullscreen | float | pin | dropdown [CMD] | layout save|load NAME | focus left|right|up|down | cycle | overview | zoom in|out|off | vt N
 //!          | global APP_ID:ID   (a shortcut registered through the portal, e.g. Discord push-to-talk)
 use smithay::input::keyboard::{keysyms, xkb, ModifiersState};
 
@@ -47,6 +49,13 @@ pub enum Action {
     Float,
     Focus(Dir),
     Cycle,
+    /// always on top and on every workspace (PowerToys Win+Ctrl+T, Hyprland pin)
+    Pin,
+    /// the dropdown terminal (Quake / Yakuake): started once, then shown at the top of the screen and hidden
+    Dropdown(String),
+    /// save / load a window layout (layouts.rs)
+    LayoutSave(String),
+    LayoutLoad(String),
     /// Win+D: minimize every shown window, again on the empty desktop: bring them back (Windows)
     ShowDesktop,
     /// Mission Control: the shown workspace's windows side by side (overview.rs)
@@ -209,6 +218,8 @@ pub struct Config {
     pub swipe_fingers: u32,
     /// workspaces above / below each other (`workspaces vertical`): slides and swipes run up / down
     pub ws_vertical: bool,
+    /// hot corners (`corner tl overview`, hotcorner.rs)
+    pub corners: Vec<(crate::hotcorner::Corner, Action)>,
     /// wp-fifo for Vulkan FIFO clients (`fifo on`; off until tested on each driver)
     pub fifo: bool,
     /// client buffers straight to a scanout plane: `direct_scanout game` (default), `on`, `off`
@@ -308,6 +319,14 @@ pub fn parse(text: &str) -> Config {
                 c.no_explicit_sync = rest == "off";
                 true
             }
+            "corner" => crate::hotcorner::parse(rest)
+                .map(|(k, a)| {
+                    c.corners.retain(|(o, _)| *o != k);
+                    if let Some(a) = a {
+                        c.corners.push((k, a));
+                    }
+                })
+                .is_some(),
             "fifo" => {
                 c.fifo = rest == "on";
                 true
@@ -431,6 +450,13 @@ pub fn parse_action(s: &str) -> Option<Action> {
         "float" => Action::Float,
         "cycle" => Action::Cycle,
         "showdesktop" => Action::ShowDesktop,
+        "pin" => Action::Pin,
+        "layout" => match arg.split_once(char::is_whitespace) {
+            Some(("save", n)) => Action::LayoutSave(n.trim().into()),
+            Some(("load", n)) => Action::LayoutLoad(n.trim().into()),
+            _ => return None,
+        },
+        "dropdown" => Action::Dropdown(if arg.is_empty() { format!("kitty --class {}", crate::rules::DROPDOWN) } else { arg.into() }),
         "overview" => Action::Overview,
         "zoom" => Action::Zoom(match arg {
             "in" => 1,

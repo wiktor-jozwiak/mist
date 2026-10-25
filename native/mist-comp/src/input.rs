@@ -91,6 +91,7 @@ impl MistComp {
                 pointer.frame(self);
                 self.bar_hover(pos);
                 self.edge_hover(pos);
+                self.hot_corner(pos);
                 self.note_pointer_output();
             }
             InputEvent::PointerMotionAbsolute { event, .. } => {
@@ -386,6 +387,7 @@ impl MistComp {
         pointer.frame(self);
         self.bar_hover(pos);
         self.edge_hover(pos);
+        self.hot_corner(pos);
         self.note_pointer_output();
     }
 

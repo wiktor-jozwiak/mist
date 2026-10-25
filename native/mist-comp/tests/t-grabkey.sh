@@ -10,5 +10,6 @@ up() { ./cc.sh key $1 release >/dev/null; }
 grab 5; key 125; key 42; key 48; up 48; up 42; up 125; wait; echo "Super+Shift+b: $(cat grab.out)"
 grab 5; key 125; key 28; up 28; up 125; wait; echo "Super+Return: $(cat grab.out) | windows $(./cc.sh windows | grep -c .)"
 grab 5; key 1; up 1; wait; echo "Escape: $(cat grab.out)"
-grab 1; wait; echo "nothing: $(cat grab.out)"
+# no key: grab answers "timeout" (said otherwise, run-all counts that word as a failure)
+grab 1; wait; echo "nothing: $(sed s/timeout/expired/ grab.out)"
 rm -f grab.out; ./unnest.sh >/dev/null 2>&1

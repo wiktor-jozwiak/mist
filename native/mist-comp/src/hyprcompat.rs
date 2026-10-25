@@ -219,7 +219,7 @@ fn client_json(state: &MistComp, w: &Window, hidden_loc: Option<smithay::utils::
         "at": [geo.loc.x, geo.loc.y], "size": [geo.size.w, geo.size.h],
         "workspace": ws_json(d.ws.get()), "floating": true, "pseudo": false, "monitor": mon,
         "class": class, "title": t, "initialClass": class, "initialTitle": t,
-        "pid": pid, "xwayland": w.x11_surface().is_some(), "pinned": false, "fullscreen": full, "fullscreenClient": full,
+        "pid": pid, "xwayland": w.x11_surface().is_some(), "pinned": crate::wm::data(w).pinned.get(), "fullscreen": full, "fullscreenClient": full,
         "grouped": [], "tags": [], "swallowing": "0x0", "focusHistoryID": focus,
     })
 }
@@ -425,6 +425,7 @@ fn eval(state: &mut MistComp, code: &str) -> String {
         } else if stmt.contains("hl.dsp.window.bring_to_top") {
             if let Some(w) = state.focused_window() {
                 state.space.raise_element(&w, true);
+                state.keep_pins_on_top(Some(&w));
             }
         } else if stmt.contains("hl.dsp.dpms") {
             let on = field(stmt, "action") != Some("off");
@@ -460,7 +461,8 @@ fn dispatch(state: &mut MistComp, args: &str) -> String {
         "killactive" => Some(Action::Close),
         "fullscreen" => Some(Action::Fullscreen),
         "movetoworkspace" => rest.parse().ok().map(|n| Action::MoveToWorkspace(WsArg::Id(n))),
-        _ => None,
+        // the rest as comp.conf writes them (pin, dropdown, layout save NAME, overview…)
+        _ => crate::config::parse_action(args.trim()),
     };
     match action {
         Some(a) => {
