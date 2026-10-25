@@ -427,7 +427,8 @@
     "unmounted_safe_to_remove": "odmontowano · można odłączyć",
     "val_free_of_val": "{} wolne z {}",
     "memory": "Pamięć",
-    "keyboard": "Klawiatura"
+    "keyboard": "Klawiatura",
+    "networks": "Sieci"
   },
   "notifications": {
     "notifications": "Powiadomienia",
@@ -487,7 +488,8 @@
     "window_pinned": "Okno przypięte",
     "window_unpinned": "Okno odpięte",
     "window": "Okno",
-    "trash": "Kosz"
+    "trash": "Kosz",
+    "minimized_ws": "zminimalizowane"
   },
   "wallpapers": {
     "adaptive": "Same się dopasowują",
@@ -503,7 +505,9 @@
     "music_beat": "Rytm muzyki",
     "current": "Ustawiona",
     "set_wallpaper": "Ustaw tapetę",
-    "browse_tab_category_space": "← →  przeglądaj   ·   Tab  kategoria   ·   Spacja  ustaw   ·   Enter  ustaw i zamknij   ·   Esc  zamknij"
+    "browse_tab_category_space": "← →  przeglądaj   ·   Tab  kategoria   ·   Spacja  ustaw   ·   Enter  ustaw i zamknij   ·   Esc  zamknij",
+    "change_folder": "Zmień folder",
+    "choose_wallpaper_folder": "Wybierz folder z tapetami"
   },
   "desktop_settings": {
     "customise_desktop": "Dostosuj pulpit",
@@ -615,7 +619,9 @@
     "kernel": "Jądro",
     "source_code": "Kod źródłowy",
     "not_running": "nie działa",
-    "style": "Styl"
+    "style": "Styl",
+    "weather_from_ip": "Wykrywaj z adresu IP",
+    "weather_from_ip_sub": "Miasto z ipinfo.io, które widzi Twój adres IP; wybrane miasto to wyłącza"
   },
   "fitness": {
     "readiness": "Gotowość",
@@ -1516,5 +1522,30 @@
     "restart_shell": "Uruchom ponownie powłokę",
     "desktop_page_sub": "Zegar, data, ile kart i co w nich stoi",
     "takes_effect_after_restart": "Zmiana zadziała po ponownym uruchomieniu powłoki"
+  },
+  "multitasking": {
+    "workspaces_vertical": "Pulpity pionowo",
+    "workspaces_vertical_sub": "Jak w niri: pulpity jeden pod drugim, przełączanie i gest w górę / w dół"
+  },
+  "shortcuts": {
+    "click_to_record": "Kliknij skrót, aby nagrać inny",
+    "press_shortcut": "Naciśnij skrót…",
+    "esc_cancels_backspace": "Esc anuluje · Backspace usuwa skrót",
+    "esc_cancels": "Esc anuluje",
+    "new_shortcut": "Nowy skrót",
+    "command": "Polecenie",
+    "command_example": "Np. kitty, firefox, ~/skrypt.sh",
+    "command_placeholder": "Polecenie do uruchomienia",
+    "keys": "Klawisze",
+    "record": "Nagraj",
+    "default_shortcuts": "Domyślne skróty",
+    "removes_changed": "Usuwa zmienione i dodane skróty",
+    "restore": "Przywróć",
+    "restored": "Przywrócono domyślne skróty",
+    "type_command_first": "Najpierw wpisz polecenie",
+    "removed": "Usunięto skrót",
+    "shortcut_x": "Skrót: {}",
+    "taken": "{} ma już: {}",
+    "only_mist_comp": "Nagrywanie skrótów działa tylko w mist-comp"
   }
 }

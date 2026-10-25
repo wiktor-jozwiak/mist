@@ -427,7 +427,8 @@
     "unmounted_safe_to_remove": "unmounted · safe to remove",
     "val_free_of_val": "{} free of {}",
     "memory": "Memory",
-    "keyboard": "Keyboard"
+    "keyboard": "Keyboard",
+    "networks": "Networks"
   },
   "notifications": {
     "notifications": "Notifications",
@@ -487,7 +488,8 @@
     "window_pinned": "Window pinned",
     "window_unpinned": "Window unpinned",
     "window": "Window",
-    "trash": "Trash"
+    "trash": "Trash",
+    "minimized_ws": "minimized"
   },
   "wallpapers": {
     "adaptive": "Adaptive",
@@ -503,7 +505,9 @@
     "music_beat": "Music beat",
     "current": "Current",
     "set_wallpaper": "Set wallpaper",
-    "browse_tab_category_space": "← →  browse   ·   Tab  category   ·   Space  set   ·   Enter  set and close   ·   Esc  close"
+    "browse_tab_category_space": "← →  browse   ·   Tab  category   ·   Space  set   ·   Enter  set and close   ·   Esc  close",
+    "change_folder": "Change folder",
+    "choose_wallpaper_folder": "Choose a wallpaper folder"
   },
   "desktop_settings": {
     "customise_desktop": "Customise desktop",
@@ -615,7 +619,9 @@
     "kernel": "Kernel",
     "source_code": "Source code",
     "not_running": "not running",
-    "style": "Style"
+    "style": "Style",
+    "weather_from_ip": "Detect from IP address",
+    "weather_from_ip_sub": "City from ipinfo.io, which sees your IP address; picking a city turns this off"
   },
   "fitness": {
     "readiness": "Readiness",
@@ -1516,5 +1522,30 @@
     "restart_shell": "Restart the shell",
     "desktop_page_sub": "Clock, date, how many cards and what they show",
     "takes_effect_after_restart": "Takes effect after the shell restarts"
+  },
+  "multitasking": {
+    "workspaces_vertical": "Vertical workspaces",
+    "workspaces_vertical_sub": "Like niri: workspaces one under another, switching and the swipe go up / down"
+  },
+  "shortcuts": {
+    "click_to_record": "Click a shortcut to record another one",
+    "press_shortcut": "Press a shortcut…",
+    "esc_cancels_backspace": "Esc cancels · Backspace removes the shortcut",
+    "esc_cancels": "Esc cancels",
+    "new_shortcut": "New shortcut",
+    "command": "Command",
+    "command_example": "E.g. kitty, firefox, ~/script.sh",
+    "command_placeholder": "Command to run",
+    "keys": "Keys",
+    "record": "Record",
+    "default_shortcuts": "Default shortcuts",
+    "removes_changed": "Removes changed and added shortcuts",
+    "restore": "Restore",
+    "restored": "Default shortcuts restored",
+    "type_command_first": "Type the command first",
+    "removed": "Shortcut removed",
+    "shortcut_x": "Shortcut: {}",
+    "taken": "{} is already: {}",
+    "only_mist_comp": "Recording shortcuts works only in mist-comp"
   }
 }

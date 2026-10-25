@@ -842,6 +842,7 @@ impl Settings {
                     let mut e = std::mem::take(match f {
                         Fid::Tz => &mut self.tz_q,
                         Fid::Keys => &mut self.keys_q,
+                        Fid::BindCmd => &mut self.bind_cmd,
                         Fid::Place => &mut self.place_q,
                         _ => &mut self.search,
                     });
@@ -849,6 +850,7 @@ impl Settings {
                     *match f {
                         Fid::Tz => &mut self.tz_q,
                         Fid::Keys => &mut self.keys_q,
+                        Fid::BindCmd => &mut self.bind_cmd,
                         Fid::Place => &mut self.place_q,
                         _ => &mut self.search,
                     } = e;

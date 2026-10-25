@@ -236,6 +236,9 @@ pub enum Act {
     CheckUpdates,
     Open(String),
     EditComp,
+    // record a shortcut for this bind (keys, action) / a new one (None) for the typed command
+    KeyGrab(Option<(String, String)>),
+    KeysReset,
     CopyInfo,
     Zoom(&'static str),
     Url(String),
@@ -560,6 +563,10 @@ impl Settings {
                 if comp {
                     b.push(Block::Card(vec![
                         Row::new("hand-finger", "Gest przełączania pulpitów", "Przesunięcie w poziomie na touchpadzie", Ctl::Seg(chips(&[("3".to_string(), "3 palce"), ("4".to_string(), "4 palce"), ("off".to_string(), "Wyłączony")], &swipe, |v| Act::Comp("swipe", v)))),
+                        Row::new("layout-dashboard", "Pulpity pionowo", "Jak w niri: pulpity jeden pod drugim, przełączanie i gest w górę / w dół", {
+                            let v = backend::comp_get("workspaces") == "vertical";
+                            Ctl::Toggle(v, Act::Comp("workspaces", if v { "horizontal".into() } else { "vertical".into() }))
+                        }),
                         Row::new("terminal", "Ukrywaj terminal", "Okno uruchomione z terminala zastępuje go, aż się zamknie", Ctl::Toggle(sw, Act::Comp("swallow", if sw { "off".into() } else { "on".into() }))),
                         Row::new("layout-grid", "Przegląd okien", "Wszystkie okna pulpitu obok siebie (Super+G)", Ctl::Button("Pokaż".into(), Act::Comp("__overview", String::new()), Btn::Plain)),
                     ]));
@@ -879,6 +886,10 @@ impl Settings {
             Keys => {
                 b.push(Block::Card(vec![Row::new("search", "Szukaj skrótu", "", Ctl::Field(Fid::Keys, "Np. zrzut, pulpit, terminal…"))]));
                 let q = self.keys_q.text.to_lowercase();
+                let edit = backend::under_mist_comp();
+                if edit {
+                    b.push(Block::Note("Kliknij skrót, aby nagrać inny".into()));
+                }
                 let mut groups: Vec<(&'static str, Vec<Row>)> = Vec::new();
                 for (keys, act) in backend::binds() {
                     let (group, label) = describe(&act);
@@ -886,7 +897,15 @@ impl Settings {
                         continue;
                     }
                     let caps: Vec<String> = keys.split('+').map(key_name).collect();
-                    let row = Row::new("keyboard", &label, "", Ctl::Keys(caps));
+                    // under mist-comp a click records another combination
+                    let t = Some((keys.clone(), act.clone()));
+                    let row = if !edit {
+                        Row::new("keyboard", &label, "", Ctl::Keys(caps))
+                    } else if self.grabbing.as_ref() == Some(&t) {
+                        Row::new("keyboard", &label, "Esc anuluje · Backspace usuwa skrót", Ctl::Text("Naciśnij skrót…".into()))
+                    } else {
+                        Row::new("keyboard", &label, "", Ctl::Keys(caps)).on(Act::KeyGrab(t))
+                    };
                     match groups.iter_mut().find(|g| g.0 == group) {
                         Some(g) => g.1.push(row),
                         None => groups.push((group, vec![row])),
@@ -898,8 +917,18 @@ impl Settings {
                     b.push(Block::Caption(g.into()));
                     b.push(Block::Card(rows));
                 }
-                if backend::under_mist_comp() {
-                    b.push(Block::Card(vec![Row::new("terminal", "Własne skróty", "~/.config/mist/comp.conf: linie bind KLAWISZE akcja", Ctl::Button("Edytuj plik".into(), Act::EditComp, Btn::Plain))]));
+                if edit {
+                    b.push(Block::Caption("Nowy skrót".into()));
+                    let new = if self.grabbing == Some(None) {
+                        Row::new("plus", "Naciśnij skrót…", "Esc anuluje", Ctl::None)
+                    } else {
+                        Row::new("plus", "Polecenie", "Np. kitty, firefox, ~/skrypt.sh", Ctl::Field(Fid::BindCmd, "Polecenie do uruchomienia"))
+                    };
+                    b.push(Block::Card(vec![new, Row::new("keyboard", "Klawisze", "", Ctl::Button("Nagraj".into(), Act::KeyGrab(None), Btn::Plain))]));
+                    b.push(Block::Card(vec![
+                        Row::new("terminal", "Własne skróty", "~/.config/mist/comp.conf: linie bind KLAWISZE akcja", Ctl::Button("Edytuj plik".into(), Act::EditComp, Btn::Plain)),
+                        Row::new("refresh", "Domyślne skróty", "Usuwa zmienione i dodane skróty", Ctl::Button("Przywróć".into(), Act::KeysReset, Btn::Plain)),
+                    ]));
                 }
             }
             Updates => {

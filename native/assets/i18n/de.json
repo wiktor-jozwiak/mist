@@ -427,7 +427,8 @@
     "unmounted_safe_to_remove": "ausgehängt · kann entfernt werden",
     "val_free_of_val": "{} frei von {}",
     "memory": "Speicher",
-    "keyboard": "Tastatur"
+    "keyboard": "Tastatur",
+    "networks": "Netzwerke"
   },
   "notifications": {
     "notifications": "Mitteilungen",
@@ -487,7 +488,8 @@
     "window_pinned": "Fenster angeheftet",
     "window_unpinned": "Fenster gelöst",
     "window": "Fenster",
-    "trash": "Papierkorb"
+    "trash": "Papierkorb",
+    "minimized_ws": "minimiert"
   },
   "wallpapers": {
     "adaptive": "Passen sich an",
@@ -503,7 +505,9 @@
     "music_beat": "Musikrhythmus",
     "current": "Aktuell",
     "set_wallpaper": "Als Hintergrund",
-    "browse_tab_category_space": "← →  blättern   ·   Tab  Kategorie   ·   Leertaste  setzen   ·   Enter  setzen und schließen   ·   Esc  schließen"
+    "browse_tab_category_space": "← →  blättern   ·   Tab  Kategorie   ·   Leertaste  setzen   ·   Enter  setzen und schließen   ·   Esc  schließen",
+    "change_folder": "Ordner ändern",
+    "choose_wallpaper_folder": "Hintergrundbild-Ordner wählen"
   },
   "desktop_settings": {
     "customise_desktop": "Schreibtisch anpassen",
@@ -615,7 +619,9 @@
     "kernel": "Kernel",
     "source_code": "Quellcode",
     "not_running": "läuft nicht",
-    "style": "Stil"
+    "style": "Stil",
+    "weather_from_ip": "Aus IP-Adresse ermitteln",
+    "weather_from_ip_sub": "Stadt von ipinfo.io, das deine IP-Adresse sieht; eine gewählte Stadt schaltet das ab"
   },
   "fitness": {
     "readiness": "Bereitschaft",
@@ -1516,5 +1522,30 @@
     "restart_shell": "Shell neu starten",
     "desktop_page_sub": "Uhr, Datum, wie viele Karten und was sie zeigen",
     "takes_effect_after_restart": "Wirkt nach einem Neustart der Shell"
+  },
+  "multitasking": {
+    "workspaces_vertical": "Arbeitsflächen vertikal",
+    "workspaces_vertical_sub": "Wie niri: Arbeitsflächen untereinander, Wechsel und Wischgeste nach oben / unten"
+  },
+  "shortcuts": {
+    "click_to_record": "Klicke auf ein Tastenkürzel, um ein anderes aufzunehmen",
+    "press_shortcut": "Tastenkürzel drücken…",
+    "esc_cancels_backspace": "Esc bricht ab · Rücktaste entfernt das Kürzel",
+    "esc_cancels": "Esc bricht ab",
+    "new_shortcut": "Neues Tastenkürzel",
+    "command": "Befehl",
+    "command_example": "Z. B. kitty, firefox, ~/skript.sh",
+    "command_placeholder": "Auszuführender Befehl",
+    "keys": "Tasten",
+    "record": "Aufnehmen",
+    "default_shortcuts": "Standard-Tastenkürzel",
+    "removes_changed": "Entfernt geänderte und hinzugefügte Kürzel",
+    "restore": "Wiederherstellen",
+    "restored": "Standard-Tastenkürzel wiederhergestellt",
+    "type_command_first": "Zuerst den Befehl eingeben",
+    "removed": "Tastenkürzel entfernt",
+    "shortcut_x": "Tastenkürzel: {}",
+    "taken": "{} ist bereits: {}",
+    "only_mist_comp": "Kürzel aufnehmen geht nur in mist-comp"
   }
 }

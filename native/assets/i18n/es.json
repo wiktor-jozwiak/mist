@@ -427,7 +427,8 @@
     "unmounted_safe_to_remove": "desmontado · se puede quitar",
     "val_free_of_val": "{} libres de {}",
     "memory": "Memoria",
-    "keyboard": "Teclado"
+    "keyboard": "Teclado",
+    "networks": "Redes"
   },
   "notifications": {
     "notifications": "Notificaciones",
@@ -487,7 +488,8 @@
     "window_pinned": "Ventana fijada",
     "window_unpinned": "Ventana desfijada",
     "window": "Ventana",
-    "trash": "Papelera"
+    "trash": "Papelera",
+    "minimized_ws": "minimizadas"
   },
   "wallpapers": {
     "adaptive": "Adaptativos",
@@ -503,7 +505,9 @@
     "music_beat": "Ritmo de la música",
     "current": "Actual",
     "set_wallpaper": "Poner de fondo",
-    "browse_tab_category_space": "← →  explorar   ·   Tab  categoría   ·   Espacio  poner   ·   Intro  poner y cerrar   ·   Esc  cerrar"
+    "browse_tab_category_space": "← →  explorar   ·   Tab  categoría   ·   Espacio  poner   ·   Intro  poner y cerrar   ·   Esc  cerrar",
+    "change_folder": "Cambiar carpeta",
+    "choose_wallpaper_folder": "Elige una carpeta de fondos"
   },
   "desktop_settings": {
     "customise_desktop": "Personalizar escritorio",
@@ -615,7 +619,9 @@
     "kernel": "Kernel",
     "source_code": "Código fuente",
     "not_running": "no está en marcha",
-    "style": "Estilo"
+    "style": "Estilo",
+    "weather_from_ip": "Detectar por dirección IP",
+    "weather_from_ip_sub": "Ciudad desde ipinfo.io, que ve tu dirección IP; elegir una ciudad lo desactiva"
   },
   "fitness": {
     "readiness": "Disposición",
@@ -1516,5 +1522,30 @@
     "restart_shell": "Reiniciar el shell",
     "desktop_page_sub": "Reloj, fecha, cuántas tarjetas y qué muestran",
     "takes_effect_after_restart": "Se aplica al reiniciar el shell"
+  },
+  "multitasking": {
+    "workspaces_vertical": "Escritorios en vertical",
+    "workspaces_vertical_sub": "Como niri: escritorios uno debajo de otro, el cambio y el gesto van arriba / abajo"
+  },
+  "shortcuts": {
+    "click_to_record": "Haz clic en un atajo para grabar otro",
+    "press_shortcut": "Pulsa un atajo…",
+    "esc_cancels_backspace": "Esc cancela · Retroceso elimina el atajo",
+    "esc_cancels": "Esc cancela",
+    "new_shortcut": "Nuevo atajo",
+    "command": "Comando",
+    "command_example": "Ej. kitty, firefox, ~/script.sh",
+    "command_placeholder": "Comando a ejecutar",
+    "keys": "Teclas",
+    "record": "Grabar",
+    "default_shortcuts": "Atajos predeterminados",
+    "removes_changed": "Elimina los atajos cambiados y añadidos",
+    "restore": "Restaurar",
+    "restored": "Atajos predeterminados restaurados",
+    "type_command_first": "Escribe primero el comando",
+    "removed": "Atajo eliminado",
+    "shortcut_x": "Atajo: {}",
+    "taken": "{} ya es: {}",
+    "only_mist_comp": "Grabar atajos solo funciona en mist-comp"
   }
 }

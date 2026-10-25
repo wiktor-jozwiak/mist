@@ -427,7 +427,8 @@
     "unmounted_safe_to_remove": "démonté · retrait sans risque",
     "val_free_of_val": "{} libres sur {}",
     "memory": "Mémoire",
-    "keyboard": "Clavier"
+    "keyboard": "Clavier",
+    "networks": "Réseaux"
   },
   "notifications": {
     "notifications": "Notifications",
@@ -487,7 +488,8 @@
     "window_pinned": "Fenêtre épinglée",
     "window_unpinned": "Fenêtre désépinglée",
     "window": "Fenêtre",
-    "trash": "Corbeille"
+    "trash": "Corbeille",
+    "minimized_ws": "réduites"
   },
   "wallpapers": {
     "adaptive": "Adaptatifs",
@@ -503,7 +505,9 @@
     "music_beat": "Rythme de la musique",
     "current": "Actuel",
     "set_wallpaper": "Définir le fond d'écran",
-    "browse_tab_category_space": "← →  parcourir   ·   Tab  catégorie   ·   Espace  définir   ·   Entrée  définir et fermer   ·   Échap  fermer"
+    "browse_tab_category_space": "← →  parcourir   ·   Tab  catégorie   ·   Espace  définir   ·   Entrée  définir et fermer   ·   Échap  fermer",
+    "change_folder": "Changer de dossier",
+    "choose_wallpaper_folder": "Choisir un dossier de fonds d'écran"
   },
   "desktop_settings": {
     "customise_desktop": "Personnaliser le bureau",
@@ -615,7 +619,9 @@
     "kernel": "Noyau",
     "source_code": "Code source",
     "not_running": "ne fonctionne pas",
-    "style": "Style"
+    "style": "Style",
+    "weather_from_ip": "Détecter via l'adresse IP",
+    "weather_from_ip_sub": "Ville via ipinfo.io, qui voit votre adresse IP ; choisir une ville le désactive"
   },
   "fitness": {
     "readiness": "Disponibilité",
@@ -1516,5 +1522,30 @@
     "restart_shell": "Redémarrer le shell",
     "desktop_page_sub": "Horloge, date, combien de cartes et ce qu'elles affichent",
     "takes_effect_after_restart": "Prend effet après le redémarrage du shell"
+  },
+  "multitasking": {
+    "workspaces_vertical": "Bureaux à la verticale",
+    "workspaces_vertical_sub": "Comme niri : bureaux les uns sous les autres, changement et geste vers le haut / bas"
+  },
+  "shortcuts": {
+    "click_to_record": "Cliquez sur un raccourci pour en enregistrer un autre",
+    "press_shortcut": "Appuyez sur un raccourci…",
+    "esc_cancels_backspace": "Échap annule · Retour arrière supprime le raccourci",
+    "esc_cancels": "Échap annule",
+    "new_shortcut": "Nouveau raccourci",
+    "command": "Commande",
+    "command_example": "Ex. kitty, firefox, ~/script.sh",
+    "command_placeholder": "Commande à lancer",
+    "keys": "Touches",
+    "record": "Enregistrer",
+    "default_shortcuts": "Raccourcis par défaut",
+    "removes_changed": "Supprime les raccourcis modifiés et ajoutés",
+    "restore": "Restaurer",
+    "restored": "Raccourcis par défaut restaurés",
+    "type_command_first": "Saisissez d'abord la commande",
+    "removed": "Raccourci supprimé",
+    "shortcut_x": "Raccourci : {}",
+    "taken": "{} est déjà : {}",
+    "only_mist_comp": "L'enregistrement de raccourcis ne marche que dans mist-comp"
   }
 }

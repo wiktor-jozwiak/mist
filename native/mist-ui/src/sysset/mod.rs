@@ -30,6 +30,8 @@ pub enum Fid {
     Tz,
     Place,
     Keys,
+    // the command of a new shortcut
+    BindCmd,
 }
 
 // the sliders
@@ -109,6 +111,9 @@ pub struct Settings {
     pub wifi_pwd: LineEdit,
     pub tz_q: LineEdit,
     pub keys_q: LineEdit,
+    pub bind_cmd: LineEdit,
+    // a shortcut being recorded: for this bind (None: a new one for bind_cmd)
+    pub grabbing: Option<Option<(String, String)>>,
     pub place_q: LineEdit,
     // when the typed place is searched (a short pause after the last key)
     geo_at: Option<Instant>,
@@ -151,6 +156,8 @@ impl Settings {
             wifi_pwd: LineEdit::default(),
             tz_q: LineEdit::default(),
             keys_q: LineEdit::default(),
+            bind_cmd: LineEdit::default(),
+            grabbing: None,
             place_q: LineEdit::default(),
             geo_at: None,
             cfg: crate::desktop::Cfg::load(),
@@ -431,6 +438,34 @@ impl Settings {
                     self.say(&format!("Pogoda dla: {}", self.d.place), cx);
                 }
             }
+            // record a combination: the compositor takes the next one pressed (it reaches no bind or app)
+            Act::KeyGrab(t) => {
+                if t.is_none() && self.bind_cmd.text.trim().is_empty() {
+                    self.field = Some(Fid::BindCmd);
+                    self.say("Najpierw wpisz polecenie", cx);
+                } else {
+                    self.grabbing = Some(t.clone());
+                    self.send(Req::GrabKey(t, self.bind_cmd.text.clone()));
+                }
+            }
+            Act::KeysReset => {
+                backend::binds_reset();
+                self.say("Przywrócono domyślne skróty", cx);
+            }
+            Act::PlaceAuto => {
+                // on: mistd asks ipinfo.io on its next weather read; off: the place stays as it is, now fixed
+                self.d.place_auto = !self.d.place_auto;
+                let mut loc = backend::read_json("location.json");
+                if !loc.is_object() {
+                    loc = json!({});
+                }
+                loc["auto"] = json!(self.d.place_auto);
+                if self.d.place_auto {
+                    loc.as_object_mut().map(|o| o.remove("lat"));
+                }
+                backend::write_atomic(&backend::cfg("location.json"), &loc.to_string());
+                self.tell_shell();
+            }
             Act::Primary(name) => {
                 backend::patch_json("settings.json", json!({ "primary": name }));
             }
@@ -576,6 +611,7 @@ impl Settings {
             Fid::WifiPwd => &mut self.wifi_pwd,
             Fid::Tz => &mut self.tz_q,
             Fid::Keys => &mut self.keys_q,
+            Fid::BindCmd => &mut self.bind_cmd,
             Fid::Place => &mut self.place_q,
         }
     }
@@ -624,6 +660,10 @@ impl Settings {
                         }
                     }
                     Fid::Keys => self.field = None,
+                    Fid::BindCmd => {
+                        self.field = None;
+                        return self.act(Act::KeyGrab(None), cx);
+                    }
                     Fid::Place => {
                         if self.d.found.is_empty() {
                             self.geo_at = Some(Instant::now());
@@ -815,6 +855,33 @@ impl Settings {
                 d.ntp = ntp;
             }
             Res::Tzs(t) => d.tzs = t,
+            Res::KeyGrab(t, cmd, k) => {
+                if self.grabbing.as_ref() != Some(&t) {
+                    return; // a newer recording took over
+                }
+                self.grabbing = None;
+                let r = match k.as_str() {
+                    "cancel" | "timeout" => Ok(None),
+                    "" => Err("Nagrywanie skrótów działa tylko w mist-comp".to_string()),
+                    // Backspace alone removes the shortcut
+                    "BackSpace" if t.is_some() => backend::bind_set(t.as_ref(), None, "").map(|_| Some("Usunięto skrót".to_string())).map_err(|_| String::new()),
+                    _ => backend::bind_set(t.as_ref(), Some(&k), &cmd)
+                        .map(|_| Some(format!("Skrót: {}", k.replace('+', " + "))))
+                        .map_err(|a| if a.is_empty() { String::new() } else { format!("{} ma już: {}", k.replace('+', " + "), crate::i18n::tr(&pages::describe(&a).1)) }),
+                };
+                match r {
+                    Ok(Some(msg)) => {
+                        if t.is_none() {
+                            self.bind_cmd.set("");
+                        }
+                        self.say(&msg, cx);
+                    }
+                    Ok(None) => {}
+                    Err(e) if !e.is_empty() => self.say(&e, cx),
+                    Err(_) => {}
+                }
+                self.redraw(cx);
+            }
             Res::Geo(q, v) => {
                 // only the answer for what the field holds now
                 if q == self.place_q.text.trim() {

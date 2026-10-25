@@ -29,6 +29,8 @@ pub enum Req {
     Wifi(String, Option<String>),
     // places matching the text (`mistd geo`)
     Geo(String),
+    // record a shortcut for this bind ((keys, action) as binds() lists it; None: a new `exec` of the command)
+    GrabKey(Option<(String, String)>, String),
 }
 
 pub enum Res {
@@ -47,6 +49,8 @@ pub enum Res {
     WifiErr(String),
     // the asked text, the places found
     Geo(String, Vec<Value>),
+    // the recorded combination ("cancel" / "timeout" / "" when there is no mist-comp) for that GrabKey
+    KeyGrab(Option<(String, String)>, String, String),
 }
 
 #[derive(Clone, Default, Debug)]
@@ -174,6 +178,15 @@ fn worker(rx: Receiver<Req>, out: Out) {
                         let o = Command::new(crate::paths::mistd()).args(["geo", &q, lang]).stderr(std::process::Stdio::null()).output();
                         let v: Vec<Value> = o.ok().and_then(|o| serde_json::from_slice(&o.stdout).ok()).unwrap_or_default();
                         let _ = out(Box::new(Res::Geo(q, v)));
+                    });
+                    ""
+                }
+                Req::GrabKey(target, cmd) => {
+                    // the compositor answers when a combination is pressed (or after 10 s)
+                    let out = out.clone();
+                    let _ = std::thread::Builder::new().name("grabkey".into()).spawn(move || {
+                        let k = comp_ipc_wait("grabkey 10", 12).unwrap_or_default();
+                        let _ = out(Box::new(Res::KeyGrab(target, cmd, k.trim().to_string())));
                     });
                     ""
                 }
@@ -415,10 +428,14 @@ pub fn under_mist_comp() -> bool {
 }
 // one line on mist-comp's IPC socket ($XDG_RUNTIME_DIR/mist-comp/<wayland display>.sock)
 pub fn comp_ipc(line: &str) -> Option<String> {
+    comp_ipc_wait(line, 2)
+}
+// the same, waiting up to `secs` for the answer (grabkey answers when a key is pressed)
+pub fn comp_ipc_wait(line: &str, secs: u64) -> Option<String> {
     use std::io::{Read, Write};
     let p = format!("{}/mist-comp/{}.sock", std::env::var("XDG_RUNTIME_DIR").ok()?, std::env::var("WAYLAND_DISPLAY").ok()?);
     let mut s = std::os::unix::net::UnixStream::connect(p).ok()?;
-    let _ = s.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+    let _ = s.set_read_timeout(Some(std::time::Duration::from_secs(secs)));
     s.write_all(format!("{line}\n").as_bytes()).ok()?;
     let mut out = String::new();
     let _ = s.read_to_string(&mut out);
@@ -479,6 +496,90 @@ pub fn set_scale(mons: &[Mon], name: &str, scale: f64) {
         x += (m.w as f64 / s).round() as i64;
     }
     write_atomic(&cfg("outputs"), &out);
+    comp_ipc("action reload");
+}
+
+fn is_bind(l: &str) -> bool {
+    let l = l.trim_start();
+    l.starts_with("bind ") || l.starts_with("bindr ") || l.starts_with("bindl ")
+}
+// (keys, action) of a bind line
+fn bind_of(l: &str) -> Option<(String, String)> {
+    let rest = l.trim().split_once(char::is_whitespace)?.1.trim();
+    let (keys, act) = rest.split_once(char::is_whitespace)?;
+    Some((keys.to_string(), act.trim().to_string()))
+}
+// The shortcut editor: `target` (keys, action) gets `keys` (None: removed); no target: a new `bind KEYS exec
+// CMD` for `cmd`. A comp.conf without binds of its own takes the defaults' first (its binds replace them all),
+// then the compositor reloads. Err: the combination is taken (that bind's action).
+pub fn bind_set(target: Option<&(String, String)>, keys: Option<&str>, cmd: &str) -> Result<(), String> {
+    let path = cfg("comp.conf");
+    let text = bind_edit(&std::fs::read_to_string(&path).unwrap_or_default(), target, keys, cmd)?;
+    write_atomic(&path, &text);
+    comp_ipc("action reload");
+    Ok(())
+}
+// bind_set on the file's text
+fn bind_edit(user: &str, target: Option<&(String, String)>, keys: Option<&str>, cmd: &str) -> Result<String, String> {
+    let mut lines: Vec<String> = user.lines().map(String::from).collect();
+    if !lines.iter().any(|l| is_bind(l)) {
+        lines.push("# shortcuts (Mist Settings > Keyboard shortcuts; these replace all the default binds)".into());
+        lines.extend(COMP_DEFAULT.lines().filter(|l| is_bind(l)).map(String::from));
+    }
+    let same = |a: &str, b: &str| a.eq_ignore_ascii_case(b);
+    if let Some(k) = keys {
+        if let Some((_, act)) = lines.iter().filter_map(|l| is_bind(l).then(|| bind_of(l)).flatten()).find(|(kk, act)| same(kk, k) && target.is_none_or(|t| t.1 != *act)) {
+            return Err(act);
+        }
+    }
+    match target {
+        Some((tk, ta)) => {
+            let i = lines.iter().position(|l| is_bind(l) && bind_of(l).is_some_and(|(k, a)| same(&k, tk) && a == *ta)).ok_or_else(String::new)?;
+            match keys {
+                Some(k) => {
+                    let kind = lines[i].split_whitespace().next().unwrap_or("bind").to_string();
+                    lines[i] = format!("{kind:<5} {k:<18} {ta}");
+                }
+                None => {
+                    lines.remove(i);
+                }
+            }
+        }
+        None => lines.push(format!("bind  {:<18} exec {}", keys.unwrap_or_default(), cmd.trim())),
+    }
+    Ok(lines.join("\n") + "\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shortcut_edits() {
+        // a comp.conf with flags only takes the default binds first
+        let t = bind_edit("numlock on\n", Some(&("SUPER+W".into(), "exec mist-ui-bin default-app".into())), Some("SUPER+SHIFT+F"), "").unwrap();
+        assert!(t.starts_with("numlock on\n"));
+        assert!(t.contains("bind  SUPER+SHIFT+F"));
+        assert!(!t.lines().any(|l| l.split_whitespace().nth(1) == Some("SUPER+W")));
+        assert!(t.lines().any(|l| l.contains("SUPER+Tab") && l.ends_with("msg switcher next")));
+        // taken by another bind: refused, named
+        assert_eq!(bind_edit(&t, Some(&("SUPER+SHIFT+F".into(), "exec mist-ui-bin default-app".into())), Some("super+tab"), ""), Err("exec mist-ui-bin msg switcher next".into()));
+        // bindl stays bindl, a new one is an exec, Backspace removes
+        let t = bind_edit(&t, Some(&("XF86AudioMute".into(), "exec wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle".into())), Some("SUPER+M"), "").unwrap();
+        assert!(t.lines().any(|l| l.starts_with("bindl SUPER+M ")));
+        let t = bind_edit(&t, None, Some("SUPER+ALT+K"), "kitty -e btop").unwrap();
+        assert!(t.lines().any(|l| l.split_whitespace().collect::<Vec<_>>() == ["bind", "SUPER+ALT+K", "exec", "kitty", "-e", "btop"]));
+        let t = bind_edit(&t, Some(&("SUPER+ALT+K".into(), "exec kitty -e btop".into())), None, "").unwrap();
+        assert!(!t.contains("SUPER+ALT+K"));
+    }
+}
+
+// back to the default shortcuts: comp.conf without its own bind lines
+pub fn binds_reset() {
+    let path = cfg("comp.conf");
+    let Ok(user) = std::fs::read_to_string(&path) else { return };
+    let kept: Vec<&str> = user.lines().filter(|l| !is_bind(l) && !l.starts_with("# shortcuts (Mist Settings")).collect();
+    write_atomic(&path, &(kept.join("\n") + "\n"));
     comp_ipc("action reload");
 }
 
