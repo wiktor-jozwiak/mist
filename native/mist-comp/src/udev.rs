@@ -205,6 +205,13 @@ pub fn init(event_loop: &mut EventLoop<CalloopData>, data: &mut CalloopData) -> 
             .ok_or("no GPU")?,
     };
     tracing::info!("gpu {}", path.display());
+    // hybrid laptops: the HDMI port often hangs off the other GPU, which mist-comp does not drive (yet)
+    for other in all_gpus(&seat).unwrap_or_default().into_iter().filter(|g| *g != path) {
+        let outs = connected(&other);
+        if !outs.is_empty() {
+            tracing::warn!("{} has connected outputs {:?} that mist-comp cannot drive from {}; MIST_COMP_DRM_DEVICE={} drives those instead", other.display(), outs, path.display(), other.display());
+        }
+    }
     let fd = open_as_master(&mut session.clone(), &path)?;
     let fd = DrmDeviceFd::new(DeviceFd::from(fd));
     let node = DrmNode::from_file(fd.clone())?;
@@ -774,20 +781,39 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
 
 
 /// `mist-comp --probe`: what the DRM backend would light up (read-only, no master, no modeset).
+struct Card(std::fs::File);
+impl std::os::fd::AsFd for Card {
+    fn as_fd(&self) -> std::os::fd::BorrowedFd<'_> {
+        self.0.as_fd()
+    }
+}
+impl smithay::reexports::drm::Device for Card {}
+impl smithay::reexports::drm::control::Device for Card {}
+
+// connectors with a screen on them, read without DRM master (empty when the card cannot be opened)
+fn connected(path: &std::path::Path) -> Vec<String> {
+    use smithay::reexports::drm::control::Device as _;
+    let Ok(f) = std::fs::OpenOptions::new().read(true).write(true).open(path) else { return Vec::new() };
+    let card = Card(f);
+    let Ok(res) = card.resource_handles() else { return Vec::new() };
+    res.connectors()
+        .iter()
+        .filter_map(|&c| card.get_connector(c, false).ok())
+        .filter(|i| i.state() == connector::State::Connected)
+        .map(|i| conn_name(&i))
+        .collect()
+}
+
 pub fn probe() -> Result<(), Box<dyn std::error::Error>> {
     use smithay::reexports::drm::control::Device as _;
-    struct Card(std::fs::File);
-    impl std::os::fd::AsFd for Card {
-        fn as_fd(&self) -> std::os::fd::BorrowedFd<'_> {
-            self.0.as_fd()
-        }
-    }
-    impl smithay::reexports::drm::Device for Card {}
-    impl smithay::reexports::drm::control::Device for Card {}
     let path: PathBuf = match std::env::var("MIST_COMP_DRM_DEVICE") {
         Ok(p) => p.into(),
         Err(_) => primary_gpu("seat0")?.ok_or("no GPU")?,
     };
+    // every GPU, so a hybrid laptop shows which one its external screen is on
+    for g in all_gpus("seat0").unwrap_or_default().into_iter().filter(|g| *g != path) {
+        println!("other gpu {} connected {:?}", g.display(), connected(&g));
+    }
     let card = Card(std::fs::OpenOptions::new().read(true).write(true).open(&path)?);
     let drv = smithay::reexports::drm::Device::get_driver(&card)?;
     println!("{} driver={}", path.display(), drv.name().to_string_lossy());

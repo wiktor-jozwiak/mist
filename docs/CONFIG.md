@@ -166,6 +166,7 @@ mist-comp also speaks ext-workspace-v1 (waybar `ext/workspaces` and other bars) 
 | `MIST_UI_NO_BAR`, `_NO_DOCK`, `_NO_ISLAND`, `_NO_DESK`, `_NO_WALL` | leave that surface out |
 | `MIST_UI_NO_SERVICES` | no clipboard watcher and other background helpers (tests) |
 | `MIST_UI_SOCK` | the IPC socket of `mist-ui-bin msg` (a second instance for tests) |
+| `MIST_COMP_DRM_DEVICE` | the GPU mist-comp drives (e.g. `/dev/dri/card0`). mist-comp drives one GPU: on a hybrid laptop whose HDMI port is wired to the other GPU, `mist-comp --probe` lists each GPU's connected screens and the log warns at start; point this at the card with the screen you need |
 
 Development only: `MIST_I18N_MISS=file` (appends every string drawn without a translation),
 `MIST_EDIT`, `MIST_SCROLL`, `MIST_BENCH` (offscreen renders), `MIST_WALL_BENCH`, `MIST_WALL_FRAMES`,
