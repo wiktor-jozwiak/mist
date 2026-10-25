@@ -1781,6 +1781,7 @@ impl App {
         let a = |i: usize| r.args.get(i).cloned().unwrap_or_default();
         let out: String = match (r.target.as_str(), r.func.as_str()) {
             ("island", "show") => { self.island.push(crate::island::Ev { view: "info", prio: 2, dur: 3500, icon: a(0), color: Some(crate::theme::accent()), title: a(1), sub: a(2), value: -1, ..Default::default() }); String::new() }
+            ("island", "brightness") => { self.island.brightness(a(0).parse().unwrap_or(0)); String::new() }
             ("island", "demo") => { self.island.demo(&a(0)); String::new() }
             // tests: a left click on the dock icon of app <key> (desktop id or class)
             ("dock", "click") => match self.dock.slots.iter().position(|s| matches!(s, Slot::App(k) if *k == a(0))) {

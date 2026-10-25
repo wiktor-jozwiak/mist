@@ -1119,6 +1119,7 @@ impl Island {
         let a = accent();
         let e = match kind {
             "volume" => Ev { view: "osd", key: "vol".into(), prio: 3, dur: 2500, value: -1, ..Default::default() },
+            "brightness" => Ev { view: "osd", key: "vol".into(), prio: 3, dur: 2500, icon: "bright".into(), value: 60, ..Default::default() },
             "mic-volume" => Ev { view: "osd", key: "vol".into(), prio: 3, dur: 2500, mic: true, value: -1, ..Default::default() },
             "notif" => Ev { view: "notif", prio: 2, dur: 5000, app: "Zen Browser".into(), icon: "zen-browser".into(), title: crate::i18n::tr("Nowa wiadomość od Kasi").into_owned(), body: crate::i18n::tr("Hej! Widzimy się dziś o 18 na bieganiu? Weź bidon, bo ma być ciepło.").into_owned(), value: -1, ..Default::default() },
             "notif-long" => Ev { view: "notif", prio: 2, dur: 8000, app: "Thunderbird".into(), icon: "thunderbird".into(), title: "Plan treningowy na październik".into(), body: "Cześć! W załączniku plan na najbliższe cztery tygodnie: dwa akcenty w tygodniu (interwały i tempo), jedno długie wybieganie w niedzielę, reszta spokojnie w drugiej strefie. Daj znać, jak się czujesz po sobotnim starcie.".into(), value: -1, ..Default::default() },
@@ -1493,8 +1494,12 @@ impl Island {
             "glance" => self.v_glance(c, cx, w, h),
             "player" => self.v_player(c, cx, w, h),
             "osd" => {
-                let mic = self.last.get("osd").map(|e| e.mic).unwrap_or(false);
-                self.volume_row(c, cx, 16.0, 0.0, w - 32.0, h, mic);
+                let e = self.last.get("osd");
+                let (mic, bright) = e.map(|e| (e.mic, (e.icon == "bright").then_some(e.value))).unwrap_or((false, None));
+                match bright {
+                    Some(v) => self.bright_row(c, cx, 16.0, 0.0, w - 32.0, h, v),
+                    None => self.volume_row(c, cx, 16.0, 0.0, w - 32.0, h, mic),
+                }
             }
             "call" => self.v_call(c, cx, w, h),
             "notif" => self.v_notif(c, cx, w, h),
@@ -1728,6 +1733,26 @@ impl Island {
         let (bx0, bx1) = (x + 20.0 + 10.0, x + w - 46.0 - 8.0);
         c.rrect(bx0, cy - 3.0, bx1 - bx0, 6.0, 3.0, FILL2);
         c.rrect(bx0, cy - 3.0, (bx1 - bx0) * vol.min(1.0), 6.0, 3.0, col);
+    }
+
+    // the brightness OSD: like the volume row, the level given by bright.sh (0-100)
+    #[allow(clippy::too_many_arguments)]
+    fn bright_row(&mut self, c: &mut Canvas, cx: &mut Ctx, x: f32, y: f32, w: f32, h: f32, pct: i32) {
+        let v = pct.clamp(0, 100) as f32 / 100.0;
+        let cy = y + h / 2.0;
+        c.icon(cx.t, x + 10.0, cy, "bright", 17.0, T1);
+        let st = Style::ui(12.5, 600.0).tnum();
+        let txt = format!("{}%", pct.clamp(0, 100));
+        let tw = cx.t.width(&txt, &st);
+        c.text(cx.t, x + w - tw, cy, &txt, &st, T1);
+        let (bx0, bx1) = (x + 20.0 + 10.0, x + w - 46.0 - 8.0);
+        c.rrect(bx0, cy - 3.0, bx1 - bx0, 6.0, 3.0, FILL2);
+        c.rrect(bx0, cy - 3.0, (bx1 - bx0) * v, 6.0, 3.0, T1);
+    }
+
+    /// `msg island brightness <0-100>` (bright.sh after each step): the OSD, in place of a volume one showing
+    pub fn brightness(&mut self, pct: i32) {
+        self.push(Ev { view: "osd", key: "vol".into(), prio: 3, dur: 1600, icon: "bright".into(), value: pct, ..Default::default() });
     }
 
     fn v_call(&mut self, c: &mut Canvas, cx: &mut Ctx, w: f32, h: f32) {
