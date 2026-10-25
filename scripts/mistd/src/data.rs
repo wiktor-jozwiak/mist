@@ -9,7 +9,9 @@ use std::collections::{HashMap, HashSet};
 type R<T> = Result<T, String>;
 
 // the weather place: ~/.config/mist/location.json {"city", "lat", "lon"}, chosen in Dostosuj pulpit -> Pogoda
-// (`mistd geo <name>` finds the candidates)
+// (`mistd geo <name>` finds the candidates). Without a chosen place ("auto": true, or no file yet) the place
+// comes from the IP address (ipinfo.io, once per 6 h: a laptop that travels follows); {"auto": false} and
+// no place: no weather.
 struct Loc {
     city: String,
     lat: f64,
@@ -17,11 +19,37 @@ struct Loc {
 }
 fn location() -> R<Loc> {
     let path = format!("{}/.config/mist/location.json", home());
-    let v: J = std::fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str(&s).ok()).ok_or("brak lokalizacji")?;
+    let file: Option<J> = std::fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str(&s).ok());
+    let auto = file.as_ref().map(|v| v["auto"].as_bool().unwrap_or(false)).unwrap_or(true);
+    let fresh = std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).map(|e| e.as_secs() < 6 * 3600).unwrap_or(false);
+    if auto && !(fresh && file.as_ref().map(|v| v["lat"].is_number()).unwrap_or(false)) {
+        match ip_location() {
+            Ok(l) => {
+                let _ = std::fs::create_dir_all(format!("{}/.config/mist", home()));
+                let tmp = format!("{path}.tmp");
+                if std::fs::write(&tmp, json!({"city": l.city, "lat": l.lat, "lon": l.lon, "auto": true}).to_string()).is_ok() {
+                    let _ = std::fs::rename(&tmp, &path);
+                }
+                return Ok(l);
+            }
+            // offline at login: an error the shell retries, not "no place" (which waits for a refresh)
+            Err(e) if !file.as_ref().map(|v| v["lat"].is_number()).unwrap_or(false) => return Err(format!("geolokacja IP: {e}")),
+            Err(_) => {}
+        }
+    }
+    let v = file.ok_or("brak lokalizacji")?;
     match (v["lat"].as_f64(), v["lon"].as_f64()) {
         (Some(lat), Some(lon)) => Ok(Loc { city: v["city"].as_str().unwrap_or("").to_string(), lat, lon }),
         _ => Err("brak lokalizacji".into()),
     }
+}
+
+// the city of the public IP address: ipinfo.io {"city", "loc": "lat,lon"} (HTTPS, no key)
+fn ip_location() -> R<Loc> {
+    let v = get_json("https://ipinfo.io/json", 5)?;
+    let (lat, lon) = v["loc"].as_str().and_then(|l| l.split_once(',')).ok_or("no loc")?;
+    let (lat, lon) = (lat.trim().parse().map_err(|_| "loc")?, lon.trim().parse().map_err(|_| "loc")?);
+    Ok(Loc { city: v["city"].as_str().unwrap_or("").to_string(), lat, lon })
 }
 
 fn enc(s: &str) -> String {

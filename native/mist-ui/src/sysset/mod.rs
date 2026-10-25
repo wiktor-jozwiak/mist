@@ -82,6 +82,8 @@ pub struct Data {
     pub wall: Value,
     pub contrast: bool,
     pub place: String,
+    // the place comes from the IP address (location.json "auto", or no file yet)
+    pub place_auto: bool,
     // `mistd geo` answers for the place field, and whether one is on its way
     pub found: Vec<Value>,
     pub geo_busy: bool,
@@ -184,7 +186,9 @@ impl Settings {
         let n: Value = std::fs::read_to_string(format!("{}/.local/state/mist/notifications.json", backend::home())).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
         d.dnd = n["dnd"].as_bool().unwrap_or(false);
         d.notif_count = n["entries"].as_array().map(|a| a.len()).unwrap_or(0);
-        d.place = backend::read_json("location.json")["city"].as_str().unwrap_or("").to_string();
+        let loc = backend::read_json("location.json");
+        d.place = loc["city"].as_str().unwrap_or("").to_string();
+        d.place_auto = loc.get("auto").and_then(|a| a.as_bool()).unwrap_or(loc.get("lat").is_none());
         let login = std::env::var("USER").unwrap_or_default();
         let pw = std::fs::read_to_string("/etc/passwd").unwrap_or_default();
         let full = pw.lines().find(|l| l.starts_with(&format!("{login}:"))).and_then(|l| l.split(':').nth(4)).map(|g| g.split(',').next().unwrap_or("").to_string()).filter(|g| !g.is_empty()).unwrap_or_else(|| login.clone());
@@ -416,8 +420,9 @@ impl Settings {
             }
             Act::Place(i) => {
                 if let Some(v) = self.d.found.get(i).cloned() {
-                    backend::write_atomic(&backend::cfg("location.json"), &json!({"city": v["city"], "lat": v["lat"], "lon": v["lon"]}).to_string());
+                    backend::write_atomic(&backend::cfg("location.json"), &json!({"city": v["city"], "lat": v["lat"], "lon": v["lon"], "auto": false}).to_string());
                     self.d.place = v["city"].as_str().unwrap_or("").to_string();
+                    self.d.place_auto = false;
                     self.d.found.clear();
                     self.place_q.set("");
                     self.field = None;

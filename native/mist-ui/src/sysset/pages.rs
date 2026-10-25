@@ -204,6 +204,8 @@ pub enum Act {
     WidgetShow(&'static str, bool),
     // the weather place: a search result picked
     Place(usize),
+    // the weather place from the IP address, on / off
+    PlaceAuto,
     Primary(String),
     Restart,
     Sink(String),
@@ -401,7 +403,10 @@ impl Settings {
     // the weather place: the field, then what `mistd geo` found for it
     fn place_blocks(&self, b: &mut Vec<Block>) {
         let d = &self.d;
-        b.push(Block::Card(vec![Row::new("map-pin", "Miejsce pogody", if d.place.is_empty() { "Nie ustawiono" } else { &d.place }, Ctl::Field(Fid::Place, "Szukaj miasta…"))]));
+        b.push(Block::Card(vec![
+            Row::new("map-pin", "Miejsce pogody", if d.place.is_empty() { "Nie ustawiono" } else { &d.place }, Ctl::Field(Fid::Place, "Szukaj miasta…")),
+            Row::new("world", "Wykrywaj z adresu IP", "Miasto z ipinfo.io, które widzi Twój adres IP; wybrane miasto to wyłącza", Ctl::Toggle(d.place_auto, Act::PlaceAuto)),
+        ]));
         if self.place_q.text.trim().chars().count() >= 2 {
             if d.found.is_empty() {
                 b.push(Block::Note(if d.geo_busy { "Szukam…" } else { "Nic nie znaleziono" }.into()));
