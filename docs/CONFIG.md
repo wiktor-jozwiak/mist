@@ -18,6 +18,9 @@ them by hand only for what the UI does not offer; `mist-ui` re-reads them on its
 | `lang` | `auto`, `pl`, `en`, `de`, `es`, `fr` | UI language; `auto` follows `$LANG`, falls back to English. Set in Settings → General |
 | `primary` | a Hyprland monitor name | where the dock, island, desktop and weather sky go; default: Hyprland's first monitor |
 | `contrast` | `high` | accessibility: secondary text near full opacity, glass panels opaque (read at start; `MIST_CONTRAST=high` overrides) |
+| `accent` | `"#rrggbb"`, `"wallpaper"` | the accent colour (Settings → Personalization → Colours); `wallpaper`: taken from the photo once per change (cached in `~/.cache/mist/accent-wall.json`), a live wallpaper or a grey photo keep the default |
+| `workspace_names` | `{"1": "Work", "2": "Games"}` | shown in the bar over an empty desktop (Settings → Multitasking) |
+| `dnd_auto` | `{"hours": "22:00-07:00", "fullscreen": true, "sharing": true}` | Do Not Disturb by itself: in quiet hours (`""` = never), over a fullscreen window, while the screen is shared or recorded. Urgent notifications still come through (Settings → Notifications) |
 
 ### `widgets.json`: the desktop
 
@@ -123,12 +126,22 @@ The experimental compositor's key bindings, autostart, monitors and switches; fu
 | `direct_scanout game\|on\|off` | a client's buffer goes straight to the screen (Hyprland `render:direct_scanout`). `game` (default): a fullscreen game's, primary plane only; `on`: any window, overlay planes too (on NVIDIA that showed torn or stale windows); `off`: everything composited |
 | `screencopy_dmabuf on` | screen casting into the client's GPU buffer (opt-in) |
 | `workspaces vertical` | workspaces stacked top to bottom (niri): the switch slides up / down and the touchpad swipe goes up / down (fingers up bring the next one); default horizontal |
+| `corner tl\|tr\|bl\|br ACTION` | hot corner: the pointer pushed into that screen corner runs ACTION once (`corner tl overview`, `corner br showdesktop`; `off` removes it). Not over a fullscreen window, not while dragging; corners another monitor continues past do not count (Settings → Multitasking) |
 | `fifo on` | wp-fifo + wp-commit-timing: Vulkan FIFO (vsync) and Proton-paced clients are paced by the display refresh instead of frame callbacks (opt-in; off in safe mode) |
 
 Actions worth a bind besides Hyprland's: `overview` (Mission Control, SUPER+G by default: the monitor's
 workspaces one under another, each with its windows side by side; ← → pick a window, ↑ ↓ the workspace above /
 below, Tab every window in turn, Enter or a click goes there, Escape goes back), `zoom in|out|off` (the magnifier around the pointer,
-SUPER+= / SUPER+-, 1.25x a step up to 8x; screenshots and screen sharing stay unmagnified).
+SUPER+= / SUPER+-, 1.25x a step up to 8x; screenshots and screen sharing stay unmagnified), `pin` (always on top and on
+every workspace, SUPER+CTRL+T), `dropdown [CMD]` (a Quake-style terminal at the top of the screen, SUPER+CTRL+Return; the
+first press starts `kitty --class mist-dropdown`, then it hides and comes back; another command must set that app id),
+`layout save NAME` / `layout load NAME` (the open windows with their workspaces and places in
+`~/.config/mist/layouts/NAME.json`; loading moves the open ones back and starts the missing apps; Spotlight: type
+"layout" or "układ"). `hyprctl dispatch` takes every one of these actions as well.
+
+Other default keys: SUPER+/ the shortcut cheat sheet, SUPER+SHIFT+R screen recording (a region; the same keys stop it),
+SUPER+SHIFT+T text from a screen region to the clipboard (OCR), SUPER+P the colour picker (the hex code to the
+clipboard, shown on the island).
 
 `mist-comp migrate [~/.config/hypr/hyprland.lua]` prints comp.conf lines for the binds (exec and common
 dispatchers), monitors, `hl.env` and autostart it understands; the rest is marked `# not converted:`.
@@ -153,6 +166,11 @@ mist-comp also speaks ext-workspace-v1 (waybar `ext/workspaces` and other bars) 
 | Phone (calls, SMS, battery, find my phone) | KDE Connect paired with the phone | no paired device |
 | Calls through ADB (phones where KDE Connect telephony stays silent, e.g. HyperOS) | `adb` installed, the phone authorised (USB, or Wi-Fi after `adb tcpip`) | `adb` missing or no authorised device |
 | Brightness keys on external monitors (`scripts/bright.sh`) | `ddcutil`, DDC/CI on | `ddcutil` missing |
+| Screen recording (`scripts/record.sh [region\|screen] [audio]`) | `wf-recorder`, `slurp` | the island says it is missing |
+| Text from the screen (`scripts/ocr.sh`) | `tesseract` with `tesseract-data-pol` / `-eng` | the island says it is missing |
+| Colour picker (`scripts/pick.sh`) | `hyprpicker` | nothing happens |
+| Battery in the bar, island warnings at 20 / 10 / 5 %, charge limit 80 % | UPower; the limit needs `charge_control_end_threshold` (most ThinkPads, ASUS, Dell, Framework) and asks for the admin password once (a tmpfiles rule keeps it after reboot) | no battery |
+| Send files / the clipboard to the phone (Mist Files menu, Spotlight) | KDE Connect paired with the phone | KDE Connect not installed |
 
 ## Environment
 
@@ -166,9 +184,12 @@ mist-comp also speaks ext-workspace-v1 (waybar `ext/workspaces` and other bars) 
 | `MIST_UI_NO_BAR`, `_NO_DOCK`, `_NO_ISLAND`, `_NO_DESK`, `_NO_WALL` | leave that surface out |
 | `MIST_UI_NO_SERVICES` | no clipboard watcher and other background helpers (tests) |
 | `MIST_UI_SOCK` | the IPC socket of `mist-ui-bin msg` (a second instance for tests) |
+| `MIST_REC_DIR` | where screen recordings go (default: Videos/Screen recordings, `Nagrania ekranu` with a Polish `$LANG`) |
+| `MIST_OCR_LANG` | tesseract languages, e.g. `deu+eng` (default: the installed ones of `pol+eng`) |
 | `MIST_COMP_DRM_DEVICE` | the GPU mist-comp drives (e.g. `/dev/dri/card0`). mist-comp drives one GPU: on a hybrid laptop whose HDMI port is wired to the other GPU, `mist-comp --probe` lists each GPU's connected screens and the log warns at start; point this at the card with the screen you need |
 
 Development only: `MIST_I18N_MISS=file` (appends every string drawn without a translation),
 `MIST_EDIT`, `MIST_SCROLL`, `MIST_BENCH` (offscreen renders), `MIST_WALL_BENCH`, `MIST_WALL_FRAMES`,
 `MIST_WALL_FPS` (mist-wall), `MIST_COMP_*` (mist-comp: `MIST_COMP_WATCHDOG_SECS` (60), `MIST_COMP_NO_SESSION`,
-`MIST_COMP_SESSION_FILE`, `MIST_COMP_RESTORE=1` (start what the session file lists), `MIST_COMP_ANIM=0`).
+`MIST_COMP_SESSION_FILE`, `MIST_COMP_RESTORE=1` (start what the session file lists), `MIST_COMP_ANIM=0`,
+`MIST_COMP_LAYOUT_DIR`), `MIST_POWER_SUPPLY` (a fake `/sys/class/power_supply`), `MIST_ZONEINFO` (time zones for Spotlight).

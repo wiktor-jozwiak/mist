@@ -31,6 +31,7 @@ hl.bind(mainMod .. " + period",      hl.dsp.exec_cmd(mist .. "mist toggle emoji"
 hl.bind(mainMod .. " + Y",           hl.dsp.exec_cmd(mist .. "mist toggle phone"))
 hl.bind(mainMod .. " + SHIFT + W",   hl.dsp.exec_cmd(mist .. "mist toggle wallpaper"))
 hl.bind(mainMod .. " + ALT + C",     hl.dsp.exec_cmd(mist .. "mist toggle session"))
+hl.bind(mainMod .. " + slash",       hl.dsp.exec_cmd(mist .. "mist toggle keys"))
 hl.bind(mainMod .. " + L",           hl.dsp.exec_cmd(home .. "/.local/bin/mist-ui-bin lock"))
 
 -- media and brightness (brightness over DDC/CI: ddcutil)
@@ -45,6 +46,10 @@ hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd(scripts .. "bright.sh down"), {
 hl.bind("Print",                     hl.dsp.exec_cmd(scripts .. "screenshot.sh region"))
 hl.bind(mainMod .. " + SHIFT + S",   hl.dsp.exec_cmd(scripts .. "screenshot.sh region"))
 hl.bind(mainMod .. " + Print",       hl.dsp.exec_cmd(scripts .. "screenshot.sh full"))
+-- screen recording (wf-recorder; the same keys stop it), text from the screen (tesseract), colour picker
+hl.bind(mainMod .. " + SHIFT + R",   hl.dsp.exec_cmd(scripts .. "record.sh region"))
+hl.bind(mainMod .. " + SHIFT + T",   hl.dsp.exec_cmd(scripts .. "ocr.sh"))
+hl.bind(mainMod .. " + P",           hl.dsp.exec_cmd(scripts .. "pick.sh"))
 
 -- glass: Hyprland blurs under the translucent surfaces; the shell animates its own layers
 hl.layer_rule({

@@ -4,6 +4,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+### Added
+- mist-comp: hot corners (`corner tl overview`, Settings → Multitasking), `pin` (always on top, on every
+  workspace, Super+Ctrl+T), a dropdown terminal (`dropdown`, Super+Ctrl+Return), saved window layouts
+  (`layout save|load NAME`, Spotlight "layout …"); `hyprctl dispatch` takes any comp.conf action.
+- Shortcut cheat sheet (Super+/): every key binding in words, grouped, numbered ones folded.
+- Battery: level in the bar, island notices (charger, full, low at 20 / 10 / 5 %), charge limit 80 % in
+  Settings → Power.
+- Do Not Disturb by itself: quiet hours, over a fullscreen window, while the screen is shared or recorded.
+- Screen recording (Super+Shift+R, wf-recorder, a red dot on the island), text from the screen (Super+Shift+T,
+  tesseract), the colour picker shows the colour on the island.
+- Spotlight: units, currencies (ECB rates, fetched once a day) and time zones ("22:00 tokio"), open windows.
+- Workspace names in the bar; the accent colour can follow the wallpaper photo.
+- Send files (Mist Files menu) and the clipboard (Spotlight) to the phone through KDE Connect.
+
 ### Changed
 - Settings: one window instead of two. The Ustawienia panel is gone; Mist Settings (`mist-ui-bin settings`)
   now has Personalization → Desktop (live preview, cards, clock), Widgets with a page per widget, and the
