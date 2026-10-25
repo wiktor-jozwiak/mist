@@ -113,7 +113,7 @@ fn layouts(raw: &str, q: &str) -> Vec<Res> {
         .map(|s| Res { kind: Kind::Cmd(hc("load", s)), title: format!("{} {s}", crate::i18n::tr("Przywróć układ:")), sub: crate::i18n::tr("Okna wracają na swoje pulpity i miejsca").into_owned(), icon: "layoutGrid".into() })
         .collect();
     if !name.is_empty() && !name.starts_with('.') && !name.contains('/') {
-        let exists = saved.iter().any(|s| *s == name);
+        let exists = saved.contains(&name);
         out.push(Res { kind: Kind::Cmd(hc("save", &name)), title: format!("{} „{name}”", crate::i18n::tr(if exists { "Nadpisz układ" } else { "Zapisz układ jako" })), sub: crate::i18n::tr("Otwarte okna, ich pulpity i miejsca").into_owned(), icon: "floppy".into() });
     } else if saved.is_empty() {
         out.push(Res { kind: Kind::Answer(String::new()), title: crate::i18n::tr("Wpisz nazwę, by zapisać układ okien").into_owned(), sub: crate::i18n::tr("np. „układ Praca”").into_owned(), icon: "layoutGrid".into() });
