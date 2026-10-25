@@ -2,7 +2,7 @@
 // open it on their page):
 //   home       tiles: network · Bluetooth · phone | Do Not Disturb · night light, sound slider, now playing
 //   sound      output + input volume and devices, per-app volume (grouped by application.name)
-//   network    active connection details and live throughput
+//   network    active connection details and live throughput, Wi-Fi on / off and the networks around
 //   bluetooth  power switch, paired devices (click = connect / disconnect), discovery + pairing
 // Pages slide in from the right; the glass sheet animates to the page height. The data comes from a worker
 // thread (pactl json, BlueZ over D-Bus, nmcli), refreshed every second while open and after each command.
@@ -75,6 +75,9 @@ pub(crate) struct Net {
     pub speed: i64,
     pub up: bool,
     pub has_wifi: bool,
+    // the Wi-Fi radio, and the networks in range (only read for the network page)
+    pub wifi_on: bool,
+    pub aps: Vec<crate::sysset::backend::Wifi>,
 }
 
 enum Req {
@@ -87,6 +90,11 @@ enum Req {
     BtDiscover(bool),
     BtConnect(String, bool),
     BtPair(String),
+    WifiPower(bool),
+    // a fresh scan (the network page opened)
+    WifiScan,
+    // a known or open network: (ssid, known)
+    WifiJoin(String, bool),
 }
 enum Res {
     Snd(Snd),
@@ -216,6 +224,18 @@ pub(crate) fn net_state() -> Net {
     n
 }
 
+// net_state + the radio and the networks around (two more nmcli runs, so only for this page)
+fn net_page_state() -> Net {
+    let mut n = net_state();
+    if n.has_wifi {
+        n.wifi_on = Command::new("nmcli").args(["radio", "wifi"]).output().map(|o| String::from_utf8_lossy(&o.stdout).trim() == "enabled").unwrap_or(false);
+        if n.wifi_on {
+            n.aps = crate::sysset::backend::wifi_list();
+        }
+    }
+    n
+}
+
 fn worker(rx: Receiver<Req>, tx: Sender<Res>) {
     let bus = zbus::blocking::Connection::system().ok();
     while let Ok(first) = rx.recv() {
@@ -231,6 +251,22 @@ fn worker(rx: Receiver<Req>, tx: Sender<Res>) {
                 Req::Snd => snd = true,
                 Req::Bt => bt = true,
                 Req::Net => net = true,
+                Req::WifiPower(on) => {
+                    let _ = Command::new("nmcli").args(["radio", "wifi", if on { "on" } else { "off" }]).status();
+                    net = true;
+                }
+                // seconds long: their own threads, the page again when done
+                Req::WifiScan | Req::WifiJoin(..) => {
+                    let tx = tx.clone();
+                    let _ = std::thread::Builder::new().name("wifi".into()).spawn(move || {
+                        let _ = match &r {
+                            Req::WifiJoin(ssid, true) => Command::new("nmcli").args(["connection", "up", "id", ssid]).output(),
+                            Req::WifiJoin(ssid, false) => Command::new("nmcli").args(["device", "wifi", "connect", ssid]).output(),
+                            _ => Command::new("nmcli").args(["device", "wifi", "rescan"]).output(),
+                        };
+                        let _ = tx.send(Res::Net(net_page_state()));
+                    });
+                }
                 Req::Pactl(c) => {
                     last_pactl.retain(|p| p[..p.len() - 1] != c[..c.len() - 1]);
                     last_pactl.push(c);
@@ -285,7 +321,7 @@ fn worker(rx: Receiver<Req>, tx: Sender<Res>) {
                 }
             }
         }
-        if net && tx.send(Res::Net(net_state())).is_err() {
+        if net && tx.send(Res::Net(net_page_state())).is_err() {
             return;
         }
     }
@@ -325,6 +361,7 @@ enum Hit {
     Paired(usize),
     Found(usize),
     Wifi,
+    Ap(usize),
 }
 
 pub struct Control {
@@ -472,6 +509,9 @@ impl Control {
             let _ = self.req.send(Req::BtDiscover(want));
         }
         let _ = self.req.send(match p { "network" => Req::Net, "bluetooth" => Req::Bt, _ => Req::Snd });
+        if p == "network" {
+            let _ = self.req.send(Req::WifiScan);
+        }
     }
     fn take(&mut self, r: Res) {
         match r {
@@ -851,8 +891,21 @@ impl Control {
                 if n.has_wifi {
                     y += 8.0;
                     Self::group(c, 0.0, y, w, 48.0);
-                    self.pick_row(c, t, 4.0, y + 4.0, w - 8.0, "wifi", "Wi-Fi", false, Hit::Wifi, o);
+                    self.pick_row(c, t, 4.0, y + 4.0, w - 8.0, "wifi", "Wi-Fi", n.wifi_on, Hit::Wifi, o);
                     y += 48.0;
+                    if n.wifi_on && !n.aps.is_empty() {
+                        y += 8.0 + 4.0 + 8.0;
+                        y += Self::label(c, t, 0.0, y, "Sieci") + 8.0;
+                        Self::group(c, 0.0, y, w, n.aps.len() as f32 * 40.0 + 8.0);
+                        for (i, ap) in n.aps.iter().enumerate() {
+                            let ry = y + 4.0 + i as f32 * 40.0;
+                            self.pick_row(c, t, 4.0, ry, w - 8.0, "wifi", &ap.ssid, ap.on, Hit::Ap(i), o);
+                            if ap.secure && !ap.on {
+                                c.icon(t, w - 4.0 - 12.0 - 6.5, ry + 20.0, "lock", 13.0, T3);
+                            }
+                        }
+                        y += n.aps.len() as f32 * 40.0 + 8.0;
+                    }
                 }
             }
             _ => {
@@ -1152,7 +1205,21 @@ impl Pane for Control {
                         }
                         Act::Redraw
                     }
-                    Some(Hit::Wifi) => Act::Exec(vec!["sh".into(), "-c".into(), "[ \"$(nmcli radio wifi)\" = enabled ] && nmcli radio wifi off || nmcli radio wifi on".into()]),
+                    Some(Hit::Wifi) => {
+                        self.net.wifi_on = !self.net.wifi_on;
+                        let _ = self.req.send(Req::WifiPower(self.net.wifi_on));
+                        Act::Redraw
+                    }
+                    Some(Hit::Ap(i)) => match self.net.aps.get(i).cloned() {
+                        Some(ap) if ap.on => Act::None,
+                        Some(ap) if ap.known || !ap.secure => {
+                            let _ = self.req.send(Req::WifiJoin(ap.ssid, ap.known));
+                            Act::Redraw
+                        }
+                        // a password to type: the Settings page asks for it
+                        Some(_) => Act::Run(vec![crate::paths::self_bin(), "settings".into(), "network".into()]),
+                        None => Act::None,
+                    },
                     _ => Act::None,
                 }
             }

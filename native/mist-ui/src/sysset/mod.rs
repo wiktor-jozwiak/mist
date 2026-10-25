@@ -4,7 +4,7 @@
 // An appwin app like Mist Files: CPU drawn into wl_shm, no GPU context, single instance (a second launch
 // hands its page to the running one). Nothing is polled while idle: data is read when a page opens or the
 // window gets focus, after each change, and every 2 s only while a Bluetooth scan runs.
-mod backend;
+pub(crate) mod backend;
 mod pages;
 mod paint;
 

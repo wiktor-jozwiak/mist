@@ -240,7 +240,7 @@ fn worker(rx: Receiver<Req>, out: Out) {
     }
 }
 
-fn wifi_list() -> Vec<Wifi> {
+pub(crate) fn wifi_list() -> Vec<Wifi> {
     let known: Vec<String> = sh("nmcli -t -f NAME,TYPE connection show").lines().filter(|l| l.ends_with(":802-11-wireless")).map(|l| l.rsplit_once(':').map(|x| x.0).unwrap_or(l).replace("\\:", ":")).collect();
     let mut v: Vec<Wifi> = Vec::new();
     for l in sh("nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY device wifi list --rescan no").lines() {
