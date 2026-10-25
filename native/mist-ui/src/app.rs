@@ -748,9 +748,10 @@ impl App {
         self.pane_open_box(p, scr);
     }
     // Cmd+Tab: open on the focused monitor, or step when open
-    fn switcher_step(&mut self, d: i32) {
+    // win: through the selected app's windows (Super+Ctrl+Tab) instead of the apps
+    fn switcher_step(&mut self, d: i32, win: bool) {
         if let Some(sw) = self.pane.as_mut().and_then(|p| p.p.as_switcher()) {
-            sw.step(d);
+            if win { sw.step_win(d) } else { sw.step(d) }
             self.pane.as_mut().unwrap().dirty = true;
             return;
         }
@@ -760,10 +761,10 @@ impl App {
         let mut apps: Vec<crate::switcher::App> = Vec::new();
         for c in cs {
             match apps.iter_mut().find(|a| a.cls == c.class) {
-                Some(a) => a.wins.push((c.address.clone(), c.ws_name.clone())),
+                Some(a) => a.wins.push((c.address.clone(), c.ws_name.clone(), c.title.clone())),
                 None => {
                     let e = self.apps.lookup(&c.class);
-                    apps.push(crate::switcher::App { cls: c.class.clone(), name: e.map(|e| e.name.clone()).unwrap_or(c.class.clone()), icon: e.map(|e| e.icon.clone()).unwrap_or(c.class.clone()), wins: vec![(c.address.clone(), c.ws_name.clone())] });
+                    apps.push(crate::switcher::App { cls: c.class.clone(), name: e.map(|e| e.name.clone()).unwrap_or(c.class.clone()), icon: e.map(|e| e.icon.clone()).unwrap_or(c.class.clone()), wins: vec![(c.address.clone(), c.ws_name.clone(), c.title.clone())] });
                 }
             }
         }
@@ -771,7 +772,8 @@ impl App {
             return;
         }
         let scr = self.focused_screen();
-        self.pane_open_box(Box::new(crate::switcher::Switcher::new(apps, d)), &scr);
+        let sw = if win { crate::switcher::Switcher::new_windows(apps) } else { crate::switcher::Switcher::new(apps, d) };
+        self.pane_open_box(Box::new(sw), &scr);
     }
     fn pane_open_box(&mut self, p: Box<dyn crate::pane::Pane>, scr: &str) {
         // replacing the window picker: the dock is not held up by it any more
@@ -1989,11 +1991,15 @@ impl App {
                 String::new()
             }
             ("switcher", "next") => {
-                self.switcher_step(1);
+                self.switcher_step(1, false);
                 String::new()
             }
             ("switcher", "prev") => {
-                self.switcher_step(-1);
+                self.switcher_step(-1, false);
+                String::new()
+            }
+            ("switcher", "windows") => {
+                self.switcher_step(1, true);
                 String::new()
             }
             ("lock", "lock") => {

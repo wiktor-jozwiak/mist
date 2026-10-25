@@ -23,6 +23,7 @@ hl.bind(mainMod .. " + Space",       hl.dsp.exec_cmd(mist .. "mist toggle spotli
 hl.bind(mainMod .. " + SUPER_L",     hl.dsp.exec_cmd(mist .. "mist toggle start"), { release = true })
 hl.bind(mainMod .. " + Tab",         hl.dsp.exec_cmd(mist .. "switcher next"))
 hl.bind(mainMod .. " + SHIFT + Tab", hl.dsp.exec_cmd(mist .. "switcher prev"))
+hl.bind(mainMod .. " + CTRL + Tab",  hl.dsp.exec_cmd(mist .. "switcher windows"))
 hl.bind(mainMod .. " + I",           hl.dsp.exec_cmd(mist .. "mist toggle control"))
 hl.bind(mainMod .. " + A",           hl.dsp.exec_cmd(mist .. "mist toggle notifications"))
 hl.bind(mainMod .. " + V",           hl.dsp.exec_cmd(mist .. "mist toggle clipboard"))

@@ -150,6 +150,16 @@ pub fn make(name: &str, page: &str) -> Option<Box<dyn Pane>> {
             p.set_page(page);
             Some(Box::new(p))
         }
+        // tests only (app.rs opens it from the binds): Discord + five terminals, `switcher:win` with the
+        // terminals' window list open
+        "switcher" => {
+            let w = |i: usize, ws: &str, t: &str| (format!("0x{i}"), ws.to_string(), t.to_string());
+            let apps = vec![
+                crate::switcher::App { cls: "kitty".into(), name: "kitty".into(), icon: "kitty".into(), wins: (1..=5).map(|i| w(i, &i.to_string(), &format!("~/projekt-{i} — fish"))).collect() },
+                crate::switcher::App { cls: "discord".into(), name: "Discord".into(), icon: "discord".into(), wins: vec![w(9, "2", "Discord")] },
+            ];
+            Some(Box::new(if page == "win" { crate::switcher::Switcher::new_windows(apps) } else { crate::switcher::Switcher::new(apps, 1) }))
+        }
         // tests only (app.rs opens it from maxhover): the hover flyout, `snapfly:<i>` = zone i of flat() hot
         "snapfly" => {
             let mut f = crate::snap::Fly::new("0x1", 0.0, 0.0, false, &[]);
