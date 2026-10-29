@@ -157,6 +157,10 @@ impl MistComp {
                 let p = self.seat.get_pointer().unwrap();
                 p.gesture_swipe_begin(self, &GestureSwipeBeginEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), fingers });
                 p.frame(self);
+                if crate::snapswipe::wants(fingers, self.config.swipe_fingers) && !self.locked {
+                    crate::snapswipe::begin();
+                    return;
+                }
             }
             InputEvent::GestureSwipeUpdate { event, .. } => {
                 if let Some(s) = self.swipe.as_mut() {
@@ -170,6 +174,10 @@ impl MistComp {
                 let p = self.seat.get_pointer().unwrap();
                 p.gesture_swipe_update(self, &GestureSwipeUpdateEvent { time: event.time_msec(), delta: GestureSwipeUpdateEvent_::delta(&event) });
                 p.frame(self);
+                if crate::snapswipe::active() {
+                    crate::snapswipe::update(GestureSwipeUpdateEvent_::delta_x(&event), GestureSwipeUpdateEvent_::delta_y(&event));
+                    return;
+                }
             }
             InputEvent::GestureSwipeEnd { event, .. } => {
                 if self.swipe.is_some() {
@@ -179,6 +187,12 @@ impl MistComp {
                 let p = self.seat.get_pointer().unwrap();
                 p.gesture_swipe_end(self, &GestureSwipeEndEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), cancelled: GestureEndEvent::cancelled(&event) });
                 p.frame(self);
+                if crate::snapswipe::active() {
+                    if let Some(k) = crate::snapswipe::end(GestureEndEvent::cancelled(&event)) {
+                        self.do_action(crate::config::Action::Snap(k));
+                    }
+                    return;
+                }
             }
             InputEvent::GesturePinchBegin { event, .. } => {
                 let p = self.seat.get_pointer().unwrap();

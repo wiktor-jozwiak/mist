@@ -120,7 +120,7 @@ The experimental compositor's key bindings, autostart, monitors and switches; fu
 | `output NAME X Y [scale S] [mode WxH[@Hz]] [transform T]` | a monitor (also in `outputs`, where comp.conf wins); applied at hotplug and on `reload` |
 | `exec CMD`, `env K V` | autostart, environment |
 | `keyboard LAYOUT[,LAYOUT2] [VARIANT] [OPTIONS]`, `numlock on`, `pointer flat` | input |
-| `swipe 3\|4\|off` | touchpad: N fingers (default 3) sideways move to the next / previous workspace, which follows the fingers (lifting past a third finishes it, a short swipe goes back); up opens the overview, down closes it |
+| `swipe 3\|4\|off` | touchpad: N fingers (default 3) sideways move to the next / previous workspace, which follows the fingers (lifting past a third finishes it, a short swipe goes back); up opens the overview, down closes it. 4 fingers (while `swipe` is not 4) snap the focused window like Super+arrows: left / right half, up maximized, down restored |
 | `vrr fullscreen\|off`, `swallow on`, `middle_click_paste off` | as Hyprland's misc options |
 | `explicit_sync off` | no linux-drm-syncobj (default: on where the GPU supports it); try it when a window freezes and the log says a frame waits for its GPU fence |
 | `direct_scanout game\|on\|off` | a client's buffer goes straight to the screen (Hyprland `render:direct_scanout`). `game` (default): a fullscreen game's, primary plane only; `on`: any window, overlay planes too (on NVIDIA that showed torn or stale windows); `off`: everything composited |

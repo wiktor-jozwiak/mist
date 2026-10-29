@@ -1,6 +1,7 @@
 #![allow(irrefutable_let_patterns)]
 
 mod hit;
+mod snapswipe;
 mod prof;
 mod cover;
 mod session;

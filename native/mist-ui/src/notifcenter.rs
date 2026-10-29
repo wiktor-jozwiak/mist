@@ -22,6 +22,8 @@ enum Hit {
     Agenda,
     Group(String),
     Hide(String),
+    // an action button of a live notification: id, action key
+    Action(u32, String),
 }
 
 struct Group {
@@ -66,6 +68,15 @@ fn key_of(n: &Value) -> String {
 fn title_of(n: &Value) -> String {
     if is_phone(n) { String::new() } else { clean(n["summary"].as_str().unwrap_or("")) }
 }
+// a notification's action buttons while its app can still get them (notif.rs keeps a note live 10 minutes)
+fn live_actions(n: &Value) -> Vec<(String, String)> {
+    if now_ms() - ms(n) > 600_000 {
+        return vec![];
+    }
+    n["actions"].as_array().map(|a| a.iter().filter_map(|x| Some((x[0].as_str()?.to_string(), x[1].as_str()?.to_string()))).filter(|x| !x.1.is_empty()).take(3).collect()).unwrap_or_default()
+}
+const ACT_H: f32 = 30.0;
+
 fn ms(n: &Value) -> i64 {
     n["received_wall_ms"].as_i64().unwrap_or(0)
 }
@@ -285,7 +296,7 @@ impl Pane for NotifCenter {
                     if !body.is_empty() {
                         th += crate::gfx::wrap(t, &body, &s125, tw, if expanded { 5 } else { 2 }).len() as f32 * crate::desktop::line_h(t, &s125);
                     }
-                    let h = th.max(if thumb.is_some() { 44.0 } else { 0.0 }) + if i > 0 { 18.0 } else { 4.0 };
+                    let h = th.max(if thumb.is_some() { 44.0 } else { 0.0 }) + if i > 0 { 18.0 } else { 4.0 } + if live_actions(n).is_empty() { 0.0 } else { ACT_H };
                     heights.push(h);
                 }
                 let inner_h = 18.0 + heights.iter().sum::<f32>() + if more > 0 { 26.0 } else { 0.0 };
@@ -391,6 +402,25 @@ impl Pane for NotifCenter {
                             crate::img::draw(&mut l, &pm, ix + iw - 44.0, ty0, 44.0, 44.0, 9.0, true, 1.0);
                         }
                     }
+                    // action buttons along the bottom of the row
+                    let acts = live_actions(n);
+                    if !acts.is_empty() {
+                        let id = n["id"].as_u64().unwrap_or(0) as u32;
+                        let st = Style::ui(11.5, 600.0);
+                        let sh = crate::desktop::line_h(t, &st);
+                        let (mut bx, by) = (ix, ry + heights[i] - 26.0);
+                        for (key, label) in acts {
+                            let bw = (t.width(&label, &st) + 22.0).min(iw - (bx - ix));
+                            if bw < 40.0 {
+                                break;
+                            }
+                            let bh = inside(lp, (bx, by, bw, 24.0));
+                            crate::desktop::rect(&mut l, bx, by, bw, 24.0, 12.0, if bh { Rgba(1.0, 1.0, 1.0, 0.18) } else { FILL2 });
+                            crate::desktop::text(&mut l, t, bx + 11.0, by + (24.0 - sh) / 2.0, &label, &st, T1, false, Some(bw - 20.0));
+                            lh_.push(((bx, by, bw, 24.0), Hit::Action(id, key)));
+                            bx += bw + 6.0;
+                        }
+                    }
                     ry += heights[i];
                 }
                 if more > 0 {
@@ -457,6 +487,7 @@ impl Pane for NotifCenter {
                     Act::Exec(vec![crate::paths::self_bin(), "msg".into(), "notif".into(), "clear".into()])
                 }
                 Some(Hit::Agenda) => Act::Toggle("calendar"),
+                Some(Hit::Action(id, key)) => Act::Run(vec![crate::paths::self_bin(), "msg".into(), "notif".into(), "invoke".into(), id.to_string(), key]),
                 Some(Hit::Hide(app)) => {
                     cx.notif_hidden.insert(app.clone(), now_ms());
                     if self.open == app {

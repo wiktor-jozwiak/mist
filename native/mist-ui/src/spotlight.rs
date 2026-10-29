@@ -1,6 +1,6 @@
 // Spotlight (was Spotlight.qml; Super+Space / S / R): a glass search capsule in the upper third, results
 // drop out of it. Apps (ranked by ~/.config/mist/usage.json, shared with Start), open windows by title,
-// calculator, units / currencies / time zones (quick.rs), commands, emoji, web. Emoji mode (Super+.: popup "emoji", or a ":" prefix) -> an emoji grid, Enter copies.
+// calculator, units / currencies / time zones (quick.rs), commands, files in the user folders, emoji, web. Emoji mode (Super+.: popup "emoji", or a ":" prefix) -> an emoji grid, Enter copies.
 // Keys: ↑↓ (←→ in the emoji grid), Enter, Esc.
 use crate::anim::{Anim, Ease};
 use crate::gfx::{Canvas, Rgba};
@@ -23,6 +23,8 @@ enum Kind {
     Cmd(Vec<String>),
     Emoji(String),
     Web(String),
+    // a file or folder in the user folders: Enter opens it
+    File(String),
 }
 #[derive(Clone)]
 struct Res {
@@ -172,6 +174,94 @@ pub struct Spotlight {
     wins: std::cell::OnceCell<Vec<(String, String, String, String)>>,
 }
 
+// Files and folders under the user folders (XDG dirs: Desktop, Documents, ...), listed while Spotlight is open:
+// one walk in a thread at the first query of 3+ characters (a few ms for a few thousand entries), dropped when
+// Spotlight closes. No index on disk, nothing in the background; hidden entries, node_modules and target skipped.
+type FileList = std::sync::Arc<std::sync::OnceLock<Vec<(String, String)>>>;
+static FILES: std::sync::Mutex<Option<FileList>> = std::sync::Mutex::new(None);
+const FILES_MAX: usize = 20_000;
+
+fn user_dirs() -> Vec<std::path::PathBuf> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let conf = std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| format!("{home}/.config"));
+    let mut v: Vec<std::path::PathBuf> = std::fs::read_to_string(format!("{conf}/user-dirs.dirs"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("XDG_")?.split_once("_DIR=").map(|(_, p)| p.trim_matches('"').replace("$HOME", &home)))
+        .filter(|p| p.trim_end_matches('/') != home.trim_end_matches('/'))
+        .map(std::path::PathBuf::from)
+        .collect();
+    if v.is_empty() {
+        v = ["Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos"].iter().map(|d| std::path::Path::new(&home).join(d)).collect();
+    }
+    v.sort();
+    v.dedup();
+    v
+}
+fn walk(dir: &std::path::Path, depth: u32, out: &mut Vec<(String, String)>) {
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    for e in rd.flatten() {
+        if out.len() >= FILES_MAX {
+            return;
+        }
+        let name = e.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') || name == "node_modules" || name == "target" || name == "__pycache__" {
+            continue;
+        }
+        let path = e.path();
+        let is_dir = e.file_type().is_ok_and(|t| t.is_dir());
+        out.push((norm(&name), path.to_string_lossy().into_owned()));
+        if is_dir && depth > 0 {
+            walk(&path, depth - 1, out);
+        }
+    }
+}
+fn files() -> FileList {
+    let mut g = FILES.lock().unwrap();
+    g.get_or_insert_with(|| {
+        let l: FileList = Default::default();
+        let w = l.clone();
+        let _ = std::thread::Builder::new().name("spotlight-files".into()).spawn(move || {
+            let mut out = Vec::new();
+            for d in user_dirs() {
+                walk(&d, 5, &mut out);
+            }
+            let _ = w.set(out);
+        });
+        l
+    })
+    .clone()
+}
+fn file_results(q: &str) -> Vec<Res> {
+    let l = files();
+    let Some(list) = l.get() else { return vec![] };
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut hits: Vec<(i32, &(String, String))> = list
+        .iter()
+        .filter_map(|f| {
+            let s = if f.0.starts_with(q) { 3 } else if f.0.split(|c: char| !c.is_alphanumeric()).any(|w| w.starts_with(q)) { 2 } else if f.0.contains(q) { 1 } else { return None };
+            Some((s, f))
+        })
+        .collect();
+    // best match, then the shorter (nearer the top) path
+    hits.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.1.len().cmp(&b.1.1.len())));
+    hits.into_iter()
+        .take(5)
+        .map(|(_, (_, path))| {
+            let p = std::path::Path::new(path);
+            let dir = p.parent().map(|d| d.to_string_lossy().replacen(&home, "~", 1)).unwrap_or_default();
+            let icon = if p.is_dir() { "folder" } else { "file" };
+            Res { kind: Kind::File(path.clone()), title: p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), sub: dir, icon: icon.into() }
+        })
+        .collect()
+}
+
+impl Drop for Spotlight {
+    fn drop(&mut self) {
+        *FILES.lock().unwrap() = None;
+    }
+}
+
 fn open_windows() -> Vec<(String, String, String, String)> {
     let out = std::process::Command::new("hyprctl").args(["clients", "-j"]).output().map(|o| o.stdout).unwrap_or_default();
     let v: Value = serde_json::from_slice(&out).unwrap_or_default();
@@ -256,6 +346,9 @@ impl Spotlight {
             }
         }
         out.extend(layouts(raw, &q));
+        if q.chars().count() >= 3 {
+            out.extend(file_results(&q));
+        }
         if q.chars().count() >= 2 {
             // an exact name first ("fire" -> 🔥, not 🧑‍🚒 firefighter), then a prefix / keyword
             let exact = self.emoji.iter().find(|e| norm(e["name"].as_str().unwrap_or("")) == q);
@@ -334,6 +427,7 @@ impl Spotlight {
             Kind::Win(addr, false) => Act::Run(crate::switcher::hypr(&format!("hl.dispatch(hl.dsp.focus({{ window = \"address:0x{}\" }})); hl.dispatch(hl.dsp.window.bring_to_top())", addr.trim_start_matches("0x")))),
             Kind::Emoji(g) => type_emoji(&g),
             Kind::Cmd(c) => Act::Run(c),
+            Kind::File(p) => Act::Run(vec!["xdg-open".into(), p]),
             Kind::Web(q) => {
                 let enc: String = q.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect();
                 Act::Run(vec!["xdg-open".into(), format!("https://www.google.com/search?q={enc}")])
@@ -644,5 +738,35 @@ impl Pane for Spotlight {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod file_tests {
+    use super::*;
+    #[test]
+    fn files_walk_and_rank() {
+        let d = std::env::temp_dir().join(format!("mist-spot-{}", std::process::id()));
+        for p in ["Dokumenty/Raport roczny.pdf", "Dokumenty/stare/raport-2019.odt", "Dokumenty/.ukryty/raport.txt", "Dokumenty/node_modules/raport.js", "Obrazy/wakacje.jpg"] {
+            let f = d.join(p);
+            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+            std::fs::write(&f, "").unwrap();
+        }
+        let mut out = Vec::new();
+        walk(&d, 5, &mut out);
+        let names: Vec<&str> = out.iter().map(|f| f.0.as_str()).collect();
+        assert!(names.contains(&"raport roczny.pdf") && names.contains(&"raport-2019.odt"), "{names:?}");
+        assert!(!out.iter().any(|f| f.1.contains("/.ukryty/") || f.1.contains("node_modules")), "{names:?}");
+        let l: FileList = Default::default();
+        let _ = l.set(out);
+        *FILES.lock().unwrap() = Some(l);
+        let r = file_results(&norm("rapo"));
+        assert_eq!(r.len(), 2);
+        // a prefix of the name first, the nearer path first among equals
+        assert_eq!(r[0].title, "Raport roczny.pdf");
+        assert!(matches!(&r[0].kind, Kind::File(p) if p.ends_with("Raport roczny.pdf")));
+        assert!(file_results("wakac").iter().all(|r| r.icon == "file"));
+        *FILES.lock().unwrap() = None;
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

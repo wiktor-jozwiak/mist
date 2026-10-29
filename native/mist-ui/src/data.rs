@@ -29,38 +29,62 @@ fn sleep_or_wake(name: &str, d: Duration) {
 }
 
 // Garmin and running are optional (docs/guides/garmin.md): on once `mistd garmin sync` has written its database,
-// or with only a cached answer (the demo data of the README renders); else their cards are not shown. Read once per process.
-fn garmin_synced() -> bool {
-    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| {
-        let home = std::env::var("HOME").unwrap_or_default();
-        let data = std::env::var("XDG_DATA_HOME").ok().filter(|d| d.starts_with('/')).unwrap_or_else(|| format!("{home}/.local/share"));
-        // the first builds of the sync kept it in ~/.config/mist
-        [format!("{data}/mist/garmin.db"), format!("{home}/.config/mist/garmin.db")].iter().any(|p| std::path::Path::new(p).exists())
-    })
+// or with only a cached answer (the demo data of the README renders); else their cards are not shown. Probed at
+// start and again by their data threads every turn (a first sync after the shell started shows the cards then;
+// a probe that read once per process kept them hidden, or never refreshed, until the shell restarted).
+const SYNCED: u8 = 1;
+const CACHE_GARMIN: u8 = 2;
+const CACHE_RUNNING: u8 = 4;
+const PROBED: u8 = 128;
+static AVAIL: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+fn probe() -> u8 {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let data = std::env::var("XDG_DATA_HOME").ok().filter(|d| d.starts_with('/')).unwrap_or_else(|| format!("{home}/.local/share"));
+    probe_in(&home, &data)
+}
+fn probe_in(home: &str, data: &str) -> u8 {
+    let f = |p: String| std::path::Path::new(&p).exists();
+    // the first builds of the sync kept it in ~/.config/mist
+    let synced = f(format!("{data}/mist/garmin.db")) || f(format!("{home}/.config/mist/garmin.db"));
+    PROBED | if synced { SYNCED } else { 0 } | if f(format!("{home}/.cache/mist/garmin.json")) { CACHE_GARMIN } else { 0 } | if f(format!("{home}/.cache/mist/running.json")) { CACHE_RUNNING } else { 0 }
+}
+fn avail() -> u8 {
+    use std::sync::atomic::Ordering::Relaxed;
+    match AVAIL.load(Relaxed) {
+        0 => {
+            let p = probe();
+            AVAIL.store(p, Relaxed);
+            p
+        }
+        p => p,
+    }
 }
 pub fn available(card: &str) -> bool {
-    static CACHED: std::sync::OnceLock<[bool; 2]> = std::sync::OnceLock::new();
-    let c = CACHED.get_or_init(|| {
-        let f = |n: &str| std::path::Path::new(&format!("{}/.cache/mist/{n}.json", std::env::var("HOME").unwrap_or_default())).exists();
-        [f("garmin"), f("running")]
-    });
+    let a = avail();
     match card {
-        "garmin" => garmin_synced() || c[0],
-        "running" => garmin_synced() || c[1],
+        "garmin" => a & (SYNCED | CACHE_GARMIN) != 0,
+        "running" => a & (SYNCED | CACHE_RUNNING) != 0,
         _ => true,
     }
 }
 
 pub fn spawn(tx: Sender<Msg>) {
     for (name, every) in [("weather", 600u64), ("garmin", 300), ("running", 600), ("calendar", 900)] {
-        if !available(name) {
-            continue;
-        }
-        // a cache without the connection: read once (mistd answers it as stale), nothing to retry
-        let once = matches!(name, "garmin" | "running") && !garmin_synced();
+        let optional = matches!(name, "garmin" | "running");
         let tx = tx.clone();
+        let mut read_cache = false;
         let _ = std::thread::Builder::new().name(format!("data-{name}")).stack_size(128 * 1024).spawn(move || loop {
+            if optional {
+                AVAIL.store(probe(), std::sync::atomic::Ordering::Relaxed);
+                // no database yet: a cache is read once (mistd answers it as stale), then only the probe
+                // runs, every turn, until a first sync writes the database
+                if avail() & SYNCED == 0 && (read_cache || !available(name)) {
+                    sleep_or_wake(name, Duration::from_secs(every));
+                    continue;
+                }
+                read_cache = avail() & SYNCED == 0;
+            }
             let bin = crate::paths::mistd();
             let out = std::process::Command::new(bin).args(["data", name]).stderr(std::process::Stdio::null()).output();
             let v: Option<Value> = out.ok().and_then(|o| serde_json::from_slice(&o.stdout).ok());
@@ -70,10 +94,7 @@ pub fn spawn(tx: Sender<Msg>) {
             if let Some(v) = v {
                 let _ = tx.send(Msg::Data(name.to_string(), v));
             }
-            if once {
-                return;
-            }
-            sleep_or_wake(name, Duration::from_secs(if retry { 60 } else { every }));
+            sleep_or_wake(name, Duration::from_secs(if retry && !read_cache { 60 } else { every }));
         });
     }
 }
@@ -133,5 +154,24 @@ pub fn wx_icon(code: i64, day: i64) -> &'static str {
         71..=77 | 85 | 86 => "snow",
         c if c >= 95 => "storm",
         _ => "rain",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn probe_sees_a_first_sync() {
+        let d = std::env::temp_dir().join(format!("mist-probe-{}", std::process::id()));
+        let (home, data) = (d.join("home"), d.join("data"));
+        std::fs::create_dir_all(home.join(".cache/mist")).unwrap();
+        std::fs::create_dir_all(data.join("mist")).unwrap();
+        let p = || probe_in(home.to_str().unwrap(), data.to_str().unwrap());
+        assert_eq!(p(), PROBED);
+        std::fs::write(home.join(".cache/mist/running.json"), "{}").unwrap();
+        assert_eq!(p(), PROBED | CACHE_RUNNING);
+        std::fs::write(data.join("mist/garmin.db"), "").unwrap();
+        assert_eq!(p() & SYNCED, SYNCED);
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

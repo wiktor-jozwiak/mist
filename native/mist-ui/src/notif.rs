@@ -209,7 +209,9 @@ impl Server {
                 let e = json!({ "id": id, "app_name": app_name, "summary": n.summary, "body": n.body, "desktop_entry": n.entry,
                     "icon": if app_icon.is_empty() && !ip.starts_with('/') { ip.clone() } else { app_icon.clone() },
                     "received_wall_ms": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
-                    "urgency": (["low", "normal", "critical"][n.urgency as usize]), "image": hi, "image_w": hw });
+                    "urgency": (["low", "normal", "critical"][n.urgency as usize]), "image": hi, "image_w": hw,
+                    // the buttons the notification centre shows while the note is live (10 minutes)
+                    "actions": n.actions.iter().filter(|a| a.0 != "default" && a.0 != "inline-reply").map(|a| [a.0.clone(), a.1.clone()]).collect::<Vec<_>>() });
                 sh.history.insert(0, e);
                 // pictures of entries that fall off the end
                 let gone: Vec<String> = sh.history.iter().skip(300).filter_map(|e| e["image"].as_str().map(String::from)).filter(|s| s.contains("/notif-img/")).collect();

@@ -127,6 +127,20 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
             }
             "ok\n".into()
         }
+        // the 4-finger snap swipe (snapswipe.rs): `swipe4 begin`, `swipe4 DX DY`, `swipe4 end`
+        "swipe4" => {
+            match it.next() {
+                Some("begin") => crate::snapswipe::begin(),
+                Some("end") => {
+                    if let Some(k) = crate::snapswipe::end(false) {
+                        state.do_action(crate::config::Action::Snap(k));
+                    }
+                }
+                Some(n) => crate::snapswipe::update(n.parse().unwrap_or(0.0), it.next().and_then(|v| v.parse().ok()).unwrap_or(0.0)),
+                None => {}
+            }
+            "ok\n".into()
+        }
         "key" | "motion" | "button" => {
             // synthetic input is activity like any other (idle lock / DPMS timers)
             state.idle.notify_activity(&state.seat);
