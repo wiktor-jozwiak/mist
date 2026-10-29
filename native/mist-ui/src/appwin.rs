@@ -562,6 +562,11 @@ impl Rt {
                     sub.place_below(win.window.wl_surface());
                     sub.set_desync();
                     sub.set_position(r.0, r.1);
+                    // no input: mist-comp picks the plane under the pointer despite place_below, so the window
+                    // surface got no button (no move, no clicks over the picture)
+                    if let Ok(empty) = smithay_client_toolkit::compositor::Region::new(&self.compositor) {
+                        s.set_input_region(Some(empty.wl_region()));
+                    }
                     let (fs, qh) = (s.clone(), self.qh.clone());
                     let request_frame: std::rc::Rc<dyn Fn()> = std::rc::Rc::new(move || {
                         fs.frame(&qh, fs.clone());

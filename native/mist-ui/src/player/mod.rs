@@ -597,7 +597,8 @@ impl Player {
         self.tracks.clear();
         self.pos = 0.0;
         self.dur = 0.0;
-        self.video = false;
+        // video after video: mpv keeps its VO configured and sends no vo-configured change, so the plane stays
+        self.video = self.video && !is_audio(&self.cur);
         self.resume_at = None;
         let vis = self.queue_rows();
         if i < self.queue_scroll {
