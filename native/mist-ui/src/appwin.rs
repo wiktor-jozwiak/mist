@@ -103,6 +103,8 @@ pub struct Cx {
     pub cmds: Vec<Cmd>,
     pub mods: Mods,
     pub tx: calloop::channel::Sender<Box<dyn Any + Send>>,
+    // the wl_display (libwayland-client) for eglGetDisplay before any video plane exists
+    pub display: *mut std::ffi::c_void,
     next_token: u64,
 }
 impl Cx {
@@ -173,13 +175,16 @@ pub trait Logic {
     }
     // the plane's wl_surface was made (Some) or is about to go (None): the app draws it itself (EGL)
     fn video_surface(&mut self, _id: WinId, _s: Option<VideoSurface>, _cx: &mut Cx) {}
+    // the frame callback asked with VideoSurface::request_frame came (the compositor shows the plane)
+    fn video_frame(&mut self, _id: WinId, _cx: &mut Cx) {}
 }
 
-// raw pointers for wl_egl_window_create / eglGetDisplay (libwayland-client objects)
-#[derive(Clone, Copy)]
+// the raw pointer for wl_egl_window_create (a libwayland-client object), and a frame callback
+// request for the plane (call it before eglSwapBuffers commits; it ends in Logic::video_frame)
+#[derive(Clone)]
 pub struct VideoSurface {
     pub surface: *mut std::ffi::c_void,
-    pub display: *mut std::ffi::c_void,
+    pub request_frame: std::rc::Rc<dyn Fn()>,
 }
 
 struct Win {
@@ -337,7 +342,7 @@ pub fn run(name: &str, logic: Box<dyn Logic>) -> i32 {
         wins: Vec::new(),
         next_id: 1,
         logic,
-        cx: Cx { cmds: Vec::new(), mods: Mods::default(), tx, next_token: 0 },
+        cx: Cx { cmds: Vec::new(), mods: Mods::default(), tx, display: conn.backend().display_ptr() as *mut _, next_token: 0 },
         mods: Mods::default(),
         kb_win: None,
         ptr_win: None,
@@ -557,7 +562,11 @@ impl Rt {
                     sub.place_below(win.window.wl_surface());
                     sub.set_desync();
                     sub.set_position(r.0, r.1);
-                    made = Some(VideoSurface { surface: wayland_client::Proxy::id(&s).as_ptr() as *mut _, display: self.conn.backend().display_ptr() as *mut _ });
+                    let (fs, qh) = (s.clone(), self.qh.clone());
+                    let request_frame: std::rc::Rc<dyn Fn()> = std::rc::Rc::new(move || {
+                        fs.frame(&qh, fs.clone());
+                    });
+                    made = Some(VideoSurface { surface: wayland_client::Proxy::id(&s).as_ptr() as *mut _, request_frame });
                     win.video = Some((s, sub, r));
                 }
                 let (_, sub, rect) = win.video.as_mut().unwrap();
@@ -595,6 +604,10 @@ impl CompositorHandler for Rt {
     fn scale_factor_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: i32) {}
     fn transform_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: wl_output::Transform) {}
     fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, s: &wl_surface::WlSurface, _: u32) {
+        if let Some(id) = self.wins.iter().find(|w| w.video.as_ref().is_some_and(|v| &v.0 == s)).map(|w| w.id) {
+            self.with_logic(|l, cx| l.video_frame(id, cx));
+            return;
+        }
         if let Some(w) = self.wins.iter_mut().find(|w| w.window.wl_surface() == s) {
             w.frame_pending = false;
             // first frame shown: now the min size (set earlier, Hyprland opens the window at it)

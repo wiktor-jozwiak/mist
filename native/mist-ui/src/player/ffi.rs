@@ -76,6 +76,8 @@ pub const EV_FILE_LOADED: c_int = 8;
 pub const EV_VIDEO_RECONFIG: c_int = 17;
 pub const EV_PLAYBACK_RESTART: c_int = 21;
 pub const EV_PROPERTY_CHANGE: c_int = 22;
+pub const EV_SEEK: c_int = 20;
+pub const EV_GET_PROPERTY_REPLY: c_int = 3;
 pub const END_EOF: c_int = 0;
 pub const END_ERROR: c_int = 4;
 pub const FMT_STRING: c_int = 1;
@@ -101,6 +103,8 @@ api!(Mpv,
     mpv_command: fn(Handle, *mut *const c_char) -> c_int;
     mpv_command_async: fn(Handle, u64, *mut *const c_char) -> c_int;
     mpv_observe_property: fn(Handle, u64, *const c_char, c_int) -> c_int;
+    mpv_unobserve_property: fn(Handle, u64) -> c_int;
+    mpv_get_property_async: fn(Handle, u64, *const c_char, c_int) -> c_int;
     mpv_wait_event: fn(Handle, f64) -> *mut mpv_event;
     mpv_set_wakeup_callback: fn(Handle, Option<unsafe extern "C" fn(*mut c_void)>, *mut c_void);
     mpv_free: fn(*mut c_void);
@@ -128,6 +132,9 @@ pub const EGL_WINDOW_BIT: i32 = 0x0004;
 pub const EGL_RENDERABLE_TYPE: i32 = 0x3040;
 pub const EGL_OPENGL_BIT: i32 = 0x0008;
 pub const EGL_OPENGL_API: u32 = 0x30A2;
+pub const EGL_OPENGL_ES_API: u32 = 0x30A0;
+pub const EGL_OPENGL_ES3_BIT: i32 = 0x0040;
+pub const EGL_EXTENSIONS: i32 = 0x3055;
 pub const EGL_CONTEXT_MAJOR_VERSION: i32 = 0x3098;
 pub const EGL_CONTEXT_MINOR_VERSION: i32 = 0x30FB;
 pub const EGL_CONTEXT_OPENGL_PROFILE_MASK: i32 = 0x30FD;
@@ -147,6 +154,7 @@ api!(Egl,
     eglGetProcAddress: fn(*const c_char) -> *mut c_void;
     eglDestroyContext: fn(EGLDisplay, EGLContext) -> u32;
     eglTerminate: fn(EGLDisplay) -> u32;
+    eglQueryString: fn(EGLDisplay, i32) -> *const c_char;
 );
 api!(WlEgl,
     wl_egl_window_create: fn(*mut c_void, c_int, c_int) -> *mut c_void;

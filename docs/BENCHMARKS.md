@@ -123,3 +123,44 @@ Watching it live: `hyprctl` is mist-comp in its session, and its IPC socket answ
 commits, wake-ups, blur runs), `passes` (render passes per monitor, and how many changed pixels), `top 5` (commits per client over 5 s: who keeps the screen busy) and `blurs`.
 The watchdog logs `watchdog: <app> draws N frames/s while hidden` to `~/.cache/mist/comp.log` when a client
 keeps drawing on a hidden workspace (`MIST_COMP_WATCHDOG_SECS`, default 60).
+
+## Mist Player, before and after the rewrite (2026-10-29)
+
+[`bench/player.py`](../bench/player.py) `BIN FILE play|chrome|pause|min [secs]` starts `mist-ui-bin player FILE`,
+waits for the first frame, then measures for 8 s: RSS, CPU (% of one core, `/proc/<pid>/stat`), GPU
+(`nvidia-smi pmon`: shader / decoder %), video renders per second and UI repaints per second (the player's
+`--test dump` counters). Files: 1080p H.264 8 Mb/s 30 fps, 2160p HEVC 25 Mb/s 30 fps, MP3. `hwdec=auto-safe`
+(nvdec on this card) in both versions. Start = launch to first video frame shown (audio: first position).
+
+| file | scenario | RSS before → after | CPU before → after | renders/s before → after | UI repaints/s before → after | start before → after |
+|---|---|---|---|---|---|---|
+| empty window | – | 313 → **25 MB** | – | – | – | – |
+| 1080p | play | 409 → 398 MB | 2.3 → 1.7 % | 30 → 30 | 0.1 → 0.1 | 594 → **340 ms** |
+| 1080p | controls shown | 409 → 403 MB | 3.7 → 2.1 % | 30 → 30 | 6.6 → **1.1** | – |
+| 1080p | paused | 405 → 396 MB | 0.2 → 0.1 % | 0 → 0 | – → 0 | – |
+| 1080p | minimized | 407 → 402 MB | 2.1 → **0.9 %** | 30 → **0** | – → 0.1 | – |
+| 2160p | play | 643 → 628 MB | 2.7 → 2.2 % | 30 → 30 | – → 0.1 | 644 → 564 ms |
+| 2160p | controls shown | 587 → 574 MB | 4.3 → 2.5 % | – → 30 | 6.7 → **1.1** | – |
+| 2160p | minimized | 582 → 571 MB | 2.8 → **1.2 %** | 30 → **0** | – → 0.1 | – |
+| MP3 | play | 332 → **126 MB** | 2.0 → 0.5 % | – | 6.2 → 0.9 | 532 → **124 ms** |
+| MP3 | minimized | 334 → 126 MB | 0.5 → 0.2 % | – | – → 0 | – |
+
+Start is the median of 5 runs; the first run after another video is ~550 ms (cold CUDA context) in both.
+What changed and what did not:
+
+- **Memory with video does not move.** ~400 MB at 1080p is the NVIDIA GL driver plus the CUDA context of
+  nvdec (83 MB of `/dev/nvidiactl` mappings alone); standalone `mpv --vo=gpu --hwdec=nvdec` is 439 MB RSS.
+  `vo=dmabuf-wayland` (which would skip GL) fails on this driver (`vaExportSurfaceHandle() failed`,
+  "no video"). GLES instead of GL costs more (456 MB).
+- **Memory without video does.** libmpv is loaded at the first file and GL only for files with a picture:
+  the empty window is plain wl_shm, audio files never create an EGL context.
+- **Hidden costs nothing per frame.** Video is paced by `wl_surface.frame` callbacks; a minimized window gets
+  none, so nothing is rendered (mpv drops the frames after its 200 ms wait, ~5 wake-ups/s; the decoder keeps
+  running, GPU decoder ~2 %). Before, it rendered 30 frames/s into a hidden surface.
+- **Controls repaint once a second**, when the clock text changes, not on every position update.
+  `time-pos` is observed only while the controls are visible.
+- **Start**: the old player read properties synchronously in mpv's event handler; with mpv's core locked
+  waiting for the first render that stalled both until mpv's 200 ms timeout. The track list and metadata are
+  now observed properties and the position an asynchronous read.
+- The UI drawing code (the controls, popovers, panels) was kept: it costs 0.1 to 1 repaint/s, rewriting it
+  saves nothing measurable.
