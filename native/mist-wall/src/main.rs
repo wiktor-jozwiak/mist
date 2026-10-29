@@ -53,6 +53,36 @@ static COLD_AT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new
 // software GL (llvmpipe: NVIDIA's kernel module older than its libraries until a reboot, no GPU): the live
 // scene at half size and fewer frames (llvmpipe, 30 fps at full size: 457 % CPU); MIST_WALL_SOFT=1 forces it
 static SOFT: AtomicBool = AtomicBool::new(false);
+// on battery (no mains online, a battery discharging): the live scene at the software rates (10 / 5 / 1 fps);
+// read every 30 s by its own thread from /sys/class/power_supply (machines without one: never)
+static ON_BATTERY: AtomicBool = AtomicBool::new(false);
+
+fn on_battery(dir: &std::path::Path) -> bool {
+    let Ok(rd) = std::fs::read_dir(dir) else { return false };
+    let mut discharging = false;
+    for e in rd.flatten() {
+        let rd = |f: &str| std::fs::read_to_string(e.path().join(f)).map(|s| s.trim().to_string()).unwrap_or_default();
+        match rd("type").as_str() {
+            "Mains" | "USB" if rd("online") == "1" => return false,
+            "Battery" if rd("status") == "Discharging" => discharging = true,
+            _ => {}
+        }
+    }
+    discharging
+}
+fn watch_power() {
+    let dir = std::path::Path::new("/sys/class/power_supply");
+    if !dir.exists() {
+        return;
+    }
+    let _ = std::thread::Builder::new().name("power".into()).stack_size(64 * 1024).spawn(move || loop {
+        let b = on_battery(dir);
+        if ON_BATTERY.swap(b, Ordering::Relaxed) != b {
+            eprintln!("mist-wall: {}", if b { "on battery: the live scene at a third of its rate" } else { "on mains: full rate" });
+        }
+        std::thread::sleep(Duration::from_secs(30));
+    });
+}
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 enum Kind {
@@ -859,7 +889,7 @@ impl App {
 
     fn cur_fps(&self, name: &str) -> f32 {
         // the other monitors at half rate: the eye is on the main one, half the GPU work there
-        let soft = SOFT.load(Ordering::Relaxed);
+        let soft = SOFT.load(Ordering::Relaxed) || ON_BATTERY.load(Ordering::Relaxed);
         if *self.hidden.get(name).unwrap_or(&false) { if soft { 1.0 } else { 2.0 } } else if name != primary_monitor() { if soft { 5.0 } else { 15.0 } } else if soft { 10.0 } else { 30.0 }
     }
     fn animate(&self, name: &str) -> bool {
@@ -1827,6 +1857,7 @@ fn init_gl(app: &mut App) {
         eprintln!("mist-wall: software GL ({r}): the live scene at half size, 10 fps");
     }
     SOFT.store(soft, Ordering::Relaxed);
+    watch_power();
     app.gl = Some(gl);
 }
 
@@ -1963,3 +1994,25 @@ delegate_compositor!(App);
 delegate_output!(App);
 delegate_layer!(App);
 delegate_registry!(App);
+
+#[cfg(test)]
+mod power_tests {
+    #[test]
+    fn battery_from_sysfs() {
+        let d = std::env::temp_dir().join(format!("mist-power-{}", std::process::id()));
+        let w = |n: &str, f: &str, v: &str| {
+            std::fs::create_dir_all(d.join(n)).unwrap();
+            std::fs::write(d.join(n).join(f), v).unwrap();
+        };
+        assert!(!super::on_battery(&d.join("none")));
+        w("BAT0", "type", "Battery\n");
+        w("BAT0", "status", "Discharging\n");
+        assert!(super::on_battery(&d));
+        w("AC", "type", "Mains\n");
+        w("AC", "online", "1\n");
+        assert!(!super::on_battery(&d));
+        w("AC", "online", "0\n");
+        assert!(super::on_battery(&d));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+}
