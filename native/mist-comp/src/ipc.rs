@@ -262,6 +262,7 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
             )
         }
         "prof" => crate::prof::take(),
+        "frametime" => crate::prof::frametime(),
         // render passes per output since start (and how many of them changed pixels)
         "passes" => {
             let mut v: Vec<_> = state.out_passes.iter().collect();
@@ -270,12 +271,40 @@ fn handle(state: &mut MistComp, mut stream: UnixStream) {
         }
         "night" => format!("{}\n", state.night),
         "workspaces" => state.ws_active.iter().map(|(o, w)| format!("{o} {w}\n")).collect(),
+        // the DRM session renders the picture here at once (its frame loop does not serve `shot`)
+        "shot" if state.udev.is_some() => match it.next() {
+            Some(p) => match crate::screencopy::shot_output(state, std::path::Path::new(p), it.next()) {
+                Ok(()) => "ok\n".into(),
+                Err(e) => format!("error {e}\n"),
+            },
+            None => "usage: shot <out.ppm> [output]\n".into(),
+        },
+        "shot-win" => match (it.next(), it.next()) {
+            (Some(p), Some(id)) => match crate::screencopy::shot_window(state, std::path::Path::new(p), id) {
+                Ok(()) => "ok\n".into(),
+                Err(e) => format!("error {e}\n"),
+            },
+            _ => "usage: shot-win <out.ppm> <app_id>\n".into(),
+        },
         "shot" => match it.next() {
             Some(p) => {
                 state.shot_output = it.next().map(String::from);
                 state.shot = Some((p.into(), stream));
                 state.dirty = true;
                 state.force_full = true;
+                // an output that never renders (a wrong name) must not hold the client for good; only this
+                // shot's timer may end it (a later shot within 3 s is another request)
+                static SHOT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+                let n = SHOT_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                let _ = state.loop_handle.insert_source(smithay::reexports::calloop::timer::Timer::from_duration(std::time::Duration::from_secs(3)), move |_, _, st: &mut crate::state::MistComp| {
+                    if SHOT_SEQ.load(std::sync::atomic::Ordering::Relaxed) != n {
+                        return smithay::reexports::calloop::timer::TimeoutAction::Drop;
+                    }
+                    if let Some((_, mut s)) = st.shot.take() {
+                        let _ = s.write_all(b"error timeout (no frame of that output)\n");
+                    }
+                    smithay::reexports::calloop::timer::TimeoutAction::Drop
+                });
                 return;
             }
             None => "usage: shot <out.ppm> [output]\n".into(),

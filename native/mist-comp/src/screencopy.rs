@@ -271,3 +271,72 @@ fn grab(r: &mut GlesRenderer, space: &smithay::desktop::Space<smithay::desktop::
     }
     None
 }
+
+/// The renderer of whichever backend runs (headless tests, the DRM session, nested).
+fn with_renderer<T>(state: &mut MistComp, f: impl FnOnce(&mut GlesRenderer, &smithay::desktop::Space<smithay::desktop::Window>, &crate::anim::Anims) -> T) -> Option<T> {
+    let MistComp { space, gles, udev, headless, anim, .. } = state;
+    if let Some(h) = headless.as_mut() {
+        Some(f(&mut h.renderer, space, anim))
+    } else if let Some(u) = udev.as_mut() {
+        Some(f(&mut u.renderer, space, anim))
+    } else {
+        gles.as_ref().map(|g| f(g.borrow_mut().renderer(), space, anim))
+    }
+}
+
+/// Pixels from `grab` (Argb8888 = BGRA in memory, or Abgr8888 = RGBA when `rgba`) as a binary PPM.
+fn write_ppm(path: &std::path::Path, px: &[u8], w: usize, h: usize, rgba: bool) -> Result<(), String> {
+    let mut out = format!("P6\n{w} {h}\n255\n").into_bytes();
+    out.reserve(w * h * 3);
+    for p in px.as_chunks::<4>().0.iter().take(w * h) {
+        out.extend_from_slice(&if rgba { [p[0], p[1], p[2]] } else { [p[2], p[1], p[0]] });
+    }
+    std::fs::write(path, out).map_err(|e| e.to_string())
+}
+
+/// IPC `shot` on the DRM session: the output rendered offscreen at once. The frame loop serves `shot` only
+/// in the headless and nested backends, so on udev the IPC client waited for good.
+pub fn shot_output(state: &mut MistComp, path: &std::path::Path, name: Option<&str>) -> Result<(), String> {
+    if state.locked {
+        return Err("locked".into());
+    }
+    let output = match name {
+        Some(n) => state.space.outputs().find(|o| o.name() == n).cloned().ok_or_else(|| format!("no output {n}"))?,
+        None => state.space.outputs().next().cloned().ok_or("no output")?,
+    };
+    let size = output.current_mode().ok_or("no mode")?.size;
+    let region = Rectangle::from_size(size);
+    let (px, rgba) = with_renderer(state, |r, space, anim| grab(r, space, anim, &output, region, Vec::new(), [0.0, 0.0, 0.0, 1.0])).flatten().ok_or("render failed")?;
+    write_ppm(path, &px, size.w as usize, size.h as usize, rgba)
+}
+
+/// IPC `shot-win <out.ppm> <app_id>`: one window alone, at its output's scale, with nothing that covers it
+/// (tests and bug reports without taking the screen from the user).
+pub fn shot_window(state: &mut MistComp, path: &std::path::Path, app_id: &str) -> Result<(), String> {
+    use smithay::backend::renderer::{element::{surface::WaylandSurfaceRenderElement, AsRenderElements}, Renderer};
+    if state.locked {
+        return Err("locked".into());
+    }
+    let w = state.space.elements().find(|w| crate::hyprcompat::app_id(w) == app_id).cloned().ok_or_else(|| format!("no window {app_id}"))?;
+    let scale = state.space.outputs_for_element(&w).first().map(|o| o.current_scale().fractional_scale()).unwrap_or(1.0);
+    let geo = w.geometry();
+    let size = geo.size.to_f64().to_physical_precise_round::<f64, i32>(scale);
+    if size.w <= 0 || size.h <= 0 {
+        return Err("empty window".into());
+    }
+    let res = with_renderer(state, |r, _, _| -> Option<Vec<u8>> {
+        let loc = smithay::utils::Point::<i32, smithay::utils::Logical>::from((-geo.loc.x, -geo.loc.y)).to_f64().to_physical_precise_round::<f64, i32>(scale);
+        let elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = w.render_elements(r, loc, scale.into(), 1.0);
+        let mut tex: GlesTexture = r.create_buffer(Fourcc::Abgr8888, (size.w, size.h).into()).ok()?;
+        let mut fb = r.bind(&mut tex).ok()?;
+        let mut tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
+        tracker.render_output(r, &mut fb, 0, &elems, [0.0, 0.0, 0.0, 1.0]).ok()?;
+        let map = r.copy_framebuffer(&fb, Rectangle::from_size((size.w, size.h).into()), Fourcc::Abgr8888).ok()?;
+        let px = r.map_texture(&map).ok()?.to_vec();
+        drop(fb);
+        let _ = r.cleanup_texture_cache();
+        Some(px)
+    });
+    let px = res.flatten().ok_or("render failed")?;
+    write_ppm(path, &px, size.w as usize, size.h as usize, true)
+}

@@ -155,11 +155,15 @@ pub fn render(state: &mut MistComp, part: Option<&std::collections::HashSet<Stri
         }
         *out_passes.entry(output.name()).or_insert(0) += 1;
         let Ok(mut fb) = hl.renderer.bind(&mut o.buffer) else { continue };
+        let t0 = std::time::Instant::now();
         let elems = crate::scene::elements(&mut hl.renderer, space, lock.surfaces.get(&output.name()), *locked, &output, anim, dnd.as_ref());
         let elems = crate::scene::view(elems, anim.zoom, crate::scene::pointer_on(space, &output, ptr));
         let clear = if *locked { [0.0, 0.0, 0.0, 1.0] } else { crate::scene::NESTED_CLEAR };
         match o.damage.render_output(&mut hl.renderer, &mut fb, age, &elems, clear) {
-            Ok(r) if r.damage.is_some() => *out_seq.entry(output.name()).or_insert(0) += 1,
+            Ok(r) if r.damage.is_some() => {
+                *out_seq.entry(output.name()).or_insert(0) += 1;
+                crate::prof::frame(&output.name(), t0.elapsed());
+            }
             Ok(_) => {}
             Err(e) => tracing::warn!("headless render: {e:?}"),
         }

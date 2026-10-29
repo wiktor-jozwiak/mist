@@ -4,11 +4,13 @@
 //! marks itself opaque; BUSY_ID (app_id, mist-busy) and BUSY_SIZE (WxH, 200x150) for several of them,
 //! BUSY_DAMAGE (WxH) damages only that much in the middle of the window each frame; BUSY_PAINT=1 paints it a
 //! new colour each time; BUSY_DAMAGE_AT (x,y) puts it there instead.
+//! BUSY_SUB=1 (tests/t-subinput.sh): a subsurface as large as the window placed below it (a video plane under
+//! a player's controls); prints `enter main` / `enter sub` for the surface the pointer enters.
 use std::{io::Write, os::fd::AsFd, time::Duration};
 
 use wayland_client::{
     delegate_noop,
-    protocol::{wl_buffer, wl_callback, wl_compositor, wl_region, wl_registry, wl_shm, wl_shm_pool, wl_surface},
+    protocol::{wl_buffer, wl_callback, wl_compositor, wl_pointer, wl_region, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_subcompositor, wl_subsurface, wl_surface},
     Connection, Dispatch, QueueHandle,
 };
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
@@ -18,6 +20,9 @@ struct App {
     compositor: Option<wl_compositor::WlCompositor>,
     shm: Option<wl_shm::WlShm>,
     wm: Option<xdg_wm_base::XdgWmBase>,
+    sub: Option<wl_subcompositor::WlSubcompositor>,
+    seat: Option<wl_seat::WlSeat>,
+    main: Option<wl_surface::WlSurface>,
     configured: bool,
     frame_done: bool,
 }
@@ -37,6 +42,8 @@ impl Dispatch<wl_registry::WlRegistry, ()> for App {
                 "wl_compositor" => app.compositor = Some(reg.bind(name, 4, qh, ())),
                 "wl_shm" => app.shm = Some(reg.bind(name, 1, qh, ())),
                 "xdg_wm_base" => app.wm = Some(reg.bind(name, 1, qh, ())),
+                "wl_subcompositor" => app.sub = Some(reg.bind(name, 1, qh, ())),
+                "wl_seat" => app.seat = Some(reg.bind(name, 1, qh, ())),
                 _ => {}
             }
         }
@@ -67,6 +74,16 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
         }
     }
 }
+impl Dispatch<wl_pointer::WlPointer, ()> for App {
+    fn event(app: &mut Self, _: &wl_pointer::WlPointer, ev: wl_pointer::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let wl_pointer::Event::Enter { surface, .. } = ev {
+            println!("enter {}", if Some(&surface) == app.main.as_ref() { "main" } else { "sub" });
+        }
+    }
+}
+delegate_noop!(App: ignore wl_seat::WlSeat);
+delegate_noop!(App: ignore wl_subcompositor::WlSubcompositor);
+delegate_noop!(App: ignore wl_subsurface::WlSubsurface);
 delegate_noop!(App: ignore wl_compositor::WlCompositor);
 delegate_noop!(App: ignore wl_surface::WlSurface);
 delegate_noop!(App: ignore wl_region::WlRegion);
@@ -100,6 +117,19 @@ fn main() {
     f.write_all(&vec![0x60u8; (w * h * 4) as usize]).unwrap();
     let pool = app.shm.as_ref().unwrap().create_pool(f.as_fd(), w * h * 4, &qh, ());
     let buf = pool.create_buffer(0, w, h, w * 4, wl_shm::Format::Xrgb8888, &qh, ());
+    if std::env::var("BUSY_SUB").is_ok_and(|v| v == "1") {
+        app.main = Some(surface.clone());
+        let _pointer = app.seat.as_ref().unwrap().get_pointer(&qh, ());
+        let plane = app.compositor.as_ref().unwrap().create_surface(&qh, ());
+        let ss = app.sub.as_ref().unwrap().get_subsurface(&plane, &surface, &qh, ());
+        ss.place_below(&surface);
+        ss.set_desync();
+        let pbuf = pool.create_buffer(0, w, h, w * 4, wl_shm::Format::Xrgb8888, &qh, ());
+        plane.attach(Some(&pbuf), 0, 0);
+        plane.damage_buffer(0, 0, w, h);
+        plane.commit();
+        std::mem::forget((ss, pbuf));
+    }
     if framed {
         let region = app.compositor.as_ref().unwrap().create_region(&qh, ());
         region.add(0, 0, w, h);

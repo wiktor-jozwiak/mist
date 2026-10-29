@@ -562,6 +562,10 @@ fn vblank(state: &mut MistComp, crtc: crtc::Handle, meta: Option<smithay::backen
         fb.presented::<_, smithay::utils::Monotonic>(time, refresh, seq, flags);
     }
     state.fifo_signal();
+    if let Some(s) = state.udev.as_ref().and_then(|u| u.surfaces.get(&crtc)) {
+        let period = s.output.current_mode().map(|m| m.refresh).filter(|r| *r > 0).map(|mhz| Duration::from_nanos(1_000_000_000_000 / mhz as u64));
+        crate::prof::vblank(&s.output.name(), period, s.redraw);
+    }
     let again = state.udev.as_mut().and_then(|u| u.surfaces.get_mut(&crtc)).is_some_and(|s| std::mem::take(&mut s.redraw));
     if state.redraw_after_vblank {
         render_all(state);
@@ -743,6 +747,7 @@ fn render_one(state: &mut MistComp, crtc: crtc::Handle) {
         // frame callbacks for what is on this output: clients draw the next frame while this one scans out
         crate::scene::send_frames(space, lock.surfaces.get(&output.name()), &output, start_time.elapsed());
         crate::prof::add(3, t3.elapsed());
+        crate::prof::frame(&output.name(), t3 - t0);
         if let Some((icon, _)) = dnd.as_ref() {
             smithay::desktop::utils::send_frames_surface_tree(icon, &output, start_time.elapsed(), Some(Duration::ZERO), |_, _| Some(output.clone()));
         }

@@ -507,7 +507,7 @@ impl MistComp {
             map.layer_under(layer, pos - og.loc.to_f64()).and_then(|l| {
                 let lg = map.layer_geometry(l)?;
                 let loc = og.loc + lg.loc;
-                l.surface_under(pos - loc.to_f64(), WindowSurfaceType::ALL)
+                crate::hit::layer_under(l, pos - loc.to_f64())
                     .map(|(s, p)| (s, (p + loc).to_f64()))
             })
         };
@@ -520,8 +520,7 @@ impl MistComp {
         }
         None.or_else(|| {
                 self.space.element_under(pos).and_then(|(window, location)| {
-                    window
-                        .surface_under(pos - location.to_f64(), WindowSurfaceType::ALL)
+                    crate::hit::window_under(window, pos - location.to_f64())
                         .map(|(s, p)| (s, (p + location).to_f64()))
                 })
             })
