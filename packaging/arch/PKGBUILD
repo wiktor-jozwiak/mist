@@ -35,6 +35,9 @@ pkgver() {
 build() {
     # native/.cargo/config.toml builds for the author's CPU: a package builds for any x86-64
     export RUSTFLAGS="" CARGO_BUILD_RUSTFLAGS=""
+    # the C bits of crates (bundled SQLite in mistd) must not be GCC LTO bytecode: rustc links them
+    # itself, and with lld (or no -flto at link time) their symbols are missing (issue #6)
+    export CFLAGS="${CFLAGS:-} -fno-lto" CXXFLAGS="${CXXFLAGS:-} -fno-lto"
     cd mist/native
     cargo build --release --locked
     cd ../scripts/mistd

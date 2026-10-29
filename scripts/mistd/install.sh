@@ -3,7 +3,8 @@
 # old one, so the running watchers keep their (unlinked) copy until Quickshell restarts them.
 set -e
 cd "$(dirname "$0")"
-cargo build --release
+# bundled SQLite is C: no GCC LTO bytecode (a -flto CFLAGS from the environment leaves its symbols undefined)
+CFLAGS="${CFLAGS:-} -fno-lto" cargo build --release
 mkdir -p ../bin
 cp target/release/mistd ../bin/.mistd.new
 mv -f ../bin/.mistd.new ../bin/mistd

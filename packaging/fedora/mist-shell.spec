@@ -36,6 +36,8 @@ Pick "Mist" in the login manager, or run the shell on Hyprland.
 %build
 # native/.cargo/config.toml builds for the author's CPU: a package builds for any x86-64
 export RUSTFLAGS="" CARGO_BUILD_RUSTFLAGS=""
+# GCC LTO bytecode from the crates' C code (bundled SQLite) does not link into a Rust binary
+export CFLAGS="${CFLAGS:-} -fno-lto" CXXFLAGS="${CXXFLAGS:-} -fno-lto"
 (cd native && cargo build --release --locked)
 (cd scripts/mistd && cargo build --release --locked)
 
