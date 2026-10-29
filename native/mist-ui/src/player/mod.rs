@@ -119,6 +119,26 @@ fn now_ms() -> f64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as f64).unwrap_or(0.0)
 }
 // where a stopped file resumes (ms): not in the first 5 s nor the last 15 s
+// the entries of an M3U / M3U8 playlist: paths relative to its folder, file:// URIs and URLs; # lines skipped
+fn read_m3u(p: &str) -> Vec<String> {
+    let dir = p.rsplit_once('/').map(|(d, _)| d).unwrap_or(".");
+    std::fs::read_to_string(p)
+        .unwrap_or_default()
+        .lines()
+        .map(|l| l.trim().trim_start_matches('\u{feff}'))
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(|l| {
+            if l.starts_with("file://") {
+                appwin::uri_to_path(l)
+            } else if l.starts_with('/') || is_url(l) {
+                l.to_string()
+            } else {
+                format!("{dir}/{l}")
+            }
+        })
+        .collect()
+}
+
 fn resume_spot(pos_ms: f64, dur_ms: f64) -> f64 {
     if (dur_ms > 0.0 && pos_ms > dur_ms - 15000.0) || pos_ms < 5000.0 { 0.0 } else { pos_ms.floor() }
 }
@@ -224,6 +244,7 @@ pub struct Player {
     artist: String,
     album: String,
     pub tracks: Vec<Track>,
+    pub chapters: Vec<(f64, String)>,
     pub volume: f64,
     pub muted: bool,
     pub recents: Vec<Recent>,
@@ -308,6 +329,7 @@ impl Player {
             artist: String::new(),
             album: String::new(),
             tracks: vec![],
+            chapters: vec![],
             volume: 0.8,
             muted: false,
             recents: vec![],
@@ -459,6 +481,10 @@ impl Player {
                     self.tracks = t;
                     redraw = true;
                 }
+                Event::Chapters(c) => {
+                    self.chapters = c;
+                    redraw = true;
+                }
                 Event::Meta(a, b) => {
                     self.artist = a;
                     self.album = b;
@@ -595,6 +621,7 @@ impl Player {
         self.artist.clear();
         self.album.clear();
         self.tracks.clear();
+        self.chapters.clear();
         self.pos = 0.0;
         self.dur = 0.0;
         // video after video: mpv keeps its VO configured and sends no vo-configured change, so the plane stays
@@ -842,7 +869,7 @@ impl Player {
                 let mut sig = req.receive_signal("Response")?;
                 let pats = |v: &[&str]| -> Vec<(u32, String)> { v.iter().map(|e| (0u32, format!("*.{e}"))).collect() };
                 let all: Vec<&str> = VIDEO_EXT.iter().chain(AUDIO_EXT.iter()).copied().collect();
-                let filters: Vec<(String, Vec<(u32, String)>)> = vec![("Multimedia".into(), pats(&all)), ("Wideo".into(), pats(&VIDEO_EXT)), ("Audio".into(), pats(&AUDIO_EXT)), ("Napisy".into(), pats(&SUB_EXT)), ("Wszystkie pliki".into(), vec![(0, "*".into())])];
+                let filters: Vec<(String, Vec<(u32, String)>)> = vec![("Multimedia".into(), pats(&all)), ("Wideo".into(), pats(&VIDEO_EXT)), ("Audio".into(), pats(&AUDIO_EXT)), ("Napisy".into(), pats(&SUB_EXT)), ("Playlisty".into(), pats(&["m3u", "m3u8"])), ("Wszystkie pliki".into(), vec![(0, "*".into())])];
                 let home = std::env::var("HOME").unwrap_or_default();
                 let mut folder = format!("{home}/Wideo").into_bytes();
                 folder.push(0);
@@ -872,6 +899,8 @@ impl Player {
     }
     // files from anywhere (portal, drop, MPRIS OpenUri): subtitles go onto the playing file
     fn take(&mut self, paths: Vec<String>, add: bool, cx: &mut Cx) {
+        // a playlist opens as its entries
+        let paths: Vec<String> = paths.into_iter().flat_map(|p| if !is_url(&p) && matches!(ext(&p).as_str(), "m3u" | "m3u8") { read_m3u(&p) } else { vec![p] }).collect();
         let (subs, media): (Vec<String>, Vec<String>) = paths.into_iter().partition(|p| SUB_EXT.contains(&ext(p).as_str()));
         if !subs.is_empty() && !self.cur.is_empty() {
             self.add_subs(&subs, cx);
@@ -1002,6 +1031,8 @@ impl Player {
                     self.toggle_fs(cx);
                 }
             }
+            Keysym::Prior if !self.chapters.is_empty() => self.cmd(&["add", "chapter", "-1"]),
+            Keysym::Next if !self.chapters.is_empty() => self.cmd(&["add", "chapter", "1"]),
             Keysym::n | Keysym::N | Keysym::XF86_AudioNext => self.next(false, cx),
             Keysym::p | Keysym::P | Keysym::XF86_AudioPrev => self.prev(cx),
             Keysym::BackSpace => self.set_speed(1.0, cx),
@@ -1542,6 +1573,7 @@ fn png(args: &[String]) -> i32 {
             Track { id: 2, kind: "audio".into(), title: "Komentarz".into(), lang: "eng".into(), codec: "aac".into(), selected: false, external: false },
             Track { id: 1, kind: "sub".into(), title: String::new(), lang: "pol".into(), codec: "subrip".into(), selected: true, external: true },
         ];
+        p.chapters = vec![(0.0, "Początek".into()), (600.0, "Rozdział 2".into()), (1500.0, "Rozdział 3".into()), (2200.0, "Napisy końcowe".into())];
         p.panel = match what {
             "queue" => Panel::List,
             "tracks" => Panel::Tracks,
@@ -1595,6 +1627,22 @@ mod tests {
         assert!(is_media("x.webm") && !is_media("x.srt"));
         assert!(is_url("https://example.org/v.m3u8"));
         assert_eq!(ext("/a.b/c"), "");
+    }
+    #[test]
+    fn playlist_m3u() {
+        let d = std::env::temp_dir().join(format!("mist-player-m3u-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let f = d.join("lista.m3u8");
+        std::fs::write(&f, "\u{feff}#EXTM3U\n#EXTINF:123,Utwór\na.mp3\n\n/abs/b.flac\nfile:///x/c%20d.ogg\nhttps://radio.example/stream\n").unwrap();
+        let d = d.to_string_lossy().into_owned();
+        assert_eq!(read_m3u(&f.to_string_lossy()), [format!("{d}/a.mp3"), "/abs/b.flac".into(), "/x/c d.ogg".into(), "https://radio.example/stream".into()]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+    #[test]
+    fn chapters_json() {
+        let c = super::engine::parse_chapters(r#"[{"title":"Intro","time":0.0},{"time":90.5}]"#);
+        assert_eq!(c, [(0.0, "Intro".to_string()), (90.5, String::new())]);
+        assert!(super::engine::parse_chapters("").is_empty());
     }
     #[test]
     fn resume_rule() {

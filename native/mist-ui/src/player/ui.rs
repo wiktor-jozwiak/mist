@@ -371,9 +371,19 @@ impl Player {
         let frac = if self.dur > 0.0 { cur / self.dur } else { 0.0 };
         let hover_v = if self.hover == Some(Hit::Seek) || self.drag == Some(Hit::Seek) { Some(((self.mouse.0 - bx) / bw).clamp(0.0, 1.0) as f64) } else { None };
         self.bar(c, bx, sy, bw, frac, Hit::Seek, hover_v);
+        // chapter starts: gaps in the bar
+        if self.dur > 0.0 {
+            for &(t, _) in self.chapters.iter().filter(|(t, _)| *t > 0.5 && *t < self.dur - 0.5) {
+                c.rrect(bx + bw * (t / self.dur) as f32 - 1.0, sy - 4.0, 2.0, 8.0, 1.0, Rgba(0.0, 0.0, 0.0, 0.6));
+            }
+        }
         if let (Some(hv), true) = (self.seek_preview.or(hover_v), self.dur > 0.0) {
-            let s = time(hv * self.dur);
             let st = Style::ui(12.0, 600.0).tnum();
+            let at = time(hv * self.dur);
+            let s = match self.chapters.iter().rev().find(|(t, _)| *t <= hv * self.dur) {
+                Some((_, n)) if !n.is_empty() => format!("{}  ·  {at}", elide(&mut self.text, n, &st, 240.0)),
+                _ => at,
+            };
             let tw = self.text.width(&s, &st) + 16.0;
             let tx = (bx + bw * hv as f32 - tw / 2.0).clamp(bx - 20.0, bx + bw - tw + 20.0);
             c.rrect(tx, sy - 34.0 - 12.0, tw, 24.0, 12.0, Rgba(20.0 / 255.0, 26.0 / 255.0, 38.0 / 255.0, 0.95));
@@ -542,6 +552,7 @@ impl Player {
             ("M", "Wycisz"),
             ("F / dwuklik", "Pełny ekran"),
             ("N / P  ·  > / <", "Następny / poprzedni"),
+            ("PgUp / PgDn", "Poprzedni / następny rozdział"),
             ("[ / ]  ·  { / }", "Wolniej / szybciej  (×½ / ×2)"),
             ("Backspace", "Normalna prędkość"),
             ("S / V", "Napisy: następne / ukryj"),

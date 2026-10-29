@@ -44,7 +44,7 @@ unsafe extern "C" fn get_proc(ctx: *mut c_void, name: *const c_char) -> *mut c_v
 
 // observed properties (reply ids)
 const P_POS: u64 = 1;
-const PROPS: [(&str, i32); 10] = [
+const PROPS: [(&str, i32); 11] = [
     ("duration", FMT_DOUBLE),
     ("pause", FMT_FLAG),
     ("eof-reached", FMT_FLAG),
@@ -55,6 +55,7 @@ const PROPS: [(&str, i32); 10] = [
     ("metadata", FMT_STRING),
     ("volume", FMT_DOUBLE),
     ("mute", FMT_FLAG),
+    ("chapter-list", FMT_STRING),
 ];
 
 pub enum Event {
@@ -66,6 +67,8 @@ pub enum Event {
     Speed(f64),
     Title(String),
     Tracks(Vec<Track>),
+    // (start in s, title)
+    Chapters(Vec<(f64, String)>),
     // artist, album
     Meta(String, String),
     // an asynchronous read came back (its id, the value)
@@ -115,6 +118,11 @@ pub fn parse_tracks(json: &str) -> Vec<Track> {
             Track { id: t["id"].as_i64().unwrap_or(0), kind: s("type"), title: s("title"), lang: s("lang"), codec: s("codec"), selected: t["selected"].as_bool().unwrap_or(false), external: t["external"].as_bool().unwrap_or(false) }
         })
         .collect()
+}
+// chapter-list (JSON): (start in s, title), in order
+pub fn parse_chapters(json: &str) -> Vec<(f64, String)> {
+    let Ok(serde_json::Value::Array(a)) = serde_json::from_str::<serde_json::Value>(json) else { return vec![] };
+    a.iter().map(|c| (c["time"].as_f64().unwrap_or(0.0), c["title"].as_str().unwrap_or("").to_string())).collect()
 }
 // (artist, album) from metadata (JSON; the keys' case depends on the container)
 pub fn parse_meta(json: &str) -> (String, String) {
@@ -307,6 +315,7 @@ impl Engine {
                         }
                         10 if has => Event::Volume((dbl() / 100.0).clamp(0.0, 1.0)),
                         11 => Event::Mute(flag()),
+                        12 => Event::Chapters(parse_chapters(&s())),
                         _ => continue,
                     });
                 }
