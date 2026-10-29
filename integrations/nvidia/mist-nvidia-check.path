@@ -1,0 +1,11 @@
+# Mist: say when an update replaced the NVIDIA libraries while the old kernel module is loaded (reboot needed).
+#   cp integrations/nvidia/mist-nvidia-check.* ~/.config/systemd/user/
+#   systemctl --user enable --now mist-nvidia-check.path
+[Unit]
+Description=Mist: watch the NVIDIA libraries for an update
+
+[Path]
+PathChanged=/usr/lib/libnvidia-glcore.so
+
+[Install]
+WantedBy=default.target

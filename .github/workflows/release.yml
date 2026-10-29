@@ -55,6 +55,9 @@ jobs:
               mkdir -p ~/.local/share/mist && cp -r $d/share/mist ~/.local/share/mist/shell
 
           and load \`~/.local/share/mist/shell/examples/hyprland/mist.lua\` from your Hyprland config.
-          Changes: see CHANGELOG.md.
           EOF
+          # the tag's own section of CHANGELOG.md (v0.2.0: from "## [0.2.0]" to the next "## ")
+          v=${GITHUB_REF_NAME#v}
+          awk -v h="## [$v]" 'index($0, h) == 1 {on = 1; print "## Changes"; next} on && /^## / {exit} on' CHANGELOG.md > changes.md
+          if [ -s changes.md ]; then { echo; cat changes.md; } >> notes.md; else echo "Changes: see CHANGELOG.md." >> notes.md; fi
           gh release create "$GITHUB_REF_NAME" $d.tar.gz $d.tar.gz.sha256 --title "Mist $GITHUB_REF_NAME" --notes-file notes.md

@@ -5,6 +5,7 @@
 //   mistd tiles <icon name | path | @glyph> ...  dock tiles -> ~/.cache/mist/tiles
 //   mistd notifimg | clipstore | cliplist <dir>
 //   mistd stats                                  CPU / RAM / network for the bar (changes only)
+//   mistd nvidia                                 a notification when the NVIDIA module and libraries differ
 //   mistd filemanager1                           org.freedesktop.FileManager1 for Mist Files (D-Bus activated)
 mod calls;
 mod common;
@@ -14,6 +15,7 @@ mod garmin;
 mod garmin_db;
 mod island;
 mod notify;
+mod nvidia;
 mod phone;
 mod stats;
 mod tiles;
@@ -60,8 +62,9 @@ fn main() {
             }
         }
         "garmin" => garmin::main(&args[1..]),
+        "nvidia" => nvidia::main(),
         _ => {
-            eprintln!("usage: mistd notify|island|calls|phone|data <src>|geo <place>|tiles <names>|notifimg|clipstore|cliplist <dir>|stats|filemanager1|garmin [sync]");
+            eprintln!("usage: mistd notify|island|calls|phone|data <src>|geo <place>|tiles <names>|notifimg|clipstore|cliplist <dir>|stats|filemanager1|garmin [sync]|nvidia");
             std::process::exit(2);
         }
     }

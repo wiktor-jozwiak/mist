@@ -1,0 +1,6 @@
+[Unit]
+Description=Mist: NVIDIA module and libraries the same version
+
+[Service]
+Type=oneshot
+ExecStart=%h/.config/quickshell/mist/scripts/bin/mistd nvidia
