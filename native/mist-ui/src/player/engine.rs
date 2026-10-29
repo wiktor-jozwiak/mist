@@ -1,8 +1,8 @@
 // The playback engine of Mist Player: libmpv and the GL plane it draws the picture on.
 // - mpv starts with the first file (an empty window runs no mpv at all).
 // - The EGL context and mpv's render context exist only while a file with a picture plays: audio runs with
-//   no GL (on NVIDIA the GL context plus the CUDA decoder are ~250 MB RSS). The context is made surfaceless,
-//   before the window's video plane exists, so mpv opens the file while the window maps.
+//   no GL (on NVIDIA the GL context plus the CUDA decoder are ~250 MB RSS). mpv's render context is made
+//   once the window's video plane has an EGL surface (made surfaceless, the picture stayed black).
 // - Frames are paced by the plane's frame callbacks: at most one per compositor refresh, a covered window
 //   once a second (mist-comp), a minimized one none (mpv drops those frames, the sound goes on).
 // - time-pos is observed only while something shows it (the controls): a playing video with hidden controls
@@ -370,9 +370,8 @@ impl Engine {
             super::trace("egl context");
             let surfaceless = cstr((e.eglQueryString)(dpy, EGL_EXTENSIONS)).contains("EGL_KHR_surfaceless_context");
             self.gl = Some(Gl { dpy, cfg, ctx, surfaceless, win: None, vs: None });
-            if surfaceless && (e.eglMakeCurrent)(dpy, std::ptr::null_mut(), std::ptr::null_mut(), ctx) != 0 {
-                self.render_ctx()?;
-            }
+            // mpv's render context is made on the window surface (attach), never surfaceless: created
+            // without a default framebuffer it renders black into the window later (NVIDIA)
         }
         self.gl_ms = t.elapsed().as_secs_f64() * 1000.0;
         Ok(())
