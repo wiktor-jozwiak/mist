@@ -9,6 +9,7 @@
 pub mod engine;
 pub mod ffi;
 mod mpris;
+mod thumbs;
 mod ui;
 
 use crate::appwin::{self, Cmd, Cx, Ev, Logic, VideoSurface, WinId, LEFT, MIDDLE, RIGHT};
@@ -25,6 +26,8 @@ pub enum Wake {
     Render,
     Picked(Vec<String>, bool),
     Mpris(mpris::Req),
+    // a seek-bar thumbnail: file, bucket, RGBA (None: ffmpeg failed)
+    Thumb(String, u32, Option<Vec<u8>>),
 }
 
 const VIDEO_EXT: [&str; 14] = ["mkv", "mp4", "m4v", "webm", "avi", "mov", "wmv", "flv", "mpg", "mpeg", "ts", "m2ts", "ogv", "3gp"];
@@ -162,6 +165,7 @@ pub enum Panel {
     Speed,
     Help,
     Info,
+    Chapters,
 }
 #[derive(Clone, PartialEq, Debug)]
 pub enum Hit {
@@ -193,6 +197,13 @@ pub enum Hit {
     RecentForget(usize),
     FromStart,
     Card,
+    Chapters,
+    Pip,
+    ResumeQueue,
+    // the Picture-in-Picture window's own buttons
+    PipPlay,
+    PipBack,
+    PipClose,
 }
 
 #[derive(Clone)]
@@ -214,6 +225,7 @@ enum RowAct {
     Speed(f64),
     Aid(i64),
     Sid(i64),
+    Chapter(f64),
     None,
 }
 
@@ -276,6 +288,20 @@ pub struct Player {
     launched: Instant,
     first_frame_ms: Option<f64>,
     title_shown: String,
+    thumbs: thumbs::Thumbs,
+    // the queue of the last session (player.json), offered on the empty screen
+    pub saved_queue: Vec<String>,
+    pub saved_idx: usize,
+    // Picture-in-Picture: a second window (mist-comp pins "Picture-in-Picture…" titles, bottom right) that
+    // takes the video plane while it is open; the main window shows a placeholder
+    pip: Option<WinId>,
+    pip_token: u64,
+    pip_closing: bool,
+    video_win: Option<WinId>,
+    pub pip_size: (f32, f32),
+    pub pip_hover: bool,
+    pip_hits: Vec<(f32, f32, f32, f32, Hit)>,
+    pip_mouse: (f32, f32),
 }
 
 fn cfg_path() -> String {
@@ -296,6 +322,10 @@ impl Player {
                     .iter()
                     .filter_map(|e| Some(Recent { path: e["path"].as_str()?.to_string(), pos: e["pos"].as_f64().unwrap_or(0.0), dur: e["dur"].as_f64().unwrap_or(0.0), t: e["t"].as_f64().unwrap_or(0.0) }))
                     .collect();
+            }
+            if let Some(q) = v["queue"].as_array() {
+                p.saved_queue = q.iter().filter_map(|e| e.as_str().map(String::from)).filter(|e| is_url(e) || std::path::Path::new(e).exists()).collect();
+                p.saved_idx = (v["queue_idx"].as_u64().unwrap_or(0) as usize).min(p.saved_queue.len().saturating_sub(1));
             }
         }
         p
@@ -359,11 +389,24 @@ impl Player {
             launched: Instant::now(),
             first_frame_ms: None,
             title_shown: String::new(),
+            thumbs: thumbs::Thumbs::new(),
+            saved_queue: vec![],
+            saved_idx: 0,
+            pip: None,
+            pip_token: 0,
+            pip_closing: false,
+            video_win: None,
+            pip_size: (480.0, 270.0),
+            pip_hover: false,
+            pip_hits: vec![],
+            pip_mouse: (-1.0, -1.0),
         }
     }
     fn save(&self) {
         let r: Vec<serde_json::Value> = self.recents.iter().map(|e| serde_json::json!({ "path": e.path, "pos": e.pos, "dur": e.dur, "t": e.t })).collect();
-        let v = serde_json::json!({ "volume": self.volume, "muted": self.muted, "recents": r });
+        // the queue playing now, else the one kept from before (closing a file does not forget it)
+        let (q, qi) = if self.queue.len() > 1 { (&self.queue, self.idx.max(0) as usize) } else { (&self.saved_queue, self.saved_idx) };
+        let v = serde_json::json!({ "volume": self.volume, "muted": self.muted, "recents": r, "queue": q, "queue_idx": qi });
         let _ = std::fs::create_dir_all(std::path::Path::new(&cfg_path()).parent().unwrap());
         let _ = std::fs::write(cfg_path(), serde_json::to_string_pretty(&v).unwrap_or_default());
     }
@@ -547,7 +590,7 @@ impl Player {
         }
     }
     pub fn chrome(&self) -> bool {
-        Instant::now() < self.ui_until || self.paused || self.panel != Panel::None || self.cur.is_empty() || !self.video || self.drag.is_some() || matches!(self.hover, Some(ref h) if *h != Hit::Picture && *h != Hit::Drag)
+        Instant::now() < self.ui_until || self.paused || self.panel != Panel::None || self.cur.is_empty() || !self.video || self.pip.is_some() || self.drag.is_some() || matches!(self.hover, Some(ref h) if *h != Hit::Picture && *h != Hit::Drag)
     }
     fn poke(&mut self, cx: &mut Cx) {
         let was = self.chrome();
@@ -616,6 +659,13 @@ impl Player {
         self.save_spot();
         self.idx = i as i32;
         self.cur = self.queue[i].clone();
+        let thumb_src = if is_url(&self.cur) || is_audio(&self.cur) { String::new() } else { self.cur.clone() };
+        self.thumbs.reset(&thumb_src);
+        if self.queue.len() > 1 {
+            self.saved_queue = self.queue.clone();
+            self.saved_idx = i;
+            self.save();
+        }
         self.pending_resume = self.resume_of(&self.cur.clone());
         self.title.clear();
         self.artist.clear();
@@ -634,6 +684,9 @@ impl Player {
             self.queue_scroll = i + 1 - vis;
         }
         let picture = !is_audio(&self.cur);
+        if !picture {
+            self.close_pip(cx);
+        }
         let display = self.display;
         let e = self.eng.as_mut().unwrap();
         if picture {
@@ -720,8 +773,10 @@ impl Player {
         if let Some(e) = self.eng.as_mut() {
             e.gl_close();
         }
+        self.close_pip(cx);
         self.cur.clear();
         self.queue.clear();
+        self.thumbs.reset("");
         self.idx = -1;
         self.panel = Panel::None;
         self.video = false;
@@ -838,6 +893,49 @@ impl Player {
         if let Some(w) = self.win {
             cx.cmds.push(Cmd::Fullscreen(w, !self.fs));
         }
+    }
+    // Picture-in-Picture: a small pinned window takes the picture; again (or its own buttons) brings it back
+    fn toggle_pip(&mut self, cx: &mut Cx) {
+        if self.pip.is_some() {
+            return self.close_pip(cx);
+        }
+        if !self.video || self.cur.is_empty() || self.pip_token != 0 {
+            self.say("pip", "Obraz w obrazie: tylko dla wideo", cx);
+            return;
+        }
+        if self.fs {
+            self.toggle_fs(cx);
+        }
+        self.pip_token = cx.new_window("Picture-in-Picture — Mist Player", 480, 270, (240, 135));
+        self.panel = Panel::None;
+        self.redraw(cx);
+    }
+    // the plane goes back to the main window first (both redraw: the PiP plane goes, the main one comes), then
+    // the window closes (video_surface None); a PiP window that never got the plane closes at once
+    fn close_pip(&mut self, cx: &mut Cx) {
+        let Some(p) = self.pip else { return };
+        if self.video_win != Some(p) {
+            self.pip = None;
+            self.pip_closing = false;
+            cx.cmds.push(Cmd::Close(p));
+        } else {
+            self.pip_closing = true;
+            cx.redraw(p);
+        }
+        self.pip_hover = false;
+        self.redraw(cx);
+    }
+    fn resume_queue(&mut self, cx: &mut Cx) {
+        if self.saved_queue.is_empty() {
+            return;
+        }
+        let i = self.saved_idx.min(self.saved_queue.len() - 1);
+        self.queue = self.saved_queue.clone();
+        self.load(i, cx);
+    }
+    // the chapter now playing (index into chapters)
+    pub fn chapter_now(&self) -> Option<usize> {
+        self.chapters.iter().rposition(|(t, _)| *t <= self.pos + 0.25)
     }
     fn set_panel(&mut self, p: Panel, cx: &mut Cx) {
         self.panel = if self.panel == p { Panel::None } else { p };
@@ -1034,7 +1132,9 @@ impl Player {
             Keysym::Prior if !self.chapters.is_empty() => self.cmd(&["add", "chapter", "-1"]),
             Keysym::Next if !self.chapters.is_empty() => self.cmd(&["add", "chapter", "1"]),
             Keysym::n | Keysym::N | Keysym::XF86_AudioNext => self.next(false, cx),
+            Keysym::p | Keysym::P if m.shift => self.toggle_pip(cx),
             Keysym::p | Keysym::P | Keysym::XF86_AudioPrev => self.prev(cx),
+            Keysym::c | Keysym::C if !self.chapters.is_empty() => self.set_panel(Panel::Chapters, cx),
             Keysym::BackSpace => self.set_speed(1.0, cx),
             Keysym::s | Keysym::S if m.shift => {
                 self.cmd(&["screenshot", "video"]);
@@ -1066,6 +1166,9 @@ impl Player {
     }
     fn quit(&mut self, cx: &mut Cx) {
         self.save_spot();
+        if let Some(p) = self.pip.take() {
+            cx.cmds.push(Cmd::Close(p));
+        }
         if let Some(w) = self.win.take() {
             cx.cmds.push(Cmd::Close(w));
         }
@@ -1080,7 +1183,7 @@ impl Player {
         let h = self.hit_at(x, y);
         // a click outside an open panel closes it
         let in_panel = matches!(h, Some(Hit::Item(_)) | Some(Hit::Queue(_)) | Some(Hit::QueueRemove(_)) | Some(Hit::Shuffle) | Some(Hit::Repeat) | Some(Hit::Add) | Some(Hit::Card));
-        let toggles = matches!(h, Some(Hit::Speed) | Some(Hit::Tracks) | Some(Hit::List) | Some(Hit::Help));
+        let toggles = matches!(h, Some(Hit::Speed) | Some(Hit::Tracks) | Some(Hit::List) | Some(Hit::Help) | Some(Hit::Chapters));
         if self.panel != Panel::None && !in_panel && !toggles {
             self.panel = Panel::None;
             self.redraw(cx);
@@ -1168,6 +1271,11 @@ impl Player {
                         }
                         RowAct::Aid(id) => self.set("aid", &id.to_string()),
                         RowAct::Sid(id) => self.set("sid", &if id < 0 { "no".into() } else { id.to_string() }),
+                        RowAct::Chapter(t) => {
+                            self.cmd(&["seek", &format!("{t}"), "absolute+exact"]);
+                            self.pos = t;
+                            self.panel = Panel::None;
+                        }
                         RowAct::None => {}
                     }
                 }
@@ -1204,7 +1312,61 @@ impl Player {
                 self.resume_at = None;
             }
             Hit::Card => {}
+            Hit::Chapters => self.set_panel(Panel::Chapters, cx),
+            Hit::Pip => self.toggle_pip(cx),
+            Hit::ResumeQueue => self.resume_queue(cx),
+            Hit::PipPlay | Hit::PipBack | Hit::PipClose => {}
         }
+    }
+    // the PiP window: hover shows its buttons, a drag moves it, a double click (or ⤶) brings the picture back
+    fn pip_event(&mut self, pid: WinId, ev: Ev, cx: &mut Cx) {
+        let hit = |s: &Self, x: f32, y: f32| s.pip_hits.iter().rev().find(|(hx, hy, hw, hh, _)| x >= *hx && x < hx + hw && y >= *hy && y < hy + hh).map(|h| h.4.clone());
+        match ev {
+            Ev::Motion(x, y) => {
+                let was = (self.pip_hover, hit(self, self.pip_mouse.0, self.pip_mouse.1));
+                self.pip_mouse = (x, y);
+                self.pip_hover = true;
+                let h = hit(self, x, y);
+                cx.cursor(if h.is_some() { CursorIcon::Pointer } else { CursorIcon::Default });
+                if was != (true, h) {
+                    cx.redraw(pid);
+                }
+            }
+            Ev::Leave => {
+                self.pip_hover = false;
+                self.pip_mouse = (-1.0, -1.0);
+                cx.redraw(pid);
+            }
+            Ev::Press(x, y, b, n) if b == LEFT => match hit(self, x, y) {
+                Some(Hit::PipPlay) => {
+                    self.toggle(cx);
+                    cx.redraw(pid);
+                }
+                Some(Hit::PipBack) => self.close_pip(cx),
+                Some(Hit::PipClose) => {
+                    self.set("pause", "yes");
+                    self.close_pip(cx);
+                }
+                _ if n >= 2 => self.close_pip(cx),
+                _ => cx.cmds.push(Cmd::Move(pid)),
+            },
+            Ev::Key(Keysym::Escape, _) => self.close_pip(cx),
+            Ev::Key(k, u) => {
+                self.key(k, u, cx);
+                cx.redraw(pid);
+            }
+            Ev::Scroll(_, _, dy) => self.set_vol(self.volume - dy as f64 / 15.0 * 0.05, cx),
+            Ev::Resized => {
+                if self.video_win == Some(pid) {
+                    let (w, h) = (self.pip_size.0 as i32, self.pip_size.1 as i32);
+                    if let Some(e) = self.eng.as_mut() {
+                        e.resize(w, h);
+                    }
+                }
+            }
+            _ => {}
+        }
+        self.settle(cx);
     }
 }
 
@@ -1213,13 +1375,24 @@ impl Logic for Player {
     fn app_id(&self) -> &str {
         "mist-player"
     }
-    fn opened(&mut self, id: WinId, _token: u64, cx: &mut Cx) {
+    fn opened(&mut self, id: WinId, token: u64, cx: &mut Cx) {
+        if token != 0 && token == self.pip_token {
+            trace("pip window");
+            self.pip_token = 0;
+            self.pip = Some(id);
+            cx.redraw(id);
+            return;
+        }
         trace("window");
         self.win = Some(id);
         self.inhibit(cx);
         cx.redraw(id);
     }
-    fn paint(&mut self, _id: WinId, c: &mut Canvas, _cx: &mut Cx) {
+    fn paint(&mut self, id: WinId, c: &mut Canvas, _cx: &mut Cx) {
+        if Some(id) == self.pip {
+            self.pip_size = (c.w(), c.h());
+            return self.paint_pip(c);
+        }
         let t = Instant::now();
         self.w = c.w();
         self.h = c.h();
@@ -1230,16 +1403,30 @@ impl Logic for Player {
             let _ = c.pm.save_png(p);
         }
     }
-    fn video_rect(&mut self, _id: WinId) -> Option<(i32, i32, i32, i32)> {
-        // a plane only while GL is up (a file with a picture)
-        self.eng.as_ref().filter(|e| e.gl_up()).map(|_| (0, 0, self.w as i32, self.h as i32))
+    fn video_rect(&mut self, id: WinId) -> Option<(i32, i32, i32, i32)> {
+        // a plane only while GL is up (a file with a picture), in the PiP window while that is open
+        self.eng.as_ref().filter(|e| e.gl_up())?;
+        let in_pip = self.pip.is_some() && !self.pip_closing;
+        if Some(id) == self.pip {
+            in_pip.then_some((0, 0, self.pip_size.0 as i32, self.pip_size.1 as i32))
+        } else {
+            (!in_pip).then_some((0, 0, self.w as i32, self.h as i32))
+        }
     }
-    fn video_surface(&mut self, _id: WinId, s: Option<VideoSurface>, cx: &mut Cx) {
-        let (w, h) = (self.w as i32, self.h as i32);
+    fn video_surface(&mut self, id: WinId, s: Option<VideoSurface>, cx: &mut Cx) {
+        let is_pip = Some(id) == self.pip;
+        let (w, h) = if is_pip { (self.pip_size.0 as i32, self.pip_size.1 as i32) } else { (self.w as i32, self.h as i32) };
+        if s.is_none() && is_pip && self.pip_closing {
+            self.pip = None;
+            self.pip_closing = false;
+            cx.cmds.push(Cmd::Close(id));
+        }
         let Some(e) = self.eng.as_mut() else { return };
         match s {
             Some(vs) => {
                 trace("video plane");
+                // attach drops the EGL surface of the other window's plane first
+                self.video_win = Some(id);
                 e.size = (w, h);
                 if let Err(m) = e.attach(vs) {
                     self.err = m;
@@ -1251,7 +1438,12 @@ impl Logic for Player {
                 }
                 self.redraw(cx);
             }
-            None => e.detach(),
+            // the other window's plane going after this one took the picture: nothing to drop
+            None if self.video_win == Some(id) => {
+                self.video_win = None;
+                e.detach();
+            }
+            None => {}
         }
     }
     fn video_frame(&mut self, _id: WinId, _cx: &mut Cx) {
@@ -1263,7 +1455,10 @@ impl Logic for Player {
             }
         }
     }
-    fn event(&mut self, _id: WinId, ev: Ev, cx: &mut Cx) {
+    fn event(&mut self, id: WinId, ev: Ev, cx: &mut Cx) {
+        if Some(id) == self.pip {
+            return self.pip_event(id, ev, cx);
+        }
         match ev {
             Ev::Key(k, u) => self.key(k, u, cx),
             Ev::Motion(x, y) => {
@@ -1328,7 +1523,7 @@ impl Logic for Player {
             }
             Ev::Resized => {
                 let (w, h) = (self.w as i32, self.h as i32);
-                if let Some(e) = self.eng.as_mut() {
+                if (self.pip.is_none() || self.pip_closing) && let Some(e) = self.eng.as_mut() {
                     e.resize(w, h);
                 }
                 self.redraw(cx);
@@ -1358,7 +1553,10 @@ impl Logic for Player {
         }
         self.settle(cx);
     }
-    fn close_requested(&mut self, _id: WinId, cx: &mut Cx) {
+    fn close_requested(&mut self, id: WinId, cx: &mut Cx) {
+        if Some(id) == self.pip {
+            return self.close_pip(cx);
+        }
         self.quit(cx);
     }
     fn tick(&mut self, cx: &mut Cx) {
@@ -1408,7 +1606,7 @@ impl Logic for Player {
         if now >= self.ui_until {
             if !self.chrome() {
                 self.redraw(cx);
-                if self.video && !self.cur.is_empty() {
+                if self.video && !self.cur.is_empty() && self.pip.is_none() {
                     cx.cmds.push(Cmd::HideCursor(true));
                 }
             }
@@ -1475,6 +1673,12 @@ impl Logic for Player {
             Wake::Mpv => self.mpv_events(cx),
             Wake::Picked(v, add) => self.take(v, add, cx),
             Wake::Mpris(r) => self.mpris_req(r, cx),
+            Wake::Thumb(path, b, px) => {
+                let tx = self.tx.clone();
+                if self.thumbs.done(&path, b, px, tx.as_ref()) && (matches!(self.hover, Some(Hit::Seek)) || matches!(self.drag, Some(Hit::Seek))) {
+                    self.redraw(cx);
+                }
+            }
         }
         self.settle(cx);
     }
@@ -1516,6 +1720,16 @@ impl Player {
                 }
             }
             Some("poke") => self.poke(cx),
+            Some("pip") => self.toggle_pip(cx),
+            Some("chapters") => self.set_panel(Panel::Chapters, cx),
+            Some("resume-queue") => self.resume_queue(cx),
+            // the pointer over the seek bar at fraction F (asks for that thumbnail)
+            Some("hover-seek") => {
+                if let Some((bx, by, bw, bh, _)) = self.hits.iter().rev().find(|h| h.4 == Hit::Seek).cloned() {
+                    let x = bx + 6.0 + (bw - 12.0) * f(1).clamp(0.0, 1.0);
+                    self.event(wid, Ev::Motion(x, by + bh / 2.0), cx);
+                }
+            }
             Some("minimize") => cx.cmds.push(Cmd::Minimize(wid)),
             Some("png") => {
                 self.png_req = a.get(1).cloned();
@@ -1535,6 +1749,15 @@ impl Player {
                     "paint_us": self.paint_us.checked_div(self.paints).unwrap_or(0), "first_frame_ms": self.first_frame_ms, "gl_ms": e.map(|e| e.gl_ms),
                     "chrome": self.chrome(), "title": self.nice_title(), "repeat": self.repeat, "shuffle": self.shuffle,
                 });
+                let more = serde_json::json!({
+                    "chapters": self.chapters.len(), "chapter": self.chapter_now(), "pip": self.pip.is_some(), "pip_closing": self.pip_closing,
+                    "video_win": self.video_win.map(|w| if Some(w) == self.pip { "pip" } else { "main" }), "thumbs": self.thumbs.made,
+                    "thumbs_bytes": self.thumbs.bytes(), "thumbs_off": self.thumbs.off, "saved_queue": self.saved_queue.len(), "saved_idx": self.saved_idx,
+                });
+                let mut v = v;
+                if let (Some(o), Some(m)) = (v.as_object_mut(), more.as_object()) {
+                    o.extend(m.clone());
+                }
                 let dir = format!("{}/mist", std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".into()));
                 let _ = std::fs::write(format!("{dir}/player-state.json"), v.to_string());
             }
@@ -1544,11 +1767,11 @@ impl Player {
     }
 }
 
-// `mist-ui-bin player --png OUT [empty|video|audio|queue|tracks|help|info] [WxH]`: the controls drawn with a
+// `mist-ui-bin player --png OUT [empty|video|audio|queue|tracks|help|info|chapters|seek|pip|pipmain|resume] [WxH]`: the controls drawn with a
 // fixed demo state, no Wayland, no mpv (checks of the look)
 fn png(args: &[String]) -> i32 {
     let Some(out) = args.get(1) else {
-        eprintln!("player --png OUT [empty|video|audio|queue|tracks|help|info] [WxH]");
+        eprintln!("player --png OUT [empty|video|audio|queue|tracks|help|info|chapters|seek|pip|pipmain|resume] [WxH]");
         return 2;
     };
     let what = args.get(2).map(|s| s.as_str()).unwrap_or("video");
@@ -1557,7 +1780,11 @@ fn png(args: &[String]) -> i32 {
     p.w = w as f32;
     p.h = h as f32;
     p.recents = (0..3).map(|i| Recent { path: format!("/home/demo/Wideo/Film {}.mkv", i + 1), pos: 600_000.0 * i as f64, dur: 5_400_000.0, t: 0.0 }).collect();
-    if what != "empty" {
+    if what == "resume" {
+        p.saved_queue = (1..=8).map(|i| format!("/home/demo/Wideo/Serial S01E{i:02}.mkv")).collect();
+        p.saved_idx = 3;
+    }
+    if what != "empty" && what != "resume" {
         let audio = what == "audio";
         p.queue = (1..=12).map(|i| if audio { format!("/home/demo/Muzyka/{i:02} Utwór_{i}.flac") } else { format!("/home/demo/Wideo/Serial S01E{i:02}.mkv") }).collect();
         p.idx = 2;
@@ -1579,10 +1806,43 @@ fn png(args: &[String]) -> i32 {
             "tracks" => Panel::Tracks,
             "help" => Panel::Help,
             "info" => Panel::Info,
+            "chapters" => Panel::Chapters,
             _ => Panel::None,
         };
+        if what == "seek" {
+            // the pointer over the bar at 60 %, a stand-in thumbnail (a gradient) for that spot
+            p.paint_all(&mut Canvas::new(w, h));
+            if let Some((bx, by, bw, bh, _)) = p.hits.iter().rev().find(|h| h.4 == Hit::Seek).cloned() {
+                p.mouse = (bx + 6.0 + (bw - 12.0) * 0.6, by + bh / 2.0);
+                p.hover = Some(Hit::Seek);
+            }
+            let mut pm = tiny_skia::Pixmap::new(thumbs::TW, thumbs::TH).unwrap();
+            for (i, px) in pm.pixels_mut().iter_mut().enumerate() {
+                let (x, y) = ((i as u32 % thumbs::TW) as f32 / thumbs::TW as f32, (i as u32 / thumbs::TW) as f32 / thumbs::TH as f32);
+                *px = tiny_skia::ColorU8::from_rgba((60.0 + 180.0 * x) as u8, (90.0 + 120.0 * y) as u8, 200, 255).premultiply();
+            }
+            let (b, _) = thumbs::bucket(0.6 * p.dur, p.dur);
+            p.thumbs.reset(&p.cur.clone());
+            p.thumbs.insert(b, pm);
+        }
+        if what == "pipmain" {
+            p.pip = Some(7);
+        }
     }
     let mut c = Canvas::new(w, h);
+    if what == "pip" {
+        p.pip = Some(7);
+        p.pip_hover = true;
+        p.pip_mouse = (w as f32 / 2.0, h as f32 / 2.0);
+        p.paint_pip(&mut c);
+        return match c.pm.save_png(out) {
+            Ok(_) => 0,
+            Err(e) => {
+                eprintln!("player --png: {e}");
+                1
+            }
+        };
+    }
     p.paint_all(&mut c);
     match c.pm.save_png(out) {
         Ok(_) => 0,
@@ -1676,7 +1936,7 @@ mod tests {
     }
     #[test]
     fn demo_renders() {
-        for what in ["empty", "video", "audio", "queue", "tracks", "help", "info"] {
+        for what in ["empty", "video", "audio", "queue", "tracks", "help", "info", "chapters", "seek", "pip", "pipmain", "resume"] {
             let out = std::env::temp_dir().join(format!("mist-player-{what}-{}.png", std::process::id()));
             let args: Vec<String> = ["--png", &out.to_string_lossy(), what, "960x600"].iter().map(|s| s.to_string()).collect();
             assert_eq!(png(&args), 0, "{what}");

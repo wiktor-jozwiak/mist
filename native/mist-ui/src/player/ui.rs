@@ -48,6 +48,10 @@ fn glyph(name: &str) -> Option<char> {
         "minus" => 0xeaf2,
         "close" => 0xeb55,
         "maxi" => 0xeb0b,
+        "pip" => 0xed35,
+        "pipoff" => 0xed43,
+        "chapters" => 0xef11,
+        "resumeq" => 0xeb72,
         _ => return None,
     };
     char::from_u32(c)
@@ -108,7 +112,7 @@ impl Player {
         self.hits.clear();
         let (w, h) = (self.w, self.h);
         c.clear();
-        let show_video = self.video && !self.cur.is_empty();
+        let show_video = self.video && !self.cur.is_empty() && self.pip.is_none();
         if !show_video {
             self.paint_backdrop(c);
         } else {
@@ -124,6 +128,8 @@ impl Player {
         }
         if self.cur.is_empty() {
             self.paint_empty(c);
+        } else if self.pip.is_some() {
+            self.paint_pip_away(c);
         } else if !show_video {
             self.paint_artwork(c);
         }
@@ -143,6 +149,7 @@ impl Player {
         }
         match self.panel {
             Panel::Speed | Panel::Tracks => self.paint_pop(c),
+            Panel::Chapters if !self.chapters.is_empty() => self.paint_pop(c),
             Panel::List if !self.cur.is_empty() => self.paint_queue(c),
             Panel::Help => self.paint_help(c),
             Panel::Info if !self.cur.is_empty() => self.paint_info(c),
@@ -259,7 +266,8 @@ impl Player {
         let cw = (w - 60.0).min(560.0);
         let rec: Vec<Recent> = self.recents.iter().take(6).cloned().collect();
         let list_h = if rec.is_empty() { 0.0 } else { 8.0 + 26.0 + rec.len() as f32 * 48.0 + 12.0 };
-        let total = 92.0 + 18.0 + 34.0 + 8.0 + 20.0 + 18.0 + 40.0 + list_h;
+        let resume_h = if self.saved_queue.is_empty() { 0.0 } else { 46.0 };
+        let total = 92.0 + 18.0 + 34.0 + 8.0 + 20.0 + 18.0 + 40.0 + resume_h + list_h;
         let mut y = ((h - total) / 2.0).max(60.0);
         let x0 = (w - cw) / 2.0;
         // icon
@@ -280,6 +288,21 @@ impl Player {
         gl(c, &mut self.text, w / 2.0 - bw / 2.0 + 18.0 + 8.5, y + 20.0, "open", 17.0, WHITE);
         c.text(&mut self.text, w / 2.0 - bw / 2.0 + 18.0 + 25.0, y + 20.0, "Otwórz plik…", &st, WHITE);
         y += 40.0 + 8.0;
+        if !self.saved_queue.is_empty() {
+            // the queue of the last session, where it stopped
+            let n = self.saved_queue.len();
+            let i = self.saved_idx.min(n - 1);
+            let sm = Style::ui(13.0, 550.0);
+            let name = elide(&mut self.text, &pretty(&self.saved_queue[i]), &sm, (cw - 150.0).max(120.0));
+            let label = format!("Wznów kolejkę · {name} ({} z {n})", i + 1);
+            let rw = self.text.width(&label, &sm) + 17.0 + 8.0 + 32.0;
+            let hov = self.hit(w / 2.0 - rw / 2.0, y + 4.0, rw, 34.0, Hit::ResumeQueue);
+            c.rrect(w / 2.0 - rw / 2.0, y + 4.0, rw, 34.0, 17.0, WHITE.alpha(if hov { 0.16 } else { 0.09 }));
+            stroke_rrect(c, w / 2.0 - rw / 2.0 + 0.5, y + 4.5, rw - 1.0, 33.0, 16.5, HAIR);
+            gl(c, &mut self.text, w / 2.0 - rw / 2.0 + 16.0 + 8.5, y + 21.0, "resumeq", 16.0, ACC2);
+            c.text(&mut self.text, w / 2.0 - rw / 2.0 + 16.0 + 25.0, y + 21.0, &label, &sm, FG);
+            y += 46.0;
+        }
         if rec.is_empty() {
             return;
         }
@@ -386,6 +409,24 @@ impl Player {
             };
             let tw = self.text.width(&s, &st) + 16.0;
             let tx = (bx + bw * hv as f32 - tw / 2.0).clamp(bx - 20.0, bx + bw - tw + 20.0);
+            if self.video && self.pip.is_none() {
+                let (dur, tx2) = (self.dur, self.tx.clone());
+                if let Some(pm) = self.thumbs.get(hv * dur, dur, tx2.as_ref()) {
+                    let (tw2, th2) = (thumbs::TW as f32, thumbs::TH as f32);
+                    let px = (tx + tw / 2.0 - tw2 / 2.0).clamp(8.0, self.w - tw2 - 8.0).round();
+                    let py = (sy - 46.0 - 6.0 - th2).round();
+                    crate::glass::shadow(c, px, py + 4.0, tw2, th2, 10.0, 14.0, 0.0, Rgba(0.0, 0.0, 0.0, 0.35));
+                    if let Some(path) = crate::gfx::rrect_path(px, py, tw2, th2, 10.0) {
+                        let paint = tiny_skia::Paint {
+                            shader: tiny_skia::Pattern::new(pm.as_ref(), tiny_skia::SpreadMode::Pad, tiny_skia::FilterQuality::Nearest, 1.0, tiny_skia::Transform::from_translate(px, py)),
+                            anti_alias: true,
+                            ..Default::default()
+                        };
+                        c.pm.fill_path(&path, &paint, tiny_skia::FillRule::Winding, tiny_skia::Transform::identity(), None);
+                    }
+                    stroke_rrect(c, px + 0.5, py + 0.5, tw2 - 1.0, th2 - 1.0, 9.5, RIM);
+                }
+            }
             c.rrect(tx, sy - 34.0 - 12.0, tw, 24.0, 12.0, Rgba(20.0 / 255.0, 26.0 / 255.0, 38.0 / 255.0, 0.95));
             stroke_rrect(c, tx + 0.5, sy - 46.0 + 0.5, tw - 1.0, 23.0, 11.5, RIM);
             c.text(&mut self.text, tx + 8.0, sy - 34.0, &s, &st, FG);
@@ -411,11 +452,23 @@ impl Player {
         let fg = if self.fs { "unfull" } else { "full" };
         self.rbtn(c, rx, cy, fg, Hit::Full, false, false);
         rx -= 40.0;
+        // the extra buttons only where they do not reach the middle group (their keys work anyway)
+        let room = cw / 2.0 - widths / 2.0 - 14.0 - 12.0 - 172.0;
+        if self.video && room >= 40.0 {
+            let on = self.pip.is_some();
+            self.rbtn(c, rx, cy, if on { "pipoff" } else { "pip" }, Hit::Pip, on, false);
+            rx -= 40.0;
+        }
         let on = self.panel == Panel::List;
         self.rbtn(c, rx, cy, "list", Hit::List, on, false);
         rx -= 40.0;
         let on = self.panel == Panel::Tracks || self.of_kind("sub").iter().any(|t| t.selected);
         self.rbtn(c, rx, cy, "cc", Hit::Tracks, on, false);
+        if !self.chapters.is_empty() && room >= if self.video { 80.0 } else { 40.0 } {
+            rx -= 40.0;
+            let on = self.panel == Panel::Chapters;
+            self.rbtn(c, rx, cy, "chapters", Hit::Chapters, on, false);
+        }
         let st = Style::ui(14.0, 600.0).tnum();
         let label = rate(self.speed);
         let lw = self.text.width(&label, &st) + 22.0;
@@ -431,7 +484,18 @@ impl Player {
     fn paint_pop(&mut self, c: &mut Canvas) {
         let (x, y, cw, _) = self.controls_rect();
         let mut rows: Vec<Row> = vec![];
-        if self.panel == Panel::Speed {
+        if self.panel == Panel::Chapters {
+            // as many as fit above the controls, the current one in view
+            let fit = (((y - 10.0 - 70.0 - 16.0 - 28.0) / 34.0).floor().max(3.0)) as usize;
+            let now = self.chapter_now().unwrap_or(0);
+            let n = self.chapters.len();
+            let first = now.saturating_sub(fit / 2).min(n.saturating_sub(fit));
+            rows.push(Row::Head(format!("ROZDZIAŁY · {n}")));
+            for (i, (t, name)) in self.chapters.iter().enumerate().skip(first).take(fit) {
+                let label = if name.is_empty() { format!("Rozdział {}", i + 1) } else { name.clone() };
+                rows.push(Row::Pick(format!("{}\t{label}", time(*t)), i == now, RowAct::Chapter(*t)));
+            }
+        } else if self.panel == Panel::Speed {
             for r in SPEEDS {
                 rows.push(Row::Pick(if r == 1.0 { "Normalna".into() } else { rate(r) }, (self.speed - r).abs() < 0.01, RowAct::Speed(r)));
             }
@@ -452,7 +516,7 @@ impl Player {
             }
         }
         let ph: f32 = rows.iter().map(|r| if matches!(r, Row::Head(_)) { 28.0 } else { 34.0 }).sum::<f32>() + 16.0;
-        let pw = 270.0;
+        let pw = if self.panel == Panel::Chapters { 330.0 } else { 270.0 };
         let (px, py) = (x + cw - pw, (y - 10.0 - ph).max(70.0));
         c.rrect(px, py, pw, ph, 20.0, Rgba(14.0 / 255.0, 19.0 / 255.0, 29.0 / 255.0, 0.92));
         stroke_rrect(c, px + 0.5, py + 0.5, pw - 1.0, ph - 1.0, 19.5, RIM);
@@ -473,8 +537,16 @@ impl Player {
                     if *on {
                         gl(c, &mut self.text, px + 8.0 + 18.0, ry + 17.0, "check", 15.0, ACC2);
                     }
-                    let s = elide(&mut self.text, t, &st, pw - 16.0 - 44.0);
+                    // "time\tname": the time right-aligned, tabular
+                    let (t, at) = t.split_once('\t').map(|(a, b)| (b, Some(a))).unwrap_or((t.as_str(), None));
+                    let aw = at.map(|a| self.text.width(a, &Style::ui(12.0, 500.0).tnum()) + 12.0).unwrap_or(0.0);
+                    let s = elide(&mut self.text, t, &st, pw - 16.0 - 44.0 - aw);
                     c.text(&mut self.text, px + 8.0 + 36.0, ry + 17.0, &s, &st, if *on { FG } else { FG2 });
+                    if let Some(a) = at {
+                        let tm = Style::ui(12.0, 500.0).tnum();
+                        let w2 = self.text.width(a, &tm);
+                        c.text(&mut self.text, px + pw - 8.0 - 12.0 - w2, ry + 17.0, a, &tm, FAINT);
+                    }
                     ry += 34.0;
                 }
             }
@@ -543,6 +615,59 @@ impl Player {
         }
     }
 
+    // the main window while the picture is in the PiP window
+    fn paint_pip_away(&mut self, c: &mut Canvas) {
+        let (w, h) = (self.w, self.h);
+        let cy = h / 2.0 - 60.0;
+        c.rrect(w / 2.0 - 44.0, cy - 44.0, 88.0, 88.0, 26.0, WHITE.alpha(0.08));
+        stroke_rrect(c, w / 2.0 - 43.5, cy - 43.5, 87.0, 87.0, 25.5, RIM);
+        gl(c, &mut self.text, w / 2.0, cy, "pip", 40.0, ACC2);
+        let st = Style::ui(20.0, 650.0);
+        let nt = self.nice_title();
+        let t = elide(&mut self.text, &nt, &st, w - 80.0);
+        centered(c, &mut self.text, w / 2.0, cy + 44.0 + 30.0, &t, &st, FG);
+        centered(c, &mut self.text, w / 2.0, cy + 44.0 + 56.0, "Odtwarzanie w oknie obraz w obrazie", &Style::ui(14.0, 450.0), MUTED);
+        let sb = Style::ui(13.0, 600.0);
+        let bw = self.text.width("Przywróć tutaj", &sb) + 17.0 + 8.0 + 32.0;
+        let by = cy + 44.0 + 76.0;
+        let hov = self.hit(w / 2.0 - bw / 2.0, by, bw, 36.0, Hit::Pip);
+        c.rrect(w / 2.0 - bw / 2.0, by, bw, 36.0, 18.0, if hov { Rgba::hex("#409CFF") } else { Rgba::hex("#0A84FF") });
+        gl(c, &mut self.text, w / 2.0 - bw / 2.0 + 16.0 + 8.5, by + 18.0, "pipoff", 16.0, WHITE);
+        c.text(&mut self.text, w / 2.0 - bw / 2.0 + 16.0 + 25.0, by + 18.0, "Przywróć tutaj", &sb, WHITE);
+    }
+    // the PiP window's canvas over its video plane: clear, buttons while the pointer is in (or paused)
+    pub(super) fn paint_pip(&mut self, c: &mut Canvas) {
+        self.pip_hits.clear();
+        let (w, h) = (c.w(), c.h());
+        c.clear();
+        if !self.pip_hover && !self.paused {
+            return;
+        }
+        let path = tiny_skia::PathBuilder::from_rect(tiny_skia::Rect::from_xywh(0.0, 0.0, w, h).unwrap());
+        crate::desktop::fill_lin(c, &path, (0.0, 0.0), (0.0, h), &[(0.0, Rgba(0.0, 0.0, 0.0, 0.5)), (0.4, Rgba(0.0, 0.0, 0.0, 0.18)), (1.0, Rgba(0.0, 0.0, 0.0, 0.45))]);
+        let (mx, my) = self.pip_mouse;
+        let inside = |x: f32, y: f32, d: f32| mx >= x && mx < x + d && my >= y && my < y + d;
+        // play / pause in the middle
+        let d = (h * 0.24).clamp(36.0, 56.0);
+        let (px, py) = (w / 2.0 - d / 2.0, h / 2.0 - d / 2.0);
+        self.pip_hits.push((px, py, d, d, Hit::PipPlay));
+        c.rrect(px, py, d, d, d / 2.0, WHITE.alpha(if inside(px, py, d) { 0.96 } else { 0.86 }));
+        let g = if self.paused { "play" } else { "pause" };
+        gl(c, &mut self.text, w / 2.0 + if self.paused { 1.5 } else { 0.0 }, h / 2.0, g, d * 0.45, INK);
+        // back to the main window (top left), close (top right)
+        for (x, g, k) in [(10.0, "pipoff", Hit::PipBack), (w - 10.0 - 30.0, "x", Hit::PipClose)] {
+            self.pip_hits.push((x, 10.0, 30.0, 30.0, k));
+            c.rrect(x, 10.0, 30.0, 30.0, 15.0, Rgba(0.0, 0.0, 0.0, if inside(x, 10.0, 30.0) { 0.55 } else { 0.35 }));
+            gl(c, &mut self.text, x + 15.0, 25.0, g, 16.0, FG);
+        }
+        // where it is (drawn at hover / pause only: no repaint per second)
+        if self.dur > 0.0 {
+            let f = (self.pos / self.dur).clamp(0.0, 1.0) as f32;
+            c.rrect(12.0, h - 10.0, w - 24.0, 3.0, 1.5, WHITE.alpha(0.25));
+            c.rrect(12.0, h - 10.0, ((w - 24.0) * f).max(3.0), 3.0, 1.5, FG);
+        }
+    }
+
     fn paint_help(&mut self, c: &mut Canvas) {
         let rows = [
             ("Spacja / K", "Odtwarzaj / pauza"),
@@ -552,7 +677,8 @@ impl Player {
             ("M", "Wycisz"),
             ("F / dwuklik", "Pełny ekran"),
             ("N / P  ·  > / <", "Następny / poprzedni"),
-            ("PgUp / PgDn", "Poprzedni / następny rozdział"),
+            ("PgUp / PgDn  ·  C", "Rozdział: poprzedni / następny / lista"),
+            ("Shift+P", "Obraz w obrazie"),
             ("[ / ]  ·  { / }", "Wolniej / szybciej  (×½ / ×2)"),
             ("Backspace", "Normalna prędkość"),
             ("S / V", "Napisy: następne / ukryj"),

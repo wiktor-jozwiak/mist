@@ -891,7 +891,15 @@
     "ukrainian": "Ucraniano",
     "czech": "Checo",
     "japanese": "Japonés",
-    "korean": "Coreano"
+    "korean": "Coreano",
+    "resume_queue": "Reanudar cola",
+    "chapters_caps": "CAPÍTULOS",
+    "chapter": "Capítulo",
+    "chapter_keys": "Capítulo: anterior / siguiente / lista",
+    "pip": "Imagen en imagen",
+    "pip_playing": "Reproduciendo en la ventana de imagen en imagen",
+    "pip_restore": "Traer aquí",
+    "pip_video_only": "Imagen en imagen: solo vídeo"
   },
   "files": {
     "file": "Archivo",
