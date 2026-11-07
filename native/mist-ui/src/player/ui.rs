@@ -69,12 +69,33 @@ fn sk(c: Rgba) -> tiny_skia::Color {
 fn elide(t: &mut Text, s: &str, st: &Style, max: f32) -> String {
     crate::bar::elide(t, s, st, max)
 }
+// hsl (h in degrees) to colour
+fn hsl(h: f32, s: f32, l: f32) -> Rgba {
+    let h = h.rem_euclid(360.0) / 60.0;
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let x = c * (1.0 - (h % 2.0 - 1.0).abs());
+    let (r, g, b) = match h as u32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    let m = l - c / 2.0;
+    Rgba(r + m, g + m, b + m, 1.0)
+}
 fn centered(c: &mut Canvas, t: &mut Text, cx: f32, cy: f32, s: &str, st: &Style, col: Rgba) {
     let w = t.width(s, st);
     c.text(t, cx - w / 2.0, cy, s, st, col);
 }
 
 impl Player {
+    // a track's own hue (from its name): the placeholder art and the backdrop differ per track
+    fn track_hue(&self) -> f32 {
+        let h = self.cur.bytes().fold(0x811c9dc5u32, |h, b| (h ^ b as u32).wrapping_mul(0x01000193));
+        (h % 360) as f32
+    }
     fn hit(&mut self, x: f32, y: f32, w: f32, h: f32, k: Hit) -> bool {
         let on = self.hover.as_ref() == Some(&k);
         self.hits.push((x, y, w, h, k));
@@ -86,7 +107,8 @@ impl Player {
         let d = if big { 52.0 } else { 38.0 };
         let hov = self.hit(x, cy - d / 2.0, d, d, k);
         if big {
-            c.rrect(x, cy - d / 2.0, d, d, d / 2.0, WHITE.alpha(if hov { 0.96 } else { 0.9 }));
+            crate::glass::shadow(c, x, cy - d / 2.0 + 3.0, d, d, d / 2.0, 12.0, 0.0, Rgba(0.0, 0.0, 0.0, 0.28));
+            c.rrect(x, cy - d / 2.0, d, d, d / 2.0, WHITE.alpha(if hov { 0.98 } else { 0.92 }));
         } else if hov || on {
             c.rrect(x, cy - d / 2.0, d, d, d / 2.0, WHITE.alpha(if on { 0.12 } else { 0.10 }));
         }
@@ -187,20 +209,23 @@ impl Player {
             c.text(&mut self.text, x + 15.0 + 26.0, y + 20.0, &s, &st, FG);
         }
         if let Some((p, _)) = self.resume_at {
+            // centred just above the controls (or the bottom when they are hidden)
             let st = Style::ui(13.0, 520.0);
             let sb = Style::ui(12.0, 600.0);
             let msg = format!("Wznowiono od {}", time(p));
             let tw = self.text.width(&msg, &st);
             let bw2 = self.text.width("Od początku", &sb) + 18.0;
-            let bw = 12.0 + 16.0 + 10.0 + tw + 10.0 + bw2 + 12.0;
-            let y = h - 22.0 - 106.0 - 14.0 - 42.0;
-            c.rrect(24.0, y, bw, 42.0, 21.0, Rgba(14.0 / 255.0, 19.0 / 255.0, 29.0 / 255.0, 0.82));
-            stroke_rrect(c, 24.5, y + 0.5, bw - 1.0, 41.0, 20.5, RIM);
-            gl(c, &mut self.text, 24.0 + 12.0 + 8.0, y + 21.0, "clock", 16.0, ACC2);
-            c.text(&mut self.text, 24.0 + 38.0, y + 21.0, &msg, &st, FG);
-            let bx = 24.0 + 38.0 + tw + 10.0;
+            let bw = 12.0 + 16.0 + 10.0 + tw + 10.0 + bw2 + 7.0;
+            let (_, ctl_y, _, _) = self.controls_rect();
+            let (x0, y) = ((w / 2.0 - bw / 2.0).round(), if chrome { ctl_y - 12.0 - 42.0 } else { h - 22.0 - 42.0 });
+            crate::glass::shadow(c, x0, y + 4.0, bw, 42.0, 21.0, 16.0, 0.0, Rgba(0.0, 0.0, 0.0, 0.25));
+            c.rrect(x0, y, bw, 42.0, 21.0, Rgba(14.0 / 255.0, 19.0 / 255.0, 29.0 / 255.0, 0.82));
+            stroke_rrect(c, x0 + 0.5, y + 0.5, bw - 1.0, 41.0, 20.5, RIM);
+            gl(c, &mut self.text, x0 + 12.0 + 8.0, y + 21.0, "clock", 16.0, ACC2);
+            c.text(&mut self.text, x0 + 38.0, y + 21.0, &msg, &st, FG);
+            let bx = x0 + 38.0 + tw + 10.0;
             let hov = self.hit(bx, y + 7.0, bw2, 28.0, Hit::FromStart);
-            c.rrect(bx, y + 7.0, bw2, 28.0, 14.0, WHITE.alpha(if hov { 0.16 } else { 0.09 }));
+            c.rrect(bx, y + 7.0, bw2, 28.0, 14.0, WHITE.alpha(if hov { 0.18 } else { 0.10 }));
             c.text(&mut self.text, bx + 9.0, y + 21.0, "Od początku", &sb, FG);
         }
         if self.drop_hover {
@@ -229,9 +254,14 @@ impl Player {
         let (w, h) = (self.w, self.h);
         c.rrect(0.0, 0.0, w, h, 0.0, Rgba::rgb8(14, 19, 29, 1.0));
         // soft colour blobs (static: no per-frame work); the album art's colours when there is one
-        let a = if self.cur.is_empty() { 0.18 } else if self.cover_cols.is_some() { 0.5 } else { 0.32 };
+        let a = if self.cur.is_empty() { 0.18 } else if self.cover_cols.is_some() { 0.5 } else { 0.4 };
         let m = w.max(h);
-        let cols = self.cover_cols.unwrap_or([Rgba::hex("#5E5CE6"), Rgba::hex("#BF5AF2"), Rgba::hex("#64D2FF")]);
+        let hue = self.track_hue();
+        let cols = match self.cover_cols {
+            Some(c) => c,
+            None if !self.cur.is_empty() => [hsl(hue, 0.65, 0.45), hsl(hue + 45.0, 0.6, 0.42), hsl(hue - 60.0, 0.55, 0.45)],
+            None => [Rgba::hex("#5E5CE6"), Rgba::hex("#BF5AF2"), Rgba::hex("#64D2FF")],
+        };
         for (col, fx, fy, fs) in [(cols[0], 0.10, 0.15, 0.55), (cols[1], 0.75, 0.25, 0.45), (cols[2], 0.45, 0.85, 0.4)] {
             let r = m * fs / 2.0;
             let (cx, cy) = (w * fx, h * fy);
@@ -378,10 +408,13 @@ impl Player {
         let w = self.w;
         let (_, ctl_y, _, _) = self.controls_rect();
         let next = if self.queue.len() > 1 && (self.idx + 1) < self.queue.len() as i32 { Some(pretty(&self.queue[self.idx as usize + 1])) } else { None };
-        let sub = [self.artist.clone(), self.album.clone()];
+        let (title, artist) = self.track_meta();
+        let sub = [artist, self.album.clone()];
+        // the "resumed from" pill sits above the controls: the art makes room for it
+        let pill = if self.resume_at.is_some() { 54.0 } else { 0.0 };
         let lines = 30.0 + if sub[0].is_empty() { 0.0 } else { 24.0 } + if sub[1].is_empty() { 0.0 } else { 20.0 };
         // the art as big as the room above the controls allows
-        let room = ctl_y - 70.0 - 26.0 - lines - 20.0;
+        let room = ctl_y - 70.0 - 26.0 - lines - 20.0 - pill;
         let s = room.min(w - 80.0).min(340.0).max(96.0);
         let y = 64.0 + ((room - s) / 2.0).max(0.0);
         let x = w / 2.0 - s / 2.0;
@@ -403,16 +436,16 @@ impl Player {
                 c.pm.draw_pixmap(px as i32, py as i32, sc.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), None);
             }
         } else {
+            let hue = self.track_hue();
             if let Some(p) = crate::gfx::rrect_path(sx, sy, ss, ss, r) {
-                crate::desktop::fill_lin(c, &p, (0.0, sy), (0.0, sy + ss), &[(0.0, Rgba::hex("#c46af4")), (1.0, Rgba::hex("#5E5CE6"))]);
+                crate::desktop::fill_lin(c, &p, (sx, sy), (sx + ss, sy + ss), &[(0.0, hsl(hue, 0.55, 0.6)), (1.0, hsl(hue + 40.0, 0.6, 0.42))]);
             }
             gl(c, &mut self.text, w / 2.0, sy + ss / 2.0, "music", ss * 0.36, WHITE.alpha(0.92));
         }
         stroke_rrect(c, sx + 0.5, sy + 0.5, ss - 1.0, ss - 1.0, r - 0.5, RIM);
         let mut ty = y + s + 26.0 + 14.0;
         let st = Style::ui(26.0, 700.0);
-        let nt = self.nice_title();
-        let t = elide(&mut self.text, &nt, &st, w - 80.0);
+        let t = elide(&mut self.text, &title, &st, w - 80.0);
         centered(c, &mut self.text, w / 2.0, ty, &t, &st, FG);
         ty += 16.0;
         if !sub[0].is_empty() {
@@ -420,7 +453,7 @@ impl Player {
             let st = Style::ui(17.0, 550.0);
             let s2 = elide(&mut self.text, &sub[0], &st, w - 80.0);
             // the artist in a light tint of the art (the accent without one)
-            let tint = self.cover_cols.map(|c| Rgba(0.55 + 0.45 * c[0].0, 0.55 + 0.45 * c[0].1, 0.55 + 0.45 * c[0].2, 0.95)).unwrap_or(ACC2);
+            let tint = self.cover_cols.map(|c| Rgba(0.55 + 0.45 * c[0].0, 0.55 + 0.45 * c[0].1, 0.55 + 0.45 * c[0].2, 0.95)).unwrap_or_else(|| hsl(self.track_hue(), 0.6, 0.8));
             centered(c, &mut self.text, w / 2.0, ty, &s2, &st, tint);
             ty += 8.0;
         }
@@ -432,6 +465,7 @@ impl Player {
         }
         // up next, just above the controls
         if let Some(n) = next
+            && pill == 0.0
             && ctl_y - ty > 54.0
         {
             let st = Style::ui(12.0, 500.0);
@@ -528,8 +562,13 @@ impl Player {
         let on = self.panel == Panel::List;
         self.rbtn(c, rx, cy, "list", Hit::List, on, false);
         rx -= 40.0;
-        let on = self.panel == Panel::Tracks || self.of_kind("sub").iter().any(|t| t.selected);
-        self.rbtn(c, rx, cy, "cc", Hit::Tracks, on, false);
+        // audio / subtitles: only when there is something to choose (a plain MP3 has nothing)
+        if self.video || !self.of_kind("sub").is_empty() || self.of_kind("audio").len() > 1 {
+            let on = self.panel == Panel::Tracks || self.of_kind("sub").iter().any(|t| t.selected);
+            self.rbtn(c, rx, cy, "cc", Hit::Tracks, on, false);
+        } else {
+            rx += 40.0;
+        }
         if !self.chapters.is_empty() && room >= if self.video { 80.0 } else { 40.0 } {
             rx -= 40.0;
             let on = self.panel == Panel::Chapters;
@@ -544,7 +583,7 @@ impl Player {
         if hov || on {
             c.rrect(rx, cy - 19.0, lw, 38.0, 19.0, WHITE.alpha(if on { 0.12 } else { 0.10 }));
         }
-        c.text(&mut self.text, rx + 11.0, cy, &label, &st, if on { ACC2 } else if hov { FG } else { FG2 });
+        c.text(&mut self.text, rx + 11.0, cy, &label, &st, if on { ACC2 } else if hov { FG } else { MUTED });
     }
 
     fn paint_pop(&mut self, c: &mut Canvas) {

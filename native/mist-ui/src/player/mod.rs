@@ -73,6 +73,37 @@ pub fn pretty(p: &str) -> String {
     }
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
+// "Artist - Title" in a name without tags: (artist, title), the title without "(Official Video)" and the like
+pub fn split_name(s: &str) -> Option<(String, String)> {
+    let (a, t) = s.split_once(" - ").or_else(|| s.split_once(" – "))?;
+    let (a, t) = (a.trim(), clean_title(t));
+    (!a.is_empty() && !t.is_empty() && a.chars().count() <= 60).then(|| (a.to_string(), t))
+}
+fn clean_title(t: &str) -> String {
+    const JUNK: [&str; 12] = ["official", "video", "lyric", "audio", "visuali", "hd", "hq", "4k", "kbps", "download", "teledysk", "tekst"];
+    let junk = |g: &str| {
+        let g = g.to_lowercase();
+        g.split(|c: char| !c.is_alphanumeric()).any(|w| JUNK.iter().any(|j| w.starts_with(j)))
+    };
+    let mut out = t.to_string();
+    // (…) / […] groups that only say what kind of upload it is
+    for (o, c) in [('(', ')'), ('[', ']')] {
+        while let Some(i) = out.find(o) {
+            let Some(j) = out[i..].find(c).map(|j| i + j) else { break };
+            if !junk(&out[i + 1..j]) {
+                break;
+            }
+            out.replace_range(i..=j, "");
+        }
+    }
+    // a trailing " - Official Video"
+    if let Some((head, tail)) = out.rsplit_once(" - ")
+        && junk(tail)
+    {
+        out = head.to_string();
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
 pub fn time(sec: f64) -> String {
     let s = if sec > 0.0 { sec as u64 } else { 0 };
     let (h, m, ss) = (s / 3600, (s / 60) % 60, s % 60);
@@ -675,6 +706,8 @@ impl Player {
         let thumb_src = if is_url(&self.cur) || is_audio(&self.cur) { String::new() } else { self.cur.clone() };
         self.thumbs.reset(&thumb_src);
         self.want_cover();
+        // the backdrop takes the track's colours
+        self.backdrop = None;
         if self.queue.len() > 1 {
             self.saved_queue = self.queue.clone();
             self.saved_idx = i;
@@ -1083,6 +1116,17 @@ impl Player {
                 self.title_shown = t.clone();
                 cx.cmds.push(Cmd::Title(w, t));
             }
+        }
+    }
+    // what the audio view shows: (title, artist), the artist taken from the name when there is no tag
+    pub fn track_meta(&self) -> (String, String) {
+        let t = self.nice_title();
+        if !self.artist.is_empty() {
+            return (t, self.artist.clone());
+        }
+        match split_name(&t) {
+            Some((a, t)) => (t, a),
+            None => (t, String::new()),
         }
     }
     pub fn nice_title(&self) -> String {
@@ -1812,11 +1856,11 @@ impl Player {
     }
 }
 
-// `mist-ui-bin player --png OUT [empty|video|audio|noart|queue|tracks|help|info|chapters|seek|pip|pipmain|resume] [WxH] [frame]`: the controls drawn with a
+// `mist-ui-bin player --png OUT [empty|video|audio|noart|plain|queue|tracks|help|info|chapters|seek|pip|pipmain|resume] [WxH] [frame]`: the controls drawn with a
 // fixed demo state, no Wayland, no mpv (checks of the look)
 fn png(args: &[String]) -> i32 {
     let Some(out) = args.get(1) else {
-        eprintln!("player --png OUT [empty|video|audio|noart|queue|tracks|help|info|chapters|seek|pip|pipmain|resume] [WxH] [frame]");
+        eprintln!("player --png OUT [empty|video|audio|noart|plain|queue|tracks|help|info|chapters|seek|pip|pipmain|resume] [WxH] [frame]");
         return 2;
     };
     let what = args.get(2).map(|s| s.as_str()).unwrap_or("video");
@@ -1830,7 +1874,7 @@ fn png(args: &[String]) -> i32 {
         p.saved_idx = 3;
     }
     if what != "empty" && what != "resume" {
-        let audio = what == "audio" || what == "noart";
+        let audio = what == "audio" || what == "noart" || what == "plain";
         p.queue = (1..=12).map(|i| if audio { format!("/home/demo/Muzyka/{i:02} Utwór_{i}.flac") } else { format!("/home/demo/Wideo/Serial S01E{i:02}.mkv") }).collect();
         p.idx = 2;
         p.cur = p.queue[2].clone();
@@ -1872,6 +1916,16 @@ fn png(args: &[String]) -> i32 {
         }
         if what == "pipmain" {
             p.pip = Some(7);
+        }
+        if what == "plain" {
+            // a download without tags: the artist from the name, one audio track, no chapters, just resumed
+            p.queue = vec!["/home/demo/Pobrane/Prince_and_The_Revolution_-_Purple_Rain_Album_12_edit_SV_Sound_(mp3.pm).mp3".into()];
+            p.idx = 0;
+            p.cur = p.queue[0].clone();
+            (p.artist, p.album) = (String::new(), String::new());
+            p.tracks.retain(|t| t.kind == "audio" && t.id == 1);
+            p.chapters.clear();
+            p.resume_at = Some((317.0, Instant::now()));
         }
     }
     let mut c = Canvas::new(w, h);
@@ -1945,6 +1999,11 @@ mod tests {
         assert_eq!(time(3725.0), "1:02:05");
         assert_eq!(time(-3.0), "0:00");
         assert_eq!(rate(1.25), "1,25×");
+        let n = pretty("/m/Prince_and_The_Revolution_-_Purple_Rain_Album_12_edit_SV_Sound_(mp3.pm).mp3");
+        assert_eq!(split_name(&n), Some(("Prince and The Revolution".into(), "Purple Rain Album 12 edit SV Sound".into())));
+        assert_eq!(split_name("Daft Punk - Get Lucky (Official Video) [HD]"), Some(("Daft Punk".into(), "Get Lucky".into())));
+        assert_eq!(split_name("Artysta - Utwór (Remix) - Official Audio"), Some(("Artysta".into(), "Utwór (Remix)".into())));
+        assert_eq!(split_name("Bez myślnika"), None);
     }
     #[test]
     fn kinds() {
