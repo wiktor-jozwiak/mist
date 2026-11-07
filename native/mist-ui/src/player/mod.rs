@@ -8,6 +8,7 @@
 // them, the controls repaint on state changes only (the clock once a second), nothing while they are hidden.
 pub mod engine;
 pub mod ffi;
+mod cover;
 mod mpris;
 mod thumbs;
 mod ui;
@@ -28,6 +29,8 @@ pub enum Wake {
     Mpris(mpris::Req),
     // a seek-bar thumbnail: file, bucket, RGBA (None: ffmpeg failed)
     Thumb(String, u32, Option<Vec<u8>>),
+    // album art for an audio file (None: none found)
+    Cover(String, Option<tiny_skia::Pixmap>),
 }
 
 const VIDEO_EXT: [&str; 14] = ["mkv", "mp4", "m4v", "webm", "avi", "mov", "wmv", "flv", "mpg", "mpeg", "ts", "m2ts", "ogv", "3gp"];
@@ -284,6 +287,12 @@ pub struct Player {
     paints: u64,
     paint_us: u64,
     backdrop: Option<(u32, u32, bool, tiny_skia::Pixmap)>,
+    // album art of the current audio track and its backdrop colours (cover_for: the track it was asked for)
+    cover_for: String,
+    cover: Option<std::rc::Rc<tiny_skia::Pixmap>>,
+    cover_cols: Option<[crate::gfx::Rgba; 3]>,
+    // the art scaled and rounded at the size last drawn (drawn 1:1 after that)
+    cover_px: Option<(u32, tiny_skia::Pixmap)>,
     png_req: Option<String>,
     launched: Instant,
     first_frame_ms: Option<f64>,
@@ -385,6 +394,10 @@ impl Player {
             paints: 0,
             paint_us: 0,
             backdrop: None,
+            cover_for: String::new(),
+            cover: None,
+            cover_cols: None,
+            cover_px: None,
             png_req: None,
             launched: Instant::now(),
             first_frame_ms: None,
@@ -661,6 +674,7 @@ impl Player {
         self.cur = self.queue[i].clone();
         let thumb_src = if is_url(&self.cur) || is_audio(&self.cur) { String::new() } else { self.cur.clone() };
         self.thumbs.reset(&thumb_src);
+        self.want_cover();
         if self.queue.len() > 1 {
             self.saved_queue = self.queue.clone();
             self.saved_idx = i;
@@ -1673,6 +1687,15 @@ impl Logic for Player {
             Wake::Mpv => self.mpv_events(cx),
             Wake::Picked(v, add) => self.take(v, add, cx),
             Wake::Mpris(r) => self.mpris_req(r, cx),
+            Wake::Cover(path, pm) => {
+                if path == self.cover_for {
+                    self.cover_cols = pm.as_ref().map(cover::palette);
+                    self.cover = pm.map(std::rc::Rc::new);
+                    self.cover_px = None;
+                    self.backdrop = None;
+                    self.redraw(cx);
+                }
+            }
             Wake::Thumb(path, b, px) => {
                 let tx = self.tx.clone();
                 if self.thumbs.done(&path, b, px, tx.as_ref()) && (matches!(self.hover, Some(Hit::Seek)) || matches!(self.drag, Some(Hit::Seek))) {
@@ -1685,6 +1708,27 @@ impl Logic for Player {
 }
 
 impl Player {
+    // the album art of a new audio track, found on a worker thread (Wake::Cover); nothing for video / URLs
+    fn want_cover(&mut self) {
+        let want = if is_audio(&self.cur) && !is_url(&self.cur) { self.cur.clone() } else { String::new() };
+        if want == self.cover_for {
+            return;
+        }
+        self.cover_for = want.clone();
+        self.cover_px = None;
+        if self.cover.take().is_some() || self.cover_cols.take().is_some() {
+            self.backdrop = None;
+        }
+        let Some(tx) = self.tx.clone() else { return };
+        if want.is_empty() {
+            return;
+        }
+        std::thread::spawn(move || {
+            let pm = cover::find(&want);
+            let _ = tx.send(Box::new(Wake::Cover(want, pm)));
+        });
+    }
+
     // test hooks (running instance): key NAME [shift ctrl] | click X Y [n] [right] | poke | minimize |
     // png OUT (the controls layer at its next paint) | dump -> $XDG_RUNTIME_DIR/mist/player-state.json
     fn test(&mut self, a: &[String], cx: &mut Cx) {
@@ -1753,6 +1797,7 @@ impl Player {
                     "chapters": self.chapters.len(), "chapter": self.chapter_now(), "pip": self.pip.is_some(), "pip_closing": self.pip_closing,
                     "video_win": self.video_win.map(|w| if Some(w) == self.pip { "pip" } else { "main" }), "thumbs": self.thumbs.made,
                     "thumbs_bytes": self.thumbs.bytes(), "thumbs_off": self.thumbs.off, "saved_queue": self.saved_queue.len(), "saved_idx": self.saved_idx,
+                    "cover": self.cover.as_ref().map(|c| [c.width(), c.height()]), "cover_cols": self.cover_cols.is_some(),
                 });
                 let mut v = v;
                 if let (Some(o), Some(m)) = (v.as_object_mut(), more.as_object()) {
@@ -1767,11 +1812,11 @@ impl Player {
     }
 }
 
-// `mist-ui-bin player --png OUT [empty|video|audio|queue|tracks|help|info|chapters|seek|pip|pipmain|resume] [WxH]`: the controls drawn with a
+// `mist-ui-bin player --png OUT [empty|video|audio|noart|queue|tracks|help|info|chapters|seek|pip|pipmain|resume] [WxH] [frame]`: the controls drawn with a
 // fixed demo state, no Wayland, no mpv (checks of the look)
 fn png(args: &[String]) -> i32 {
     let Some(out) = args.get(1) else {
-        eprintln!("player --png OUT [empty|video|audio|queue|tracks|help|info|chapters|seek|pip|pipmain|resume] [WxH]");
+        eprintln!("player --png OUT [empty|video|audio|noart|queue|tracks|help|info|chapters|seek|pip|pipmain|resume] [WxH] [frame]");
         return 2;
     };
     let what = args.get(2).map(|s| s.as_str()).unwrap_or("video");
@@ -1785,7 +1830,7 @@ fn png(args: &[String]) -> i32 {
         p.saved_idx = 3;
     }
     if what != "empty" && what != "resume" {
-        let audio = what == "audio";
+        let audio = what == "audio" || what == "noart";
         p.queue = (1..=12).map(|i| if audio { format!("/home/demo/Muzyka/{i:02} Utwór_{i}.flac") } else { format!("/home/demo/Wideo/Serial S01E{i:02}.mkv") }).collect();
         p.idx = 2;
         p.cur = p.queue[2].clone();
@@ -1843,7 +1888,28 @@ fn png(args: &[String]) -> i32 {
             }
         };
     }
+    if what == "audio" {
+        // a stand-in album cover: warm diagonal bands
+        let mut pm = tiny_skia::Pixmap::new(400, 400).unwrap();
+        for (i, px) in pm.pixels_mut().iter_mut().enumerate() {
+            let (x, y) = ((i % 400) as f32 / 400.0, (i / 400) as f32 / 400.0);
+            let band = (((x + y) * 6.0).sin() * 0.5 + 0.5) * 0.35;
+            *px = tiny_skia::ColorU8::from_rgba((230.0 - 90.0 * y + 25.0 * band) as u8, (110.0 + 60.0 * x * band) as u8, (60.0 + 120.0 * y) as u8, 255).premultiply();
+        }
+        p.cover_cols = Some(cover::palette(&pm));
+        p.cover = Some(std::rc::Rc::new(pm));
+    }
     p.paint_all(&mut c);
+    // `frame`: the controls over a stand-in picture (the video plane under the surface in the real window)
+    if args.get(4).map(|s| s.as_str()) == Some("frame") {
+        let mut f = tiny_skia::Pixmap::new(w, h).unwrap();
+        for (i, px) in f.pixels_mut().iter_mut().enumerate() {
+            let (x, y) = ((i as u32 % w) as f32 / w as f32, (i as u32 / w) as f32 / h as f32);
+            *px = tiny_skia::ColorU8::from_rgba((40.0 + 150.0 * x * (1.0 - y)) as u8, (70.0 + 110.0 * y) as u8, (90.0 + 80.0 * (1.0 - x)) as u8, 255).premultiply();
+        }
+        f.draw_pixmap(0, 0, c.pm.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), None);
+        c.pm = f;
+    }
     match c.pm.save_png(out) {
         Ok(_) => 0,
         Err(e) => {

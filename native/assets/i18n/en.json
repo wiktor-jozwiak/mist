@@ -893,6 +893,7 @@
     "japanese": "Japanese",
     "korean": "Korean",
     "resume_queue": "Resume queue",
+    "up_next_val": "Up next: {}",
     "chapters_caps": "CHAPTERS",
     "chapter": "Chapter",
     "chapter_keys": "Chapter: previous / next / list",

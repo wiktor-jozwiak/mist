@@ -94,17 +94,38 @@ impl Player {
         gl(c, &mut self.text, x + d / 2.0 + if big && g == "play" { 1.5 } else { 0.0 }, cy, g, if big { 24.0 } else { 20.0 }, col);
         d
     }
+    // a slider; `cuts` (fractions) split it into segments with a small gap (chapters), the one under the
+    // pointer drawn a little taller
     #[allow(clippy::too_many_arguments)]
-    fn bar(&mut self, c: &mut Canvas, x: f32, cy: f32, w: f32, v: f64, k: Hit, hover_v: Option<f64>) {
+    fn bar(&mut self, c: &mut Canvas, x: f32, cy: f32, w: f32, v: f64, k: Hit, hover_v: Option<f64>, cuts: &[f32]) {
         let hov = self.hit(x - 6.0, cy - 10.0, w + 12.0, 20.0, k.clone()) || self.drag.as_ref() == Some(&k);
         let h = if hov { 6.0 } else { 4.0 };
-        c.rrect(x, cy - h / 2.0, w, h, h / 2.0, WHITE.alpha(0.16));
-        if let (true, Some(hv)) = (hov, hover_v) {
-            c.rrect(x, cy - h / 2.0, (w * hv as f32).max(h), h, h / 2.0, WHITE.alpha(0.22));
+        let v = v.clamp(0.0, 1.0) as f32;
+        let hv = hover_v.filter(|_| hov).map(|f| f as f32);
+        let mut edges = vec![0.0];
+        edges.extend(cuts.iter().copied().filter(|f| *f > 0.0 && *f < 1.0 && w * f > 6.0));
+        edges.push(1.0);
+        let gap = if edges.len() > 2 { 1.5 } else { 0.0 };
+        for s in edges.windows(2) {
+            let (a, b) = (s[0], s[1]);
+            let x0 = x + w * a + if a > 0.0 { gap } else { 0.0 };
+            let x1 = x + w * b - if b < 1.0 { gap } else { 0.0 };
+            let under = edges.len() > 2 && hv.is_some_and(|f| f >= a && f < b);
+            let sh = if under { h + 3.0 } else { h };
+            let seg = |c: &mut Canvas, to: f32, col: Rgba| {
+                let ww = to.min(x1) - x0;
+                if ww > 0.5 {
+                    c.rrect(x0, cy - sh / 2.0, ww, sh, (sh / 2.0).min(ww / 2.0), col);
+                }
+            };
+            seg(c, x1, WHITE.alpha(0.16));
+            if let Some(f) = hv {
+                seg(c, x + w * f, WHITE.alpha(0.22));
+            }
+            seg(c, (x + w * v).max(x + h), FG);
         }
-        c.rrect(x, cy - h / 2.0, (w * v.clamp(0.0, 1.0) as f32).max(h), h, h / 2.0, FG);
         if hov {
-            c.rrect(x + w * v.clamp(0.0, 1.0) as f32 - 7.0, cy - 7.0, 14.0, 14.0, 7.0, WHITE);
+            c.rrect(x + w * v - 7.0, cy - 7.0, 14.0, 14.0, 7.0, WHITE);
         }
     }
 
@@ -207,10 +228,11 @@ impl Player {
     fn paint_backdrop_fresh(&mut self, c: &mut Canvas) {
         let (w, h) = (self.w, self.h);
         c.rrect(0.0, 0.0, w, h, 0.0, Rgba::rgb8(14, 19, 29, 1.0));
-        // soft colour blobs (static: no per-frame work)
-        let a = if self.cur.is_empty() { 0.18 } else { 0.32 };
+        // soft colour blobs (static: no per-frame work); the album art's colours when there is one
+        let a = if self.cur.is_empty() { 0.18 } else if self.cover_cols.is_some() { 0.5 } else { 0.32 };
         let m = w.max(h);
-        for (col, fx, fy, fs) in [(Rgba::hex("#5E5CE6"), 0.10, 0.15, 0.55), (Rgba::hex("#BF5AF2"), 0.75, 0.25, 0.45), (Rgba::hex("#64D2FF"), 0.45, 0.85, 0.4)] {
+        let cols = self.cover_cols.unwrap_or([Rgba::hex("#5E5CE6"), Rgba::hex("#BF5AF2"), Rgba::hex("#64D2FF")]);
+        for (col, fx, fy, fs) in [(cols[0], 0.10, 0.15, 0.55), (cols[1], 0.75, 0.25, 0.45), (cols[2], 0.45, 0.85, 0.4)] {
             let r = m * fs / 2.0;
             let (cx, cy) = (w * fx, h * fy);
             let stops = vec![tiny_skia::GradientStop::new(0.0, sk(col.alpha(a))), tiny_skia::GradientStop::new(1.0, sk(col.alpha(0.0)))];
@@ -249,7 +271,15 @@ impl Player {
             let st = Style::ui(14.0, 600.0);
             let nt = self.nice_title();
             let t = elide(&mut self.text, &nt, &st, w - 260.0);
-            let sub = if self.queue.len() > 1 { format!("{} z {}", self.idx + 1, self.queue.len()) } else { String::new() };
+            let mut parts = vec![];
+            if let Some(i) = self.chapter_now() {
+                let n = &self.chapters[i].1;
+                parts.push(if n.is_empty() { format!("Rozdział {}", i + 1) } else { n.clone() });
+            }
+            if self.queue.len() > 1 {
+                parts.push(format!("{} z {}", self.idx + 1, self.queue.len()));
+            }
+            let sub = elide(&mut self.text, &parts.join("  ·  "), &Style::ui(11.0, 450.0), w - 260.0);
             let cy = if sub.is_empty() { 30.0 } else { 24.0 };
             centered(c, &mut self.text, w / 2.0, cy, &t, &st, FG);
             if !sub.is_empty() {
@@ -343,30 +373,70 @@ impl Player {
         }
     }
 
+    // the audio view: the album art (or a placeholder), the title, artist and album, what comes next
     fn paint_artwork(&mut self, c: &mut Canvas) {
-        let (w, h) = (self.w, self.h);
-        let s = (h * 0.34).min(260.0);
-        let cy = h / 2.0 - 40.0;
-        let y = cy - (s + 22.0 + 30.0 + 20.0) / 2.0;
+        let w = self.w;
+        let (_, ctl_y, _, _) = self.controls_rect();
+        let next = if self.queue.len() > 1 && (self.idx + 1) < self.queue.len() as i32 { Some(pretty(&self.queue[self.idx as usize + 1])) } else { None };
+        let sub = [self.artist.clone(), self.album.clone()];
+        let lines = 30.0 + if sub[0].is_empty() { 0.0 } else { 24.0 } + if sub[1].is_empty() { 0.0 } else { 20.0 };
+        // the art as big as the room above the controls allows
+        let room = ctl_y - 70.0 - 26.0 - lines - 20.0;
+        let s = room.min(w - 80.0).min(340.0).max(96.0);
+        let y = 64.0 + ((room - s) / 2.0).max(0.0);
         let x = w / 2.0 - s / 2.0;
-        let k = if self.paused { 0.9 } else { 1.0 };
+        // paused: the art steps back a little
+        let k = if self.paused { 0.92 } else { 1.0 };
         let (sx, sy, ss) = (x + s * (1.0 - k) / 2.0, y + s * (1.0 - k) / 2.0, s * k);
-        crate::glass::shadow(c, sx, sy + 12.0, ss, ss, ss * 0.18, 40.0, 0.0, Rgba(0.0, 0.0, 0.0, 0.4));
-        if let Some(p) = crate::gfx::rrect_path(sx, sy, ss, ss, ss * 0.18) {
-            crate::desktop::fill_lin(c, &p, (0.0, sy), (0.0, sy + ss), &[(0.0, Rgba::hex("#c46af4")), (1.0, Rgba::hex("#5E5CE6"))]);
+        let r = (ss * 0.06).max(10.0);
+        let glow = self.cover_cols.map(|c| Rgba(c[2].0 * 0.35, c[2].1 * 0.35, c[2].2 * 0.35, 0.65)).unwrap_or(Rgba(0.0, 0.0, 0.0, 0.42));
+        crate::glass::shadow(c, sx, sy + 16.0, ss, ss, r, 46.0, 0.0, glow);
+        if let Some(pm) = self.cover.clone() {
+            // scaled once per size (bicubic), then copied: a repaint per second costs a blit
+            let (px, py, n) = (sx.round(), sy.round(), ss.round().max(1.0) as u32);
+            if self.cover_px.as_ref().is_none_or(|(k, _)| *k != n) {
+                let mut sc = Canvas::new(n, n);
+                crate::img::draw(&mut sc, &pm, 0.0, 0.0, n as f32, n as f32, r, true, 1.0);
+                self.cover_px = Some((n, sc.pm));
+            }
+            if let Some((_, sc)) = &self.cover_px {
+                c.pm.draw_pixmap(px as i32, py as i32, sc.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), None);
+            }
+        } else {
+            if let Some(p) = crate::gfx::rrect_path(sx, sy, ss, ss, r) {
+                crate::desktop::fill_lin(c, &p, (0.0, sy), (0.0, sy + ss), &[(0.0, Rgba::hex("#c46af4")), (1.0, Rgba::hex("#5E5CE6"))]);
+            }
+            gl(c, &mut self.text, w / 2.0, sy + ss / 2.0, "music", ss * 0.36, WHITE.alpha(0.92));
         }
-        gl(c, &mut self.text, w / 2.0, sy + ss / 2.0, "music", ss * 0.38, WHITE.alpha(0.92));
-        let mut ty = y + s + 22.0 + 15.0;
-        let st = Style::ui(24.0, 650.0);
+        stroke_rrect(c, sx + 0.5, sy + 0.5, ss - 1.0, ss - 1.0, r - 0.5, RIM);
+        let mut ty = y + s + 26.0 + 14.0;
+        let st = Style::ui(26.0, 700.0);
         let nt = self.nice_title();
         let t = elide(&mut self.text, &nt, &st, w - 80.0);
         centered(c, &mut self.text, w / 2.0, ty, &t, &st, FG);
-        ty += 30.0;
-        let sub = [self.artist.clone(), self.album.clone()].iter().filter(|x| !x.is_empty()).cloned().collect::<Vec<_>>().join(" — ");
-        if !sub.is_empty() {
-            let st = Style::ui(15.0, 450.0);
-            let s2 = elide(&mut self.text, &sub, &st, w - 80.0);
+        ty += 16.0;
+        if !sub[0].is_empty() {
+            ty += 16.0;
+            let st = Style::ui(17.0, 550.0);
+            let s2 = elide(&mut self.text, &sub[0], &st, w - 80.0);
+            // the artist in a light tint of the art (the accent without one)
+            let tint = self.cover_cols.map(|c| Rgba(0.55 + 0.45 * c[0].0, 0.55 + 0.45 * c[0].1, 0.55 + 0.45 * c[0].2, 0.95)).unwrap_or(ACC2);
+            centered(c, &mut self.text, w / 2.0, ty, &s2, &st, tint);
+            ty += 8.0;
+        }
+        if !sub[1].is_empty() {
+            ty += 14.0;
+            let st = Style::ui(14.0, 450.0);
+            let s2 = elide(&mut self.text, &sub[1], &st, w - 80.0);
             centered(c, &mut self.text, w / 2.0, ty, &s2, &st, MUTED);
+        }
+        // up next, just above the controls
+        if let Some(n) = next
+            && ctl_y - ty > 54.0
+        {
+            let st = Style::ui(12.0, 500.0);
+            let label = format!("Dalej: {}", elide(&mut self.text, &n, &st, (w - 120.0).min(420.0)));
+            centered(c, &mut self.text, w / 2.0, ctl_y - 18.0, &label, &st, FAINT);
         }
     }
 
@@ -393,13 +463,9 @@ impl Player {
         let (bx, bw) = (x + 22.0 + 52.0 + 8.0, cw - 44.0 - 52.0 - 58.0 - 16.0);
         let frac = if self.dur > 0.0 { cur / self.dur } else { 0.0 };
         let hover_v = if self.hover == Some(Hit::Seek) || self.drag == Some(Hit::Seek) { Some(((self.mouse.0 - bx) / bw).clamp(0.0, 1.0) as f64) } else { None };
-        self.bar(c, bx, sy, bw, frac, Hit::Seek, hover_v);
         // chapter starts: gaps in the bar
-        if self.dur > 0.0 {
-            for &(t, _) in self.chapters.iter().filter(|(t, _)| *t > 0.5 && *t < self.dur - 0.5) {
-                c.rrect(bx + bw * (t / self.dur) as f32 - 1.0, sy - 4.0, 2.0, 8.0, 1.0, Rgba(0.0, 0.0, 0.0, 0.6));
-            }
-        }
+        let cuts: Vec<f32> = if self.dur > 0.0 { self.chapters.iter().map(|(t, _)| (t / self.dur) as f32).collect() } else { vec![] };
+        self.bar(c, bx, sy, bw, frac, Hit::Seek, hover_v, &cuts);
         if let (Some(hv), true) = (self.seek_preview.or(hover_v), self.dur > 0.0) {
             let st = Style::ui(12.0, 600.0).tnum();
             let at = time(hv * self.dur);
@@ -438,7 +504,7 @@ impl Player {
         lx += self.rbtn(c, lx, cy, vg, Hit::Mute, false, false) + 6.0;
         let vw = (cw * 0.12).min(110.0);
         let v = if self.muted { 0.0 } else { self.volume };
-        self.bar(c, lx, cy, vw, v, Hit::Vol, None);
+        self.bar(c, lx, cy, vw, v, Hit::Vol, None, &[]);
         let widths = 38.0 + 6.0 + 38.0 + 6.0 + 52.0 + 6.0 + 38.0 + 6.0 + 38.0;
         let mut mx = x + cw / 2.0 - widths / 2.0;
         mx += self.rbtn(c, mx, cy, "prev", Hit::Prev, false, false) + 6.0;
@@ -593,6 +659,13 @@ impl Player {
             let xh = self.hover == Some(Hit::QueueRemove(i));
             if now || hov || xh {
                 c.rrect(x + 8.0, ry, sw - 16.0, 46.0, 12.0, WHITE.alpha(if now { 0.11 } else { 0.06 }));
+            }
+            // the current one: how far it got, a hairline along the row's bottom
+            if now && self.dur > 0.0 {
+                let f = (self.pos / self.dur).clamp(0.0, 1.0) as f32;
+                let (lx, lw) = (x + 8.0 + 40.0, sw - 16.0 - 40.0 - 14.0);
+                c.rrect(lx, ry + 41.0, lw, 2.0, 1.0, WHITE.alpha(0.10));
+                c.rrect(lx, ry + 41.0, (lw * f).max(2.0), 2.0, 1.0, ACC);
             }
             if now {
                 gl(c, &mut self.text, x + 8.0 + 21.0, ry + 23.0, if self.paused { "pause" } else { "vol2" }, 16.0, ACC2);
