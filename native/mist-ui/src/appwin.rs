@@ -528,7 +528,9 @@ impl Rt {
     fn draw(&mut self, id: WinId) {
         let Some(i) = self.wins.iter().position(|w| w.id == id) else { return };
         let (w, h) = (self.wins[i].w, self.wins[i].h);
-        if self.wins[i].canvas.pm.width() != w || self.wins[i].canvas.pm.height() != h {
+        // a new size: the logic hears of it after this commit (Ev::Resized), with the size it painted at
+        let resized = self.wins[i].canvas.pm.width() != w || self.wins[i].canvas.pm.height() != h;
+        if resized {
             self.wins[i].canvas = Canvas::new(w, h);
         } else {
             self.wins[i].canvas.clear();
@@ -589,6 +591,9 @@ impl Rt {
         if let Some(v) = made {
             self.with_logic(|l, cx| l.video_surface(id, Some(v), cx));
         }
+        if resized {
+            self.emit(id, Ev::Resized);
+        }
         if gone {
             self.with_logic(|l, cx| l.video_surface(id, None, cx));
             if let Some(w) = self.wins.iter_mut().find(|w| w.id == id) {
@@ -648,7 +653,6 @@ impl WindowHandler for Rt {
         let Some(id) = self.id_of(window.wl_surface()) else { return };
         let w = self.win(id).unwrap();
         let (nw, nh) = (c.new_size.0.map(|v| v.get()).unwrap_or(w.w), c.new_size.1.map(|v| v.get()).unwrap_or(w.h));
-        let changed = nw != w.w || nh != w.h;
         let fs = c.state.contains(smithay_client_toolkit::reexports::csd_frame::WindowState::FULLSCREEN);
         let fs_changed = fs != w.fullscreen;
         w.fullscreen = fs;
@@ -660,16 +664,14 @@ impl WindowHandler for Rt {
         }
         w.w = nw.max(1);
         w.h = nh.max(1);
+        // drawn by flush_draws after the whole batch: an interactive resize sends a configure per pointer motion,
+        // a draw per configure (paint, buffer, video plane) fell behind the pointer by seconds
         w.configured = true;
         w.dirty = true;
         w.frame_pending = false;
-        if changed {
-            self.emit(id, Ev::Resized);
-        }
         if fs_changed {
             self.emit(id, Ev::Fullscreen(fs));
         }
-        self.draw(id);
     }
 }
 impl SeatHandler for Rt {
