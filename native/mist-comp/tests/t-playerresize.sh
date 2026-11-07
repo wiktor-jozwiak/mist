@@ -1,5 +1,5 @@
 #!/bin/sh
-# Mist Player resized by its bottom-right corner at mouse pace (a motion every 2 ms, a configure each): the
+# Mist Player resized (Super + right drag from its bottom-right quadrant) at mouse pace (a motion every 2 ms, a configure each): the
 # window keeps up with the pointer, ends at the pointer's size within 0.5 s, and the video plane is fitted to it
 # (a draw per configure fell seconds behind: the window stood still during the drag).
 D=$(dirname "$0"); cd $D; ./unnest.sh >/dev/null 2>&1
@@ -15,7 +15,7 @@ sleep 2
 g=$(./cc.sh windows | grep mist-player | awk '{print $3, $4}' | tr ',x' '  ')
 set -- $g; x=$1; y=$2; w=$3; h=$4
 R=0
-python3 - $((x + w - 3)) $((y + h - 3)) $w $h "$PWD/playerresize.ppm" <<'P' || R=1
+python3 - $((x + w - 100)) $((y + h - 100)) $w $h "$PWD/playerresize.ppm" <<'P' || R=1
 import socket, os, sys, time
 ex, ey, w0, h0 = map(int, sys.argv[1:5]); shot = sys.argv[5]
 path = os.environ['XDG_RUNTIME_DIR'] + '/mist-comp/' + open('sock').read().strip() + '.sock'
@@ -28,13 +28,13 @@ def cc(c):
 def size():
     l = [l for l in cc('windows').splitlines() if 'mist-player' in l][0]
     return tuple(map(int, l.split()[3].split('x')))
-cc(f'motion {ex} {ey}'); time.sleep(0.1); cc('button left press')
+cc(f'motion {ex} {ey}'); time.sleep(0.1); cc('key 125 press'); cc('button right press')
 behind = 0
 for i in range(1, 401):
     cc(f'motion {ex + i} {ey - i // 2}'); time.sleep(0.002)
     if i % 50 == 0:
         behind = max(behind, w0 + i - size()[0])
-cc('button left release')
+cc('button right release'); cc('key 125 release')
 want = (w0 + 400, h0 - 200); t = time.time()
 while size() != want and time.time() - t < 3: time.sleep(0.005)
 late = (time.time() - t) * 1000
