@@ -4,7 +4,11 @@
 # Stop: pkill -x mist-ui; pkill -x mist-ui-bin. MIST_FALLBACK: a command to start when it gives up.
 mkdir -p "$HOME/.cache/mist"; LOG="$HOME/.cache/mist/ui.log"
 [ -f "$LOG" ] && [ $(stat -c %s "$LOG") -gt 1000000 ] && mv -f "$LOG" "$LOG.1"
-pgrep -x mist-ui-bin >/dev/null && exit 0
+# the shell is the instance without arguments (mist-ui-bin player / files / settings are app windows: a restored
+# Mist Player started before the shell made the guard think the shell ran, the session came up with no bar)
+for p in $(pgrep -x mist-ui-bin); do
+    [ "$(tr '\0' '\n' < /proc/$p/cmdline 2>/dev/null | wc -l)" -eq 1 ] && exit 0
+done
 # next to the guard (~/.local/bin, /usr/bin), else on $PATH
 bin="$(dirname "$0")/mist-ui-bin"; [ -x "$bin" ] || bin=mist-ui-bin
 fails=""
