@@ -1,6 +1,7 @@
 // Mist Files painting (FilesWindow.qml geometry): glass sidebar, tab strip, navigation row with breadcrumbs
 // and search, command bar, details / icons panel, preview pane, status bar, menus, sheets, tooltips.
 // Immediate mode: every paint rebuilds the window's hit list (rect, Hit, tooltip) that input reads.
+use super::smart::Kind;
 use super::{fs, Act, Files, Focus, Hit, SortKey, Win, VIEW_ROW};
 use crate::gfx::{stroke_rrect, Canvas, Rgba};
 use crate::glass::{self, Glass};
@@ -77,6 +78,11 @@ pub fn glyph(name: &str) -> Option<char> {
         "preview" => 0xf007,
         "minus" => 0xeaf2,
         "app" => 0xefe6,
+        "pin" => 0xed60,
+        "pinOff" => 0xed5f,
+        "filter" => 0xeaa5,
+        "archive" => 0xed4e,
+        "code" => 0xea77,
         _ => return None,
     };
     char::from_u32(c)
@@ -94,6 +100,101 @@ thread_local! {
     static FIELDS: RefCell<HashMap<u32, f32>> = RefCell::new(HashMap::new());
     // the list's scratch canvas (rows clip to the panel)
     static LIST: RefCell<Option<Canvas>> = const { RefCell::new(None) };
+    // the backdrop's parts that only change with the window height (see paint_backdrop)
+    static BACKDROP: RefCell<Option<Backdrop>> = const { RefCell::new(None) };
+}
+
+struct Backdrop {
+    key: (u32, u32, bool, bool, [u32; 4]),
+    // per row: runs of one colour (premultiplied RGBA as u32, length); the gradient makes a row one colour
+    // outside the sidebar's glass and the panel's edges, so a 1080p backdrop is ~60 KB instead of 8 MB
+    rows: Vec<Vec<(u32, u16)>>,
+}
+
+/// The window's backdrop: dark translucent gradient (Hyprland blurs behind), the sidebar's glass, the list
+/// panel's fill and edge. The same every frame until the size or layout changes, so it is drawn once (by the
+/// same tiny-skia calls as before) and kept run-length encoded; a frame only fills runs (1080p: ~1 ms
+/// instead of ~17 ms of painting), pixel-identical.
+fn paint_backdrop(c: &mut Canvas, sidebar: bool, panel: (f32, f32, f32, f32)) {
+    let (w, h) = (c.pm.width() as usize, c.pm.height() as usize);
+    let key = (w as u32, h as u32, sidebar, crate::theme::high_contrast(), [panel.0.to_bits(), panel.1.to_bits(), panel.2.to_bits(), panel.3.to_bits()]);
+    BACKDROP.with(|b| {
+        let mut b = b.borrow_mut();
+        if b.as_ref().is_none_or(|b| b.key != key) {
+            let (fw, fh) = (w as f32, h as f32);
+            let mut full = Canvas::new(w as u32, h as u32);
+            if let Some(r) = tiny_skia::Rect::from_xywh(0.0, 0.0, fw, fh) {
+                let path = tiny_skia::PathBuilder::from_rect(r);
+                crate::desktop::fill_lin(&mut full, &path, (0.0, 0.0), (0.0, fh), &[(0.0, tok(crate::tokens::WINDOW_TOP)), (1.0, tok(crate::tokens::WINDOW_BOTTOM))]);
+            }
+            if sidebar {
+                Glass { radius: 20.0, tint: 0.30, shadow: false, corners: true, ..Default::default() }.paint(&mut full, SIDE_X, 8.0, SIDE_W, fh - 16.0);
+            }
+            let (px, py, pw, ph) = panel;
+            full.rrect(px, py, pw, ph, 16.0, WHITE.alpha(0.028));
+            stroke_rrect(&mut full, px + 0.5, py + 0.5, pw - 1.0, ph - 1.0, 15.5, WHITE.alpha(0.055));
+            let (_, src, _) = unsafe { full.pm.data().align_to::<u32>() };
+            let rows = src
+                .chunks_exact(w)
+                .map(|row| {
+                    let mut runs: Vec<(u32, u16)> = Vec::new();
+                    for &px in row {
+                        match runs.last_mut() {
+                            Some((c, n)) if *c == px && *n < u16::MAX => *n += 1,
+                            _ => runs.push((px, 1)),
+                        }
+                    }
+                    runs
+                })
+                .collect();
+            *b = Some(Backdrop { key, rows });
+        }
+        let b = b.as_ref().unwrap();
+        let (_, dst, _) = unsafe { c.pm.data_mut().align_to_mut::<u32>() };
+        for (row, runs) in dst.chunks_exact_mut(w).zip(&b.rows) {
+            let mut x = 0;
+            for &(px, n) in runs {
+                row[x..x + n as usize].fill(px);
+                x += n as usize;
+            }
+        }
+    });
+}
+
+/// `src` drawn over `c` at (x, y): source-over on premultiplied pixels with the arithmetic of tiny-skia's
+/// `draw_pixmap` (its float pipeline: x / 255 as x * (1 / 255), d * (1 - sa) + s, clamp, round to even),
+/// so the pixels are the same; transparent pixels (most of the list's scratch canvas) are skipped and
+/// opaque ones copied: ~4 ms less per 1080p frame.
+fn blit_over(c: &mut Canvas, src: &Canvas, x: i32, y: i32) {
+    let (cw, ch) = (c.pm.width() as i32, c.pm.height() as i32);
+    let (sw, sh) = (src.pm.width() as i32, src.pm.height() as i32);
+    let (x0, y0, x1, y1) = (x.max(0), y.max(0), (x + sw).min(cw), (y + sh).min(ch));
+    if x0 >= x1 || y0 >= y1 {
+        return;
+    }
+    let s = src.pm.data();
+    let d = c.pm.data_mut();
+    for yy in y0..y1 {
+        let so = (((yy - y) * sw + (x0 - x)) * 4) as usize;
+        let dof = ((yy * cw + x0) * 4) as usize;
+        let n = ((x1 - x0) * 4) as usize;
+        for (dp, sp) in d[dof..dof + n].as_chunks_mut::<4>().0.iter_mut().zip(s[so..so + n].as_chunks::<4>().0) {
+            let a = sp[3];
+            if a == 0 {
+                continue;
+            }
+            if a == 255 {
+                dp.copy_from_slice(sp);
+                continue;
+            }
+            const F: f32 = 1.0 / 255.0;
+            let inv = 1.0 - a as f32 * F;
+            for k in 0..4 {
+                let v = (dp[k] as f32 * F) * inv + sp[k] as f32 * F;
+                dp[k] = (v.clamp(0.0, 1.0) * 255.0).round_ties_even() as u8;
+            }
+        }
+    }
 }
 pub fn field_x(w: &Win) -> f32 {
     FIELDS.with(|f| f.borrow().get(&w.id).copied().unwrap_or(0.0))
@@ -148,12 +249,8 @@ impl Files {
 
     fn paint_all(&mut self, w: &mut Win, p: &mut P) {
         let (ww, wh) = (w.w, w.h);
-        p.c.clear();
-        // window: dark translucent gradient (Hyprland blurs behind)
-        if let Some(r) = tiny_skia::Rect::from_xywh(0.0, 0.0, ww, wh) {
-            let path = tiny_skia::PathBuilder::from_rect(r);
-            crate::desktop::fill_lin(p.c, &path, (0.0, 0.0), (0.0, wh), &[(0.0, tok(crate::tokens::WINDOW_TOP)), (1.0, tok(crate::tokens::WINDOW_BOTTOM))]);
-        }
+        // window: dark translucent gradient (Hyprland blurs behind), the sidebar's glass, the panel
+        paint_backdrop(p.c, self.sidebar, panel_rect(w, self.sidebar, self.preview));
         let mx = main_x(self.sidebar);
         // empty chrome drags the window
         p.hit(0.0, 0.0, ww, wh, Hit::Drag, "");
@@ -201,8 +298,8 @@ impl Files {
     }
 
     fn paint_sidebar(&mut self, w: &mut Win, p: &mut P) {
+        // its glass is part of the backdrop (paint_backdrop)
         let (sx, sy, sw, sh) = (SIDE_X, 8.0, SIDE_W, w.h - 16.0);
-        Glass { radius: 20.0, tint: 0.30, shadow: false, corners: true, ..Default::default() }.paint(p.c, sx, sy, sw, sh);
         p.hit(sx, sy, sw, sh, Hit::Side, "");
         let t = &mut self.text;
         let cur = w.cur().path.clone();
@@ -210,7 +307,8 @@ impl Files {
         let lab = Style::ui(13.0, 450.0);
         let labc = Style::ui(13.0, 560.0);
         // content height, then scroll limits
-        let content = 26.0 + 30.0 * self.places.len() as f32 + 8.0 + 26.0 + 48.0 * self.drives.len() as f32 + 8.0 + 30.0 + 10.0;
+        let pins: Vec<(String, String, &'static str)> = self.pins.iter().map(|p| (fs::base(p), p.clone(), "pin")).collect();
+        let content = 26.0 + 30.0 * (self.places.len() + pins.len()) as f32 + 8.0 + 26.0 + 48.0 * self.drives.len() as f32 + 8.0 + 30.0 + 10.0;
         let avail = sh - 44.0;
         w.side_scroll = w.side_scroll.clamp(0.0, (content - avail).max(0.0));
         let top = sy + 40.0;
@@ -225,7 +323,7 @@ impl Files {
             p.c.text(t, sx + 18.0, y + 13.0, "Ulubione", &head, FAINT);
         }
         y += 26.0;
-        for (name, path, g) in self.places.clone() {
+        for (name, path, g) in self.places.clone().into_iter().chain(pins) {
             if vis(y, 30.0) {
                 let k = Hit::Place(path.clone());
                 let hov = p.hit(sx + 8.0, y, sw - 16.0, 30.0, k, "");
@@ -491,7 +589,10 @@ impl Files {
             x += Self::sep(p, x, y);
         }
         x += self.label_btn(p, x, y, "sort", "Sortuj", Act::MenuSort, true, true, FG2) + 2.0;
-        x += self.label_btn(p, x, y, if self.icons_view { "grid" } else { "list" }, "Widok", Act::MenuView, true, true, FG2) + 2.0;
+        x += self.label_btn(p, x, y, if w.cur().icons { "grid" } else { "list" }, "Widok", Act::MenuView, true, true, FG2) + 2.0;
+        // the kind shown: "Rodzaj", or the kind itself in the accent while it filters
+        let k = t.kind;
+        x += self.label_btn(p, x, y, k.glyph(), if k == Kind::All { "Rodzaj" } else { k.label() }, Act::MenuKind, true, true, if k == Kind::All { FG2 } else { ACC }) + 2.0;
         if w.pick.is_none() {
             self.tool_btn(p, x, y, "dots", Hit::Btn(Act::MenuMore), "Więcej", true);
             // right: terminal
@@ -503,8 +604,7 @@ impl Files {
 
     fn paint_panel(&mut self, w: &mut Win, p: &mut P) {
         let (px, py, pw, ph) = panel_rect(w, self.sidebar, self.preview);
-        p.c.rrect(px, py, pw, ph, 16.0, WHITE.alpha(0.028));
-        stroke_rrect(p.c, px + 0.5, py + 0.5, pw - 1.0, ph - 1.0, 15.5, WHITE.alpha(0.055));
+        // its fill and edge are part of the backdrop (paint_backdrop)
         p.hit(px, py, pw, ph, Hit::View, "");
         let drop_here = w.drop.as_deref() == Some(w.cur().path.as_str());
         if drop_here {
@@ -512,7 +612,7 @@ impl Files {
         }
         let ch = self.content_h(w);
         // the list draws into a scratch canvas the panel's size (rows clip at the panel edges)
-        let top = if self.icons_view { 0.0 } else { HEAD_H };
+        let top = if w.cur().icons { 0.0 } else { HEAD_H };
         let (lw, lh) = (pw.max(1.0) as u32, (ph - top - 2.0).max(1.0) as u32);
         let mut lc = LIST.with(|l| l.borrow_mut().take()).filter(|c| c.pm.width() == lw && c.pm.height() == lh).unwrap_or_else(|| Canvas::new(lw, lh));
         lc.clear();
@@ -521,12 +621,18 @@ impl Files {
             let scroll = t.scroll;
             let n = t.items.len();
             if n == 0 {
-                let (g, msg) = if t.loading {
+                let (g, msg) = if t.loading && t.deep {
+                    ("search", "Szukanie w podfolderach…".into())
+                } else if t.loading {
                     ("", String::new())
                 } else if !t.error.is_empty() {
                     ("info", t.error.clone())
+                } else if t.deep {
+                    ("search", format!("Nic w podfolderach dla „{}”", t.filter.trim()))
                 } else if !t.filter.is_empty() {
-                    ("search", format!("Brak wyników dla „{}”", t.filter))
+                    ("search", format!("Brak wyników dla „{}” · Enter szuka w podfolderach", t.filter.trim()))
+                } else if t.kind != Kind::All && !t.all.is_empty() {
+                    (t.kind.glyph(), "Brak elementów tego rodzaju".into())
                 } else if t.is_trash() {
                     ("trash", "Kosz jest pusty".into())
                 } else {
@@ -539,15 +645,15 @@ impl Files {
                     let tw = self.text.width(&msg, &st);
                     lc.text(&mut self.text, (lw as f32 - tw) / 2.0, cy + 26.0, &msg, &st, FAINT);
                 }
-            } else if self.icons_view {
+            } else if w.cur().icons {
                 self.paint_icons(w, &mut lc, pw, scroll);
             } else {
                 self.paint_rows(w, &mut lc, pw, scroll);
             }
         }
-        p.c.pm.draw_pixmap(px as i32, (py + top + 1.0) as i32, lc.pm.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), None);
+        blit_over(p.c, &lc, px as i32, (py + top + 1.0) as i32);
         LIST.with(|l| *l.borrow_mut() = Some(lc));
-        if !self.icons_view {
+        if !w.cur().icons {
             self.paint_header(w, p, px, py, pw);
         }
         // rename field over the item
@@ -556,7 +662,7 @@ impl Files {
             if let Some(i) = w.cur().items.iter().position(|&k| w.cur().all[k].path == rp) {
                 let scroll = w.cur().scroll;
                 let st = Style::ui(13.0, 450.0);
-                let (fx, fy, fw, fh, center) = if self.icons_view {
+                let (fx, fy, fw, fh, center) = if w.cur().icons {
                     let cols = ((pw - 20.0) / CELL_W).floor().max(1.0) as usize;
                     let cx = px + 10.0 + (i % cols) as f32 * CELL_W;
                     let cy = py + 10.0 + (i / cols) as f32 * CELL_H - scroll;
@@ -660,7 +766,17 @@ impl Files {
             let renaming = w.rename.as_ref().map(|r| r.0 == e.path).unwrap_or(false);
             if !renaming {
                 let s = crate::bar::elide(&mut self.text, &e.name, &st, cname - 36.0 - 10.0);
-                c.text(&mut self.text, x0 + 36.0, cy, &s, &st, FG.alpha(a));
+                let nw = c.text(&mut self.text, x0 + 36.0, cy, &s, &st, FG.alpha(a));
+                // a search through subfolders: the folder it is in, after the name
+                if t.deep {
+                    let rel = fs::parent(&e.path);
+                    let rel = rel.strip_prefix(t.path.as_str()).unwrap_or(&rel).trim_start_matches('/');
+                    let room = cname - 36.0 - 10.0 - nw - 10.0;
+                    if !rel.is_empty() && room > 40.0 {
+                        let s = crate::bar::elide(&mut self.text, rel, &sm, room);
+                        c.text(&mut self.text, x0 + 36.0 + nw + 10.0, cy, &s, &sm, FAINT.alpha(a));
+                    }
+                }
             }
             let d = fs::date(e.mtime);
             let s = crate::bar::elide(&mut self.text, &d, &sm, cdate - 12.0);
@@ -817,10 +933,24 @@ impl Files {
         let mut x = mx + 8.0;
         let msg = if !w.toast.is_empty() {
             w.toast.clone()
+        } else if t.loading && t.deep {
+            "Szukanie w podfolderach…".into()
         } else if t.loading && t.items.is_empty() {
             "Wczytywanie…".into()
         } else {
-            let mut s = fs::count_pl(t.items.len());
+            let mut s = if t.deep {
+                let n = t.items.len();
+                let w = if n == 1 { "wynik" } else if (2..=4).contains(&(n % 10)) && !(12..=14).contains(&(n % 100)) { "wyniki" } else { "wyników" };
+                format!("{n} {w} w podfolderach{}", if t.deep_cut { " (pierwsze)" } else { "" })
+            } else {
+                fs::count_pl(t.items.len())
+            };
+            if !t.deep && !t.filter.trim().is_empty() {
+                s += &format!(" · filtr „{}” (Enter: podfoldery)", t.filter.trim());
+            }
+            if t.kind != Kind::All {
+                s += &format!(" · {}", t.kind.label());
+            }
             let n = t.sel.len();
             if n > 0 {
                 s += &format!(" · zaznaczono {n}");
@@ -831,6 +961,9 @@ impl Files {
             }
             s
         };
+        // room left of the progress and the view buttons
+        let room = w.w - 8.0 - 3.0 * 30.0 - 12.0 - x - if self.job.is_some() { 470.0 } else { 0.0 };
+        let msg = crate::bar::elide(&mut self.text, &msg, &st, room.max(60.0));
         x += p.c.text(&mut self.text, x, y + 16.0, &msg, &st, if w.toast.is_empty() { FAINT } else { FG2 }) + 18.0;
         if let Some(j) = &self.job {
             let done = j.pr.done.load(std::sync::atomic::Ordering::Relaxed);
@@ -847,7 +980,7 @@ impl Files {
         }
         // right: preview, details, icons
         let mut rx = w.w - 8.0 - 28.0;
-        for (g, a, on, tip) in [("grid", Act::View(true), self.icons_view, "Ikony (Ctrl+Shift+2)"), ("list", Act::View(false), !self.icons_view, "Szczegóły (Ctrl+Shift+6)"), ("preview", Act::TogglePreview, self.preview, "Okienko podglądu (Alt+P)")] {
+        for (g, a, on, tip) in [("grid", Act::View(true), w.cur().icons, "Ikony (Ctrl+Shift+2)"), ("list", Act::View(false), !w.cur().icons, "Szczegóły (Ctrl+Shift+6)"), ("preview", Act::TogglePreview, self.preview, "Okienko podglądu (Alt+P)")] {
             let hov = p.hit(rx, y + 2.0, 28.0, 28.0, Hit::Btn(a), tip);
             if on {
                 p.c.rrect(rx, y + 2.0, 28.0, 28.0, 8.0, ACC.alpha(0.18));

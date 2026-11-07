@@ -5,18 +5,21 @@
 // serves the FileChooser portal backend (portal.rs) so "Open…" / "Save…" dialogs of other apps are this window.
 pub mod fs;
 pub mod portal;
+pub mod smart;
 mod view;
 
 use crate::appwin::{self, Cmd, Cx, Ev, Logic, WinId, LEFT, MIDDLE, RIGHT};
 use crate::edit::{EditResult, LineEdit};
 use crate::text::{Style, Text};
 use fs::{Entry, MimeDb};
+use smart::{Kind, Query, ViewState};
 use smithay_client_toolkit::seat::keyboard::Keysym;
 use smithay_client_toolkit::seat::pointer::CursorIcon;
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tiny_skia::Pixmap;
 
@@ -49,10 +52,19 @@ pub struct Tab {
     pub scroll: f32,
     pub serial: u64,
     pub reload_at: Option<Instant>,
+    // the view this folder remembers (smart.rs): icons or details, the kind shown
+    pub icons: bool,
+    pub kind: Kind,
+    // known: the folder had a remembered view (else a mostly-pictures listing switches to icons)
+    pub known: bool,
+    // the listing is the search through subfolders (of `filter`); cut: it stopped at a limit
+    pub deep: bool,
+    pub deep_cut: bool,
+    stop: Arc<AtomicBool>,
 }
 impl Tab {
     fn new(uid: u64, path: &str) -> Tab {
-        Tab { uid, path: path.into(), back: vec![], fwd: vec![], show_hidden: false, sort_key: SortKey::Name, sort_desc: false, filter: String::new(), loading: false, error: String::new(), all: vec![], items: vec![], sel: HashSet::new(), anchor: -1, cur: -1, pending_select: vec![], pending_rename: String::new(), scroll: 0.0, serial: 0, reload_at: None }
+        Tab { uid, path: path.into(), back: vec![], fwd: vec![], show_hidden: false, sort_key: SortKey::Name, sort_desc: false, filter: String::new(), loading: false, error: String::new(), all: vec![], items: vec![], sel: HashSet::new(), anchor: -1, cur: -1, pending_select: vec![], pending_rename: String::new(), scroll: 0.0, serial: 0, reload_at: None, icons: false, kind: Kind::All, known: false, deep: false, deep_cut: false, stop: Arc::new(AtomicBool::new(false)) }
     }
     pub fn is_trash(&self) -> bool {
         self.path.starts_with("trash:")
@@ -115,16 +127,29 @@ impl Tab {
             self.anchor = i as i32;
         }
     }
+    pub fn view(&self) -> ViewState {
+        ViewState { sort: self.sort_key, desc: self.sort_desc, hidden: self.show_hidden, icons: self.icons, kind: self.kind, filter: self.filter.clone() }
+    }
+    fn set_view(&mut self, v: &ViewState) {
+        self.sort_key = v.sort;
+        self.sort_desc = v.desc;
+        self.show_hidden = v.hidden;
+        self.icons = v.icons;
+        self.kind = v.kind;
+        self.filter = v.filter.clone();
+    }
     pub fn resort(&mut self, mime: &MimeDb, pick: Option<&Pick>) {
-        let f = self.filter.to_lowercase();
+        let q = Query::parse(&self.filter);
         let mut v: Vec<usize> = (0..self.all.len())
             .filter(|&k| {
                 let e = &self.all[k];
-                (self.show_hidden || !e.hidden) && (f.is_empty() || e.name.to_lowercase().contains(&f)) && pick.map(|p| p.shows(e)).unwrap_or(true)
+                (self.show_hidden || !e.hidden) && self.kind.shows(e) && q.matches(e) && pick.map(|p| p.shows(e)).unwrap_or(true)
             })
             .collect();
         let (k, all) = (self.sort_key, &self.all);
         let desc = self.sort_desc;
+        // type names once per entry, not twice per comparison
+        let types: Vec<String> = if k == SortKey::Type { all.iter().map(|e| mime.type_name(e)).collect() } else { vec![] };
         v.sort_by(|&a, &b| {
             let (x, y) = (&all[a], &all[b]);
             if x.dir != y.dir {
@@ -133,7 +158,7 @@ impl Tab {
             let r = match k {
                 SortKey::Mtime => x.mtime.cmp(&y.mtime),
                 SortKey::Size => x.size.cmp(&y.size),
-                SortKey::Type => mime.type_name(x).cmp(&mime.type_name(y)),
+                SortKey::Type => types[a].cmp(&types[b]),
                 SortKey::Name => std::cmp::Ordering::Equal,
             };
             let r = r.then_with(|| fs::natural_cmp(&x.name, &y.name));
@@ -190,6 +215,16 @@ pub enum Act {
     MenuMore,
     MenuFilter,
     SetFilter(usize),
+    // smart.rs: the kind shown, the search through subfolders, the current view for every folder
+    MenuKind,
+    Kind(Kind),
+    DeepSearch,
+    ViewDefault,
+    Duplicate,
+    Compress,
+    Extract,
+    Pin(String),
+    Unpin(String),
 }
 
 pub struct MenuEntry {
@@ -408,7 +443,9 @@ enum Undo {
 
 // messages from worker threads
 enum Bg {
-    Listed { uid: u64, serial: u64, res: Result<Vec<Entry>, String> },
+    Listed { uid: u64, serial: u64, res: Result<Vec<Entry>, String>, cut: bool },
+    // the listing's types read from the files' content, after it is shown
+    Sniffed { uid: u64, serial: u64, types: Vec<(String, String)> },
     Total(u64),
     JobDone { made: Vec<(String, String)>, cancelled: bool, err: String },
     Thumb { key: (String, u32), pm: Option<Pixmap> },
@@ -420,7 +457,6 @@ enum Bg {
 
 pub struct Files {
     pub wins: Vec<Win>,
-    pub icons_view: bool,
     pub sidebar: bool,
     pub preview: bool,
     pub clip: Vec<String>,
@@ -450,12 +486,19 @@ pub struct Files {
     portal_only: bool,
     idle_since: Option<Instant>,
     pending_picks: Vec<portal::Request>,
+    // the view each folder remembers, the one a new folder starts with, folders pinned to the sidebar
+    mem: smart::Memory,
+    pub def: ViewState,
+    pub pins: Vec<String>,
 }
 struct PendingWin {
     path: String,
     select: String,
     pick: Option<Pick>,
     name: String,
+    // more tabs (a restored session) and the active one
+    more: Vec<String>,
+    active: usize,
 }
 
 // inotify on the folders shown in the windows (one fd, a watch per folder)
@@ -496,7 +539,6 @@ impl Files {
         let (thumb_tx, thumb_rx) = std::sync::mpsc::channel::<(String, i64, u32, String)>();
         let mut f = Files {
             wins: vec![],
-            icons_view: false,
             sidebar: true,
             preview: false,
             clip: vec![],
@@ -525,6 +567,9 @@ impl Files {
             portal_only: false,
             idle_since: None,
             pending_picks: vec![],
+            mem: smart::Memory::load(),
+            def: ViewState { sort: SortKey::Name, desc: false, hidden: false, icons: false, kind: Kind::All, filter: String::new() },
+            pins: vec![],
         };
         let h = fs::home();
         let x = |k: &str, d: &str| f.xdg.get(k).cloned().unwrap_or(format!("{h}/{d}"));
@@ -540,9 +585,18 @@ impl Files {
         // view settings shared by the windows, kept across runs
         if let Ok(s) = std::fs::read_to_string(cfg_path()) {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) {
-                f.icons_view = v["view"].as_str() == Some("icons");
+                f.def.icons = v["view"].as_str() == Some("icons");
                 f.sidebar = v["sidebar"].as_bool().unwrap_or(true);
                 f.preview = v["preview"].as_bool().unwrap_or(false);
+                f.pins = v["pins"].as_array().map(|a| a.iter().filter_map(|p| p.as_str().map(String::from)).collect()).unwrap_or_default();
+                f.def.desc = v["desc"].as_bool().unwrap_or(false);
+                f.def.hidden = v["hidden"].as_bool().unwrap_or(false);
+                f.def.sort = match v["sort"].as_str() {
+                    Some("mtime") => SortKey::Mtime,
+                    Some("type") => SortKey::Type,
+                    Some("size") => SortKey::Size,
+                    _ => SortKey::Name,
+                };
             }
         }
         // thumbnails: one worker (decode, cache lookup, ffmpegthumbnailer); results come back through tx
@@ -550,7 +604,13 @@ impl Files {
         f
     }
     fn save_cfg(&self) {
-        let v = serde_json::json!({ "view": if self.icons_view { "icons" } else { "details" }, "sidebar": self.sidebar, "preview": self.preview });
+        let sort = match self.def.sort {
+            SortKey::Name => "name",
+            SortKey::Mtime => "mtime",
+            SortKey::Type => "type",
+            SortKey::Size => "size",
+        };
+        let v = serde_json::json!({ "view": if self.def.icons { "icons" } else { "details" }, "sidebar": self.sidebar, "preview": self.preview, "pins": self.pins, "sort": sort, "desc": self.def.desc, "hidden": self.def.hidden });
         let _ = std::fs::create_dir_all(std::path::Path::new(&cfg_path()).parent().unwrap());
         let _ = std::fs::write(cfg_path(), v.to_string());
     }
@@ -639,12 +699,50 @@ impl Files {
         let (w, h) = if pick.is_some() { (980, 640) } else { (W0, H0) };
         let title = pick.as_ref().map(|p| p.title.clone()).unwrap_or("Pliki".into());
         let token = cx.new_window(&title, w, h, (760, 480));
-        self.pending.push((token, PendingWin { path: path.into(), select: select.into(), pick, name: name.into() }));
+        self.pending.push((token, PendingWin { path: path.into(), select: select.into(), pick, name: name.into(), more: vec![], active: 0 }));
         self.idle_since = None;
+    }
+    // the tabs of the window closed last (no path given: the session goes on where it was)
+    fn restore_session(&mut self, cx: &mut Cx) -> bool {
+        let Ok(s) = std::fs::read_to_string(session_path()) else { return false };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) else { return false };
+        let tabs: Vec<String> = v["tabs"].as_array().map(|a| a.iter().filter_map(|p| p.as_str().map(String::from)).filter(|p| p.starts_with("trash:") || std::path::Path::new(p).is_dir()).collect()).unwrap_or_default();
+        let Some(first) = tabs.first().cloned() else { return false };
+        let active = (v["active"].as_u64().unwrap_or(0) as usize).min(tabs.len() - 1);
+        self.open_window(&first, "", None, "", cx);
+        if let Some(p) = self.pending.last_mut() {
+            p.1.more = tabs[1..].to_vec();
+            p.1.active = active;
+        }
+        true
+    }
+    // the view a folder opens with: what it remembers, else a guess from where it is (smart.rs)
+    fn view_for(&self, path: &str) -> (ViewState, bool) {
+        match self.mem.get(path) {
+            Some(v) => (v.clone(), true),
+            None => (smart::guess_view(path, &self.xdg, self.def.clone()), false),
+        }
+    }
+    // the folder of the current tab remembers its view as it is now (not in dialogs: their filters are the app's)
+    fn remember(&mut self, wid: WinId) {
+        let Some(w) = self.wins.iter_mut().find(|w| w.id == wid) else { return };
+        if w.pick.is_some() {
+            return;
+        }
+        let t = &mut w.tabs[w.active];
+        t.known = true;
+        let (p, v) = (t.path.clone(), t.view());
+        self.mem.set(&p, v);
     }
     fn close_window(&mut self, id: WinId, cx: &mut Cx) {
         if let Some(i) = self.wi(id) {
             let w = self.wins.remove(i);
+            if w.pick.is_none() && !w.tabs.is_empty() {
+                let tabs: Vec<&str> = w.tabs.iter().map(|t| t.path.as_str()).collect();
+                let _ = std::fs::create_dir_all(fs::parent(&session_path()));
+                let _ = std::fs::write(session_path(), serde_json::json!({ "tabs": tabs, "active": w.active }).to_string());
+            }
+            self.mem.save();
             // an unanswered dialog is a cancel
             if let Some(p) = w.pick {
                 if let Some(r) = p.reply {
@@ -663,11 +761,15 @@ impl Files {
     pub fn new_tab(&mut self, wid: WinId, path: &str, focus: bool, cx: &mut Cx) {
         let uid = self.next_uid;
         self.next_uid += 1;
+        let (v, known) = self.view_for(path);
         let Some(w) = self.win_mut(wid) else { return };
-        w.tabs.push(Tab::new(uid, path));
+        let mut t = Tab::new(uid, path);
+        t.set_view(&v);
+        t.known = known;
+        w.tabs.push(t);
         if focus {
             w.active = w.tabs.len() - 1;
-            w.search.set("");
+            w.search.set(&v.filter);
         }
         let n = w.tabs.len() - 1;
         self.reload(wid, n);
@@ -730,14 +832,15 @@ impl Files {
     // ------------------------------------------------------------ navigation + listing
     pub fn go(&mut self, wid: WinId, p: &str, mode: u8, cx: &mut Cx) {
         // mode: 0 push history, 1 back, 2 fwd
-        let Some(w) = self.win_mut(wid) else { return };
         let mut p = p.to_string();
         if p.len() > 1 && !p.starts_with("trash:") {
             p = p.trim_end_matches('/').to_string();
         }
+        self.mem.save();
+        let (v, known) = self.view_for(&p);
+        let Some(w) = self.win_mut(wid) else { return };
         w.rename = None;
         w.addr = None;
-        w.search.set("");
         if w.focus != Focus::Name {
             w.focus = Focus::View;
         }
@@ -752,7 +855,18 @@ impl Files {
             t.back.push(old);
             t.fwd.clear();
         }
-        t.filter.clear();
+        // the folder's own view: sort, hidden, icons, kind and filter as it was left
+        let pick = w.pick.is_some();
+        let t = w.cur_mut();
+        t.set_view(&v);
+        if pick {
+            t.filter.clear();
+        }
+        t.known = known;
+        t.deep = false;
+        let f = t.filter.clone();
+        w.search.set(&f);
+        let t = w.cur_mut();
         t.clear_sel();
         t.path = p;
         t.all.clear();
@@ -798,13 +912,28 @@ impl Files {
         t.serial += 1;
         t.loading = true;
         t.reload_at = None;
+        // a search through subfolders still running stops
+        t.stop.store(true, Ordering::Relaxed);
+        t.stop = Arc::new(AtomicBool::new(false));
         let (uid, serial, path) = (t.uid, t.serial, t.path.clone());
+        let deep = (t.deep && !t.is_trash()).then(|| (Query::parse(&t.filter), t.show_hidden, t.stop.clone()));
         let Some(tx) = tx else { return };
         std::thread::Builder::new()
             .name("list".into())
             .spawn(move || {
+                if let Some((q, hidden, stop)) = deep {
+                    let (v, cut) = MIME.with(|m| smart::deep(&path, &q, hidden, m, &stop));
+                    if !stop.load(Ordering::Relaxed) {
+                        let _ = tx.send(Box::new(Bg::Listed { uid, serial, res: Ok(v), cut }));
+                    }
+                    return;
+                }
                 let res = MIME.with(|m| fs::list(&path, m));
-                let _ = tx.send(Box::new(Bg::Listed { uid, serial, res }));
+                let pending: Vec<Entry> = res.as_ref().map(|v| v.iter().filter(|e| e.sniff).cloned().collect()).unwrap_or_default();
+                if tx.send(Box::new(Bg::Listed { uid, serial, res, cut: false })).is_err() || pending.is_empty() {
+                    return;
+                }
+                let _ = tx.send(Box::new(Bg::Sniffed { uid, serial, types: fs::sniff_pending(&pending) }));
             })
             .ok();
     }
@@ -821,7 +950,24 @@ impl Files {
             self.reload(w, i);
         }
     }
-    fn listed(&mut self, uid: u64, serial: u64, res: Result<Vec<Entry>, String>, cx: &mut Cx) {
+    fn sniffed(&mut self, uid: u64, serial: u64, types: Vec<(String, String)>, cx: &mut Cx) {
+        let types: HashMap<String, String> = types.into_iter().collect();
+        let mime = &self.mime;
+        for w in self.wins.iter_mut() {
+            let pick = w.pick.as_ref();
+            let Some(t) = w.tabs.iter_mut().find(|t| t.uid == uid && t.serial == serial) else { continue };
+            for e in t.all.iter_mut().filter(|e| e.sniff) {
+                if let Some(m) = types.get(&e.path) {
+                    e.mime = m.clone();
+                    e.sniff = false;
+                }
+            }
+            // a type sort or a dialog's type filter sees the real types now
+            t.resort(mime, pick);
+            cx.redraw(w.id);
+        }
+    }
+    fn listed(&mut self, uid: u64, serial: u64, res: Result<Vec<Entry>, String>, cut: bool, cx: &mut Cx) {
         let mime = &self.mime;
         for w in self.wins.iter_mut() {
             let wid = w.id;
@@ -831,9 +977,14 @@ impl Files {
                 return;
             }
             t.loading = false;
+            t.deep_cut = cut;
             match res {
                 Ok(v) => {
                     t.error.clear();
+                    // a folder seen for the first time, mostly pictures and videos: icons
+                    if !t.known && !t.deep && !t.icons && smart::mostly_media(&v) {
+                        t.icons = true;
+                    }
                     t.all = v;
                 }
                 Err(e) => {
@@ -871,10 +1022,10 @@ impl Files {
     }
     // keep item i in view
     fn show_index(&mut self, wid: WinId, i: usize) {
-        let icons = self.icons_view;
         let preview = self.preview;
         let sidebar = self.sidebar;
         let Some(w) = self.win_mut(wid) else { return };
+        let icons = w.cur().icons;
         let (_, _, pw, ph) = view::panel_rect(w, sidebar, preview);
         let t = w.cur_mut();
         let (top, h) = if icons {
@@ -1250,6 +1401,84 @@ impl Files {
         crate::edit::copy_text(&t);
         self.say(wid, "Skopiowano ścieżkę", cx);
     }
+    // the search field's query through every subfolder (Enter in the field, Ctrl+Shift+F)
+    fn deep_search(&mut self, wid: WinId, cx: &mut Cx) {
+        let Some(w) = self.win_mut(wid) else { return };
+        if w.cur().is_trash() {
+            return;
+        }
+        if w.search.text.trim().is_empty() {
+            w.focus = Focus::Search;
+            cx.redraw(wid);
+            return;
+        }
+        let f = w.search.text.clone();
+        let t = w.cur_mut();
+        t.filter = f;
+        t.deep = true;
+        t.all.clear();
+        t.items.clear();
+        t.clear_sel();
+        t.scroll = 0.0;
+        w.focus = Focus::View;
+        let a = w.active;
+        self.reload(wid, a);
+        cx.redraw(wid);
+    }
+    // the search through subfolders ends: the folder's own listing again
+    fn end_deep(&mut self, wid: WinId) {
+        let Some(w) = self.win_mut(wid) else { return };
+        if !w.cur().deep {
+            return;
+        }
+        w.cur_mut().deep = false;
+        let a = w.active;
+        self.reload(wid, a);
+    }
+    fn compress_sel(&mut self, wid: WinId, cx: &mut Cx) {
+        let Some(w) = self.wins.iter().find(|w| w.id == wid) else { return };
+        let t = w.cur();
+        let sel = t.selected();
+        if sel.is_empty() || t.is_trash() {
+            return;
+        }
+        // in a search through subfolders the files are anywhere: the archive goes next to the first
+        let dir = fs::parent(&sel[0].path);
+        let names: Vec<String> = sel.iter().filter(|e| fs::parent(&e.path) == dir).map(|e| e.name.clone()).collect();
+        let base = if names.len() == 1 { if sel[0].dir { sel[0].name.clone() } else { sel[0].name.rsplit_once('.').map(|x| x.0.to_string()).filter(|s| !s.is_empty()).unwrap_or(sel[0].name.clone()) } } else { "Archiwum".into() };
+        let have: Vec<String> = std::fs::read_dir(&dir).map(|r| r.flatten().map(|d| d.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default();
+        let dest = fs::join(&dir, &fs::free_name(&have, &format!("{base}.zip"), false, false));
+        let Some(tx) = self.tx.clone() else { return };
+        self.say(wid, "Kompresowanie…", cx);
+        std::thread::spawn(move || {
+            let (msg, select) = match smart::compress(&dir, &names, &dest) {
+                Ok(()) => (format!("Utworzono „{}”", fs::base(&dest)), vec![dest]),
+                Err(e) => (format!("Nie udało się skompresować: {e}"), vec![]),
+            };
+            let _ = tx.send(Box::new(Bg::Done { win: wid, msg, reload: true, select }));
+        });
+    }
+    fn extract_sel(&mut self, wid: WinId, cx: &mut Cx) {
+        let Some(w) = self.wins.iter().find(|w| w.id == wid) else { return };
+        let files: Vec<String> = w.cur().selected().iter().filter(|e| !e.dir && smart::is_archive(&e.name, &e.mime)).map(|e| e.path.clone()).collect();
+        if files.is_empty() {
+            return;
+        }
+        let Some(tx) = self.tx.clone() else { return };
+        self.say(wid, "Rozpakowywanie…", cx);
+        std::thread::spawn(move || {
+            let mut made = vec![];
+            let mut err = String::new();
+            for f in &files {
+                match smart::extract(f, &fs::parent(f)) {
+                    Ok(m) => made.push(m),
+                    Err(e) => err = e,
+                }
+            }
+            let msg = if !err.is_empty() { format!("Nie udało się rozpakować: {err}") } else if made.len() == 1 { format!("Rozpakowano do „{}”", fs::base(&made[0])) } else { "Rozpakowano".into() };
+            let _ = tx.send(Box::new(Bg::Done { win: wid, msg, reload: true, select: made }));
+        });
+    }
     fn resort_all(&mut self, wid: WinId) {
         let mime = &self.mime;
         if let Some(w) = self.wins.iter_mut().find(|w| w.id == wid) {
@@ -1310,15 +1539,33 @@ impl Files {
                 v.push(me("Otwórz w nowym oknie", "app", "", Act::OpenWindow(p.clone())));
                 v.push(me("Otwórz w terminalu", "terminal", "", Act::Terminal(Some(p.clone()))));
             }
+            // a search through subfolders: where the file is
+            if w.cur().deep {
+                if let Some(e) = &one {
+                    v.push(me("Pokaż w folderze", "folder", "", Act::OpenTab(format!("select:{}", e.path))));
+                }
+            }
             v.push(sep());
             v.push(me("Wytnij", "cut", "Ctrl+X", Act::Cut));
             v.push(me("Kopiuj", "copy", "Ctrl+C", Act::Copy));
+            v.push(me("Duplikuj", "copy", "Ctrl+D", Act::Duplicate));
             if let Some(p) = &dir {
                 v.push(me("Wklej do folderu", "paste", "", Act::PasteInto(p.clone())).enabled(!self.clip.is_empty()));
             }
             v.push(sep());
             v.push(me("Zmień nazwę", "rename", "F2", Act::Rename).enabled(one.is_some()));
             v.push(me("Kopiuj ścieżkę", "link", "Ctrl+Shift+C", Act::CopyPath));
+            if s.iter().any(|e| !e.dir && smart::is_archive(&e.name, &e.mime)) {
+                v.push(me("Rozpakuj tutaj", "archive", "", Act::Extract));
+            }
+            v.push(me("Kompresuj do .zip", "archive", "", Act::Compress));
+            if let Some(p) = &dir {
+                if self.pins.contains(p) {
+                    v.push(me("Odepnij z paska bocznego", "pinOff", "", Act::Unpin(p.clone())));
+                } else {
+                    v.push(me("Przypnij do paska bocznego", "pin", "", Act::Pin(p.clone())));
+                }
+            }
             // KDE Connect installed and files (not folders) selected
             if std::path::Path::new("/usr/bin/kdeconnectd").exists() && s.iter().any(|e| !e.dir) {
                 v.push(me("Wyślij na telefon", "phone", "", Act::SendPhone));
@@ -1336,11 +1583,14 @@ impl Files {
             vec![me("Opróżnij kosz", "trash", "", Act::EmptyTrash).danger(), me("Odśwież", "refresh", "F5", Act::Reload)]
         } else {
             let u = self.undo_label();
+            let here = t.path.clone();
+            let pin = if self.pins.contains(&here) { me("Odepnij z paska bocznego", "pinOff", "", Act::Unpin(here)) } else { me("Przypnij do paska bocznego", "pin", "", Act::Pin(here)) };
             vec![
                 head("Widok"),
-                me("Szczegóły", "list", "", Act::View(false)).on(!self.icons_view),
-                me("Ikony", "grid", "", Act::View(true)).on(self.icons_view),
+                me("Szczegóły", "list", "", Act::View(false)).on(!t.icons),
+                me("Ikony", "grid", "", Act::View(true)).on(t.icons),
                 me("Sortuj według", "sort", "", Act::MenuSort),
+                me("Pokaż rodzaj", "filter", "", Act::MenuKind),
                 me("Odśwież", "refresh", "F5", Act::Reload),
                 sep(),
                 me("Wklej", "paste", "Ctrl+V", Act::Paste),
@@ -1352,6 +1602,7 @@ impl Files {
                 me("Otwórz w terminalu", "terminal", "", Act::Terminal(None)),
                 me("Kopiuj ścieżkę", "link", "", Act::CopyPath),
                 me("Pokaż ukryte", "eye", "Ctrl+H", Act::ToggleHidden).on(t.show_hidden),
+                pin,
             ]
         };
         self.open_menu(wid, x, y, entries, cx);
@@ -1378,14 +1629,18 @@ impl Files {
     }
     fn view_menu(&mut self, wid: WinId, x: f32, y: f32, cx: &mut Cx) {
         let Some(w) = self.wins.iter().find(|w| w.id == wid) else { return };
-        let h = w.cur().show_hidden;
-        let e = vec![
-            me("Szczegóły", "list", "Ctrl+Shift+6", Act::View(false)).on(!self.icons_view),
-            me("Ikony", "grid", "Ctrl+Shift+2", Act::View(true)).on(self.icons_view),
+        let (h, icons) = (w.cur().show_hidden, w.cur().icons);
+        let mut e = vec![
+            me("Szczegóły", "list", "Ctrl+Shift+6", Act::View(false)).on(!icons),
+            me("Ikony", "grid", "Ctrl+Shift+2", Act::View(true)).on(icons),
             sep(),
             me("Pokaż ukryte elementy", "eye", "Ctrl+H", Act::ToggleHidden).on(h),
             me("Okienko nawigacji", "sidebar", "", Act::ToggleSidebar).on(self.sidebar),
         ];
+        if w.pick.is_none() {
+            e.push(sep());
+            e.push(me("Ten widok dla wszystkich folderów", "check", "", Act::ViewDefault));
+        }
         self.open_menu(wid, x, y, e, cx);
     }
     fn more_menu(&mut self, wid: WinId, x: f32, y: f32, cx: &mut Cx) {
@@ -1398,6 +1653,7 @@ impl Files {
             me("Odwróć zaznaczenie", "refresh", "", Act::InvertSel),
             me("Wyczyść zaznaczenie", "x", "", Act::ClearSel),
             sep(),
+            me("Szukaj w podfolderach", "search", "Ctrl+Shift+F", Act::DeepSearch),
             me("Otwórz w terminalu", "terminal", "", Act::Terminal(None)),
             me("Kopiuj ścieżkę", "link", "Ctrl+Shift+C", Act::CopyPath),
             me("Nowe okno", "app", "Ctrl+N", Act::OpenWindow(String::new())),
@@ -1409,7 +1665,17 @@ impl Files {
         cx.redraw(wid);
         match a {
             Act::OpenSel => self.open_sel(wid, cx),
-            Act::OpenTab(p) => self.new_tab(wid, &p, false, cx),
+            Act::OpenTab(p) => match p.strip_prefix("select:") {
+                // "Pokaż w folderze": a new tab at the file's folder with the file selected
+                Some(f) => {
+                    let f = f.to_string();
+                    self.new_tab(wid, &fs::parent(&f), true, cx);
+                    if let Some(w) = self.win_mut(wid) {
+                        w.cur_mut().pending_select = vec![f];
+                    }
+                }
+                None => self.new_tab(wid, &p, false, cx),
+            },
             Act::OpenWindow(p) => {
                 let p = if p.is_empty() { self.wins.iter().find(|w| w.id == wid).map(|w| w.cur().path.clone()).unwrap_or_default() } else { p };
                 self.open_window(&p, "", None, "", cx);
@@ -1436,11 +1702,10 @@ impl Files {
             }
             Act::EmptyTrashNow => self.empty_trash(wid),
             Act::View(icons) => {
-                self.icons_view = icons;
-                self.save_cfg();
-                for w in &self.wins {
-                    cx.redraw(w.id);
+                if let Some(w) = self.win_mut(wid) {
+                    w.cur_mut().icons = icons;
                 }
+                self.remember(wid);
             }
             Act::Reload => {
                 if let Some(w) = self.wins.iter().find(|w| w.id == wid) {
@@ -1459,19 +1724,84 @@ impl Files {
                     let t = &mut w.tabs[w.active];
                     t.show_hidden = !t.show_hidden;
                     t.resort(mime, pick);
+                    // what the search through subfolders skipped
+                    if t.deep {
+                        t.reload_at = Some(Instant::now());
+                        cx.wake_at(Instant::now());
+                    }
                 }
+                self.remember(wid);
             }
             Act::Sort(k) => {
                 if let Some(w) = self.win_mut(wid) {
                     w.cur_mut().sort_key = k;
                 }
                 self.resort_all(wid);
+                self.remember(wid);
             }
             Act::SortDesc(d) => {
                 if let Some(w) = self.win_mut(wid) {
                     w.cur_mut().sort_desc = d;
                 }
                 self.resort_all(wid);
+                self.remember(wid);
+            }
+            Act::MenuKind => {
+                let Some(w) = self.wins.iter().find(|w| w.id == wid) else { return };
+                let k = w.cur().kind;
+                let mut e: Vec<MenuEntry> = Kind::LIST.iter().map(|&x| me(x.label(), x.glyph(), "", Act::Kind(x)).on(x == k)).collect();
+                e.insert(1, sep());
+                self.open_menu(wid, at.0, at.1, e, cx);
+            }
+            Act::Kind(k) => {
+                if let Some(w) = self.win_mut(wid) {
+                    let t = w.cur_mut();
+                    t.kind = k;
+                    t.scroll = 0.0;
+                }
+                self.resort_all(wid);
+                self.remember(wid);
+            }
+            Act::DeepSearch => self.deep_search(wid, cx),
+            Act::ViewDefault => {
+                let Some(w) = self.wins.iter().find(|w| w.id == wid) else { return };
+                let mut v = w.cur().view();
+                v.kind = Kind::All;
+                v.filter.clear();
+                self.def = v;
+                // every folder forgets its own view
+                self.mem.clear();
+                self.mem.save();
+                self.save_cfg();
+                self.say(wid, "Ten widok mają teraz wszystkie foldery", cx);
+            }
+            Act::Duplicate => {
+                let Some(w) = self.wins.iter().find(|w| w.id == wid) else { return };
+                let (t, srcs) = (w.cur(), w.cur().selected().iter().map(|e| e.path.clone()).collect::<Vec<_>>());
+                if t.is_trash() || srcs.is_empty() {
+                    return;
+                }
+                let dest = t.path.clone();
+                self.transfer(wid, srcs, &dest, false, false, cx);
+            }
+            Act::Compress => self.compress_sel(wid, cx),
+            Act::Extract => self.extract_sel(wid, cx),
+            Act::Pin(p) => {
+                if !self.pins.contains(&p) {
+                    self.pins.push(p);
+                    self.save_cfg();
+                    self.say(wid, "Przypięto do paska bocznego", cx);
+                }
+                for w in &self.wins {
+                    cx.redraw(w.id);
+                }
+            }
+            Act::Unpin(p) => {
+                self.pins.retain(|x| x != &p);
+                self.save_cfg();
+                for w in &self.wins {
+                    cx.redraw(w.id);
+                }
             }
             Act::ToggleSidebar => {
                 self.sidebar = !self.sidebar;
@@ -1614,6 +1944,9 @@ static WATCH_HITS: std::sync::Mutex<Vec<i32>> = std::sync::Mutex::new(Vec::new()
 
 fn cfg_path() -> String {
     format!("{}/.config/mist/files.json", fs::home())
+}
+fn session_path() -> String {
+    format!("{}/.local/state/mist/files-session.json", fs::home())
 }
 fn last_dir_path() -> String {
     format!("{}/.local/state/mist/files-last-dir", fs::home())
@@ -1775,7 +2108,7 @@ impl Files {
             return None;
         }
         let t = w.cur();
-        if self.icons_view {
+        if t.icons {
             let cols = ((pw - 20.0) / view::CELL_W).floor().max(1.0) as usize;
             let (lx, ly) = (x - px - 10.0, y - py - 10.0 + t.scroll);
             if lx < 0.0 || ly < 0.0 {
@@ -1797,9 +2130,9 @@ impl Files {
         }
     }
     fn band_update(&mut self, wid: WinId, x: f32, y: f32) {
-        let icons = self.icons_view;
         let (sidebar, preview) = (self.sidebar, self.preview);
         let Some(w) = self.win_mut(wid) else { return };
+        let icons = w.cur().icons;
         let (px, py, pw, _) = view::panel_rect(w, sidebar, preview);
         let scroll = w.cur().scroll;
         let Some(Press::Band { ax, ay, base, x: lx, y: ly }) = w.press.as_mut() else { return };
@@ -1838,7 +2171,7 @@ impl Files {
     fn content_h(&self, w: &Win) -> f32 {
         let (_, _, pw, _) = view::panel_rect(w, self.sidebar, self.preview);
         let n = w.cur().items.len();
-        if self.icons_view {
+        if w.cur().icons {
             let cols = ((pw - 20.0) / view::CELL_W).floor().max(1.0) as usize;
             20.0 + n.div_ceil(cols) as f32 * view::CELL_H
         } else {
@@ -1929,11 +2262,24 @@ impl Files {
             match (focus, r) {
                 (Focus::Search, EditResult::Used) => {
                     let f = w.search.text.clone();
+                    let changed = w.cur().filter != f;
                     w.cur_mut().filter = f;
                     let mime = &self.mime;
                     let pick = w.pick.as_ref();
                     w.tabs[w.active].resort(mime, pick);
                     w.tabs[w.active].scroll = 0.0;
+                    if changed {
+                        let t = w.cur_mut();
+                        // the search through subfolders follows the typing (a pause first); an empty field ends it
+                        if t.deep && t.filter.trim().is_empty() {
+                            self.end_deep(wid);
+                        } else if t.deep {
+                            let at = Instant::now() + Duration::from_millis(350);
+                            t.reload_at = Some(at);
+                            cx.wake_at(at);
+                        }
+                        self.remember(wid);
+                    }
                 }
                 (Focus::Search, EditResult::Cancel) => {
                     w.search.set("");
@@ -1942,6 +2288,12 @@ impl Files {
                     let mime = &self.mime;
                     let pick = w.pick.as_ref();
                     w.tabs[w.active].resort(mime, pick);
+                    self.end_deep(wid);
+                    self.remember(wid);
+                }
+                // Enter: the same query through the subfolders (the folder's own matches are already shown)
+                (Focus::Search, EditResult::Accept) if !w.cur().deep && !w.search.text.trim().is_empty() && w.pick.is_none() && !w.cur().is_trash() => {
+                    self.deep_search(wid, cx);
                 }
                 (Focus::Search, EditResult::Accept) => {
                     w.focus = Focus::View;
@@ -1989,7 +2341,7 @@ impl Files {
             return;
         }
         // the view
-        let icons = self.icons_view;
+        let icons = self.wins[i].cur().icons;
         let cols = {
             let w = &self.wins[i];
             let (_, _, pw, _) = view::panel_rect(w, self.sidebar, self.preview);
@@ -2022,7 +2374,9 @@ impl Files {
             Keysym::r | Keysym::R if c => self.act(wid, Act::Reload, (0.0, 0.0), cx),
             Keysym::F2 => self.start_rename(wid),
             Keysym::F3 => self.wins[i].focus = Focus::Search,
+            Keysym::f | Keysym::F if c && s && !pick => self.deep_search(wid, cx),
             Keysym::f | Keysym::F | Keysym::e | Keysym::E if c => self.wins[i].focus = Focus::Search,
+            Keysym::d | Keysym::D if c && !pick => self.act(wid, Act::Duplicate, (0.0, 0.0), cx),
             Keysym::Delete | Keysym::KP_Delete if !pick => {
                 if s {
                     self.ask_delete(wid)
@@ -2067,6 +2421,10 @@ impl Files {
                     let mime = &self.mime;
                     let pick = w.pick.as_ref();
                     w.tabs[w.active].resort(mime, pick);
+                    self.end_deep(wid);
+                    self.remember(wid);
+                } else if w.cur().kind != Kind::All {
+                    self.act(wid, Act::Kind(Kind::All), (0.0, 0.0), cx);
                 } else if pick {
                     self.pick_finish(wid, false, cx);
                 } else {
@@ -2334,12 +2692,12 @@ impl Files {
                         self.close_window(wid, cx)
                     }
                 }
-                1 => appwin::hypr("MistMinimize()"),
-                _ => appwin::hypr("MistMaximize()"),
+                1 => cx.cmds.push(crate::appwin::Cmd::Minimize(wid)),
+                _ => cx.cmds.push(crate::appwin::Cmd::Maximize(wid)),
             },
             Hit::Drag | Hit::TabStrip | Hit::Side if b == LEFT => {
                 if clicks == 2 && h == Hit::TabStrip {
-                    appwin::hypr("MistMaximize()");
+                    cx.cmds.push(crate::appwin::Cmd::Maximize(wid));
                 } else {
                     cx.cmds.push(Cmd::Move(wid));
                 }
@@ -2348,7 +2706,11 @@ impl Files {
                 if b == MIDDLE {
                     self.new_tab(wid, &p, false, cx);
                 } else if b == RIGHT {
-                    let e = vec![me("Otwórz w nowej karcie", "plus", "", Act::OpenTab(p.clone())), me("Otwórz w nowym oknie", "app", "", Act::OpenWindow(p.clone())), me("Otwórz w terminalu", "terminal", "", Act::Terminal(Some(p.clone())))];
+                    let mut e = vec![me("Otwórz w nowej karcie", "plus", "", Act::OpenTab(p.clone())), me("Otwórz w nowym oknie", "app", "", Act::OpenWindow(p.clone())), me("Otwórz w terminalu", "terminal", "", Act::Terminal(Some(p.clone())))];
+                    if self.pins.contains(&p) {
+                        e.push(sep());
+                        e.push(me("Odepnij z paska bocznego", "pinOff", "", Act::Unpin(p.clone())));
+                    }
                     self.open_menu(wid, x, y, e, cx);
                 } else {
                     self.go(wid, &p, 0, cx);
@@ -2419,6 +2781,8 @@ impl Files {
                 let mime = &self.mime;
                 let pick = w.pick.as_ref();
                 w.tabs[w.active].resort(mime, pick);
+                self.end_deep(wid);
+                self.remember(wid);
             }
             Hit::Btn(a) if b == LEFT => {
                 // dropdowns open under their button
@@ -2546,6 +2910,12 @@ impl Logic for Files {
         let pick_save = p.pick.as_ref().map(|x| x.save).unwrap_or(false);
         self.wins.push(new_win(id, p.pick, &p.name, pick_save));
         self.new_tab(id, &p.path, true, cx);
+        if !p.more.is_empty() {
+            for m in &p.more {
+                self.new_tab(id, m, false, cx);
+            }
+            self.set_active(id, p.active, cx);
+        }
         if !p.select.is_empty() {
             if let Some(w) = self.win_mut(id) {
                 w.cur_mut().pending_select = vec![p.select];
@@ -2716,7 +3086,7 @@ impl Logic for Files {
                 }
             }
         }
-        if !opened {
+        if !opened && !(self.wins.is_empty() && self.pending.is_empty() && self.restore_session(cx)) {
             self.open_window(&fs::home(), "", None, "", cx);
         }
         // a FileChooser name may be ours already in this process (portal); else try for it
@@ -2737,7 +3107,8 @@ impl Logic for Files {
         };
         let Ok(b) = m.downcast::<Bg>() else { return };
         match *b {
-            Bg::Listed { uid, serial, res } => self.listed(uid, serial, res, cx),
+            Bg::Listed { uid, serial, res, cut } => self.listed(uid, serial, res, cut, cx),
+            Bg::Sniffed { uid, serial, types } => self.sniffed(uid, serial, types, cx),
             Bg::Total(t) => {
                 if let Some(j) = self.job.as_mut() {
                     j.total = t;
@@ -2909,7 +3280,7 @@ impl Files {
                     "sel": t.selected().iter().map(|e| e.name.clone()).collect::<Vec<_>>(), "filter": t.filter,
                     "focus": format!("{:?}", w.focus), "menu": w.menu.as_ref().map(|m| m.entries.iter().map(|e| e.label.clone()).collect::<Vec<_>>()),
                     "ask": w.ask.as_ref().map(|a| a.title.clone()), "toast": w.toast, "rename": w.rename.as_ref().map(|r| r.1.text.clone()),
-                    "addr": w.addr.as_ref().map(|r| r.text.clone()), "icons": self.icons_view, "preview": self.preview,
+                    "addr": w.addr.as_ref().map(|r| r.text.clone()), "icons": t.icons, "kind": t.kind.label(), "deep": t.deep, "pins": self.pins, "preview": self.preview,
                     "clip": self.clip.len(), "undo": self.undo.len(), "job": self.job.as_ref().map(|j| j.title.clone()),
                     "pick": w.pick.as_ref().map(|p| p.title.clone()), "name": w.name.text,
                     "thumbs": self.thumbs.len(), "thumb_bytes": self.thumb_bytes,
@@ -2993,18 +3364,56 @@ fn new_win(id: WinId, pick: Option<Pick>, name: &str, pick_save: bool) -> Win {
     }
 }
 
-// offscreen check: `files --png out.png [path] [WxH] [icons] [preview] [sel=N]`
+// offscreen check: `files --png out.png [path] [WxH] [icons] [preview] [sel=N]`; MIST_FILES_PROF=1 prints the
+// time of each step (list, sniff, sort, paint, then a type sort, a filter and a second paint: docs/BENCHMARKS.md)
 fn render_png(args: &[String]) -> i32 {
     let out = &args[1];
     let path = args.get(2).cloned().unwrap_or(fs::home());
     let (w, h) = args.get(3).and_then(|s| s.split_once('x')).map(|(a, b)| (a.parse().unwrap_or(W0), b.parse().unwrap_or(H0))).unwrap_or((W0, H0));
+    let prof = std::env::var_os("MIST_FILES_PROF").is_some();
+    let t0 = std::time::Instant::now();
+    let lap = |what: &str, t: &mut std::time::Instant| {
+        if prof {
+            eprintln!("{what}: {:.1} ms", t.elapsed().as_secs_f64() * 1000.0);
+        }
+        *t = std::time::Instant::now();
+    };
+    let mut tl = t0;
     let mut f = Files::new();
-    f.icons_view = args.iter().any(|a| a == "icons");
+    lap("init", &mut tl);
+    let icons = args.iter().any(|a| a == "icons");
     f.preview = args.iter().any(|a| a == "preview");
     let mut win = new_win(1, None, "", false);
     let mut t = Tab::new(1, &path);
+    t.icons = icons;
+    if let Some(q) = args.iter().find_map(|a| a.strip_prefix("filter=")) {
+        t.filter = q.into();
+    }
+    if let Some(k) = args.iter().find_map(|a| a.strip_prefix("kind=")) {
+        t.kind = Kind::LIST.into_iter().find(|x| smart::fold(x.label()) == k).unwrap_or_default();
+    }
+    if let Some(q) = args.iter().find_map(|a| a.strip_prefix("deep=")) {
+        t.filter = q.into();
+        t.deep = true;
+    }
+    f.pins = args.iter().filter_map(|a| a.strip_prefix("pin=")).map(String::from).collect();
     t.all = fs::list(&path, &f.mime).unwrap_or_default();
+    if t.deep {
+        let (v, cut) = smart::deep(&path, &Query::parse(&t.filter), false, &f.mime, &AtomicBool::new(false));
+        t.all = v;
+        t.deep_cut = cut;
+    }
+    lap("list", &mut tl);
+    let types: HashMap<String, String> = fs::sniff_pending(&t.all).into_iter().collect();
+    for e in t.all.iter_mut() {
+        if let Some(m) = types.get(&e.path) {
+            e.mime = m.clone();
+            e.sniff = false;
+        }
+    }
+    lap("sniff", &mut tl);
     t.resort(&f.mime, None);
+    lap("sort", &mut tl);
     if let Some(n) = args.iter().find_map(|a| a.strip_prefix("sel=")).and_then(|n| n.parse::<i32>().ok()) {
         t.select_index(n, false, false);
     }
@@ -3012,6 +3421,20 @@ fn render_png(args: &[String]) -> i32 {
     f.wins.push(win);
     let mut c = crate::gfx::Canvas::new(w, h);
     f.paint_win(1, &mut c);
+    lap("paint", &mut tl);
+    if prof {
+        let t = &f.wins[0].tabs[0];
+        let mut t2 = std::time::Instant::now();
+        let mut t = Tab { all: t.all.clone(), ..Tab::new(2, &t.path) };
+        t.sort_key = SortKey::Type;
+        t.resort(&f.mime, None);
+        lap("sort by type", &mut t2);
+        t.filter = "9".into();
+        t.resort(&f.mime, None);
+        lap("filter", &mut t2);
+        f.paint_win(1, &mut c);
+        lap("paint again", &mut t2);
+    }
     c.pm.save_png(out).map(|_| 0).unwrap_or(1)
 }
 

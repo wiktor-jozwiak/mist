@@ -18,6 +18,8 @@ pub struct Entry {
     pub link: bool,
     pub orig: String,    // trash: original path
     pub deleted: String, // trash: deletion date (ISO)
+    // no glob knows the name: `mime` is octet-stream until `sniff_pending` reads the file's head
+    pub sniff: bool,
 }
 
 pub fn home() -> String {
@@ -213,17 +215,30 @@ pub fn list(path: &str, mime: &MimeDb) -> Result<Vec<Entry>, String> {
         // a link shows what it points to
         let m = if link { std::fs::metadata(&p).unwrap_or(lm) } else { lm };
         let dir = m.is_dir();
-        let mt = if dir {
-            "inode/directory".to_string()
+        // a name no glob knows is read later (sniff_pending, off the first frame): opening every file of a
+        // cold /usr/bin made its listing 0.5 s
+        let (mt, sniff) = if dir {
+            ("inode/directory".to_string(), false)
         } else {
             match mime.guess(&name) {
-                Some(x) => x.to_string(),
-                None => sniff(&p, &m),
+                Some(x) => (x.to_string(), false),
+                None => ("application/octet-stream".to_string(), true),
             }
         };
-        out.push(Entry { hidden: name.starts_with('.'), size: if dir { 0 } else { m.len() }, mtime: m.mtime(), name, path: p, dir, mime: mt, link, ..Default::default() });
+        out.push(Entry { hidden: name.starts_with('.'), size: if dir { 0 } else { m.len() }, mtime: m.mtime(), name, path: p, dir, mime: mt, link, sniff, ..Default::default() });
     }
     Ok(out)
+}
+
+/// The types of the listed entries no glob knew, from their content: (path, MIME) for each.
+pub fn sniff_pending(v: &[Entry]) -> Vec<(String, String)> {
+    v.iter()
+        .filter(|e| e.sniff)
+        .filter_map(|e| {
+            let m = std::fs::metadata(&e.path).ok()?;
+            Some((e.path.clone(), sniff(&e.path, &m)))
+        })
+        .collect()
 }
 
 pub fn err_pl(e: std::io::Error) -> String {
@@ -236,36 +251,31 @@ pub fn err_pl(e: std::io::Error) -> String {
 
 // sort + filter (dirs first; natural, case-insensitive names)
 pub fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
-    let (mut x, mut y) = (a.chars().peekable(), b.chars().peekable());
+    // byte offsets into both names: digit runs are compared as slices (no allocation; a sort of 50 000
+    // names makes ~800 000 comparisons)
+    let (mut i, mut j) = (0, 0);
     loop {
-        match (x.peek().copied(), y.peek().copied()) {
+        match (a[i..].chars().next(), b[j..].chars().next()) {
             (None, None) => return a.cmp(b),
             (None, _) => return std::cmp::Ordering::Less,
             (_, None) => return std::cmp::Ordering::Greater,
             (Some(c), Some(d)) if c.is_ascii_digit() && d.is_ascii_digit() => {
-                let mut n1 = String::new();
-                while let Some(c) = x.peek().copied().filter(|c| c.is_ascii_digit()) {
-                    n1.push(c);
-                    x.next();
-                }
-                let mut n2 = String::new();
-                while let Some(c) = y.peek().copied().filter(|c| c.is_ascii_digit()) {
-                    n2.push(c);
-                    y.next();
-                }
-                let (t1, t2) = (n1.trim_start_matches('0'), n2.trim_start_matches('0'));
+                let e1 = i + a.as_bytes()[i..].iter().take_while(|x| x.is_ascii_digit()).count();
+                let e2 = j + b.as_bytes()[j..].iter().take_while(|x| x.is_ascii_digit()).count();
+                let (t1, t2) = (a[i..e1].trim_start_matches('0'), b[j..e2].trim_start_matches('0'));
                 let o = t1.len().cmp(&t2.len()).then(t1.cmp(t2));
                 if o != std::cmp::Ordering::Equal {
                     return o;
                 }
+                (i, j) = (e1, e2);
             }
             (Some(c), Some(d)) => {
                 let (k1, k2) = (fold(c), fold(d));
                 if k1 != k2 {
                     return k1.cmp(&k2);
                 }
-                x.next();
-                y.next();
+                i += c.len_utf8();
+                j += d.len_utf8();
             }
         }
     }
@@ -824,6 +834,50 @@ mod tests {
         let mut v = vec!["plik10", "plik2", "Plik1", "żaba", "zebra", "ala"];
         v.sort_by(|a, b| natural_cmp(a, b));
         assert_eq!(v, ["ala", "Plik1", "plik2", "plik10", "zebra", "żaba"]);
+    }
+    // the slice-based natural_cmp orders like the first one (digit runs collected into Strings)
+    #[test]
+    fn natural_same_as_before() {
+        fn before(a: &str, b: &str) -> std::cmp::Ordering {
+            let (mut x, mut y) = (a.chars().peekable(), b.chars().peekable());
+            loop {
+                match (x.peek().copied(), y.peek().copied()) {
+                    (None, None) => return a.cmp(b),
+                    (None, _) => return std::cmp::Ordering::Less,
+                    (_, None) => return std::cmp::Ordering::Greater,
+                    (Some(c), Some(d)) if c.is_ascii_digit() && d.is_ascii_digit() => {
+                        let (mut n1, mut n2) = (String::new(), String::new());
+                        while let Some(c) = x.peek().copied().filter(|c| c.is_ascii_digit()) {
+                            n1.push(c);
+                            x.next();
+                        }
+                        while let Some(c) = y.peek().copied().filter(|c| c.is_ascii_digit()) {
+                            n2.push(c);
+                            y.next();
+                        }
+                        let (t1, t2) = (n1.trim_start_matches('0'), n2.trim_start_matches('0'));
+                        let o = t1.len().cmp(&t2.len()).then(t1.cmp(t2));
+                        if o != std::cmp::Ordering::Equal {
+                            return o;
+                        }
+                    }
+                    (Some(c), Some(d)) => {
+                        let (k1, k2) = (fold(c), fold(d));
+                        if k1 != k2 {
+                            return k1.cmp(&k2);
+                        }
+                        x.next();
+                        y.next();
+                    }
+                }
+            }
+        }
+        let names = ["", "a", "a7b", "a007a", "a7", "a10", "a9z", "ą1", "a01", "A1", "1", "01", "001x", "x0", "x00", "żółw2", "zolw10", "b-1", "b_1", "b.1", "Ł", "l", "日本1", "日本01", "a1b2", "a1b10", "a01b2"];
+        for a in names {
+            for b in names {
+                assert_eq!(natural_cmp(a, b), before(a, b), "{a:?} vs {b:?}");
+            }
+        }
     }
     #[test]
     fn uris() {
