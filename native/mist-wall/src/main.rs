@@ -1523,13 +1523,19 @@ fn main() {
     let qh = queue.handle();
     // EGL + desktop GL 3.3 core (the GLSL 150 shaders of the .qsb files)
     let egl = Egl::new(khronos_egl::Static);
-    let display = unsafe { egl.get_display(conn.backend().display_ptr() as *mut std::ffi::c_void) }.expect("egl display");
-    egl.initialize(display).expect("egl init");
-    egl.bind_api(khronos_egl::OPENGL_API).expect("gl api");
+    // no usable EGL here (headless/nested test compositor, Mesa picked on NVIDIA): exit 4 = mist-ui shows the
+    // photo at once instead of restarting us 5 times (each a panic + backtrace in ui.log)
+    let no_gl = |what: &str| -> ! {
+        eprintln!("mist-wall: no EGL ({what}), the photo stays");
+        std::process::exit(4)
+    };
+    let display = unsafe { egl.get_display(conn.backend().display_ptr() as *mut std::ffi::c_void) }.unwrap_or_else(|| no_gl("display"));
+    egl.initialize(display).unwrap_or_else(|_| no_gl("init"));
+    egl.bind_api(khronos_egl::OPENGL_API).unwrap_or_else(|_| no_gl("gl api"));
     let attrs = [khronos_egl::RED_SIZE, 8, khronos_egl::GREEN_SIZE, 8, khronos_egl::BLUE_SIZE, 8, khronos_egl::ALPHA_SIZE, 8, khronos_egl::SURFACE_TYPE, khronos_egl::WINDOW_BIT, khronos_egl::RENDERABLE_TYPE, khronos_egl::OPENGL_BIT, khronos_egl::NONE];
-    let config = egl.choose_first_config(display, &attrs).ok().flatten().expect("egl config");
+    let config = egl.choose_first_config(display, &attrs).ok().flatten().unwrap_or_else(|| no_gl("config"));
     let cattrs = [khronos_egl::CONTEXT_MAJOR_VERSION, 3, khronos_egl::CONTEXT_MINOR_VERSION, 3, khronos_egl::CONTEXT_OPENGL_PROFILE_MASK, khronos_egl::CONTEXT_OPENGL_CORE_PROFILE_BIT, khronos_egl::NONE];
-    let ctx = egl.create_context(display, config, None, &cattrs).expect("egl context");
+    let ctx = egl.create_context(display, config, None, &cattrs).unwrap_or_else(|_| no_gl("context"));
     let (photo_tx, photo_rx) = std::sync::mpsc::channel();
     let (prev_tx, prev_rx) = std::sync::mpsc::channel();
     let sm = |d: f32, s: bool| Smooth::new(0.0, d, s);

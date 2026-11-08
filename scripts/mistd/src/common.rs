@@ -114,6 +114,40 @@ pub fn clean(s: &str, n: usize) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(n).collect()
 }
 
+/// A phone notification's text (Messenger & co. through KDE Connect send HTML): entities decoded (also twice
+/// encoded ones), <br> as a new line, other tags dropped, each line's whitespace collapsed, at most n characters.
+pub fn clean_markup(s: &str, n: usize) -> String {
+    let unent = |t: &str| t.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&apos;", "'").replace("&nbsp;", " ").replace("&amp;", "&");
+    let mut u = unent(s);
+    if u.contains("&lt;") || u.contains("&amp;") {
+        u = unent(&u);
+    }
+    let mut out = String::new();
+    let mut rest = u.as_str();
+    while let Some(a) = rest.find('<') {
+        out.push_str(&rest[..a]);
+        // a tag starts with a letter or '/' ("3 < 5" stays text)
+        if !rest[a + 1..].starts_with(|c: char| c.is_ascii_alphabetic() || c == '/') {
+            out.push('<');
+            rest = &rest[a + 1..];
+            continue;
+        }
+        let Some(b) = rest[a..].find('>') else {
+            out.push_str(&rest[a..]);
+            rest = "";
+            break;
+        };
+        let tag = rest[a + 1..a + b].trim_start_matches('/').trim().to_ascii_lowercase();
+        if tag.starts_with("br") || tag == "p" || tag.starts_with("p ") || tag.starts_with("div") {
+            out.push('\n');
+        }
+        rest = &rest[a + b + 1..];
+    }
+    out.push_str(rest);
+    let lines: Vec<String> = out.lines().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|l| !l.is_empty()).collect();
+    lines.join("\n").chars().take(n).collect()
+}
+
 pub fn trunc(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }
@@ -212,4 +246,15 @@ pub fn stdin_lines<T: Send + 'static>(tx: std::sync::mpsc::Sender<T>, wrap: fn(O
             }
         }
     });
+}
+
+#[cfg(test)]
+mod markup_tests {
+    use super::clean_markup;
+    #[test]
+    fn phone_html() {
+        assert_eq!(clean_markup("Na luzie<br/>Fajna propozycja<br/>Ale nie będzie mi pasować<br/>11 mam plany", 400), "Na luzie\nFajna propozycja\nAle nie będzie mi pasować\n11 mam plany");
+        assert_eq!(clean_markup("a &amp;lt;br/&amp;gt; b &lt;b&gt;c&lt;/b&gt; <BR>  d  &amp; e", 400), "a\nb c\nd & e");
+        assert_eq!(clean_markup("3 &lt; 5 i 7 > 2", 400), "3 < 5 i 7 > 2");
+    }
 }

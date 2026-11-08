@@ -164,3 +164,39 @@ What changed and what did not:
   now observed properties and the position an asynchronous read.
 - The UI drawing code (the controls, popovers, panels) was kept: it costs 0.1 to 1 repaint/s, rewriting it
   saves nothing measurable.
+
+## Mist Files, before and after the engine pass (2026-10-29)
+
+Offscreen: `MIST_FILES_PROF=1 mist-ui-bin files --png out.png DIR WxH` prints the time of each step (list,
+type sniffing, sort, first paint, then a sort by type, a filter and a second paint). Live: a nested
+`mist-comp` (1920×1080), the window maximized on a folder of 50 000 empty files, 200 pointer moves over the
+rows (one every 25 ms, `files --test move`); CPU of the files process from `/proc/<pid>/stat`, commits per
+second from the compositor's `top` (30/s in both versions: the same frames are drawn).
+
+| measurement | before | after |
+|---|---|---|
+| repaint of a 1920×1080 window (any folder) | 21.9 ms | **1.2 to 2.7 ms** |
+| repaint of a 1280×800 window | 11.6 ms | **< 1 ms** |
+| CPU for 200 row hovers, 5.4 s (same 30 commits/s) | 4620 ms (85 % of a core) | **930 ms (17 %)** |
+| `/usr/bin` (3475 entries) until the first frame, warm cache | 15.2 ms | **5.8 ms** (+12.9 ms type sniffing after it) |
+| `/usr/bin` cold cache (first visit after boot) | 551 ms | not measured (no root here to drop caches): the 0.5 s was `open()` + read of every file without a known extension, now done after the first frame |
+| sort of 50 000 names by type | 14.5 ms | 11.9 ms |
+| RSS, 50 000-file folder, live | 72 MB | 68 MB |
+
+The screenshots of six layouts (list, icons, preview, selection, empty, error) are byte-identical before and
+after. What changed:
+
+- **The backdrop is drawn once.** The window's gradient, the sidebar's glass and the list panel's fill only
+  change with the size or layout; they were painted every frame (10.3 + 4.6 + 2.0 ms at 1080p). They are now
+  painted once by the same tiny-skia calls and kept run-length encoded per row (~60 KB, not an 8 MB copy).
+- **The list blit skips empty pixels.** The rows are drawn into a scratch canvas the panel's size and composited
+  over the window: tiny-skia's `draw_pixmap` (4.3 ms) is replaced by a source-over with the same float
+  arithmetic that skips transparent pixels and copies opaque ones.
+- **Only changed rows reach the compositor.** Every Mist app window (Files, Player) now reuses two buffers and
+  copies and damages only the rows that differ (the `Swap` of the panels); before, each frame was a fresh
+  buffer, all of it converted and damaged.
+- **Types of unknown files are read after the first frame**, in the listing thread, and the list re-sorted.
+- `natural_cmp` compares digit runs as slices (no allocation per comparison); a sort by type computes each
+  entry's type name once.
+- Not changed: listing 50 000 entries is ~72 ms, almost all of it one `statx` per entry in a background
+  thread; the UI code (layout, menus, dialogs, portal) is kept, it was not where the time went.

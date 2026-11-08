@@ -791,7 +791,7 @@ fn details(d: &J) -> J {
                 Some(n) => n,
                 None => {
                     let Some(p) = props(&format!("{}/notifications/{}", path, nid), &format!("{}.notifications.notification", DEV)) else { continue };
-                    let n = json!({"id": nid, "app": ps(&p, "appName"), "title": clean(ps(&p, "title"), 120), "text": clean(ps(&p, "text"), 400),
+                    let n = json!({"id": nid, "app": ps(&p, "appName"), "title": clean_markup(ps(&p, "title"), 120).replace('\n', " "), "text": clean_markup(ps(&p, "text"), 400),
                         "icon": ps(&p, "iconPath"), "dismiss": pb(&p, "dismissable"), "silent": pb(&p, "silent"), "reply": !ps(&p, "replyId").is_empty(),
                         "at": now() as i64, "actions": p.get("actions").cloned().filter(|a| a.is_array()).unwrap_or(json!([]))});
                     st().note_cache.insert(nid.clone(), n.clone());
