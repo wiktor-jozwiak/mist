@@ -182,7 +182,7 @@ impl LineEdit {
         let mut best = (0usize, f32::MAX);
         let mut i = 0;
         loop {
-            let w = t.width(&self.text[..i], st);
+            let w = t.width(&self.text[..i], &st.verbatim());
             let d = (w - x).abs();
             if d < best.1 {
                 best = (i, d);
@@ -208,14 +208,16 @@ impl LineEdit {
     // draw the text in (x, y, w, h); caret and selection when focused; centred text when `center`
     #[allow(clippy::too_many_arguments)]
     pub fn paint(&mut self, c: &mut Canvas, t: &mut Text, x: f32, y: f32, w: f32, h: f32, st: &Style, fg: Rgba, placeholder: &str, focused: bool, center: bool) {
+        // what the user typed is drawn as typed (the placeholder is UI text: translated)
+        let vst = &st.verbatim();
         let cy = y + h / 2.0;
         if self.text.is_empty() && !placeholder.is_empty() {
             let pw = t.width(placeholder, st);
             let px = if center { x + (w - pw) / 2.0 } else { x };
             clip_text(c, t, px, cy, x, w, placeholder, st, fg.alpha(0.55));
         }
-        let tw = t.width(&self.text, st);
-        let cw = t.width(&self.text[..self.caret.min(self.text.len())], st);
+        let tw = t.width(&self.text, vst);
+        let cw = t.width(&self.text[..self.caret.min(self.text.len())], vst);
         // keep the caret visible
         if tw <= w {
             self.scroll = 0.0;
@@ -231,13 +233,13 @@ impl LineEdit {
         let ox = if center && tw <= w { x + (w - tw) / 2.0 } else { x - self.scroll };
         if focused && self.has_sel() {
             let (a, b) = self.sel();
-            let (sa, sb) = (t.width(&self.text[..a], st), t.width(&self.text[..b], st));
+            let (sa, sb) = (t.width(&self.text[..a], vst), t.width(&self.text[..b], vst));
             let (l, r) = ((ox + sa).max(x), (ox + sb).min(x + w));
             if r > l {
                 c.rrect(l, cy - st.size * 0.72, r - l, st.size * 1.44, 3.0, Rgba(138.0 / 255.0, 214.0 / 255.0, 208.0 / 255.0, 0.40));
             }
         }
-        clip_text(c, t, ox, cy, x, w, &self.text.clone(), st, fg);
+        clip_text(c, t, ox, cy, x, w, &self.text.clone(), vst, fg);
         if focused {
             let cx = (ox + cw).round().clamp(x, x + w);
             c.rrect(cx, cy - st.size * 0.62, 1.5, st.size * 1.24, 0.5, Rgba(138.0 / 255.0, 214.0 / 255.0, 208.0 / 255.0, 1.0));

@@ -22,7 +22,11 @@ use std::time::Instant;
 const W: f32 = 1000.0;
 const H: f32 = 720.0;
 const LW: f32 = 588.0;
-const FH: f32 = 48.0;
+const FH: f32 = 52.0;
+// the search pill and the power buttons in one row, then the two columns; favourites: 6 x 3
+const FY: f32 = 30.0;
+const TOP: f32 = 106.0;
+const FAVS: usize = 18;
 // Mist tokens (theme.rs, Apple dark labels + system colours), as the other panes use them
 const M_FG: Rgba = T1;
 const M_FG2: Rgba = Rgba(1.0, 1.0, 1.0, 0.8);
@@ -87,6 +91,9 @@ enum Hit {
     Prev,
     Play,
     Next,
+    Src,
+    Shuffle,
+    Loop,
     Power(usize),
     Menu(usize),
 }
@@ -135,6 +142,12 @@ pub struct Start {
     playing: bool,
     ticks: u32,
     bg: Option<tiny_skia::Pixmap>,
+    // the accent the cached glass was tinted with
+    bg_acc: Rgba,
+    // the player the card shows when more than one has something (its bus), else the playing one
+    np_pick: Option<String>,
+    // recent files' sizes (one stat per file, not per paint)
+    sizes: std::collections::HashMap<String, u64>,
     // ~/.config/mist/start.json "pinned": once set, the favourites are these (in order) and nothing else
     pins: Option<Vec<String>>,
     menu: Option<Menu>,
@@ -155,6 +168,10 @@ fn pins_path() -> String {
 }
 fn usage_path() -> String {
     format!("{}/.config/mist/usage.json", home())
+}
+fn human_size(b: u64) -> String {
+    let k = b as f64 / 1024.0;
+    if b < 1024 { format!("{b} B") } else if k < 1024.0 { format!("{:.0} KB", k) } else if k < 1024.0 * 1024.0 { format!("{:.1} MB", k / 1024.0) } else { format!("{:.1} GB", k / 1024.0 / 1024.0) }
 }
 fn base(p: &str) -> &str {
     p.rsplit('/').next().unwrap_or(p)
@@ -186,6 +203,17 @@ fn file_icon(p: &str) -> &'static str {
         "pdf" | "doc" | "docx" | "odt" | "txt" | "md" | "rtf" | "xls" | "xlsx" | "ods" | "ppt" | "pptx" | "odp" | "csv" => "fileText",
         "qml" | "js" | "ts" | "py" | "sh" | "json" | "c" | "cpp" | "h" | "rs" | "go" | "lua" | "css" | "html" | "toml" | "yml" | "yaml" | "conf" | "ini" => "terminal",
         _ => "file",
+    }
+}
+// a recent file's chip colour, by kind
+fn kind_col(icon: &str) -> Rgba {
+    match icon {
+        "photo" | "fileText" => M_BLUE,
+        "video" => M_PURPLE,
+        "music" => Rgba::rgb8(0xff, 0x5e, 0x8a, 1.0),
+        "fileZip" => M_WARN,
+        "terminal" => Rgba::rgb8(0x5e, 0xd8, 0x8a, 1.0),
+        _ => M_FG2,
     }
 }
 fn url_decode(s: &str) -> String {
@@ -235,6 +263,149 @@ fn iso_ms(s: &str) -> i64 {
     tm.tm_sec = n[5] as i32;
     (unsafe { libc::timegm(&mut tm) }) as i64 * 1000
 }
+// ---------------------------------------------------------------- quick add ("jutro 15 dentysta")
+// what the search field says about an event: its title, day, start (h, m) or all day, length in minutes
+struct QuickEv {
+    title: String,
+    day: Day,
+    at: Option<(i32, i32)>,
+    mins: i64,
+}
+fn weekday_of(n: &str) -> Option<i32> {
+    Some(match n {
+        "nd" | "ndz" | "niedz" | "niedziela" | "niedziele" | "sun" | "sunday" => 0,
+        "pon" | "poniedzialek" | "mon" | "monday" => 1,
+        "wt" | "wtorek" | "tue" | "tuesday" => 2,
+        "sr" | "sroda" | "srode" | "wed" | "wednesday" => 3,
+        "czw" | "czwartek" | "thu" | "thursday" => 4,
+        "pt" | "piatek" | "fri" | "friday" => 5,
+        "sob" | "sobota" | "sobote" | "sat" | "saturday" => 6,
+        _ => return None,
+    })
+}
+fn hm_of(n: &str) -> Option<(i32, i32)> {
+    let (h, m) = n.split_once(':').or_else(|| n.split_once('.'))?;
+    let (h, m) = (h.parse::<i32>().ok()?, m.parse::<i32>().ok()?);
+    ((0..24).contains(&h) && (0..60).contains(&m) && n.len() >= 4).then_some((h, m))
+}
+// only when the text names a day, a date or a clock time, and something is left as the title
+fn quick_event(raw: &str, td: Day, now_hm: (i32, i32)) -> Option<QuickEv> {
+    let words: Vec<&str> = raw.split_whitespace().collect();
+    if words.len() < 2 {
+        return None;
+    }
+    let mut day_off: Option<i32> = None;
+    let mut date: Option<Day> = None;
+    let mut at: Option<(i32, i32)> = None;
+    let mut end: Option<(i32, i32)> = None;
+    let mut mins: Option<i64> = None;
+    let mut title: Vec<&str> = Vec::new();
+    let mut i = 0;
+    while i < words.len() {
+        let w = words[i].trim_end_matches([',', ';']);
+        let n = norm(w);
+        let next = words.get(i + 1).map(|x| norm(x.trim_end_matches([',', ';']))).unwrap_or_default();
+        let next_is_day = matches!(next.as_str(), "dzis" | "dzisiaj" | "jutro" | "pojutrze" | "today" | "tomorrow") || weekday_of(&next).is_some();
+        // "w sobotę", "na jutro", "o 15" (and "on friday", "at 15"): the little word goes with what follows
+        if (n == "w" || n == "we" || n == "na" || n == "on") && next_is_day {
+            i += 1;
+            continue;
+        }
+        if (n == "o" || n == "at") && (next.parse::<i32>().is_ok_and(|h| (0..24).contains(&h)) || hm_of(&next).is_some()) {
+            let (h, m) = hm_of(&next).unwrap_or((next.parse().unwrap_or(0), 0));
+            at = Some((h, m));
+            i += 2;
+            continue;
+        }
+        match n.as_str() {
+            "dzis" | "dzisiaj" | "today" => day_off = Some(0),
+            "jutro" | "tomorrow" => day_off = Some(1),
+            "pojutrze" => day_off = Some(2),
+            _ => {
+                if let Some(wd) = weekday_of(&n) {
+                    // the next such day (today's weekday: a week from now)
+                    let d = (wd - td.wd).rem_euclid(7);
+                    day_off = Some(if d == 0 { 7 } else { d });
+                } else if let Some((a, b)) = n.split_once('-').filter(|(a, b)| hm_of(a).is_some() && hm_of(b).is_some()) {
+                    at = hm_of(a);
+                    end = hm_of(b);
+                } else if let Some(hm) = hm_of(&n).filter(|_| n.contains(':') || n.split('.').nth(1).is_some_and(|m| m.parse::<i32>().unwrap_or(0) > 12)) {
+                    at = Some(hm);
+                } else if let Some(d) = {
+                    // 12.11 / 12.11.2026 / 12/11
+                    let p: Vec<&str> = n.split(['.', '/']).collect();
+                    let dd = p.first().and_then(|x| x.parse::<i32>().ok()).filter(|d| (1..=31).contains(d));
+                    let mm = p.get(1).and_then(|x| x.parse::<i32>().ok()).filter(|m| (1..=12).contains(m));
+                    let yy = p.get(2).and_then(|x| x.parse::<i32>().ok());
+                    match (dd, mm, p.len()) {
+                        (Some(dd), Some(mm), 2 | 3) => {
+                            let mut d = day(yy.unwrap_or(td.y), mm - 1, dd);
+                            if yy.is_none() && d.ts < td.ts {
+                                d = day(td.y + 1, mm - 1, dd);
+                            }
+                            Some(d)
+                        }
+                        _ => None,
+                    }
+                } {
+                    date = Some(d);
+                } else if let Some(h) = n.strip_suffix('h').or_else(|| n.strip_suffix("godz")).and_then(|x| x.parse::<i64>().ok()).filter(|h| (1..=12).contains(h)) {
+                    mins = Some(h * 60);
+                } else if let Some(m) = n.strip_suffix("min").and_then(|x| x.parse::<i64>().ok()).filter(|m| (5..=600).contains(m)) {
+                    mins = Some(m);
+                } else if let Some(h) = n.parse::<i32>().ok().filter(|h| (0..24).contains(h) && at.is_none() && (day_off.is_some() || date.is_some())) {
+                    // a bare hour right after the day: "jutro 15 dentysta"
+                    at = Some((h, 0));
+                } else {
+                    title.push(w);
+                }
+            }
+        }
+        i += 1;
+    }
+    if day_off.is_none() && date.is_none() && at.is_none() {
+        return None;
+    }
+    let t = title.join(" ");
+    if t.chars().count() < 2 {
+        return None;
+    }
+    let mut ch = t.chars();
+    let title = ch.next().map(|f| f.to_uppercase().collect::<String>() + ch.as_str()).unwrap_or_default();
+    let day_ = match (date, day_off) {
+        (Some(d), _) => d,
+        (None, Some(o)) => day(td.y, td.m, td.d + o),
+        // only a time: today if it is still ahead, else tomorrow
+        (None, None) => day(td.y, td.m, td.d + if at.is_some_and(|a| a > now_hm) { 0 } else { 1 }),
+    };
+    let mins = match (at, end) {
+        (Some(a), Some(b)) => (((b.0 * 60 + b.1) - (a.0 * 60 + a.1)) as i64).max(15),
+        _ => mins.unwrap_or(60),
+    };
+    Some(QuickEv { title, day: day_, at, mins })
+}
+fn url_enc(s: &str) -> String {
+    s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
+}
+fn gcal_stamp(ts: i64) -> String {
+    let t = crate::data::local(ts);
+    format!("{}{:02}{:02}T{:02}{:02}00", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min)
+}
+// Google Calendar's new-event page, filled in (the agenda reads that calendar)
+fn gcal_new(title: &str, d: Day, at: Option<(i32, i32)>, mins: i64) -> String {
+    let dates = match at {
+        Some((h, m)) => {
+            let s = d.ts + (h * 3600 + m * 60) as i64;
+            format!("{}/{}", gcal_stamp(s), gcal_stamp(s + mins * 60))
+        }
+        None => {
+            let n = day(d.y, d.m, d.d + 1);
+            format!("{}{:02}{:02}/{}{:02}{:02}", d.y, d.m + 1, d.d, n.y, n.m + 1, n.d)
+        }
+    };
+    format!("https://calendar.google.com/calendar/r/eventedit?text={}&dates={}", url_enc(title), dates)
+}
+
 fn st(size: f32, w: f32) -> Style {
     Style::ui(size, w)
 }
@@ -360,6 +531,9 @@ impl Start {
             playing: false,
             ticks: 0,
             bg: None,
+            bg_acc: CLEAR,
+            np_pick: None,
+            sizes: std::collections::HashMap::new(),
             pins: std::fs::read_to_string(pins_path()).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).and_then(|v| v["pinned"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())),
             menu: None,
             drag: None,
@@ -394,7 +568,7 @@ impl Start {
                 continue;
             }
             out.push(i);
-            if out.len() == 12 {
+            if out.len() == FAVS {
                 break;
             }
         }
@@ -420,7 +594,7 @@ impl Start {
             if seen.insert(k) {
                 out.push(f);
             }
-            if out.len() == 6 {
+            if out.len() == 8 {
                 break;
             }
         }
@@ -460,6 +634,28 @@ impl Start {
         let q = norm(raw);
         if let Some(v) = calc(raw) {
             out.push(calc_res(v));
+        }
+        // "jutro 15 dentysta": a new event in the calendar, filled in
+        let tm = crate::data::local(crate::data::now());
+        let td = today();
+        if let Some(ev) = quick_event(raw, td, (tm.tm_hour, tm.tm_min)) {
+            let off = ((ev.day.ts - td.ts) as f64 / 86400.0).round() as i64;
+            let dn = match off { 0 => "Dziś".to_string(), 1 => "Jutro".into(), _ => DAYS_LONG[ev.day.wd as usize].into() };
+            let when = match ev.at {
+                Some((h, m)) => {
+                    let e = h * 60 + m + ev.mins as i32;
+                    format!("{:02}:{:02}–{:02}:{:02}", h, m, (e / 60) % 24, e % 60)
+                }
+                None => "cały dzień".into(),
+            };
+            out.push(Res {
+                kind: Kind::Cmd(vec!["xdg-open".into(), gcal_new(&ev.title, ev.day, ev.at, ev.mins)], false),
+                cat: "Kalendarz",
+                title: format!("Dodaj do kalendarza: {}", ev.title),
+                sub: format!("{dn}, {} {} · {when}", ev.day.d, crate::data::MONTHS_GEN[ev.day.m as usize]),
+                icon: "calendar".into(),
+                act: "Dodaj",
+            });
         }
         let mut scored: Vec<(f64, usize)> = Vec::new();
         for (i, a) in apps.entries.iter().enumerate() {
@@ -567,7 +763,7 @@ impl Start {
         }
         let id = apps.entries[i].id.clone();
         let p = self.pins_mut(apps);
-        if p.len() >= 12 {
+        if p.len() >= FAVS {
             return false;
         }
         p.push(id);
@@ -669,7 +865,7 @@ impl Start {
             }
             Some(_) => {
                 if !self.pin(m.app, apps) {
-                    self.note = ("Ulubione są pełne (12): najpierw coś odepnij".into(), Some(Instant::now()));
+                    self.note = ("Ulubione są pełne (18): najpierw coś odepnij".into(), Some(Instant::now()));
                 }
                 Act::Redraw
             }
@@ -705,41 +901,46 @@ impl Start {
     }
 
     // ---------------------------------------------------------------- left (origin = left column)
-    fn paint_left(&mut self, c: &mut Canvas, cx: &mut Ctx) {
-        // the search field: an inset well (Spotlight), the blue caret; the prefixes as keycaps while empty
+    fn paint_field(&mut self, c: &mut Canvas, cx: &mut Ctx, fw_all: f32) {
+        // the search field (sheet width), the blue caret; the prefixes (named) while hovered and empty
         let mode = self.mode();
-        rect(c, 0.0, 0.0, LW, FH, 15.0, Rgba(0.0, 0.0, 0.0, 0.22));
-        if let Some(p) = crate::gfx::rrect_path(0.5, 0.5, LW - 1.0, FH - 1.0, 14.5) {
-            fill_lin(c, &p, (0.0, 0.0), (0.0, 10.0), &[(0.0, Rgba(0.0, 0.0, 0.0, 0.14)), (1.0, CLEAR)]);
-        }
-        border(c, 0.0, 0.0, LW, FH, 15.0, 1.0, Rgba(1.0, 1.0, 1.0, 0.09));
+        // a full-width pill of lit glass (brighter while typing); the lens draws its own rim, no second border
+        let typing = !self.field.text.is_empty();
+        Self::lens(c, 0.0, 0.0, fw_all, FH, FH / 2.0, if typing { 0.1 } else { 0.07 });
         let t = &mut *cx.t;
         let icon = match mode { "Terminal" => "terminal", "Kalkulator" => "calc", "Sieć" => "world", _ => "search" };
-        c.icon(t, 18.0 + 9.0, FH / 2.0, icon, 18.0, if mode.is_empty() { T2 } else { accent() });
-        let fs = st(16.5, 400.0);
+        c.icon(t, 22.0 + 9.0, FH / 2.0, icon, 18.0, if mode.is_empty() { T2 } else { accent() });
+        // the typed text as typed ("jutro" stays "jutro" in an English UI)
+        let fs = st(16.5, 400.0).verbatim();
         let mut hint_w = 0.0;
         if !mode.is_empty() {
             let hs = st(11.5, 600.0);
             hint_w = t.width(mode, &hs) + 18.0;
-            let hx = LW - 10.0 - hint_w;
+            let hx = fw_all - 13.0 - hint_w;
             rect(c, hx, (FH - 26.0) / 2.0, hint_w, 26.0, 13.0, M_ACC_SOFT);
             text_cy(c, t, hx + 9.0, FH / 2.0, mode, &hs, M_ACC_STRONG, None);
-        } else if self.field.text.is_empty() {
-            let mut x = LW - 12.0;
-            for k in ["?", ">", "="] {
-                x -= 22.0;
-                rect(c, x, (FH - 22.0) / 2.0, 22.0, 22.0, 7.0, FILL);
-                border(c, x, (FH - 22.0) / 2.0, 22.0, 22.0, 7.0, 1.0, Rgba(1.0, 1.0, 1.0, 0.06));
-                let kw = t.width(k, &st(11.5, 600.0));
-                text_cy(c, t, x + (22.0 - kw) / 2.0, FH / 2.0, k, &st(11.5, 600.0), T3, None);
-                x -= 5.0;
+        } else if self.field.text.is_empty() && inside(self.ptr, (self.origin.0, self.origin.1, fw_all, FH)) {
+            // the prefixes, named, only while the pointer is on the field (cryptic keycaps otherwise)
+            let ks = st(11.0, 700.0);
+            let ls = st(11.0, 500.0);
+            let mut x = fw_all - 14.0;
+            for (k, label) in [("?", "Sieć"), (">", "Terminal"), ("=", "Kalkulator")] {
+                let lw = t.width(label, &ls);
+                let cw = 18.0 + 6.0 + lw + 10.0;
+                x -= cw;
+                rect(c, x, (FH - 26.0) / 2.0, cw, 26.0, 13.0, FILL);
+                rect(c, x + 4.0, (FH - 18.0) / 2.0, 18.0, 18.0, 9.0, FILL2);
+                let kw = t.width(k, &ks);
+                text_cy(c, t, x + 4.0 + (18.0 - kw) / 2.0, FH / 2.0, k, &ks, M_FG2, None);
+                text_cy(c, t, x + 4.0 + 18.0 + 6.0, FH / 2.0, label, &ls, M_MUTED, None);
+                x -= 6.0;
             }
-            hint_w = LW - 12.0 - x;
+            hint_w = fw_all - 14.0 - x;
         }
-        let fw = LW - 50.0 - hint_w - 22.0;
+        let fw = fw_all - 50.0 - hint_w - 22.0;
         if self.field.text.is_empty() {
             rect(c, 50.0, FH / 2.0 - 10.0, 2.0, 20.0, 1.0, accent());
-            text_cy(c, t, 55.0, FH / 2.0, "Szukaj aplikacji, plików i poleceń…", &fs, T3, Some(fw));
+            text_cy(c, t, 55.0, FH / 2.0, "Szukaj aplikacji, plików i poleceń…", &st(16.5, 400.0), T3, Some(fw));
         } else {
             let mut shown: &str = &self.field.text;
             while t.width(shown, &fs) > fw - 4.0 && !shown.is_empty() {
@@ -747,16 +948,23 @@ impl Start {
                 it.next();
                 shown = it.next().map(|(i, _)| &shown[i..]).unwrap_or("");
             }
-            let w = text_cy(c, t, 50.0, FH / 2.0, shown, &fs, M_FG, None);
-            rect(c, 50.0 + w + 1.0, FH / 2.0 - 10.0, 2.0, 20.0, 1.0, accent());
+            let w = t.width(shown, &fs);
+            if self.field.sel_all {
+                rect(c, 48.0, FH / 2.0 - 11.0, w + 4.0, 22.0, 4.0, accent().alpha(0.35));
+            }
+            text_cy(c, t, 50.0, FH / 2.0, shown, &fs, M_FG, None);
+            if !self.field.sel_all {
+                rect(c, 50.0 + w + 1.0, FH / 2.0 - 10.0, 2.0, 20.0, 1.0, accent());
+            }
         }
-        self.push_hit((0.0, 0.0, LW, FH), Hit::Field);
-
-        let lh = H - 32.0 - 72.0;
+        self.push_hit((0.0, 0.0, fw_all, FH), Hit::Field);
+    }
+    fn paint_left(&mut self, c: &mut Canvas, cx: &mut Ctx) {
+        let lh = c.h();
         if !self.field.text.trim().is_empty() {
-            self.paint_results(c, cx, FH + 14.0, lh);
+            self.paint_results(c, cx, 0.0, lh);
         } else {
-            self.paint_home(c, cx, FH + 24.0, lh);
+            self.paint_home(c, cx, 0.0, lh);
         }
     }
     fn paint_results(&mut self, c: &mut Canvas, cx: &mut Ctx, top: f32, bottom: f32) {
@@ -847,21 +1055,36 @@ impl Start {
     fn paint_home(&mut self, c: &mut Canvas, cx: &mut Ctx, top: f32, bottom: f32) {
         let all = self.tab == 1;
         {
+            // the view switch: a segmented pill, the current half a lit lens, the other one clickable
             let t = &mut *cx.t;
-            caps(c, t, 0.0, top + 2.0, if all { "Wszystkie aplikacje" } else { "Ulubione" }, M_FAINT);
-            let sw = if all { "‹ Ulubione" } else { "Wszystkie ›" };
-            let ss = st(11.5, 600.0);
-            let w = t.width(sw, &ss) + 20.0;
-            let h = Hit::Switch;
-            let hv = self.hov(&h);
-            rect(c, LW - w, top - 1.0, w, 24.0, 12.0, if hv { FILL2 } else { FILL });
-            text_cy(c, t, LW - w + 10.0, top + 11.0, sw, &ss, if hv { M_FG } else { M_FG2 }, None);
-            self.push_hit((LW - w, top - 1.0, w, 24.0), h);
+            let ss = st(12.0, 600.0);
+            let labels = ["Ulubione", "Wszystkie"];
+            let ws = [t.width(labels[0], &ss) + 30.0, t.width(labels[1], &ss) + 30.0];
+            let sh = 32.0;
+            rect(c, 0.0, top, ws[0] + ws[1] + 6.0, sh, sh / 2.0, Rgba(0.0, 0.0, 0.0, 0.2));
+            border(c, 0.0, top, ws[0] + ws[1] + 6.0, sh, sh / 2.0, 1.0, Rgba(1.0, 1.0, 1.0, 0.06));
+            let mut x = 3.0;
+            for (k, l) in labels.iter().enumerate() {
+                let on = (k == 1) == all;
+                let r = (x, top + 3.0, ws[k], sh - 6.0);
+                let hv = !on && self.hov(&Hit::Switch) && inside(self.ptr, (self.origin.0 + r.0, self.origin.1 + r.1, r.2, r.3));
+                if on {
+                    Self::lens(c, r.0, r.1, r.2, r.3, r.3 / 2.0, 0.13);
+                } else if hv {
+                    rect(c, r.0, r.1, r.2, r.3, r.3 / 2.0, FILL);
+                }
+                let lw = t.width(l, &ss);
+                text_cy(c, t, x + (ws[k] - lw) / 2.0, top + sh / 2.0, l, &ss, if on { M_FG } else if hv { M_FG2 } else { M_MUTED }, None);
+                if !on {
+                    self.push_hit(r, Hit::Switch);
+                }
+                x += ws[k];
+            }
         }
         if !all {
-            // the favourites grid: 6 x 2 cells of 99 x 100
+            // the favourites grid: 6 x 3 cells of 99 x 100
             let apps = self.tab_apps(cx.apps);
-            let gy = top + 20.0 + 12.0;
+            let gy = top + 32.0 + 14.0;
             for (i, &ai) in apps.iter().enumerate() {
                 let (x, y) = (-4.0 + (i % 6) as f32 * 99.0, gy + (i / 6) as f32 * 104.0);
                 let h = Hit::Cell(i);
@@ -885,13 +1108,13 @@ impl Start {
                 }
                 let e = &cx.apps.entries[ai];
                 let (icon, name) = (e.icon.clone(), e.name.clone());
-                let s = 50.0;
-                Self::app_icon(c, cx, &icon, x + (99.0 - s) / 2.0, y + 12.0, s);
+                let s = 54.0;
+                Self::app_icon(c, cx, &icon, x + (99.0 - s) / 2.0, y + 10.0, s);
                 let t = &mut *cx.t;
                 let ns = st(11.5, 500.0);
                 for (k, l) in crate::gfx::wrap(t, &name, &ns, 87.0, 2).iter().enumerate() {
                     let w = t.width(l, &ns);
-                    text(c, t, x + (99.0 - w) / 2.0, y + 68.0 + k as f32 * 14.0, l, &ns, if hov { M_FG } else { M_FG2 }, false, None);
+                    text(c, t, x + (99.0 - w) / 2.0, y + 70.0 + k as f32 * 14.0, l, &ns, if hov { M_FG } else { M_FG2 }, false, None);
                 }
                 self.push_hit((x, y, 99.0, 100.0), h);
             }
@@ -908,61 +1131,68 @@ impl Start {
                 crate::glass::shadow(c, px - 28.0, py - 22.0, 56.0, 56.0, 14.0, 18.0, -2.0, Rgba(0.0, 0.0, 0.0, 0.45));
                 Self::app_icon(c, cx, &icon, px - 28.0, py - 28.0, 56.0);
             }
-            // recent files
+            // recent files: one grouped glass panel of full-width rows (names readable), down to the column's end
             let sug = self.sug();
             if !sug.is_empty() {
                 let rows = apps.len().div_ceil(6).max(1) as f32;
-                let mut y = gy + rows * 104.0 - 4.0 + 26.0;
-                caps(c, cx.t, 0.0, y, "Ostatnie pliki", M_FAINT);
-                y += 16.0 + 12.0;
-                let cw = (LW - 12.0) / 2.0;
-                for (i, (p, ts)) in sug.iter().enumerate() {
-                    let (x, ry) = ((i % 2) as f32 * (cw + 12.0), y + (i / 2) as f32 * 68.0);
-                    if ry + 58.0 > bottom {
-                        break;
+                let mut y = gy + rows * 104.0 - 4.0 + 22.0;
+                caps(c, cx.t, 4.0, y, "Ostatnie pliki", M_FAINT);
+                y += 16.0 + 10.0;
+                let avail = bottom - y - 1.0;
+                let fit = ((avail / 48.0).floor().max(0.0) as usize).min(sug.len());
+                let rh = if fit > 0 { (avail / fit as f32).min(60.0) } else { 0.0 };
+                let cw = LW;
+                if fit > 0 {
+                    Self::lens(c, 0.0, y, LW, fit as f32 * rh, 18.0, 0.045);
+                }
+                for (i, (p, ts)) in sug.iter().enumerate().take(fit) {
+                    let (x, ry) = (0.0, y + i as f32 * rh);
+                    if i > 0 {
+                        rect(c, x + 62.0, ry, cw - 76.0, 1.0, 0.0, Rgba(1.0, 1.0, 1.0, 0.06));
                     }
                     let h = Hit::File(i);
-                    let hov = inside(self.ptr, (self.origin.0 + x, self.origin.1 + ry, cw, 58.0));
-                    Self::lens(c, x, ry, cw, 58.0, 16.0, if hov { 0.085 } else { 0.045 });
+                    let hov = inside(self.ptr, (self.origin.0 + x, self.origin.1 + ry, cw, rh));
+                    if hov {
+                        rect(c, x + 4.0, ry + 4.0, cw - 8.0, rh - 8.0, 14.0, FILL);
+                    }
                     let fi = file_icon(p);
                     let img = fi == "photo" && !p.to_lowercase().ends_with(".svg");
                     let thumb = if img { cx.imgs.get(p, 96, cx.icons) } else { None };
                     let t = &mut *cx.t;
+                    let (ix, iy) = (x + 14.0, ry + (rh - 34.0) / 2.0);
                     match thumb {
                         Some(pm) => {
-                            crate::img::draw(c, &pm, x + 10.0, ry + 9.0, 40.0, 40.0, 11.0, true, 1.0);
-                            border(c, x + 10.0, ry + 9.0, 40.0, 40.0, 11.0, 1.0, Rgba(1.0, 1.0, 1.0, 0.12));
+                            crate::img::draw(c, &pm, ix, iy, 34.0, 34.0, 9.0, true, 1.0);
+                            border(c, ix, iy, 34.0, 34.0, 9.0, 1.0, Rgba(1.0, 1.0, 1.0, 0.12));
                         }
-                        None => {
-                            rect(c, x + 10.0, ry + 9.0, 40.0, 40.0, 11.0, Rgba(1.0, 1.0, 1.0, 0.06));
-                            border(c, x + 10.0, ry + 9.0, 40.0, 40.0, 11.0, 1.0, Rgba(1.0, 1.0, 1.0, 0.08));
-                            c.icon(t, x + 30.0, ry + 29.0, fi, 19.0, M_FG2);
-                        }
+                        None => Self::chip(c, t, ix, iy, 34.0, fi, kind_col(fi)),
                     }
-                    let tw = cw - 60.0 - 64.0 - 18.0;
-                    text(c, t, x + 60.0, ry + 12.0, base(p), &st(12.5, 600.0), M_FG, false, Some(tw));
-                    c.icon(t, x + 60.0 + 5.5, ry + 38.0, "folder", 11.0, M_FAINT);
+                    let a = ago(*ts);
+                    let aw = t.width(&a, &st(10.5, 400.0));
+                    let tw = cw - 62.0 - aw.max(30.0) - 30.0;
+                    let mid = ry + rh / 2.0;
+                    text_cy(c, t, x + 62.0, mid - 8.0, base(p), &st(13.0, 600.0), M_FG, Some(tw));
                     let dir = p.rsplit('/').nth(1).unwrap_or("/");
-                    text_cy(c, t, x + 60.0 + 16.0, ry + 38.0, dir, &st(11.0, 400.0), M_MUTED, Some(tw - 16.0));
+                    let sz = *self.sizes.entry(p.clone()).or_insert_with(|| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0));
+                    let sub = if sz > 0 { format!("{dir} · {}", human_size(sz)) } else { dir.to_string() };
+                    text_cy(c, t, x + 62.0, mid + 9.0, &sub, &st(11.0, 450.0), M_MUTED, Some(tw));
                     if hov {
-                        let (bx, by) = (x + cw - 10.0 - 30.0, ry + 14.0);
-                        let rh = Hit::Reveal(i);
-                        rect(c, bx, by, 30.0, 30.0, 15.0, if self.hov(&rh) { accent() } else { FILL2 });
+                        let (bx, by) = (x + cw - 14.0 - 30.0, mid - 15.0);
+                        let rv = Hit::Reveal(i);
+                        rect(c, bx, by, 30.0, 30.0, 15.0, if self.hov(&rv) { accent() } else { FILL2 });
                         c.icon(t, bx + 15.0, by + 15.0, "folderOpen", 14.0, M_FG);
-                        self.push_hit((x, ry, cw, 58.0), h);
-                        self.push_hit((bx, by, 30.0, 30.0), rh);
+                        self.push_hit((x, ry, cw, rh), h);
+                        self.push_hit((bx, by, 30.0, 30.0), rv);
                     } else {
-                        let a = ago(*ts);
-                        let aw = t.width(&a, &st(10.5, 400.0));
-                        text_cy(c, t, x + cw - 10.0 - aw, ry + 29.0, &a, &st(10.5, 400.0), M_FAINT, None);
-                        self.push_hit((x, ry, cw, 58.0), h);
+                        text_cy(c, t, x + cw - 16.0 - aw, mid, &a, &st(10.5, 400.0), M_FAINT, None);
+                        self.push_hit((x, ry, cw, rh), h);
                     }
                 }
             }
         } else {
             // all apps, A–Z, 2 columns of 52 px rows
             let list = Self::all_apps(cx.apps);
-            let gy = top + 20.0 + 10.0;
+            let gy = top + 32.0 + 12.0;
             let view = bottom - gy;
             let rows = list.len().div_ceil(2) as f32;
             let max_sc = (rows * 52.0 - view).max(0.0);
@@ -1040,14 +1270,45 @@ impl Start {
         Self::lens(c, 0.0, y, w, h, 22.0, 0.06);
     }
     // the agenda card; returns its height
+    // the picked day's events and the next month's (holidays included: the week strip dots them too, "nothing"
+    // under a dot would be a lie)
+    fn cal_lists(&self, cal: &Value) -> (Vec<Value>, Vec<Value>) {
+        let td = today();
+        let picked = day(td.y, td.m, td.d + self.pick as i32);
+        let now = crate::data::now();
+        let day_events: Vec<Value> = events_on(cal, picked).into_iter().filter(|e| self.pick > 0 || e["end"].as_i64().unwrap_or(0) > now).collect();
+        let soon: Vec<Value> = cal["items"].as_array().map(|a| a.iter().filter(|x| x["end"].as_i64().unwrap_or(0) > now && x["start"].as_i64().unwrap_or(0) < now + 30 * 86400).take(6).cloned().collect()).unwrap_or_default();
+        (day_events, soon)
+    }
+    // the agenda card's height when nothing is cut (paint_cal's layout, row by row): the card is as tall as what it shows
+    fn cal_need(&self, cx: &Ctx) -> f32 {
+        let td = today();
+        let picked = day(td.y, td.m, td.d + self.pick as i32);
+        let (day_events, soon) = self.cal_lists(cx.cal);
+        let mut y = 38.0 + 64.0;
+        let key = format!("{}-{:02}-{:02}", picked.y, picked.m + 1, picked.d);
+        if cx.wx["days"].as_array().is_some_and(|a| a.iter().any(|d| d["date"].as_str() == Some(&key))) {
+            y += 38.0;
+        }
+        if day_events_all(cx.cal, picked).iter().any(|e| !e["allDay"].as_bool().unwrap_or(false)) {
+            y += 36.0;
+        }
+        y += if !day_events.is_empty() {
+            day_events.len() as f32 * 46.0
+        } else if soon.is_empty() {
+            88.0
+        } else {
+            24.0 + soon.len() as f32 * 44.0
+        };
+        y + 30.0
+    }
     fn paint_cal(&mut self, c: &mut Canvas, cx: &mut Ctx, w: f32, avail: f32) -> f32 {
         let cal = cx.cal;
         let td = today();
         let day_at = |i: usize| day(td.y, td.m, td.d + i as i32);
         let picked: Day = day_at(self.pick);
         let now = crate::data::now();
-        let day_events: Vec<Value> = events_on(cal, picked).into_iter().filter(|e| self.pick > 0 || e["end"].as_i64().unwrap_or(0) > now).collect();
-        let soon = crate::data::upcoming(cal, 6, 30);
+        let (day_events, soon) = self.cal_lists(cal);
         let iw = w - 36.0;
         let mut l = Canvas::new(w as u32, avail.max(120.0) as u32);
         let t = &mut *cx.t;
@@ -1101,7 +1362,36 @@ impl Start {
             }
             self.push_hit((x, y, dw, 54.0), h);
         }
-        y += 54.0 + 12.0;
+        y += 54.0 + 10.0;
+        // the picked day's weather: icon, high / low, rain, daylight
+        let key = format!("{}-{:02}-{:02}", picked.y, picked.m + 1, picked.d);
+        if let Some(wd) = cx.wx["days"].as_array().and_then(|a| a.iter().find(|d| d["date"].as_str() == Some(&key))) {
+            let cyw = oy + y + 13.0;
+            rect(&mut l, ox, oy + y, iw, 26.0, 13.0, Rgba(1.0, 1.0, 1.0, 0.04));
+            l.icon(t, ox + 16.0, cyw, crate::data::wx_icon(wd["code"].as_i64().unwrap_or(0), 1), 14.0, M_FG2);
+            let hi = format!("{}°", wd["max"].as_f64().unwrap_or(0.0).round() as i64);
+            let lo = format!(" / {}°", wd["min"].as_f64().unwrap_or(0.0).round() as i64);
+            let mut x = ox + 30.0;
+            x += text_cy(&mut l, t, x, cyw, &hi, &st(12.0, 650.0).tnum(), M_FG, None);
+            x += text_cy(&mut l, t, x, cyw, &lo, &st(12.0, 450.0).tnum(), M_MUTED, None) + 10.0;
+            let pop = wd["pop"].as_i64().unwrap_or(0);
+            if pop >= 30 {
+                l.icon(t, x + 6.0, cyw, "umbrella", 12.0, M_BLUE);
+                text_cy(&mut l, t, x + 15.0, cyw, &format!("{pop}%"), &st(11.0, 600.0).tnum(), M_BLUE, None);
+            }
+            let (rise, set) = (wd["rise"].as_str().unwrap_or(""), wd["set"].as_str().unwrap_or(""));
+            if !rise.is_empty() {
+                let ss = st(11.0, 500.0).tnum();
+                let sw = t.width(set, &ss);
+                let rw = t.width(rise, &ss);
+                let rx = ox + iw - 10.0 - sw;
+                text_cy(&mut l, t, rx, cyw, set, &ss, M_MUTED, None);
+                l.icon(t, rx - 9.0, cyw, "moon", 12.0, M_BLUE.mul_a(0.85));
+                text_cy(&mut l, t, rx - 18.0 - 8.0 - rw, cyw, rise, &ss, M_MUTED, None);
+                l.icon(t, rx - 18.0 - 8.0 - rw - 9.0, cyw, "sunrise", 12.0, YELLOW.mul_a(0.85));
+            }
+            y += 26.0 + 12.0;
+        }
         // the picked day at a glance, 7–23 h
         let timed: Vec<&Value> = day_events_all(cal, picked).into_iter().filter(|e| !e["allDay"].as_bool().unwrap_or(false)).collect::<Vec<_>>().leak().iter().collect();
         if !timed.is_empty() {
@@ -1173,12 +1463,18 @@ impl Start {
         if day_events.is_empty() {
             if soon.is_empty() {
                 // the empty state in the middle of the card's free space
-                let my = y + ((avail - 32.0 - y - 56.0) / 2.0).max(0.0);
-                l.icon(t, ox + iw / 2.0, oy + my + 14.0, "calendar", 24.0, M_FAINT);
+                // and how to add one: the search field takes "jutro 15 dentysta"
+                let my = y + ((avail - 32.0 - y - 84.0) / 2.0).max(0.0);
+                l.icon(t, ox + iw / 2.0, oy + my + 14.0, "calendar", 22.0, M_FAINT);
                 let s = "Nic w kalendarzu na najbliższy miesiąc";
-                let sw = t.width(s, &st(12.0, 450.0)).min(iw);
-                text(&mut l, t, ox + (iw - sw) / 2.0, oy + my + 36.0, s, &st(12.0, 450.0), M_MUTED, false, Some(iw));
-                y = my + 60.0;
+                let sw = t.width(s, &st(12.0, 500.0)).min(iw);
+                text(&mut l, t, ox + (iw - sw) / 2.0, oy + my + 34.0, s, &st(12.0, 500.0), M_FG2, false, Some(iw));
+                let hs = st(11.0, 450.0);
+                for (k, line) in crate::gfx::wrap(t, "Wpisz w wyszukiwarce np. „jutro 15 dentysta”, aby dodać", &hs, iw - 20.0, 2).iter().enumerate() {
+                    let lw = t.width(line, &hs);
+                    text(&mut l, t, ox + (iw - lw) / 2.0, oy + my + 54.0 + k as f32 * 15.0, line, &hs, M_FAINT, false, None);
+                }
+                y = my + 88.0;
             } else {
                 text(&mut l, t, ox + 8.0, oy + y + 2.0, "NAJBLIŻSZE", &st(11.0, 600.0).spaced(1.2), M_FAINT, false, Some(iw - 16.0));
                 y += 20.0 + 4.0;
@@ -1198,7 +1494,8 @@ impl Start {
                 let wxw = Self::wx_at(cx.wx, e).map(|w| Self::wx_chip(&mut l, t, ox + iw - 8.0, oy + y + 20.0, &w) + 8.0).unwrap_or(0.0);
                 let tw = iw - 74.0 - wxw;
                 text(&mut l, t, ox + 66.0, oy + y + 5.0, e["title"].as_str().unwrap_or(""), &st(12.5, 600.0), M_FG, false, Some(tw));
-                text(&mut l, t, ox + 66.0, oy + y + 21.0, &format!("{} · {}", crate::data::rel(s), crate::data::when(e)), &st(10.5, 400.0), M_MUTED, false, Some(tw));
+                let what = if e["holiday"].as_bool().unwrap_or(false) { "święto".to_string() } else { crate::data::when(e) };
+                text(&mut l, t, ox + 66.0, oy + y + 21.0, &format!("{} · {}", crate::data::rel(s), what), &st(10.5, 400.0), M_MUTED, false, Some(tw));
                 self.push_hit((0.0, y, iw, 40.0), h);
                 y += 44.0;
             }
@@ -1227,9 +1524,9 @@ impl Start {
             h += 10.0 + 30.0;
         }
         if online {
-            h += 10.0 + 36.0;
+            h += 10.0 + 50.0;
             if self.phone_more {
-                h += 10.0 + 36.0;
+                h += 10.0 + 50.0;
             }
         }
         if shown > 0 {
@@ -1262,9 +1559,9 @@ impl Start {
             h += 10.0 + 30.0;
         }
         if online {
-            h += 10.0 + 36.0;
+            h += 10.0 + 50.0;
             if self.phone_more {
-                h += 10.0 + 36.0;
+                h += 10.0 + 50.0;
             }
         }
         if !shown.is_empty() {
@@ -1380,20 +1677,20 @@ impl Start {
         if online {
             let adb_ok = { let s = self.ph.st.lock().unwrap(); s.adb_ok() };
             let mut rows: Vec<Vec<(&'static str, &'static str, &'static str)>> = vec![vec![]];
-            for (icon, tip, c_, p) in [("bellRing", "Znajdź telefon (dzwoni)", "ring", "findmyphone"), ("clipboard", "Wyślij schowek", "clip", "clipboard"), ("fileUp", "Wyślij pliki", "pick", "share")] {
+            for (icon, tip, c_, p) in [("bellRing", "Znajdź", "ring", "findmyphone"), ("clipboard", "Schowek", "clip", "clipboard"), ("fileUp", "Wyślij pliki", "pick", "share")] {
                 if has(p) {
                     rows[0].push((icon, tip, c_));
                 }
             }
             if self.phone_more {
                 let mut r = Vec::new();
-                for (icon, tip, c_, p) in [("folderOpen", "Przeglądaj pliki telefonu", "browse", "sftp"), ("camera", "Zrób zdjęcie telefonem", "photo", "photo"), ("message", "Wiadomości SMS", "expand", "sms")] {
+                for (icon, tip, c_, p) in [("folderOpen", "Pliki", "browse", "sftp"), ("camera", "Zdjęcie", "photo", "photo"), ("message", "SMS", "expand", "sms")] {
                     if has(p) {
                         r.push((icon, tip, c_));
                     }
                 }
                 if adb_ok {
-                    r.push(("screenOn", "Ekran telefonu na komputerze", "mirror"));
+                    r.push(("screenOn", "Ekran na PC", "mirror"));
                 }
                 rows.push(r);
             }
@@ -1403,16 +1700,20 @@ impl Start {
                 let bw = (iw - (n.max(1) - 1) as f32 * 6.0) / n.max(1) as f32;
                 let mut items: Vec<(&str, &str, Hit, bool)> = row.iter().map(|(i, tip, c_)| (*i, *tip, Hit::PhoneAct(c_), false)).collect();
                 if ri == 0 {
-                    items.push((if self.phone_more { "x" } else { "dots" }, if self.phone_more { "Mniej" } else { "Więcej akcji" }, Hit::PhoneMore, self.phone_more));
+                    items.push((if self.phone_more { "x" } else { "dots" }, if self.phone_more { "Mniej" } else { "Więcej" }, Hit::PhoneMore, self.phone_more));
                 }
-                for (k, (icon, _, h, active)) in items.into_iter().enumerate() {
+                // icon over its name: what each one does without hovering it first
+                for (k, (icon, label, h, active)) in items.into_iter().enumerate() {
                     let bx = x0 + k as f32 * (bw + 6.0);
                     let hov = self.hov(&h);
-                    rect(c, bx, y, bw, 36.0, 18.0, if active { accent() } else if hov { FILL2 } else { FILL });
+                    rect(c, bx, y, bw, 50.0, 16.0, if active { accent() } else if hov { FILL2 } else { FILL });
                     c.icon(t, bx + bw / 2.0, y + 18.0, icon, 16.0, if active { WHITE } else { M_FG });
-                    self.push_hit((bx, y, bw, 36.0), h);
+                    let ls = st(10.0, 550.0);
+                    let lw = t.width(label, &ls).min(bw - 8.0);
+                    text_cy(c, t, bx + (bw - lw) / 2.0, y + 37.0, label, &ls, if active { WHITE } else if hov { M_FG } else { M_MUTED }, Some(bw - 8.0));
+                    self.push_hit((bx, y, bw, 50.0), h);
                 }
-                y += 36.0;
+                y += 50.0;
             }
         }
         if !shown.is_empty() {
@@ -1425,9 +1726,20 @@ impl Start {
                 let icon = n["icon"].as_str().unwrap_or("").to_string();
                 let app = n["app"].as_str().unwrap_or("").to_string();
                 let pm = (!icon.is_empty()).then(|| cx.imgs.get(&icon, 56, cx.icons)).flatten();
+                // no icon from the phone: the same app's icon on this computer (Discord, Messenger…), else its initial
+                let local = if pm.is_none() && !app.is_empty() {
+                    let a = norm(&app);
+                    cx.apps.entries.iter().find(|e| !e.icon.is_empty() && (norm(&e.name) == a || norm(&e.id).trim_end_matches(".desktop").rsplit('.').next() == Some(a.as_str()))).map(|e| e.icon.clone())
+                } else {
+                    None
+                };
+                if let Some(li) = &local {
+                    Self::app_icon(c, cx, li, x0 + 9.0, y + 9.0, 28.0);
+                }
                 let t = &mut *cx.t;
                 match pm {
                     Some(pm) => crate::img::draw(c, &pm, x0 + 9.0, y + 9.0, 28.0, 28.0, 9.0, true, 1.0),
+                    None if local.is_some() => {}
                     None => {
                         let l = app.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or("?".into());
                         let lw = t.width(&l, &st(12.0, 700.0));
@@ -1507,14 +1819,33 @@ impl Start {
             let bh = if p.playing { [8.0, 10.0, 6.0][i] } else { 4.0 };
             rect(c, tx + i as f32 * 4.5, y + 26.0 - bh, 2.5, bh, 1.25, amb);
         }
-        text(c, t, tx + 18.0, y + 16.0, &p.identity.to_uppercase(), &st(9.5, 700.0).spaced(1.2), amb, false, Some(tw - 18.0));
+        // the source; with more than one player it switches (its count after it)
+        let n_src = Self::np_players(cx.players).len();
+        let src = if n_src > 1 { format!("{} · {}/{}", p.identity.to_uppercase(), Self::np_players(cx.players).iter().position(|q| q.bus == p.bus).unwrap_or(0) + 1, n_src) } else { p.identity.to_uppercase() };
+        let t = &mut *cx.t;
+        let sw = text(c, t, tx + 18.0, y + 16.0, &src, &st(9.5, 700.0).spaced(1.2), if n_src > 1 && self.hov(&Hit::Src) { M_FG } else { amb }, false, Some(tw - 18.0));
+        if n_src > 1 {
+            c.icon(t, tx + 18.0 + sw + 9.0, y + 22.0, "chevron", 10.0, amb);
+            self.push_hit((tx - 2.0, y + 10.0, (sw + 34.0).min(tw + 4.0), 20.0), Hit::Src);
+        }
         text(c, t, tx, y + 30.0, &p.title, &st(16.0, 650.0), M_FG, false, Some(tw));
         text(c, t, tx, y + 52.0, &p.artist, &st(12.5, 400.0), M_FG2, false, Some(tw));
         // scrubber
-        let can_len = p.length > 0.0;
+        // a live stream reports a length of ~i64::MAX µs: anything over 100 h is no length
+        let can_len = p.length > 0.0 && p.length < 360_000.0;
         let pos = (p.position + if p.playing { p.pos_at.map(|a| a.elapsed().as_secs_f64()).unwrap_or(0.0) } else { 0.0 }).min(p.length.max(0.0));
         let f = if can_len { (pos / p.length) as f32 } else { 0.0 };
-        let (bx, by, bw) = (16.0, y + 84.0, w - 32.0);
+        // the times at the bar's ends, the transport row below free for shuffle / repeat
+        let ts_ = st(10.5, 500.0).tnum();
+        let (lt, rt) = if can_len { (mmss(pos), format!("-{}", mmss(p.length - pos))) } else { (String::new(), String::new()) };
+        let lw = if can_len { t.width("00:00", &ts_).max(t.width(&lt, &ts_)) + 10.0 } else { 0.0 };
+        let rw = if can_len { t.width("-00:00", &ts_).max(t.width(&rt, &ts_)) + 10.0 } else { 0.0 };
+        if can_len {
+            text_cy(c, t, 16.0, y + 91.0, &lt, &ts_, M_FG2, None);
+            let w2 = t.width(&rt, &ts_);
+            text_cy(c, t, w - 16.0 - w2, y + 91.0, &rt, &ts_, M_MUTED, None);
+        }
+        let (bx, by, bw) = (16.0 + lw, y + 84.0, w - 32.0 - lw - rw);
         let sk = Hit::Seek;
         let sh = self.hov(&sk);
         let th = if sh { 6.0 } else { 4.0 };
@@ -1531,13 +1862,21 @@ impl Start {
         }
         // times + transport
         let cy = y + 100.0 + 21.0;
-        if can_len {
-            text_cy(c, t, 16.0, cy, &mmss(pos), &st(11.0, 400.0).tnum(), M_FG2, None);
-            let r = format!("-{}", mmss(p.length - pos));
-            let rw = t.width(&r, &st(11.0, 400.0).tnum());
-            text_cy(c, t, w - 16.0 - rw, cy, &r, &st(11.0, 400.0).tnum(), M_MUTED, None);
-        }
         let cxm = w / 2.0;
+        // shuffle / repeat (when the player has them), lit in the cover's colour while on
+        for (hit, on, icon, x) in [(Hit::Shuffle, p.shuffle, "shuffle", 18.0), (Hit::Loop, p.loop_status.as_ref().map(|l| l != "None"), "repeat", w - 18.0 - 32.0)] {
+            let Some(on) = on else { continue };
+            let hv = self.hov(&hit);
+            if on || hv {
+                circle(c, x + 16.0, cy, 16.0, if on { amb.mul_a(0.22) } else { Rgba(1.0, 1.0, 1.0, 0.1) });
+            }
+            c.icon(t, x + 16.0, cy, icon, 14.0, if on { M_FG } else { M_FG2.mul_a(0.7) });
+            if hit == Hit::Loop && p.loop_status.as_deref() == Some("Track") {
+                let ss = st(8.0, 800.0);
+                text_cy(c, t, x + 16.0 + 6.0, cy - 7.0, "1", &ss, M_FG, None);
+            }
+            self.push_hit((x, cy - 16.0, 32.0, 32.0), hit);
+        }
         for (hit, icon, x, size, en) in [(Hit::Prev, "prev", cxm - 21.0 - 14.0 - 34.0, 34.0, p.can_prev), (Hit::Next, "next", cxm + 21.0 + 14.0, 34.0, p.can_next)] {
             let hv = self.hov(&hit);
             if hv && en {
@@ -1556,18 +1895,33 @@ impl Start {
         c.icon(t, cxm, cy, if p.playing { "pause" } else { "play" }, 17.0, INK);
         self.push_hit((cxm - 21.0, cy - 21.0, 42.0, 42.0), ph);
     }
+    // the players worth a card (something loaded), and the one shown: the picked one, else the playing one
+    fn np_players(players: &[crate::media::Player]) -> Vec<&crate::media::Player> {
+        players.iter().filter(|p| !p.title.is_empty()).collect()
+    }
+    fn np_player(&self, players: &[crate::media::Player]) -> Option<crate::media::Player> {
+        let list = Self::np_players(players);
+        self.np_pick.as_ref().and_then(|b| list.iter().find(|p| &p.bus == b)).or_else(|| list.iter().find(|p| p.playing)).or_else(|| list.first()).map(|p| (*p).clone())
+    }
     fn paint_right(&mut self, c: &mut Canvas, cx: &mut Ctx, w: f32, h: f32) {
-        let player = cx.players.iter().find(|p| p.playing).or_else(|| cx.players.iter().find(|p| !p.title.is_empty())).cloned();
+        let player = self.np_player(cx.players);
         self.playing = player.as_ref().map(|p| p.playing).unwrap_or(false);
-        // the agenda takes what the phone card and now playing leave: no hole in the column
+        // cards stacked from the top, each as tall as its content: the agenda as tall as what it lists, the phone's
+        // notifications take what the agenda can spare (it keeps its own height up to 260 px: week, weather, two rows),
+        // a long agenda takes what's left; free space stays at the bottom, like the left column's
         let gap = 12.0;
-        let notes = if player.is_some() { 1 } else { 2 };
         let np = if player.is_some() { 146.0 + gap } else { 0.0 };
+        let need = self.cal_need(cx);
+        let mut notes = if player.is_some() { 3 } else { 6 };
+        while notes > 1 && h - np - self.phone_h(notes) - gap < need.min(260.0) {
+            notes -= 1;
+        }
         let ph = self.phone_h(notes);
-        let ch = self.paint_cal(c, cx, w, h - np - ph - gap);
-        self.paint_phone(c, cx, ch + gap, w, notes);
+        let ch = self.paint_cal(c, cx, w, need.min(h - np - ph - gap));
+        let py = ch + gap;
+        let ph = self.paint_phone(c, cx, py, w, notes);
         if let Some(p) = player {
-            self.paint_np(c, cx, h - 146.0, w, &p);
+            self.paint_np(c, cx, py + ph + gap, w, &p);
         }
     }
 }
@@ -1625,7 +1979,7 @@ impl Pane for Start {
         self.enter.running()
     }
     fn hand(&self) -> bool {
-        matches!(self.hit(), Some(h) if !matches!(h, Hit::Sheet | Hit::Field | Hit::Note))
+        matches!(self.hit(), Some(h) if !matches!(h, Hit::Sheet | Hit::Field))
     }
     fn seed(&mut self, q: &str) {
         self.field.text = q.into();
@@ -1672,72 +2026,96 @@ impl Pane for Start {
         let (sx, sy) = (((cw - W) / 2.0).round(), ((ch - H) / 2.0 - 12.0).round());
         self.sheet = (sx, sy);
         self.hits.push(((sx, sy, W, H), Hit::Sheet));
-        // the sheet into a layer (scale .965 -> 1 and fade in while opening); its glass, glows and lines are drawn once
+        // the sheet into a layer (scale .965 -> 1 and fade in while opening); its glass and glows are drawn once
+        // (again when the accent follows a new wallpaper)
+        let acc = accent();
+        if self.bg_acc != acc {
+            self.bg = None;
+            self.bg_acc = acc;
+        }
         let bg = self.bg.get_or_insert_with(|| {
-            // the panes' graphite glass (Control Centre, notifications, session), the footer's hairline
+            // the panes' graphite glass, lit by the accent from the top left and a violet haze from the bottom right
             let mut l = Canvas::new(W as u32, H as u32);
             glass(&mut l, 0.0, 0.0, W, H, 30.0, 0.82);
-            glass_rim(&mut l, 0.0, 0.0, W, H, 30.0);
-            rect(&mut l, 0.0, H - 64.0, W, 1.0, 0.0, Rgba(1.0, 1.0, 1.0, 0.07));
             if let Some(p) = crate::glass::sq_path(0.0, 0.0, W, H, 30.0) {
-                let mut mask = tiny_skia::Mask::new(W as u32, H as u32).unwrap();
-                mask.fill_path(&p, tiny_skia::FillRule::Winding, true, tiny_skia::Transform::identity());
-                let mut foot = Canvas::new(W as u32, H as u32);
-                rect(&mut foot, 0.0, H - 63.0, W, 63.0, 0.0, Rgba(0.0, 0.0, 0.0, 0.12));
-                l.pm.draw_pixmap(0, 0, foot.pm.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), Some(&mask));
+                crate::desktop::fill_rad(&mut l, &p, 140.0, -60.0, 560.0, &[(0.0, acc.mul_a(0.26)), (0.55, acc.mul_a(0.07)), (1.0, CLEAR)]);
+                crate::desktop::fill_rad(&mut l, &p, W - 60.0, H + 80.0, 520.0, &[(0.0, M_PURPLE.mul_a(0.14)), (1.0, CLEAR)]);
             }
+            glass_rim(&mut l, 0.0, 0.0, W, H, 30.0);
             l.pm
         });
         let mut l = Canvas { pm: bg.clone() };
         let id = tiny_skia::Transform::identity();
         let pp = tiny_skia::PixmapPaint::default();
+        // the top row: the search pill, the power buttons at its right
+        self.origin = (sx, sy);
+        let t = &mut *cx.t;
+        let cy = FY + FH / 2.0;
+        let powers = ["lock", "zzz", "logout", "reload", "power"];
+        let arms = ["", "", "Wyloguj", "Uruchom ponownie", "Wyłącz"];
+        // one quiet glass group (the session's actions are not the menu's main thing), a hairline between
+        // lock / sleep and the ones that end the session
+        let (bs, pad, gap) = (40.0, 6.0, 2.0);
+        let pw = pad * 2.0 + 5.0 * bs + 4.0 * gap + 9.0;
+        let gx = W - 32.0 - pw;
+        Self::lens(&mut l, gx, FY, pw, FH, FH / 2.0, 0.07);
+        let mut px = gx + pad;
+        for (i, icon) in powers.iter().enumerate() {
+            if i == 2 {
+                rect(&mut l, px + 3.5, cy - 10.0, 1.0, 20.0, 0.0, Rgba(1.0, 1.0, 1.0, 0.1));
+                px += 9.0;
+            }
+            let h = Hit::Power(i);
+            let hov = self.hov(&h);
+            let armed = !arms[i].is_empty() && self.armed == arms[i];
+            let red = armed || (*icon == "power" && hov);
+            if red {
+                rect(&mut l, px, cy - bs / 2.0, bs, bs, bs / 2.0, DANGER.mul_a(0.28));
+            } else if hov {
+                rect(&mut l, px, cy - bs / 2.0, bs, bs, bs / 2.0, FILL2);
+            }
+            l.icon(t, px + bs / 2.0, cy, icon, 16.0, if red { M_BAD } else if hov { M_FG } else { M_FG2 });
+            self.push_hit((px, cy - bs / 2.0, bs, bs), h);
+            px += bs + gap;
+        }
+        let fw = W - 64.0 - pw - 12.0;
+        self.origin = (sx + 32.0, sy + FY);
+        let mut field = Canvas::new(fw as u32, FH as u32);
+        self.paint_field(&mut field, cx, fw);
+        l.pm.draw_pixmap(32, FY as i32, field.pm.as_ref(), &pp, id, None);
+        // a power tip, the second-click warning or a note: a small pill at the right of the view switch
+        let note = self.note.1.filter(|a| a.elapsed().as_millis() < 2600).map(|_| self.note.0.clone());
+        let tip = if let Some(n) = note {
+            Some((n, M_WARN))
+        } else if !self.armed.is_empty() {
+            Some((format!("Kliknij jeszcze raz: {}", self.armed.to_lowercase()), M_BAD))
+        } else if !self.power_tip.is_empty() {
+            Some((self.power_tip.clone(), M_FG2))
+        } else {
+            None
+        };
+        if let Some((s, col)) = tip {
+            let t = &mut *cx.t;
+            let ts = st(11.5, 600.0);
+            let w = t.width(&s, &ts) + 22.0;
+            let (tx, ty) = (32.0 + LW - w, TOP + 4.0);
+            rect(&mut l, tx, ty, w, 24.0, 12.0, Rgba(0.0, 0.0, 0.0, 0.35));
+            text_cy(&mut l, t, tx + 11.0, ty + 12.0, &s, &ts, col, None);
+        }
         // left
-        self.origin = (sx + 36.0, sy + 32.0);
-        let mut left = Canvas::new(LW as u32, (H - 104.0) as u32);
+        self.origin = (sx + 32.0, sy + TOP);
+        let mut left = Canvas::new(LW as u32, (H - TOP - 30.0) as u32);
         self.paint_left(&mut left, cx);
-        l.pm.draw_pixmap(36, 32, left.pm.as_ref(), &pp, id, None);
+        l.pm.draw_pixmap(32, TOP as i32, left.pm.as_ref(), &pp, id, None);
         // right (the now playing card's glow may hang below the column)
-        let (rx, ry, rw, rh) = (676.0, 32.0, W - 676.0 - 32.0, H - 32.0 - 64.0 - 20.0);
+        let rx = 32.0 + LW + 40.0;
+        let (ry, rw, rh) = (TOP, W - rx - 32.0, H - TOP - 30.0);
         self.origin = (sx + rx, sy + ry);
         let mut right = Canvas::new(rw as u32, rh as u32 + 24);
         self.paint_right(&mut right, cx, rw, rh);
         l.pm.draw_pixmap(rx as i32, ry as i32, right.pm.as_ref(), &pp, id, None);
-        // footer
         self.origin = (sx, sy);
         let t = &mut *cx.t;
-        let fy = H - 52.0 + 16.0;
-        // the user (avatar with initials, like the session pane), or the power tip / the second-click warning
-        let (ax, ar) = (36.0 + 16.0, 16.0);
-        let mut pb = tiny_skia::PathBuilder::new();
-        pb.push_circle(ax, fy, ar);
-        if let Some(p) = pb.finish() {
-            fill_lin(&mut l, &p, (0.0, fy - ar), (0.0, fy + ar), &[(0.0, Rgba::hex("#a9b1be")), (1.0, Rgba::hex("#6c7482"))]);
-        }
-        let name = full_name();
-        let ini: String = name.split(' ').filter(|s| !s.is_empty()).take(2).filter_map(|s| s.chars().next()).collect();
-        let iw = t.width(&ini, &st(12.0, 650.0));
-        text_cy(&mut l, t, ax - iw / 2.0, fy, &ini, &st(12.0, 650.0), WHITE, None);
-        let note = self.note.1.filter(|a| a.elapsed().as_millis() < 2600).map(|_| self.note.0.clone());
-        if let Some(n) = note {
-            text_cy(&mut l, t, ax + ar + 12.0, fy, &n, &st(13.0, 600.0), M_WARN, None);
-        } else if self.armed.is_empty() && self.power_tip.is_empty() {
-            text_cy(&mut l, t, ax + ar + 12.0, fy, &name, &st(13.0, 600.0), M_FG, Some(320.0));
-        } else {
-            let (s, col) = if !self.armed.is_empty() { (format!("Kliknij jeszcze raz: {}", self.armed.to_lowercase()), M_BAD) } else { (self.power_tip.clone(), M_FG2) };
-            text_cy(&mut l, t, ax + ar + 12.0, fy, &s, &st(13.0, 600.0), col, None);
-        }
-        let powers = [("lock", "Zablokuj", ""), ("zzz", "Uśpij", ""), ("logout", "Wyloguj", "Wyloguj"), ("reload", "Uruchom ponownie", "Uruchom ponownie"), ("power", "Wyłącz", "Wyłącz")];
-        let mut px = W - 28.0 - 5.0 * 34.0 - 4.0 * 8.0;
-        for (i, (icon, _, arm)) in powers.iter().enumerate() {
-            let h = Hit::Power(i);
-            let hov = self.hov(&h);
-            let armed = !arm.is_empty() && self.armed == *arm;
-            let red = armed || (*icon == "power" && hov);
-            rect(&mut l, px, fy - 17.0, 34.0, 34.0, 17.0, if red { DANGER.mul_a(0.22) } else if hov { FILL2.mul_a(1.6) } else { FILL });
-            l.icon(t, px + 17.0, fy, icon, 15.0, if red { M_BAD } else { M_FG });
-            self.push_hit((px, fy - 17.0, 34.0, 34.0), h);
-            px += 42.0;
-        }
         // the right-click menu (a small glass sheet, the dock's app menu style)
         if let Some(m) = &self.menu {
             let items = self.menu_items(m.app, cx.apps);
@@ -1784,6 +2162,7 @@ impl Pane for Start {
                 self.phone_hint = match &hit {
                     Some(Hit::PhoneAct(c)) => match *c { "ring" => "Znajdź telefon (dzwoni)", "clip" => "Wyślij schowek", "pick" => "Wyślij pliki", "browse" => "Przeglądaj pliki telefonu", "photo" => "Zrób zdjęcie telefonem", "expand" => "Wiadomości SMS", "mirror" => "Ekran telefonu na komputerze", _ => "" }.into(),
                     Some(Hit::PhoneMore) => if self.phone_more { "Mniej".into() } else { "Więcej akcji".into() },
+                    Some(Hit::Note) => "Otwórz w panelu telefonu".into(),
                     _ => String::new(),
                 };
                 if let Some(Hit::Res(i)) = hit {
@@ -1854,7 +2233,17 @@ impl Pane for Start {
                     return if self.pressed_outside { Act::Close } else { Act::None };
                 };
                 match h {
-                    Hit::Sheet | Hit::Field | Hit::Note => Act::None,
+                    Hit::Field => {
+                        if self.field.sel_all {
+                            self.field.sel_all = false;
+                            Act::Redraw
+                        } else {
+                            Act::None
+                        }
+                    }
+                    Hit::Sheet => Act::None,
+                    // a phone notification: the phone panel, where it can be answered
+                    Hit::Note => Act::Toggle("phone"),
                     Hit::Menu(k) => self.menu_pick(k, cx.apps),
                     Hit::Res(i) => {
                         let res = self.results(cx.apps);
@@ -1885,7 +2274,14 @@ impl Pane for Start {
                         None => Act::None,
                     },
                     Hit::CalHead => Act::Toggle("calendar"),
-                    Hit::CalNew => Act::Run(vec!["xdg-open".into(), "https://calendar.google.com/calendar/r/eventedit".into()]),
+                    Hit::CalNew => {
+                        // a new event on the picked day: today at the next full hour, other days at 9
+                        let td = today();
+                        let d = day(td.y, td.m, td.d + self.pick as i32);
+                        let h = crate::data::local(crate::data::now()).tm_hour;
+                        let at = if self.pick == 0 { (h < 23).then_some((h + 1, 0)) } else { Some((9, 0)) };
+                        Act::Run(vec!["xdg-open".into(), gcal_new("", d, at, 60)])
+                    }
                     Hit::Day(i) => {
                         self.pick = i;
                         Act::Redraw
@@ -1928,26 +2324,39 @@ impl Pane for Start {
                     Hit::NoteX(id) => { self.ph.send("dismiss", Some(json!(id))); Act::Redraw }
                     Hit::Art => {
                         // raise the player: its desktop entry's window
-                        let p = cx.players.iter().find(|p| p.playing).or_else(|| cx.players.iter().find(|p| !p.title.is_empty())).cloned();
+                        let p = self.np_player(cx.players);
                         match p {
                             Some(p) if crate::switcher::lua_name_ok(&p.entry) => Act::Run(crate::switcher::hypr(&format!("hl.dispatch(hl.dsp.focus({{ window = \"class:(?i){}\" }}))", p.entry))),
                             _ => Act::None,
                         }
                     }
                     Hit::Seek => {
-                        let p = cx.players.iter().find(|p| p.playing).or_else(|| cx.players.iter().find(|p| !p.title.is_empty())).cloned();
+                        let p = self.np_player(cx.players);
                         match p {
                             Some(p) => Act::Media(crate::media::Cmd::Seek(p.bus.clone(), p.track_id.clone(), (((x - self.seek.0) / self.seek.1).clamp(0.0, 1.0) as f64) * p.length)),
                             None => Act::None,
                         }
                     }
                     Hit::Prev | Hit::Play | Hit::Next => {
-                        let p = cx.players.iter().find(|p| p.playing).or_else(|| cx.players.iter().find(|p| !p.title.is_empty())).cloned();
+                        let p = self.np_player(cx.players);
                         match p {
                             Some(p) => Act::Media(match h { Hit::Prev => crate::media::Cmd::Prev(p.bus), Hit::Next => crate::media::Cmd::Next(p.bus), _ => crate::media::Cmd::Toggle(p.bus) }),
                             None => Act::None,
                         }
                     }
+                    Hit::Src => {
+                        // the next player with something loaded
+                        let list = Self::np_players(cx.players);
+                        let cur = self.np_player(cx.players).map(|p| p.bus).unwrap_or_default();
+                        let k = list.iter().position(|p| p.bus == cur).map(|k| (k + 1) % list.len().max(1)).unwrap_or(0);
+                        self.np_pick = list.get(k).map(|p| p.bus.clone());
+                        Act::Redraw
+                    }
+                    Hit::Shuffle | Hit::Loop => match self.np_player(cx.players) {
+                        Some(p) if h == Hit::Shuffle => Act::Media(crate::media::Cmd::Shuffle(p.bus.clone(), !p.shuffle.unwrap_or(false))),
+                        Some(p) => Act::Media(crate::media::Cmd::Loop(p.bus.clone(), match p.loop_status.as_deref() { Some("None") => "Playlist", Some("Playlist") => "Track", _ => "None" }.into())),
+                        None => Act::None,
+                    },
                     Hit::Power(i) => {
                         // lock at once; the rest ask in the session pane, as from the bar
                         match i {
@@ -1976,6 +2385,7 @@ impl Pane for Start {
             Keysym::Escape => {
                 if !empty {
                     self.field.text.clear();
+                    self.field.sel_all = false;
                     self.sel = 0;
                     self.armed.clear();
                     Act::Redraw
@@ -2042,5 +2452,41 @@ impl Pane for Start {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod quick_tests {
+    use super::*;
+    // Saturday 7 November 2026, 20:00
+    fn td() -> Day {
+        day(2026, 10, 7)
+    }
+    fn q(s: &str) -> Option<(String, (i32, i32, i32), Option<(i32, i32)>, i64)> {
+        quick_event(s, td(), (20, 0)).map(|e| (e.title, (e.day.y, e.day.m + 1, e.day.d), e.at, e.mins))
+    }
+    #[test]
+    fn parses() {
+        assert_eq!(q("jutro 15 dentysta"), Some(("Dentysta".into(), (2026, 11, 8), Some((15, 0)), 60)));
+        assert_eq!(q("spotkanie w poniedziałek o 10:30"), Some(("Spotkanie".into(), (2026, 11, 9), Some((10, 30)), 60)));
+        assert_eq!(q("kino 12.11 18:00-20:30"), Some(("Kino".into(), (2026, 11, 12), Some((18, 0)), 150)));
+        assert_eq!(q("urodziny mamy 3.01"), Some(("Urodziny mamy".into(), (2027, 1, 3), None, 60)));
+        assert_eq!(q("trening 7:30 45min"), Some(("Trening".into(), (2026, 11, 8), Some((7, 30)), 45)));
+        assert_eq!(q("sobota grill"), Some(("Grill".into(), (2026, 11, 14), None, 60)));
+        assert_eq!(q("dentist tomorrow at 15:30"), Some(("Dentist".into(), (2026, 11, 8), Some((15, 30)), 60)));
+    }
+    #[test]
+    fn ignores_searches() {
+        assert_eq!(q("spotify"), None);
+        assert_eq!(q("zen browser"), None);
+        assert_eq!(q("2 + 2"), None);
+        assert_eq!(q("jutro"), None);
+        assert_eq!(q("kitty 15"), None);
+    }
+    #[test]
+    fn url() {
+        let u = gcal_new("Dentysta Ząb", day(2026, 10, 8), Some((15, 0)), 60);
+        assert!(u.ends_with("text=Dentysta%20Z%C4%85b&dates=20261108T150000/20261108T160000"), "{u}");
+        assert!(gcal_new("X", day(2026, 11, 31), None, 60).ends_with("dates=20261231/20270101"));
     }
 }

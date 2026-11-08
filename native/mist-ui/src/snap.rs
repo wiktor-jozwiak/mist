@@ -37,11 +37,11 @@ const BAR_TOP: f32 = 40.0; // the Mist top bar (reserved) when Hyprland does not
 const GAP: f32 = 8.0;
 const CORNER: f32 = 120.0; // corner zone along an edge -> quarter
 const PILL_SHOW_Y: f32 = 240.0; // window dragged this close to the top -> the Snap bar appears
-const BAR_W: f32 = 736.0;
+const BAR_W: f32 = 718.0; // 16 + 6 cards x 106 + 5 gaps x 10 + 16
 const BAR_H: f32 = 96.0;
-const ACCENT_STRONG: Rgba = Rgba::rgb8(0x40, 0x9C, 0xFF, 1.0);
+const PILL_H: f32 = 36.0;
+const BAR_PAD: f32 = 48.0; // room for the glass shadow (y + 14, blur 30)
 const ACCENT_SOFT: Rgba = Rgba(10.0 / 255.0, 132.0 / 255.0, 1.0, 0.18);
-const RIM: Rgba = Rgba(214.0 / 255.0, 224.0 / 255.0, 242.0 / 255.0, 0.16);
 const M_FG: Rgba = Rgba(244.0 / 255.0, 247.0 / 255.0, 251.0 / 255.0, 0.97);
 
 fn a(c: Rgba, k: f32) -> Rgba {
@@ -442,56 +442,72 @@ impl Pane for DragPane {
         }
         let e = d.exp.value();
         let t = &mut *cx.t;
-        let ps = Style::ui(12.0, 500.0);
-        let pill_w = (13.0 + 7.0 + t.width("Układy przyciągania", &ps) + 7.0 + 11.0 + 24.0).max(180.0);
-        let (w, h, r) = (lerp(pill_w, BAR_W, e), lerp(30.0, BAR_H, e), lerp(15.0, 18.0, e));
+        let ps = Style::ui(12.5, 600.0);
+        let label = "Układy przyciągania";
+        let tw = t.width(label, &ps);
+        // collapsed: [accent chip][label][chevron] in a glass capsule
+        let pill_w = (PILL_H - 6.0 + 9.0 + tw + 10.0 + 10.0 + 14.0).max(170.0).round();
+        let (w, h) = (lerp(pill_w, BAR_W, e).round(), lerp(PILL_H, BAR_H, e).round());
+        let r = lerp(PILL_H / 2.0, 20.0, e);
         let x = ((c.w() - w) / 2.0).round();
-        let y = lerp(-h - 16.0, 6.0, b);
-        let mut l = Canvas::new(w.ceil() as u32, h.ceil() as u32);
-        rect(&mut l, 0.0, 0.0, w, h, r, Rgba(14.0 / 255.0, 19.0 / 255.0, 29.0 / 255.0, 0.94));
-        rect(&mut l, r, 0.0, w - 2.0 * r, 1.0, 0.0, Rgba(1.0, 1.0, 1.0, 0.18));
-        // collapsed: icon, label, chevron
+        let y = lerp(-h - 24.0, 6.0, b).round();
+        // the content, clipped to the (morphing) shape
+        let mut l = Canvas::new(w as u32, h as u32);
         if e < 0.99 {
-            let k = 1.0 - e;
-            let tw = t.width("Układy przyciągania", &ps);
-            let rw = 13.0 + 7.0 + tw + 7.0 + 11.0;
-            let rx = (w - rw) / 2.0;
-            l.icon(t, rx + 6.5, h / 2.0, "layoutGrid", 13.0, a(accent(), k));
+            let k = (1.0 - e * 1.6).max(0.0);
+            let cd = PILL_H - 10.0;
+            let (chx, chy) = (5.0 + cd / 2.0, h / 2.0);
+            rect(&mut l, chx - cd / 2.0, chy - cd / 2.0, cd, cd, cd / 2.0, a(accent(), k));
+            l.icon(t, chx, chy, "layoutGrid", 13.0, a(Rgba(1.0, 1.0, 1.0, 0.98), k));
+            let tx = 5.0 + cd + 9.0;
             let lh = line_h(t, &ps);
-            text(&mut l, t, rx + 20.0, h / 2.0 - lh / 2.0, "Układy przyciągania", &ps, a(M_FG, k), false, None);
-            l.icon(t, rx + 20.0 + tw + 7.0 + 5.5, h / 2.0, "down", 11.0, a(T3, k));
+            text(&mut l, t, tx, h / 2.0 - lh / 2.0, label, &ps, a(M_FG, k), false, None);
+            l.icon(t, tx + tw + 10.0 + 6.0, h / 2.0 + 0.5, "chevronDown", 13.0, a(T2, k));
         }
-        // expanded: the header and six layout cards
         if e > 0.01 {
+            // expanded: the header and six layout cards (the card geometry is what hit_bar() tests)
+            let k = ((e - 0.35) / 0.65).clamp(0.0, 1.0);
             let ox = (w - BAR_W) / 2.0;
             let hs = Style::ui(11.0, 500.0);
-            let hw = 12.0 + 6.0 + t.width("Wybierz układ rozmieszczenia okna", &hs);
+            let hdr = "Wybierz układ rozmieszczenia okna";
+            let hw = 12.0 + 6.0 + t.width(hdr, &hs);
             let hx = ox + (BAR_W - hw) / 2.0;
-            l.icon(t, hx + 6.0, 5.0 + 7.0, "layoutGrid", 12.0, a(accent(), e));
+            l.icon(t, hx + 6.0, 12.0, "layoutGrid", 12.0, a(accent(), k));
             let hh = line_h(t, &hs);
-            text(&mut l, t, hx + 18.0, 5.0 + 7.0 - hh / 2.0, "Wybierz układ rozmieszczenia okna", &hs, a(T2, e), false, None);
+            text(&mut l, t, hx + 18.0, 12.0 - hh / 2.0, hdr, &hs, a(T2, k), false, None);
             for (i, lay) in LAYOUTS.iter().take(6).enumerate() {
                 let (cx0, cy0) = (ox + 16.0 + i as f32 * 116.0, 22.0);
-                rect(&mut l, cx0, cy0, 106.0, 64.0, 8.0, Rgba(1.0, 1.0, 1.0, 0.04 * e));
-                border(&mut l, cx0, cy0, 106.0, 64.0, 8.0, 1.0, a(if d.hot_layout == i as i32 { ACCENT_SOFT } else { HAIR }, e));
+                let on = d.hot_layout == i as i32;
+                rect(&mut l, cx0, cy0, 106.0, 64.0, 10.0, Rgba(1.0, 1.0, 1.0, if on { 0.08 } else { 0.035 } * k));
                 for z in lay.iter() {
-                    let hot = d.hot_layout == i as i32 && d.hot.map(|h| same(&h, z)).unwrap_or(false);
+                    let hot = on && d.hot.map(|h| same(&h, z)).unwrap_or(false);
                     let (zx, zy, zw, zh) = (cx0 + 4.0 + z[0] * 98.0, cy0 + 4.0 + z[1] * 56.0, (z[2] * 98.0 - 3.0).max(4.0), (z[3] * 56.0 - 3.0).max(4.0));
-                    rect(&mut l, zx, zy, zw, zh, 4.0, if hot { a(accent(), e) } else { Rgba(1.0, 1.0, 1.0, 0.12 * e) });
-                    border(&mut l, zx, zy, zw, zh, 4.0, 1.0, if hot { a(ACCENT_STRONG, e) } else { Rgba(1.0, 1.0, 1.0, 0.08 * e) });
+                    if hot {
+                        rect(&mut l, zx - 1.0, zy - 1.0, zw + 2.0, zh + 2.0, 6.0, a(ACCENT_SOFT, k));
+                        rect(&mut l, zx, zy, zw, zh, 5.0, a(accent(), k));
+                    } else {
+                        rect(&mut l, zx, zy, zw, zh, 5.0, Rgba(1.0, 1.0, 1.0, if on { 0.2 } else { 0.13 } * k));
+                        border(&mut l, zx, zy, zw, zh, 5.0, 1.0, Rgba(1.0, 1.0, 1.0, 0.06 * k));
+                    }
                 }
             }
         }
-        border(&mut l, 0.0, 0.0, w, h, r, 1.0, if e > 0.5 { RIM } else { Rgba(214.0 / 255.0, 224.0 / 255.0, 242.0 / 255.0, 0.18) });
-        // clip to the rounded bar
         if let Some(p) = crate::gfx::rrect_path(0.0, 0.0, w, h, r) {
             if let Some(mut m) = tiny_skia::Mask::new(l.pm.width(), l.pm.height()) {
                 m.fill_path(&p, tiny_skia::FillRule::Winding, true, tiny_skia::Transform::identity());
                 l.pm.apply_mask(&m);
             }
         }
+        // a solid smoked capsule: soft shadow, body, 1 px hairline inside the edge;
+        // drawn unclipped so the hairline keeps one even width all round
+        let mut g = Canvas::new(w as u32 + 2 * BAR_PAD as u32, h as u32 + 2 * BAR_PAD as u32);
+        let p = BAR_PAD;
+        crate::glass::shadow(&mut g, p, p + 8.0, w, h, r, 24.0, -2.0, Rgba::rgb8(2, 5, 10, 0.45));
+        rect(&mut g, p, p, w, h, r, Rgba(17.0 / 255.0, 21.0 / 255.0, 31.0 / 255.0, 0.94));
+        g.pm.draw_pixmap(p as i32, p as i32, l.pm.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), None);
+        border(&mut g, p, p, w, h, r, 1.0, Rgba(1.0, 1.0, 1.0, 0.13));
         let paint = tiny_skia::PixmapPaint { opacity: b.min(1.0), ..Default::default() };
-        c.pm.draw_pixmap(x as i32, y.round() as i32, l.pm.as_ref(), &paint, tiny_skia::Transform::identity(), None);
+        c.pm.draw_pixmap(x as i32 - BAR_PAD as i32, y as i32 - BAR_PAD as i32, g.pm.as_ref(), &paint, tiny_skia::Transform::identity(), None);
     }
     fn pointer(&mut self, _ev: Ptr, _x: f32, _y: f32, _cx: &mut Ctx) -> Act {
         Act::None

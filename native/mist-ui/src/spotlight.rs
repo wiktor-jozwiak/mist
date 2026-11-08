@@ -283,7 +283,7 @@ impl Spotlight {
     pub fn new(emoji_mode: bool) -> Spotlight {
         let usage = std::fs::read_to_string(usage_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
         let emoji = std::fs::read_to_string(crate::paths::mist_path("native/assets/emoji.json")).or_else(|_| std::fs::read_to_string("/usr/share/noctalia/assets/emoji.json")).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).and_then(|v| v.as_array().cloned()).unwrap_or_default();
-        Spotlight { field: Field { text: if emoji_mode { ":".into() } else { String::new() } }, sel: 0, cat_sel: 0, cat_rows: Vec::new(), usage, emoji, h: Anim::new(60.0), ptr: (-1.0, -1.0), rows: Vec::new(), card: (0.0, 0.0, 0.0, 0.0), pressed_outside: false, etop: 0, as_emoji: emoji_mode, wins: std::cell::OnceCell::new() }
+        Spotlight { field: Field::new(if emoji_mode { ":" } else { "" }), sel: 0, cat_sel: 0, cat_rows: Vec::new(), usage, emoji, h: Anim::new(60.0), ptr: (-1.0, -1.0), rows: Vec::new(), card: (0.0, 0.0, 0.0, 0.0), pressed_outside: false, etop: 0, as_emoji: emoji_mode, wins: std::cell::OnceCell::new() }
     }
     fn emoji_mode(&self) -> bool {
         self.field.text.starts_with(':')
@@ -498,9 +498,18 @@ impl Pane for Spotlight {
             crate::desktop::text(c, t, fx, y0 + (60.0 - fh) / 2.0, "Szukaj w Spotlight", &fs, T3, false, Some(fw));
             0.0
         } else {
-            crate::desktop::text(c, t, fx, y0 + (60.0 - fh) / 2.0, &self.field.text, &fs, T1, false, Some(fw))
+            // the typed text as typed, never translated
+            let vs = fs.verbatim();
+            let tw = t.width(&self.field.text, &vs);
+            if self.field.sel_all {
+                crate::desktop::rect(c, fx - 2.0, y0 + (60.0 - fh) / 2.0 - 2.0, tw + 4.0, fh + 4.0, 4.0, crate::theme::accent().alpha(0.35));
+            }
+            crate::desktop::text(c, t, fx, y0 + (60.0 - fh) / 2.0, &self.field.text, &vs, T1, false, Some(fw));
+            tw
         };
-        crate::desktop::rect(c, fx + tw + 1.0, y0 + 17.0, 1.5, 26.0, 0.0, T1);
+        if !self.field.sel_all {
+            crate::desktop::rect(c, fx + tw + 1.0, y0 + 17.0, 1.5, 26.0, 0.0, T1);
+        }
         if (n > 0 || emode) && h > 62.0 {
             crate::desktop::rect(c, x0 + 16.0, y0 + 60.0, w - 32.0, 1.0, 0.0, HAIR);
         }

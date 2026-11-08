@@ -168,6 +168,15 @@ pub fn make(name: &str, page: &str) -> Option<Box<dyn Pane>> {
             let r = f.surface(0.0, 0.0);
             Some(Box::new(crate::snap::FlyPane(f, r)))
         }
+        // tests only (app.rs opens it on mistdrag begin): `snapdrag:pill` = the Snap bar collapsed,
+        // `snapdrag:layouts` = expanded with zone 2 of layout 0 hot
+        "snapdrag" => {
+            let m = crate::snap::Mon { name: "T".into(), x: 0.0, y: 0.0, w: 1280.0, h: 720.0, res: [0.0, 40.0, 0.0, 0.0], ws: 1, special: 0 };
+            let (x, y) = if page == "layouts" { (640.0 - 290.0 + 106.0 * 0.75, 50.0) } else { (640.0, 200.0) };
+            let mut d = crate::snap::Drag::new("0x1", None, vec![m], 640.0, 50.0);
+            d.track(x, y);
+            Some(Box::new(crate::snap::DragPane(d)))
+        }
         _ => None,
     }
 }
@@ -217,27 +226,82 @@ pub fn full_name() -> String {
 #[derive(Default)]
 pub struct Field {
     pub text: String,
+    pub sel_all: bool,
 }
 impl Field {
-    // typing, Backspace, Ctrl+Backspace / Ctrl+W (a word), Ctrl+U (all), Ctrl+V (paste); true = changed
+    pub fn new(text: &str) -> Self {
+        Field { text: text.to_string(), sel_all: false }
+    }
+    // typing, Backspace, Ctrl+Backspace / Ctrl+W (a word), Ctrl+U (all), Ctrl+A (all), Ctrl+C/X, Ctrl+V (paste); true = changed
     pub fn key(&mut self, ev: &KeyEvent, ctrl: bool) -> bool {
         use smithay_client_toolkit::seat::keyboard::Keysym;
         match ev.keysym {
+            Keysym::a | Keysym::A if ctrl => {
+                if !self.text.is_empty() && !self.sel_all {
+                    self.sel_all = true;
+                    return true;
+                }
+                false
+            }
+            Keysym::c | Keysym::C if ctrl => {
+                if self.sel_all && !self.text.is_empty() {
+                    let _ = std::process::Command::new("wl-copy").arg(&self.text).spawn();
+                }
+                false
+            }
+            Keysym::x | Keysym::X if ctrl => {
+                if self.sel_all && !self.text.is_empty() {
+                    let _ = std::process::Command::new("wl-copy").arg(&self.text).spawn();
+                    self.text.clear();
+                    self.sel_all = false;
+                    return true;
+                }
+                false
+            }
             Keysym::BackSpace if ctrl => {
+                if self.sel_all {
+                    self.text.clear();
+                    self.sel_all = false;
+                    return true;
+                }
                 let t = self.text.trim_end().to_string();
                 let cut = t.rfind(|c: char| c.is_whitespace()).map(|i| i + 1).unwrap_or(0);
                 self.text.truncate(cut);
                 true
             }
-            Keysym::BackSpace => self.text.pop().is_some(),
+            Keysym::BackSpace => {
+                if self.sel_all {
+                    self.text.clear();
+                    self.sel_all = false;
+                    return true;
+                }
+                self.text.pop().is_some()
+            }
+            Keysym::Delete | Keysym::KP_Delete => {
+                if self.sel_all {
+                    self.text.clear();
+                    self.sel_all = false;
+                    return true;
+                }
+                false
+            }
+            Keysym::Left | Keysym::Right | Keysym::Home | Keysym::End if self.sel_all => {
+                self.sel_all = false;
+                true
+            }
             Keysym::w | Keysym::W if ctrl => self.key(&KeyEvent { keysym: Keysym::BackSpace, ..ev.clone() }, true),
             Keysym::u | Keysym::U if ctrl => {
                 self.text.clear();
+                self.sel_all = false;
                 true
             }
             Keysym::v | Keysym::V if ctrl => {
                 if let Ok(o) = std::process::Command::new("wl-paste").args(["--no-newline", "--type", "text/plain"]).output() {
                     let s = String::from_utf8_lossy(&o.stdout).replace('\n', " ");
+                    if self.sel_all {
+                        self.text.clear();
+                        self.sel_all = false;
+                    }
                     self.text.push_str(&s);
                     return true;
                 }
@@ -246,11 +310,74 @@ impl Field {
             _ if ctrl => false,
             _ => match &ev.utf8 {
                 Some(t) if !t.chars().any(|c| c.is_control()) => {
+                    if self.sel_all {
+                        self.text.clear();
+                        self.sel_all = false;
+                    }
                     self.text.push_str(t);
                     true
                 }
                 _ => false,
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use smithay_client_toolkit::seat::keyboard::Keysym;
+
+    fn key(sym: Keysym, utf8: Option<&str>) -> KeyEvent {
+        KeyEvent {
+            time: 0,
+            raw_code: 0,
+            utf8: utf8.map(str::to_string),
+            keysym: sym,
+        }
+    }
+
+    #[test]
+    fn test_field_ctrl_a_and_replace() {
+        let mut f = Field::new("hello world");
+        assert!(!f.sel_all);
+
+        // Ctrl+A selects all
+        let changed = f.key(&key(Keysym::a, Some("a")), true);
+        assert!(changed);
+        assert!(f.sel_all);
+        assert_eq!(f.text, "hello world");
+
+        // Typing a character replaces the selection
+        let changed = f.key(&key(Keysym::f, Some("f")), false);
+        assert!(changed);
+        assert!(!f.sel_all);
+        assert_eq!(f.text, "f");
+    }
+
+    #[test]
+    fn test_field_ctrl_a_and_backspace() {
+        let mut f = Field::new("search query");
+        f.key(&key(Keysym::a, Some("a")), true);
+        assert!(f.sel_all);
+
+        // Backspace clears entire selected text
+        let changed = f.key(&key(Keysym::BackSpace, None), false);
+        assert!(changed);
+        assert!(!f.sel_all);
+        assert_eq!(f.text, "");
+    }
+
+    #[test]
+    fn test_field_ctrl_a_and_arrow_keys() {
+        let mut f = Field::new("search query");
+        f.key(&key(Keysym::a, Some("a")), true);
+        assert!(f.sel_all);
+
+        // Left arrow unselects without modifying text
+        let changed = f.key(&key(Keysym::Left, None), false);
+        assert!(changed);
+        assert!(!f.sel_all);
+        assert_eq!(f.text, "search query");
     }
 }

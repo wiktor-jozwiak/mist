@@ -44,12 +44,35 @@ use wayland_client::{
 };
 use wayland_protocols::wp::idle_inhibit::zv1::client::{zwp_idle_inhibit_manager_v1, zwp_idle_inhibitor_v1};
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
+use wayland_protocols::xdg::shell::client::xdg_toplevel::ResizeEdge;
 
 pub type WinId = u32;
 
 pub const LEFT: u32 = 0x110;
 pub const RIGHT: u32 = 0x111;
 pub const MIDDLE: u32 = 0x112;
+
+fn border_edge(w: f32, h: f32, x: f32, y: f32) -> Option<(ResizeEdge, CursorIcon)> {
+    const B: f32 = 8.0;
+    if x < 0.0 || y < 0.0 || x >= w || y >= h {
+        return None;
+    }
+    let left = x < B;
+    let right = x >= w - B;
+    let top = y < B;
+    let bottom = y >= h - B;
+    match (top, bottom, left, right) {
+        (true, _, true, _) => Some((ResizeEdge::TopLeft, CursorIcon::NwResize)),
+        (true, _, _, true) => Some((ResizeEdge::TopRight, CursorIcon::NeResize)),
+        (_, true, true, _) => Some((ResizeEdge::BottomLeft, CursorIcon::SwResize)),
+        (_, true, _, true) => Some((ResizeEdge::BottomRight, CursorIcon::SeResize)),
+        (true, _, _, _) => Some((ResizeEdge::Top, CursorIcon::NResize)),
+        (_, true, _, _) => Some((ResizeEdge::Bottom, CursorIcon::SResize)),
+        (_, _, true, _) => Some((ResizeEdge::Left, CursorIcon::WResize)),
+        (_, _, _, true) => Some((ResizeEdge::Right, CursorIcon::EResize)),
+        _ => None,
+    }
+}
 
 #[derive(Clone, Copy, Default, Debug)]
 pub struct Mods {
@@ -87,6 +110,7 @@ pub enum Cmd {
     // keep redrawing every frame while true (animations)
     Animate(WinId, bool),
     Move(WinId),
+    Resize(WinId, ResizeEdge),
     Minimize(WinId),
     Maximize(WinId),
     Fullscreen(WinId, bool),
@@ -116,6 +140,15 @@ impl Cx {
     }
     pub fn cursor(&mut self, c: CursorIcon) {
         self.cmds.push(Cmd::Cursor(c));
+    }
+    pub fn maximize(&mut self, id: WinId) {
+        self.cmds.push(Cmd::Maximize(id));
+    }
+    pub fn minimize(&mut self, id: WinId) {
+        self.cmds.push(Cmd::Minimize(id));
+    }
+    pub fn resize(&mut self, id: WinId, edge: ResizeEdge) {
+        self.cmds.push(Cmd::Resize(id, edge));
     }
     // a new window; its id arrives in Logic::opened with the token returned here
     pub fn new_window(&mut self, title: &str, w: u32, h: u32, min: (u32, u32)) -> u64 {
@@ -201,9 +234,12 @@ struct Win {
     video: Option<(wl_surface::WlSurface, smithay_client_toolkit::reexports::client::protocol::wl_subsurface::WlSubsurface, (i32, i32, i32, i32))>,
     min: (u32, u32),
     fullscreen: bool,
+    maximized: bool,
     // maximized, fullscreen or tiled: square corners
     square: bool,
     inhibitor: Option<zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1>,
+    // two reused buffers: a frame copies and damages only the rows that changed (a hover: one row)
+    swap: crate::app::Swap,
 }
 
 pub struct Rt {
@@ -237,6 +273,7 @@ pub struct Rt {
     mods: Mods,
     kb_win: Option<WinId>,
     ptr_win: Option<WinId>,
+    on_border: bool,
     last_press: (u32, Instant, f32, f32, u32),
     press_serial: u32,
     enter_serial: u32,
@@ -346,6 +383,7 @@ pub fn run(name: &str, logic: Box<dyn Logic>) -> i32 {
         mods: Mods::default(),
         kb_win: None,
         ptr_win: None,
+        on_border: false,
         last_press: (0, Instant::now(), 0.0, 0.0, 0),
         press_serial: 0,
         enter_serial: 0,
@@ -406,7 +444,7 @@ impl Rt {
                     window.commit();
                     let id = self.next_id;
                     self.next_id += 1;
-                    self.wins.push(Win { id, window, w, h, configured: false, dirty: true, animate: false, frame_pending: false, canvas: Canvas::new(1, 1), video: None, min, fullscreen: false, square: false, inhibitor: None });
+                    self.wins.push(Win { id, window, w, h, configured: false, dirty: true, animate: false, frame_pending: false, canvas: Canvas::new(1, 1), video: None, min, fullscreen: false, maximized: false, square: false, inhibitor: None, swap: Default::default() });
                     self.cx.mods = self.mods;
                     // its commands are applied after this batch (apply loops)
                     self.logic.opened(id, token, &mut self.cx);
@@ -442,6 +480,12 @@ impl Rt {
                         w.window.move_(&seat, serial);
                     }
                 }
+                Cmd::Resize(id, edge) => {
+                    let (seat, serial) = (self.seat.clone(), self.press_serial);
+                    if let (Some(w), Some(seat)) = (self.win(id), seat) {
+                        w.window.resize(&seat, serial, edge);
+                    }
+                }
                 Cmd::Minimize(id) => {
                     if let Some(w) = self.win(id) {
                         w.window.set_minimized();
@@ -449,7 +493,11 @@ impl Rt {
                 }
                 Cmd::Maximize(id) => {
                     if let Some(w) = self.win(id) {
-                        w.window.set_maximized();
+                        if w.maximized {
+                            w.window.unset_maximized();
+                        } else {
+                            w.window.set_maximized();
+                        }
                     }
                 }
                 Cmd::Fullscreen(id, on) => {
@@ -484,7 +532,9 @@ impl Rt {
                     if c != self.cursor {
                         self.cursor = c;
                         if let (Some(p), false) = (&self.pointer, self.cursor_hidden) {
-                            let _ = p.set_cursor(&self.conn, c);
+                            if !self.on_border {
+                                let _ = p.set_cursor(&self.conn, c);
+                            }
                         }
                     }
                 }
@@ -547,11 +597,14 @@ impl Rt {
         if !win.square && video.is_none() {
             round_corners(&mut canvas.pm, WIN_RADIUS);
         }
-        if let Ok((buf, data)) = self.pool.create_buffer(w as i32, h as i32, w as i32 * 4, wl_shm::Format::Argb8888) {
-            canvas.to_bgra(data);
-            let surf = win.window.wl_surface();
-            surf.damage_buffer(0, 0, w as i32, h as i32);
-            let _ = buf.attach_to(surf);
+        if !win.swap.fill(&mut self.pool, win.window.wl_surface(), &canvas) {
+            // both buffers still held by the compositor: a fresh one, all of it
+            if let Ok((buf, data)) = self.pool.create_buffer(w as i32, h as i32, w as i32 * 4, wl_shm::Format::Argb8888) {
+                canvas.to_bgra(data);
+                let surf = win.window.wl_surface();
+                surf.damage_buffer(0, 0, w as i32, h as i32);
+                let _ = buf.attach_to(surf);
+            }
         }
         win.canvas = canvas;
         // the video plane (below the window surface, drawn by the app through EGL)
@@ -654,8 +707,10 @@ impl WindowHandler for Rt {
         let w = self.win(id).unwrap();
         let (nw, nh) = (c.new_size.0.map(|v| v.get()).unwrap_or(w.w), c.new_size.1.map(|v| v.get()).unwrap_or(w.h));
         let fs = c.state.contains(smithay_client_toolkit::reexports::csd_frame::WindowState::FULLSCREEN);
+        let max = c.state.contains(smithay_client_toolkit::reexports::csd_frame::WindowState::MAXIMIZED);
         let fs_changed = fs != w.fullscreen;
         w.fullscreen = fs;
+        w.maximized = max;
         {
             use smithay_client_toolkit::reexports::csd_frame::WindowState as S;
             let sq = c.state.intersects(S::FULLSCREEN | S::MAXIMIZED | S::TILED);
@@ -737,21 +792,57 @@ impl PointerHandler for Rt {
                 PointerEventKind::Enter { serial } => {
                     self.ptr_win = Some(id);
                     self.enter_serial = serial;
-                    // the shape is per enter: set it again
-                    if let Some(p) = &self.pointer {
-                        let _ = if self.cursor_hidden { p.hide_cursor() } else { p.set_cursor(&self.conn, self.cursor) };
+                    let edge_info = self.win(id).filter(|w| !w.fullscreen && !w.maximized).and_then(|w| border_edge(w.w as f32, w.h as f32, x, y));
+                    if let Some((_, cursor)) = edge_info {
+                        if let Some(p) = &self.pointer {
+                            let _ = p.set_cursor(&self.conn, cursor);
+                        }
+                        self.on_border = true;
+                    } else {
+                        self.on_border = false;
+                        if let Some(p) = &self.pointer {
+                            let _ = if self.cursor_hidden { p.hide_cursor() } else { p.set_cursor(&self.conn, self.cursor) };
+                        }
+                        self.emit(id, Ev::Motion(x, y));
                     }
-                    self.emit(id, Ev::Motion(x, y));
                 }
                 PointerEventKind::Leave { .. } => {
                     if self.ptr_win == Some(id) {
                         self.ptr_win = None;
                     }
+                    self.on_border = false;
                     self.emit(id, Ev::Leave);
                 }
-                PointerEventKind::Motion { .. } => self.emit(id, Ev::Motion(x, y)),
+                PointerEventKind::Motion { .. } => {
+                    let edge_info = self.win(id).filter(|w| !w.fullscreen && !w.maximized).and_then(|w| border_edge(w.w as f32, w.h as f32, x, y));
+                    if let Some((_, cursor)) = edge_info {
+                        if let Some(p) = &self.pointer {
+                            let _ = p.set_cursor(&self.conn, cursor);
+                        }
+                        self.on_border = true;
+                    } else {
+                        if self.on_border {
+                            self.on_border = false;
+                            if let Some(p) = &self.pointer {
+                                let _ = p.set_cursor(&self.conn, self.cursor);
+                            }
+                        }
+                        self.emit(id, Ev::Motion(x, y));
+                    }
+                }
                 PointerEventKind::Press { button, serial, .. } => {
                     self.press_serial = serial;
+                    if button == LEFT {
+                        let seat = self.seat.clone();
+                        if let Some(seat) = seat {
+                            if let Some(w) = self.win(id).filter(|w| !w.fullscreen && !w.maximized) {
+                                if let Some((edge, _)) = border_edge(w.w as f32, w.h as f32, x, y) {
+                                    w.window.resize(&seat, serial, edge);
+                                    return;
+                                }
+                            }
+                        }
+                    }
                     let (b, t, px, py, n) = self.last_press;
                     let clicks = if b == button && t.elapsed() < Duration::from_millis(400) && (px - x).abs() < 5.0 && (py - y).abs() < 5.0 && n == 1 { 2 } else { 1 };
                     self.last_press = (button, Instant::now(), x, y, clicks);

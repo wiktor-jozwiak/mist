@@ -939,6 +939,7 @@ impl Wx {
                 self.ii += 1;
                 self.fx.from("wx.foot", 0.2, 1.0, 220.0);
                 self.turned = Instant::now();
+                self.foot_cache = None;
             }
             Some(Hit::Timeline) => {
                 let n = self.range(wx, cfg).len();
@@ -981,6 +982,12 @@ impl Wx {
     // every 250 ms (1 s at rest): back to "now" after leaving, the insight carousel; true = repaint
     pub fn tick(&mut self, n_ins: usize) -> bool {
         let mut ch = false;
+        // the fade's last full paint, when no frame came after its 220 ms (a stale blend would stay for good)
+        if self.foot_fast && self.turned.elapsed().as_millis() >= 220 {
+            self.foot_fast = false;
+            self.foot_cache = None;
+            ch = true;
+        }
         if let Some(a) = self.away {
             if (self.sel_day != 0 || self.pin_hour >= 0) && a.elapsed().as_millis() >= if self.pinned { 20000 } else { 2500 } {
                 self.sel_day = 0;
@@ -995,6 +1002,7 @@ impl Wx {
             self.fx.from("wx.foot", 0.2, 1.0, 220.0);
             self.turned = Instant::now();
             self.foot_fast = true;
+            self.foot_cache = None;
             ch = true;
         }
         ch
@@ -1048,5 +1056,30 @@ pub fn moon_disc(c: &mut Canvas, cx: f32, cy: f32, r: f32, phase: f64) {
                 c.pm.fill_path(&p, &paint, tiny_skia::FillRule::Winding, Transform::identity(), Some(&mask));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    // a turn whose fade got no frame after 220 ms: the next tick paints it in full and drops the blend cache
+    #[test]
+    fn carousel_fade_never_sticks() {
+        let mut w = Wx::new();
+        w.turned -= Duration::from_secs(9);
+        assert!(w.tick(5));
+        assert_eq!(w.ii, 1);
+        assert!(w.foot_fast);
+        let px = Canvas::new(1, 1).pm;
+        w.foot_cache = Some((px.clone(), px, 0, 1)); // the frames of insight 1, painted mid-fade
+        w.turned -= Duration::from_millis(300);
+        assert!(w.tick(5), "the fade's end repaints");
+        assert!(!w.foot_fast && w.foot_cache.is_none());
+        w.turned -= Duration::from_secs(9);
+        assert!(w.tick(5));
+        assert_eq!(w.ii, 2);
+        assert!(w.foot_cache.is_none(), "a turn never blends the previous insight's frames");
     }
 }

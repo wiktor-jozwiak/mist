@@ -234,7 +234,13 @@ impl Wall {
             if let Ok(Some(st)) = c.try_wait() {
                 self.child = None;
                 // 3: another mist-wall already runs (mist-ui restarted): watched through its lock below
-                if !self.photo() && st.code() != Some(3) {
+                if !self.photo() && st.code() == Some(4) {
+                    // 4: no EGL in this session, retrying cannot help
+                    self.given_up = true;
+                    for (o, n) in outs {
+                        self.add_output(o, n, comp, ls, qh);
+                    }
+                } else if !self.photo() && st.code() != Some(3) {
                     self.crashes.retain(|t| t.elapsed().as_secs() < 120);
                     self.crashes.push(Instant::now());
                     if self.crashes.len() >= 5 {

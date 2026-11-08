@@ -183,8 +183,14 @@ impl Pane for Clipboard {
             crate::desktop::text(c, t, fx, y0 + (60.0 - fh) / 2.0, "Szukaj w historii schowka", &fs, T3, false, Some(fw));
             crate::desktop::rect(c, fx, y0 + 18.0, 1.5, 24.0, 0.0, T1);
         } else {
-            let tw = crate::desktop::text(c, t, fx, y0 + (60.0 - fh) / 2.0, &self.field.text, &fs, T1, false, Some(fw));
-            crate::desktop::rect(c, fx + tw + 1.0, y0 + 18.0, 1.5, 24.0, 0.0, T1);
+            let tw = t.width(&self.field.text, &fs);
+            if self.field.sel_all {
+                crate::desktop::rect(c, fx - 2.0, y0 + (60.0 - fh) / 2.0 - 2.0, tw + 4.0, fh + 4.0, 4.0, crate::theme::accent().alpha(0.35));
+            }
+            crate::desktop::text(c, t, fx, y0 + (60.0 - fh) / 2.0, &self.field.text, &fs, T1, false, Some(fw));
+            if !self.field.sel_all {
+                crate::desktop::rect(c, fx + tw + 1.0, y0 + 18.0, 1.5, 24.0, 0.0, T1);
+            }
         }
         let ch = crate::desktop::line_h(t, &cs);
         crate::desktop::text(c, t, x0 + w - 22.0 - cw, y0 + (60.0 - ch) / 2.0, &count, &cs, T3, false, None);

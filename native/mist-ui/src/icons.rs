@@ -100,6 +100,7 @@ pub fn icon(name: &str) -> Option<char> {
         "floppy" => 0xeb62,
         "bolt" => 0xea38,
         "chevron" => 0xea61,
+        "chevronDown" => 0xea5f,
         "temp" => 0xeb38,
         "flame" => 0xec2c,
         "zzz" => 0xf228,

@@ -139,6 +139,16 @@ pub struct Swap {
 impl Swap {
     /// false: no buffer free (both still held by the compositor), the caller commits a new one
     fn commit(&mut self, pool: &mut SlotPool, layer: &LayerSurface, canvas: &Canvas) -> bool {
+        let ok = self.fill(pool, layer.wl_surface(), canvas);
+        if ok {
+            layer.commit();
+        }
+        ok
+    }
+
+    /// Attaches the canvas (only the rows that differ are copied and damaged); the caller commits.
+    /// false: no buffer free, nothing attached.
+    pub fn fill(&mut self, pool: &mut SlotPool, s: &wl_surface::WlSurface, canvas: &Canvas) -> bool {
         let (w, h) = (canvas.pm.width() as i32, canvas.pm.height() as i32);
         if self.size != (w, h) {
             self.bufs.clear();
@@ -146,7 +156,6 @@ impl Swap {
             self.size = (w, h);
         }
         let free = (0..self.bufs.len()).find(|&i| Some(i) != self.last && self.bufs[i].canvas(pool).is_some());
-        let s = layer.wl_surface();
         let i = match free {
             Some(i) => i,
             None if self.bufs.len() < 2 => {
@@ -156,7 +165,6 @@ impl Swap {
                 let i = self.bufs.len() - 1;
                 s.damage_buffer(0, 0, w, h);
                 let _ = self.bufs[i].attach_to(s);
-                layer.commit();
                 self.last = Some(i);
                 count("commits", 1);
                 return true;
@@ -200,14 +208,12 @@ impl Swap {
         if y0 == usize::MAX {
             // nothing differs from the frame on screen nor from this buffer: keep the shown one
             count("commits_same", 1);
-            layer.commit();
             return true;
         }
         count("commits", 1);
         count("swap_px", ((x1 - x0 + 1) * (y1 - y0 + 1)) as u64);
         s.damage_buffer(x0 as i32, y0 as i32, (x1 - x0 + 1) as i32, (y1 - y0 + 1) as i32);
         let _ = self.bufs[i].attach_to(s);
-        layer.commit();
         self.last = Some(i);
         true
     }

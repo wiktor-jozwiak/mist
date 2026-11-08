@@ -53,13 +53,15 @@ pub struct Style {
     pub weight: f32,
     pub tnum: bool,
     pub spacing: f32, // font.letterSpacing (px)
+    // drawn as given, never translated (what the user typed)
+    pub verbatim: bool,
 }
 impl Style {
     pub fn ui(size: f32, weight: f32) -> Style {
-        Style { face: Face::Ui, size, weight, tnum: false, spacing: 0.0 }
+        Style { face: Face::Ui, size, weight, tnum: false, spacing: 0.0, verbatim: false }
     }
     pub fn icon(size: f32) -> Style {
-        Style { face: Face::Icons, size, weight: 400.0, tnum: false, spacing: 0.0 }
+        Style { face: Face::Icons, size, weight: 400.0, tnum: false, spacing: 0.0, verbatim: false }
     }
     pub fn spaced(mut self, s: f32) -> Style {
         self.spacing = s;
@@ -67,6 +69,10 @@ impl Style {
     }
     pub fn tnum(mut self) -> Style {
         self.tnum = true;
+        self
+    }
+    pub fn verbatim(mut self) -> Style {
+        self.verbatim = true;
         self
     }
 }
@@ -96,7 +102,7 @@ pub struct Text {
     scale: ScaleContext,
     shape: ShapeContext,
     cache: HashMap<(Face, u16, u32, u32, u8), Glyph>,
-    shaped: HashMap<(String, Face, u32, u32, bool), std::rc::Rc<Shaped>>,
+    shaped: HashMap<(String, Face, u32, u32, u8), std::rc::Rc<Shaped>>,
     lang_gen: u32,
 }
 
@@ -172,7 +178,7 @@ impl Text {
     }
 
     pub fn shape(&mut self, s: &str, st: &Style) -> std::rc::Rc<Shaped> {
-        let key = (s.to_string(), st.face, st.size.to_bits(), st.weight.to_bits() ^ st.spacing.to_bits().rotate_left(7), st.tnum);
+        let key = (s.to_string(), st.face, st.size.to_bits(), st.weight.to_bits() ^ st.spacing.to_bits().rotate_left(7), st.tnum as u8 | (st.verbatim as u8) << 1);
         // a new UI language: every cached string is in the old one
         if self.lang_gen != crate::i18n::generation() {
             self.shaped.clear();
@@ -185,7 +191,7 @@ impl Text {
             self.shaped.clear();
         }
         // the UI language (i18n.rs): only on a miss, so a cached string costs nothing
-        let tr = if st.face == Face::Icons { std::borrow::Cow::Borrowed(s) } else { crate::i18n::tr(s) };
+        let tr = if st.face == Face::Icons || st.verbatim { std::borrow::Cow::Borrowed(s) } else { crate::i18n::tr(s) };
         let s: &str = &tr;
         let vars = Self::vars(st);
         // runs of one face each
