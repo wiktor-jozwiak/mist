@@ -122,6 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         crate::udev::init(&mut event_loop, &mut data)?;
         std::env::set_var("WAYLAND_DISPLAY", &data.socket_name);
+        crate::wm::open_apps_log();
         None
     };
     data.dirty = true;

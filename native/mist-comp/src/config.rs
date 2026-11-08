@@ -497,10 +497,97 @@ pub fn lower(sym: u32) -> u32 {
     }
 }
 
+/// True if the keysym belongs to the numeric keypad (XKB 0xff80..=0xffbd).
+pub fn is_kp(sym: u32) -> bool {
+    (0xff80..=0xffbd).contains(&sym)
+}
+
+/// Keypad keysym to standard keyboard keysym mapping (e.g. KP_Divide -> slash, KP_Add -> plus, KP_1 -> 1).
+pub fn kp_to_standard(sym: u32) -> Option<u32> {
+    Some(match sym {
+        // Operators & punctuation
+        keysyms::KEY_KP_Divide => keysyms::KEY_slash,
+        keysyms::KEY_KP_Multiply => keysyms::KEY_asterisk,
+        keysyms::KEY_KP_Subtract => keysyms::KEY_minus,
+        keysyms::KEY_KP_Add => keysyms::KEY_plus,
+        keysyms::KEY_KP_Equal => keysyms::KEY_equal,
+        keysyms::KEY_KP_Enter => keysyms::KEY_Return,
+        keysyms::KEY_KP_Decimal => keysyms::KEY_period,
+        keysyms::KEY_KP_Separator => keysyms::KEY_comma,
+        keysyms::KEY_KP_Space => keysyms::KEY_space,
+        keysyms::KEY_KP_Tab => keysyms::KEY_Tab,
+
+        // Numbers 0..=9
+        keysyms::KEY_KP_0 => keysyms::KEY_0,
+        keysyms::KEY_KP_1 => keysyms::KEY_1,
+        keysyms::KEY_KP_2 => keysyms::KEY_2,
+        keysyms::KEY_KP_3 => keysyms::KEY_3,
+        keysyms::KEY_KP_4 => keysyms::KEY_4,
+        keysyms::KEY_KP_5 => keysyms::KEY_5,
+        keysyms::KEY_KP_6 => keysyms::KEY_6,
+        keysyms::KEY_KP_7 => keysyms::KEY_7,
+        keysyms::KEY_KP_8 => keysyms::KEY_8,
+        keysyms::KEY_KP_9 => keysyms::KEY_9,
+
+        // Navigation (when NumLock is off)
+        keysyms::KEY_KP_Home => keysyms::KEY_Home,
+        keysyms::KEY_KP_Left => keysyms::KEY_Left,
+        keysyms::KEY_KP_Up => keysyms::KEY_Up,
+        keysyms::KEY_KP_Right => keysyms::KEY_Right,
+        keysyms::KEY_KP_Down => keysyms::KEY_Down,
+        keysyms::KEY_KP_Prior => keysyms::KEY_Prior,
+        keysyms::KEY_KP_Next => keysyms::KEY_Next,
+        keysyms::KEY_KP_End => keysyms::KEY_End,
+        keysyms::KEY_KP_Begin => keysyms::KEY_Begin,
+        keysyms::KEY_KP_Insert => keysyms::KEY_Insert,
+        keysyms::KEY_KP_Delete => keysyms::KEY_Delete,
+
+        _ => return None,
+    })
+}
+
 impl Config {
     pub fn find(&self, mods: Mods, sym: u32, release: bool) -> Option<&Bind> {
         let sym = lower(sym);
-        self.binds.iter().find(|b| b.mods == mods && b.sym == sym && b.release == release)
+
+        // 1. Exact match first
+        if let Some(b) = self.binds.iter().find(|b| b.mods == mods && b.sym == sym && b.release == release) {
+            return Some(b);
+        }
+
+        // 2. Numeric keypad fallback to standard keysym
+        if let Some(alt) = kp_to_standard(sym) {
+            let alt = lower(alt);
+            if let Some(b) = self.binds.iter().find(|b| b.mods == mods && b.sym == alt && b.release == release) {
+                return Some(b);
+            }
+            // Keypad '+' (KP_Add) maps to 'plus', but zoom in is commonly bound to SUPER+equal
+            if alt == keysyms::KEY_plus {
+                if let Some(b) = self.binds.iter().find(|b| b.mods == mods && b.sym == keysyms::KEY_equal && b.release == release) {
+                    return Some(b);
+                }
+            }
+        }
+
+        // 3. Zoom / plus / equal equivalence for standard keys:
+        // A bind might be `SUPER+equal zoom in`, but typing '+' on a standard keyboard requires Shift
+        if sym == keysyms::KEY_plus {
+            if let Some(b) = self.binds.iter().find(|b| b.mods == mods && b.sym == keysyms::KEY_equal && b.release == release) {
+                return Some(b);
+            }
+            if mods.shift {
+                let unshifted = Mods { shift: false, ..mods };
+                if let Some(b) = self.binds.iter().find(|b| b.mods == unshifted && b.sym == keysyms::KEY_equal && b.release == release) {
+                    return Some(b);
+                }
+            }
+        } else if sym == keysyms::KEY_equal {
+            if let Some(b) = self.binds.iter().find(|b| b.mods == mods && b.sym == keysyms::KEY_plus && b.release == release) {
+                return Some(b);
+            }
+        }
+
+        None
     }
 }
 
@@ -553,5 +640,40 @@ mod tests {
         let b = c.find(Mods { logo: true, ..Default::default() }, keysyms::KEY_Super_L, true).unwrap();
         assert!(matches!(b.action, Action::Exec(ref s) if s.contains("start")));
         assert_eq!(c.find(Mods { logo: true, ctrl: true, ..Default::default() }, keysyms::KEY_Left, false).unwrap().action, Action::Workspace(WsArg::Rel(-1)));
+    }
+
+    #[test]
+    fn numpad_and_zoom_shortcuts() {
+        let c = parse(DEFAULT);
+        let super_mods = Mods { logo: true, ..Default::default() };
+        let super_shift = Mods { logo: true, shift: true, ..Default::default() };
+
+        // 1. Keypad divide (slash) -> Super + / (keys cheat sheet)
+        let b = c.find(super_mods, keysyms::KEY_KP_Divide, false).expect("KP_Divide should match SUPER+slash");
+        assert!(matches!(b.action, Action::Exec(ref s) if s.contains("keys")));
+
+        // 2. Keypad add (+) -> Super + = (zoom in)
+        let b = c.find(super_mods, keysyms::KEY_KP_Add, false).expect("KP_Add should match SUPER+equal");
+        assert_eq!(b.action, Action::Zoom(1));
+
+        // 3. Keypad subtract (-) -> Super + - (zoom out)
+        let b = c.find(super_mods, keysyms::KEY_KP_Subtract, false).expect("KP_Subtract should match SUPER+minus");
+        assert_eq!(b.action, Action::Zoom(-1));
+
+        // 4. Standard keyboard '+' typed with Shift: Super + Shift + = -> zoom in
+        let b = c.find(super_shift, keysyms::KEY_plus, false).expect("Super+Shift+plus should match SUPER+equal");
+        assert_eq!(b.action, Action::Zoom(1));
+
+        // 5. Keypad Enter -> Super + Return (terminal)
+        let b = c.find(super_mods, keysyms::KEY_KP_Enter, false).expect("KP_Enter should match SUPER+Return");
+        assert!(matches!(b.action, Action::Exec(ref s) if s.contains("kitty")));
+
+        // 6. Keypad 1..6 -> Super + 1..6 (workspace 1..6)
+        let b = c.find(super_mods, keysyms::KEY_KP_1, false).expect("KP_1 should match SUPER+1");
+        assert_eq!(b.action, Action::Workspace(WsArg::Id(1)));
+
+        // 7. Keypad Shift+1 -> Super + Shift + 1 (movetoworkspace 1)
+        let b = c.find(super_shift, keysyms::KEY_KP_1, false).expect("Shift+KP_1 should match SUPER+SHIFT+1");
+        assert_eq!(b.action, Action::MoveToWorkspace(WsArg::Id(1)));
     }
 }

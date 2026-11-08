@@ -17,7 +17,7 @@ use smithay::output::Output;
 
 use crate::MistComp;
 
-const MAIN_APPS: [&str; 8] = ["kitty", "alacritty", "org.kde.dolphin", "io.elementary.files", "zen", "com.anthropic.claude", "org.gnome.texteditor", "btop"];
+const MAIN_APPS: [&str; 10] = ["kitty", "alacritty", "org.kde.dolphin", "io.elementary.files", "zen", "brave", "brave-browser", "com.anthropic.claude", "org.gnome.texteditor", "btop"];
 const GAP: i32 = 8;
 
 const PRIMARY: &str = "DP-3";

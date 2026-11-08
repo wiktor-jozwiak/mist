@@ -58,8 +58,9 @@ impl SessionLockHandler for MistComp {
             surface.with_pending_state(|s| s.size = Some((size.w as u32, size.h as u32).into()));
         }
         surface.send_configure();
-        // the keyboard goes to the lock surface under the pointer (else the first one)
-        let focus_here = self.active_output().as_ref() == Some(&output) || self.lock.surfaces.is_empty();
+        // the keyboard goes to the primary monitor (where the password field is), else active output, else first
+        let is_primary = output.name() == crate::paths::primary_monitor();
+        let focus_here = is_primary || (self.active_output().as_ref() == Some(&output) && !self.lock.surfaces.contains_key(crate::paths::primary_monitor())) || self.lock.surfaces.is_empty();
         let wl = surface.wl_surface().clone();
         self.lock.surfaces.insert(output.name(), surface);
         if focus_here {

@@ -23,13 +23,13 @@ const DIAM: f32 = 13.0;
 const GAP: f32 = 8.0;
 /// own title bars: Zen (macOS dots in its tab bar), Mist Files / Player (hyprbars:no_bar in windowrules.lua),
 /// and apps that always draw theirs even when given a server-side one (Claude, Spotify: no double bar)
-const NO_BAR: [&str; 8] = ["zen", "zen-browser", "zen-beta", "mist-files", "mist-player", "mist-settings", "com.anthropic.claude", "spotify"];
+const NO_BAR: [&str; 10] = ["zen", "zen-browser", "zen-beta", "brave", "brave-browser", "mist-files", "mist-player", "mist-settings", "com.anthropic.claude", "spotify"];
 /// of those, the ones with a square window: mist-comp rounds its corners and gives it the window shadow
-const ROUND: [&str; 2] = ["com.anthropic.claude", "spotify"];
+const ROUND: [&str; 4] = ["com.anthropic.claude", "spotify", "brave", "brave-browser"];
 
 /// Chromium apps that move themselves only in client-side mode: given server-side decorations they hand the
 /// title bar to the compositor and never send xdg_toplevel.move for their own (Spotify could not be dragged)
-const CSD: [&str; 1] = ["spotify"];
+const CSD: [&str; 3] = ["spotify", "brave", "brave-browser"];
 
 /// Apps that never move themselves from their own title bar (Spotify on Wayland and X11 sends neither
 /// xdg_toplevel.move nor _NET_WM_MOVERESIZE): a drag starting in this top strip (px) moves the window,

@@ -33,6 +33,9 @@ impl MistComp {
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
         self.dirty = true;
         self.idle.notify_activity(&self.seat);
+        if !self.dpms_on {
+            self.set_dpms(true);
+        }
         match event {
             InputEvent::Keyboard { event, .. } => {
                 // once: keys do reach the compositor (not which ones: comp.log must not hold passwords)
@@ -154,13 +157,13 @@ impl MistComp {
                     self.swipe = Some(crate::state::Swipe::default());
                     return;
                 }
-                let p = self.seat.get_pointer().unwrap();
-                p.gesture_swipe_begin(self, &GestureSwipeBeginEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), fingers });
-                p.frame(self);
                 if crate::snapswipe::wants(fingers, self.config.swipe_fingers) && !self.locked {
                     crate::snapswipe::begin();
                     return;
                 }
+                let p = self.seat.get_pointer().unwrap();
+                p.gesture_swipe_begin(self, &GestureSwipeBeginEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), fingers });
+                p.frame(self);
             }
             InputEvent::GestureSwipeUpdate { event, .. } => {
                 if let Some(s) = self.swipe.as_mut() {
@@ -171,28 +174,28 @@ impl MistComp {
                     self.swipe_update();
                     return;
                 }
-                let p = self.seat.get_pointer().unwrap();
-                p.gesture_swipe_update(self, &GestureSwipeUpdateEvent { time: event.time_msec(), delta: GestureSwipeUpdateEvent_::delta(&event) });
-                p.frame(self);
                 if crate::snapswipe::active() {
                     crate::snapswipe::update(GestureSwipeUpdateEvent_::delta_x(&event), GestureSwipeUpdateEvent_::delta_y(&event));
                     return;
                 }
+                let p = self.seat.get_pointer().unwrap();
+                p.gesture_swipe_update(self, &GestureSwipeUpdateEvent { time: event.time_msec(), delta: GestureSwipeUpdateEvent_::delta(&event) });
+                p.frame(self);
             }
             InputEvent::GestureSwipeEnd { event, .. } => {
                 if self.swipe.is_some() {
                     self.swipe_end(GestureEndEvent::cancelled(&event));
                     return;
                 }
-                let p = self.seat.get_pointer().unwrap();
-                p.gesture_swipe_end(self, &GestureSwipeEndEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), cancelled: GestureEndEvent::cancelled(&event) });
-                p.frame(self);
                 if crate::snapswipe::active() {
                     if let Some(k) = crate::snapswipe::end(GestureEndEvent::cancelled(&event)) {
                         self.do_action(crate::config::Action::Snap(k));
                     }
                     return;
                 }
+                let p = self.seat.get_pointer().unwrap();
+                p.gesture_swipe_end(self, &GestureSwipeEndEvent { serial: SERIAL_COUNTER.next_serial(), time: event.time_msec(), cancelled: GestureEndEvent::cancelled(&event) });
+                p.frame(self);
             }
             InputEvent::GesturePinchBegin { event, .. } => {
                 let p = self.seat.get_pointer().unwrap();
@@ -277,6 +280,20 @@ impl MistComp {
         let serial = SERIAL_COUNTER.next_serial();
         let pressed = key_state == KeyState::Pressed;
 
+        if self.locked {
+            let keyboard = self.seat.get_keyboard().unwrap();
+            let has_lock_focus = keyboard.current_focus().as_ref().map(|f| {
+                self.lock.surfaces.values().any(|ls| f.is(ls.wl_surface()))
+            }).unwrap_or(false);
+            if !has_lock_focus {
+                let primary = crate::paths::primary_monitor();
+                let target = self.lock.surfaces.get(primary).or_else(|| self.lock.surfaces.values().next());
+                if let Some(s) = target {
+                    keyboard.set_focus(self, Some(s.wl_surface().clone().into()), serial);
+                }
+            }
+        }
+
         let kc: u32 = code.into();
         let action = self.seat.get_keyboard().unwrap().input::<Action, _>(
             self,
@@ -298,7 +315,10 @@ impl MistComp {
                 }
                 let m = Mods::from(mods);
                 let modified = handle.modified_sym().raw();
-                let sym = handle.raw_latin_sym_or_raw_current_sym().map(|s| s.raw()).unwrap_or(modified);
+                let mut sym = handle.raw_latin_sym_or_raw_current_sym().map(|s| s.raw()).unwrap_or(modified);
+                if crate::config::is_kp(modified) {
+                    sym = modified;
+                }
                 let is_super = sym == keysyms::KEY_Super_L || sym == keysyms::KEY_Super_R;
                 if pressed {
                     st.super_alone = is_super;
@@ -326,9 +346,10 @@ impl MistComp {
                         return FilterResult::Intercept(Action::Overview);
                     }
                     // arrows / hjkl / Tab / Enter move and pick in the overview (no client hears them)
-                    if st.overview_wants(sym) && !m.logo && !m.ctrl && !m.alt {
+                    let check_sym = crate::config::kp_to_standard(sym).unwrap_or(sym);
+                    if st.overview_wants(check_sym) && !m.logo && !m.ctrl && !m.alt {
                         st.suppressed.insert(kc);
-                        return FilterResult::Intercept(Action::OverviewKey(sym, m.shift));
+                        return FilterResult::Intercept(Action::OverviewKey(check_sym, m.shift));
                     }
                     if let Some(b) = st.config.find(m, sym, false) {
                         if !st.locked || b.locked {
@@ -573,21 +594,34 @@ impl MistComp {
             }
         }
 
-        let layer_hit = (ButtonState::Pressed == button_state && !pointer.is_grabbed())
-            .then(|| self.layer_at(pointer.current_location()))
-            .flatten();
-        if let Some(layer) = layer_hit {
-            // a click on a shell surface (bar, dock, popup) keeps window focus unless the layer takes keys
-            if layer.can_receive_keyboard_focus() {
-                keyboard.set_focus(self, Some(layer.wl_surface().clone().into()), serial);
+        if self.locked {
+            if button_state == ButtonState::Pressed {
+                let loc = pointer.current_location();
+                let lock_surf = self.lock_surface_under(loc).map(|(s, _)| s).or_else(|| {
+                    let primary = crate::paths::primary_monitor();
+                    self.lock.surfaces.get(primary).or_else(|| self.lock.surfaces.values().next()).map(|s| s.wl_surface().clone())
+                });
+                if let Some(s) = lock_surf {
+                    keyboard.set_focus(self, Some(s.into()), serial);
+                }
             }
-        } else if ButtonState::Pressed == button_state && !pointer.is_grabbed() {
-            let hit = self.space.element_under(pointer.current_location()).map(|(w, _)| w.clone());
-            // X11 menus (override-redirect) never take the focus
-            if hit.as_ref().is_none_or(|w| crate::wm::data(w).addr.get() != 0) {
-                self.focus_window(hit.as_ref());
-            }
-        };
+        } else {
+            let layer_hit = (ButtonState::Pressed == button_state && !pointer.is_grabbed())
+                .then(|| self.layer_at(pointer.current_location()))
+                .flatten();
+            if let Some(layer) = layer_hit {
+                // a click on a shell surface (bar, dock, popup) keeps window focus unless the layer takes keys
+                if layer.can_receive_keyboard_focus() {
+                    keyboard.set_focus(self, Some(layer.wl_surface().clone().into()), serial);
+                }
+            } else if ButtonState::Pressed == button_state && !pointer.is_grabbed() {
+                let hit = self.space.element_under(pointer.current_location()).map(|(w, _)| w.clone());
+                // X11 menus (override-redirect) never take the focus
+                if hit.as_ref().is_none_or(|w| crate::wm::data(w).addr.get() != 0) {
+                    self.focus_window(hit.as_ref());
+                }
+            };
+        }
 
         pointer.button(
             self,

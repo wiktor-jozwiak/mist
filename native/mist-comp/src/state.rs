@@ -483,9 +483,10 @@ impl MistComp {
         let og = self.space.output_geometry(output)?;
         let map = layer_map_for_output(output);
         let rel = pos - og.loc.to_f64();
+        let fs = crate::scene::fullscreen_top(&self.space, output);
         // only where the layer takes input (the island's surface is larger than its pill)
         let hit = |lvl: WlrLayer| {
-            map.layer_under(lvl, rel).filter(|l| {
+            map.layer_under(lvl, rel).filter(|l| !(fs && crate::scene::chrome(lvl, l.namespace()))).filter(|l| {
                 map.layer_geometry(l).is_some_and(|g| l.surface_under(rel - g.loc.to_f64(), WindowSurfaceType::ALL).is_some())
             })
         };
@@ -502,9 +503,10 @@ impl MistComp {
         let og = self.space.output_geometry(output)?;
         // before the layer map lock: bar_at / edge_at take it themselves (a Mutex, not re-entrant)
         let frame = self.bar_at(pos).is_some() || self.edge_at(pos).is_some();
+        let fs = crate::scene::fullscreen_top(&self.space, output);
         let map = layer_map_for_output(output);
         let layer_hit = |layer: WlrLayer| {
-            map.layer_under(layer, pos - og.loc.to_f64()).and_then(|l| {
+            map.layer_under(layer, pos - og.loc.to_f64()).filter(|l| !(fs && crate::scene::chrome(layer, l.namespace()))).and_then(|l| {
                 let lg = map.layer_geometry(l)?;
                 let loc = og.loc + lg.loc;
                 crate::hit::layer_under(l, pos - loc.to_f64())

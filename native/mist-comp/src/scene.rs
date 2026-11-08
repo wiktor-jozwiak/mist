@@ -79,6 +79,22 @@ fn overview_elements(r: &mut GlesRenderer, w: &Window, from: Rectangle<i32, Logi
 }
 
 /// Does the window (at `loc`, with its bar) show on the output rect?
+/// The output's topmost window is fullscreen: the shell's chrome (top layer, Mist's bar / dock / island)
+/// steps aside for it, drawn and hit-tested neither; menus, popups, Spotlight and the lock stay above.
+pub fn fullscreen_top(space: &Space<Window>, output: &Output) -> bool {
+    let Some(og) = space.output_geometry(output) else { return false };
+    space.elements().rev().find(|w| space.element_bbox(w).is_some_and(|b| b.overlaps(og))).is_some_and(|w| match (w.toplevel(), w.x11_surface()) {
+        (Some(t), _) => t.with_pending_state(|s| s.states.contains(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Fullscreen)),
+        (_, Some(x)) => x.is_fullscreen(),
+        _ => false,
+    })
+}
+
+/// A layer that a fullscreen window hides (see `fullscreen_top`).
+pub fn chrome(lvl: Layer, namespace: &str) -> bool {
+    lvl == Layer::Top || matches!(namespace, "mist-bar" | "mist-dock" | "mist-island")
+}
+
 fn reaches(w: &Window, loc: Point<i32, Logical>, og: Rectangle<i32, Logical>) -> bool {
     let mut reach = w.bbox();
     reach.loc += loc - w.geometry().loc;
@@ -205,8 +221,12 @@ pub fn elements(r: &mut GlesRenderer, space: &Space<Window>, lock: Option<&LockS
     }
     let now = std::time::Instant::now();
     let map = layer_map_for_output(output);
+    let fs = anim.overview.as_ref().is_none_or(|o| o.output != output.name()) && fullscreen_top(space, output);
     let layers = |out: &mut Vec<SceneElem>, r: &mut GlesRenderer, lvl: Layer| {
         for l in map.layers_on(lvl).rev() {
+            if fs && chrome(lvl, l.namespace()) {
+                continue;
+            }
             let Some(g) = map.layer_geometry(l) else { continue };
             let alpha = anim.layer_alpha(&smithay::reexports::wayland_server::Resource::id(l.wl_surface()), now);
             let v: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = l.render_elements(r, g.loc.to_physical_precise_round(scale), scale, alpha);

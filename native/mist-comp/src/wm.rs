@@ -538,6 +538,9 @@ impl MistComp {
 
     /// Screens off / on (idle). Nested: nothing to switch.
     pub fn set_dpms(&mut self, on: bool) {
+        if self.dpms_on == on {
+            return;
+        }
         tracing::info!("dpms {}", if on { "on" } else { "off" });
         self.dpms_on = on;
         self.power_note();
@@ -885,12 +888,41 @@ impl MistComp {
     }
 }
 
+// what apps started from here print (Brave's JavaScript errors, ...) goes to ~/.cache/mist/apps.log, not into
+// comp.log where it buried the compositor's own lines. Only in a real session: nested/headless tests keep the
+// inherited stdio. Over 4 MB at session start it moves to apps.log.old.
+static APPS_LOG: std::sync::OnceLock<std::fs::File> = std::sync::OnceLock::new();
+
+pub fn open_apps_log() {
+    let Some(home) = std::env::var_os("HOME") else { return };
+    let dir = std::path::Path::new(&home).join(".cache/mist");
+    let path = dir.join("apps.log");
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > 4 << 20) {
+        let _ = std::fs::rename(&path, dir.join("apps.log.old"));
+    }
+    let _ = std::fs::create_dir_all(&dir);
+    match std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        Ok(f) => {
+            let _ = APPS_LOG.set(f);
+        }
+        Err(e) => tracing::warn!("apps.log: {e}"),
+    }
+}
+
+fn app_stdio() -> (std::process::Stdio, std::process::Stdio) {
+    let dup = || APPS_LOG.get().and_then(|f| f.try_clone().ok()).map(std::process::Stdio::from).unwrap_or_else(std::process::Stdio::inherit);
+    (dup(), dup())
+}
+
 pub fn spawn(cmd: &str) {
     use std::os::unix::process::CommandExt;
+    let (out, err) = app_stdio();
     let r = std::process::Command::new("sh")
         .arg("-c")
         .arg(cmd)
         .stdin(std::process::Stdio::null())
+        .stdout(out)
+        .stderr(err)
         .process_group(0)
         .spawn();
     match r {
