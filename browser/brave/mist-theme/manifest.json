@@ -1,0 +1,121 @@
+{
+  "manifest_version": 3,
+  "name": "Mist",
+  "version": "1.1.0",
+  "description": "Mist w stylu Zena: jedna ciągła powierzchnia (ramka = pasek = karty), akcent #0A84FF",
+  "theme": {
+    "colors": {
+      "frame": [
+        17,
+        21,
+        31
+      ],
+      "frame_inactive": [
+        17,
+        21,
+        31
+      ],
+      "frame_incognito": [
+        14,
+        10,
+        24
+      ],
+      "frame_incognito_inactive": [
+        14,
+        10,
+        24
+      ],
+      "background_tab": [
+        17,
+        21,
+        31
+      ],
+      "background_tab_inactive": [
+        17,
+        21,
+        31
+      ],
+      "toolbar": [
+        17,
+        21,
+        31
+      ],
+      "toolbar_text": [
+        255,
+        255,
+        255
+      ],
+      "toolbar_button_icon": [
+        200,
+        204,
+        214
+      ],
+      "tab_text": [
+        255,
+        255,
+        255
+      ],
+      "tab_background_text": [
+        160,
+        165,
+        178
+      ],
+      "tab_background_text_inactive": [
+        125,
+        130,
+        142
+      ],
+      "bookmark_text": [
+        235,
+        235,
+        245
+      ],
+      "omnibox_background": [
+        34,
+        39,
+        48
+      ],
+      "omnibox_text": [
+        255,
+        255,
+        255
+      ],
+      "ntp_background": [
+        18,
+        23,
+        34
+      ],
+      "ntp_text": [
+        235,
+        235,
+        245
+      ],
+      "ntp_link": [
+        10,
+        132,
+        255
+      ],
+      "ntp_header": [
+        17,
+        21,
+        31
+      ],
+      "button_background": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "tints": {
+      "buttons": [
+        -1,
+        -1,
+        0.94
+      ]
+    },
+    "properties": {
+      "ntp_background_alignment": "bottom"
+    }
+  }
+}

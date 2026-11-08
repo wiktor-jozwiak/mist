@@ -1,0 +1,20 @@
+{
+  "policies": {
+    "DisableAppUpdate": true,
+    "DefaultSerialGuardSetting": 3,
+    "3rdparty": {
+      "Extensions": {
+        "{446900e4-71c2-419f-a6a7-df9c091e268b}": {
+          "environment": {
+            "base": "https://localhost:8222"
+          }
+        }
+      }
+    },
+    "Certificates": {
+      "Install": [
+        "/etc/ca-certificates/trust-source/anchors/mist-local-ca.pem"
+      ]
+    }
+  }
+}

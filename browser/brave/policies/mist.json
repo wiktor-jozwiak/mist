@@ -1,0 +1,49 @@
+{
+  "3rdparty": {
+    "extensions": {
+      "nngceckbapebfimnlniiiahkandclblb": {
+        "environment": {
+          "base": "https://localhost:8222"
+        }
+      }
+    }
+  },
+  "PasswordManagerEnabled": false,
+  "AutofillCreditCardEnabled": false,
+  "AutofillAddressEnabled": false,
+  "BraveRewardsDisabled": true,
+  "BraveWalletDisabled": true,
+  "BraveVPNDisabled": true,
+  "BraveAIChatEnabled": false,
+  "BraveNewsDisabled": true,
+  "BraveTalkDisabled": true,
+  "BravePlaylistEnabled": false,
+  "BraveP3AEnabled": false,
+  "BraveStatsPingEnabled": false,
+  "BraveWebDiscoveryEnabled": false,
+  "MetricsReportingEnabled": false,
+  "UrlKeyedAnonymizedDataCollectionEnabled": false,
+  "FeedbackSurveysEnabled": false,
+  "PromotionsEnabled": false,
+  "WebRtcIPHandling": "default_public_interface_only",
+  "NetworkPredictionOptions": 2,
+  "AlternateErrorPagesEnabled": false,
+  "SpellCheckServiceEnabled": false,
+  "DnsOverHttpsMode": "secure",
+  "BackgroundModeEnabled": false,
+  "HighEfficiencyModeEnabled": true,
+  "HardwareAccelerationModeEnabled": true,
+  "DefaultBrowserSettingEnabled": false,
+  "BraveGlobalPrivacyControlEnabled": true,
+  "BraveDebouncingEnabled": true,
+  "BraveDeAmpEnabled": true,
+  "BraveTrackingQueryParametersFilteringEnabled": true,
+  "BraveReduceLanguageEnabled": true,
+  "BraveLocalAIEnabled": false,
+  "BraveWaybackMachineEnabled": false,
+  "DefaultBraveAdblockSetting": 2,
+  "DefaultBraveHttpsUpgradeSetting": 2,
+  "DnsOverHttpsTemplates": "https://dns.quad9.net/dns-query",
+  "PaymentMethodQueryEnabled": false,
+  "SearchSuggestEnabled": true
+}
