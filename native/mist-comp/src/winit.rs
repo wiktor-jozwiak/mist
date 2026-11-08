@@ -51,9 +51,16 @@ pub fn init_winit(
     let display_handle = &data.display_handle.clone();
     let state = data;
 
-    let (backend, winit) = winit::init::<GlesRenderer>()?;
+    // a named window on the host (its dock and window list): "Mist", app id mist-comp
+    let attrs = {
+        use smithay::reexports::winit::{dpi::LogicalSize, platform::wayland::WindowAttributesExtWayland, window::WindowAttributes};
+        let (w, h) = std::env::var("MIST_COMP_SIZE").ok().and_then(|s| s.split_once('x').and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)))).unwrap_or((1280.0, 800.0));
+        WindowAttributes::default().with_title("Mist").with_name("mist-comp", "mist-comp").with_inner_size(LogicalSize::new(w, h)).with_visible(true)
+    };
+    let (backend, winit) = winit::init_from_attributes::<GlesRenderer>(attrs)?;
     let backend = Rc::new(RefCell::new(backend));
     let mut swap_interval_set = false;
+    let mut last_size: Option<smithay::utils::Size<i32, smithay::utils::Physical>> = None;
     let ret = backend.clone();
 
     // linux-dmabuf v4 (feedback names the render node): GPU clients render on the GPU instead of Mesa llvmpipe
@@ -126,23 +133,36 @@ pub fn init_winit(
                 tracing::trace!("redraw start");
                 let mut backend = backend.borrow_mut();
                 let size = backend.window_size();
-                let age = if std::mem::take(&mut state.force_full) { 0 } else { backend.buffer_age().unwrap_or(0) };
+                // EGL_EXT_buffer_age needs the surface current (NVIDIA: EGL_BAD_SURFACE otherwise, and the
+                // cleanup after the last swap left the context without one). Not on a resized frame: bind() must
+                // resize the window before the context is made current (Mesa latches the back buffer then).
+                let full = std::mem::take(&mut state.force_full) || last_size != Some(size);
+                last_size = Some(size);
+                let age = if full {
+                    0
+                } else {
+                    let surf: *const smithay::backend::egl::EGLSurface = backend.egl_surface();
+                    // SAFETY: the surface lives in `backend`, which this frame holds borrowed for its whole length
+                    match unsafe { backend.renderer().egl_context().make_current_with_surface(&*surf) } {
+                        Ok(()) => backend.buffer_age().unwrap_or(0),
+                        Err(_) => 0,
+                    }
+                };
                 let shot = state.shot.take();
                 let damage = {
                     let (renderer, mut framebuffer) = backend.bind().unwrap();
+                    let elems = crate::scene::elements(renderer, &state.space, state.lock.surfaces.get(&output.name()), state.locked, &output, &state.anim, state.dnd_at().as_ref());
+                    let clear = if state.locked { [0.0, 0.0, 0.0, 1.0] } else { crate::scene::NESTED_CLEAR };
+                    let damage = damage_tracker.render_output(renderer, &mut framebuffer, age, &elems, clear).unwrap().damage.cloned();
                     if !swap_interval_set {
-                        // the surface is current now: no vsync wait in eglSwapBuffers (the host stops frame
-                        // callbacks while our window is hidden, which would block the whole loop)
+                        // render_output made the surface current (bind() only names it): no vsync wait in
+                        // eglSwapBuffers (the host stops frame callbacks while our window is hidden, which would
+                        // block the whole loop)
                         let dpy = renderer.egl_context().display().get_display_handle();
                         let ok = unsafe { smithay::backend::egl::ffi::egl::SwapInterval(dpy.handle, 0) };
                         tracing::debug!("swap interval 0: {ok}");
                         swap_interval_set = true;
                     }
-                    let elems = crate::scene::elements(renderer, &state.space, state.lock.surfaces.get(&output.name()), state.locked, &output, &state.anim, state.dnd_at().as_ref());
-                    let clear = if state.locked { [0.0, 0.0, 0.0, 1.0] } else { crate::scene::NESTED_CLEAR };
-                    let damage = damage_tracker.render_output(renderer, &mut framebuffer, age, &elems, clear).unwrap().damage.cloned();
-                    // GL objects of destroyed buffers are freed only here (smithay 0.7)
-                    let _ = smithay::backend::renderer::Renderer::cleanup_texture_cache(renderer);
                     if let Some((path, mut reply)) = shot {
                         use std::io::Write;
                         let r = write_shot(renderer, &framebuffer, size, &path, true);
@@ -161,6 +181,10 @@ pub fn init_winit(
                         state.force_full = true;
                     }
                 }
+                // GL objects of destroyed buffers are freed only here (smithay 0.7). After the swap: it makes the
+                // context current without a surface, and NVIDIA refuses to swap a surface that is not current
+                // (EGL_BAD_SURFACE, the window never mapped; Mesa lets it pass)
+                let _ = smithay::backend::renderer::Renderer::cleanup_texture_cache(backend.renderer());
 
                 // wp_presentation: the host's vsync is not known here, shown = submitted
                 let mut fb = crate::scene::take_feedback(&state.space, state.lock.surfaces.get(&output.name()), &output);

@@ -35,6 +35,7 @@ jobs:
           install -m755 native/target/release/mist-comp $d/bin/mist-comp
           install -m755 scripts/mistd/target/release/mistd $d/bin/mistd
           install -m755 native/dist/mist-ui $d/bin/mist-ui
+          install -m755 native/mist-comp/session/mist-try $d/bin/mist-try
           cp -r native/assets $d/share/mist/native/
           install -m755 scripts/*.sh $d/share/mist/scripts/
           cp shaders/*.glsl $d/share/mist/shaders/ && cp -r shaders/glsl $d/share/mist/shaders/

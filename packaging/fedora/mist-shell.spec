@@ -51,6 +51,7 @@ install -Dm755 native/target/release/mist-wall %{buildroot}%{_bindir}/mist-wall-
 install -Dm755 native/target/release/mist-comp %{buildroot}%{_bindir}/mist-comp
 install -Dm755 scripts/mistd/target/release/mistd %{buildroot}%{_bindir}/mistd
 install -Dm755 native/dist/mist-ui %{buildroot}%{_bindir}/mist-ui
+install -Dm755 native/mist-comp/session/mist-try %{buildroot}%{_bindir}/mist-try
 share=%{buildroot}%{_datadir}/mist
 install -d $share/native $share/scripts $share/shaders $share/examples $share/native/mist-comp/session
 cp -r native/assets $share/native/
@@ -66,6 +67,7 @@ install -Dm644 packaging/mist.desktop %{buildroot}%{_datadir}/wayland-sessions/m
 %files
 %license LICENSE NOTICE.md native/assets/LICENSE.noctalia
 %{_bindir}/mist-ui
+%{_bindir}/mist-try
 %{_bindir}/mist-ui-bin
 %{_bindir}/mist-wall-bin
 %{_bindir}/mist-comp

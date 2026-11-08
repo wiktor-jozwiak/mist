@@ -24,6 +24,12 @@ pub struct Idle {
     held: bool,
 }
 
+/// MIST_TRY=1 (mist-try: the whole desktop in a window on another one): no idle lock or screen off, no
+/// locking along with the host's logind session, no polkit agent for the host's session.
+pub fn try_mode() -> bool {
+    std::env::var_os("MIST_TRY").is_some_and(|v| v == "1")
+}
+
 fn cfg() -> (u32, u32) {
     let v: serde_json::Value = std::fs::read_to_string(format!("{}/.config/mist/idle.json", std::env::var("HOME").unwrap_or_default())).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
     (v["lock"].as_u64().unwrap_or(600) as u32, v["off"].as_u64().unwrap_or(900) as u32)
@@ -42,7 +48,7 @@ impl Idle {
     pub fn arm(&mut self, seat: &wl_seat::WlSeat, qh: &QueueHandle<App>) {
         self.seat = Some(seat.clone());
         let Some(n) = &self.notifier else { return };
-        self.cfg = cfg();
+        self.cfg = if try_mode() { (0, 0) } else { cfg() };
         for x in [self.lock_n.take(), self.off_n.take()].into_iter().flatten() {
             x.destroy();
         }

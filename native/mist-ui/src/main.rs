@@ -409,7 +409,8 @@ fn main() {
     let (ntx, nrx) = std::sync::mpsc::channel::<notif::Cmd>();
     let (mdtx, mdrx) = std::sync::mpsc::channel::<media::Cmd>();
     let native_services = std::env::var("MIST_UI_NO_SERVICES").is_err() && !test;
-    let phone = if native_services { phone::Phone::start(tx.clone()) } else { phone::Phone::start_idle() };
+    // mist-try: its own session bus would start a second KDE Connect daemon next to the host's
+    let phone = if native_services && !idle::try_mode() { phone::Phone::start(tx.clone()) } else { phone::Phone::start_idle() };
     // night light remembered across restarts (Control centre toggles it)
     if native_services && control::night_on() {
         let c = control::night_cmd(true);
@@ -440,7 +441,10 @@ fn main() {
     if native_services {
         // the services Quickshell ran: notifications, players, data, phone, the island's event sources
         notif::spawn(tx.clone(), nrx);
-        polkit::spawn(tx.clone());
+        // in a window on another desktop (mist-try) the host session keeps its own polkit agent
+        if !idle::try_mode() {
+            polkit::spawn(tx.clone());
+        }
         idle::screensaver(tx.clone());
     }
     if native_services || std::env::var("MIST_UI_SOCK").is_ok() {
@@ -454,7 +458,9 @@ fn main() {
     app::wall_accent(Some(tx.clone()));
     sys::island_events(tx.clone());
     sys::nm_monitor(tx.clone());
-    idle::logind(tx.clone());
+    if !idle::try_mode() {
+        idle::logind(tx.clone());
+    }
     tray::spawn(tx, req_rx, mtx);
 
     // wait for events; draw what changed after each batch. The animation tick (16 ms) runs only while something

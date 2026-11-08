@@ -1,0 +1,65 @@
+#!/bin/sh
+# mist-try: the whole Mist desktop (compositor, bar, dock, island, widgets, Spotlight…) in one window on the
+# desktop you already run (Hyprland, Sway, GNOME, KDE). Close the window and it is gone: no session, config or
+# service changes. Mist's settings still go to ~/.config/mist (MIST_TRY_HOME=DIR keeps them out of it).
+#
+#   mist-try                 the window, your keyboard layout
+#   MIST_TRY_KEYBOARD=de     another xkb layout
+#   MIST_TRY_SIZE=1600x1000  window size (logical px; default 1280x800)
+#
+# Isolation: its own XDG_RUNTIME_DIR (sockets, locks), its own D-Bus session bus (notifications, tray, media
+# stay with your desktop), no polkit agent and no idle lock (MIST_TRY=1). Sound and the system bus (network,
+# Bluetooth, battery) are the host's. Super shortcuts the host compositor binds go to it first: use the bar,
+# the dock and the Start button for those.
+set -eu
+
+die() { echo "mist-try: $*" >&2; exit 1; }
+[ -n "${WAYLAND_DISPLAY:-}" ] || die "run it inside a Wayland session (Hyprland, Sway, GNOME, KDE)"
+host_rt=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+case $WAYLAND_DISPLAY in /*) host_wl=$WAYLAND_DISPLAY ;; *) host_wl=$host_rt/$WAYLAND_DISPLAY ;; esac
+[ -S "$host_wl" ] || die "no Wayland socket at $host_wl"
+command -v dbus-run-session >/dev/null || die "needs dbus-run-session (package dbus)"
+
+# the user's build (native/install.sh) first, else the packaged one / the release tarball next to this script
+here=$(dirname "$(readlink -f "$0")")
+pick() {
+    for c in "${MIST_TRY_BIN:-/nonexistent}/$1" "$HOME/.local/bin/$1""$here/$1" "$here/../bin/$1" "$here/../../../bin/$1"; do
+        [ -x "$c" ] && { echo "$c"; return; }
+    done
+    command -v "$1" || die "no $1 (install Mist or run from the release tarball)"
+}
+COMP=$(pick mist-comp)
+UI=$(pick mist-ui-bin)
+WALL_DIR=$(dirname "$(pick mist-wall-bin)" 2>/dev/null || true)
+
+# the host's keyboard layout (localectl, else us): the nested compositor does its own xkb
+kb=${MIST_TRY_KEYBOARD:-$(localectl status 2>/dev/null | sed -n 's/^ *X11 Layout: *//p' | head -1)}
+kb=${kb:-${XKB_DEFAULT_LAYOUT:-us}}
+
+rt=$(mktemp -d "$host_rt/mist-try.XXXXXX")
+chmod 700 "$rt"
+trap 'rm -rf "$rt"' EXIT INT TERM HUP
+mkdir -p "$HOME/.cache/mist"
+LOG=$HOME/.cache/mist/try.log
+
+# no bind lines: the default key bindings; own env and exec so the personal defaults (driver variables, the
+# guard script that sees the host's shell and steps aside) stay out
+cat >"$rt/comp.conf" <<EOF
+keyboard $kb
+env XDG_CURRENT_DESKTOP mist
+env MIST_TRY 1
+# the dock and desktop widgets go to the primary monitor: here the window (settings.json may name a real one)
+env MIST_PRIMARY winit
+exec $UI
+EOF
+
+export WAYLAND_DISPLAY="$host_wl" XDG_RUNTIME_DIR="$rt"
+export PULSE_SERVER="unix:$host_rt/pulse/native" PIPEWIRE_RUNTIME_DIR="$host_rt"
+export MIST_COMP_SIZE="${MIST_TRY_SIZE:-1280x800}" MIST_COMP_CONFIG="$rt/comp.conf" MIST_COMP_AUTOSTART=1 MIST_TRY=1
+export PATH="$WALL_DIR:$PATH"
+[ -n "${MIST_TRY_HOME:-}" ] && { mkdir -p "$MIST_TRY_HOME"; export HOME="$MIST_TRY_HOME"; }
+# a Mist session's own variables (MIST_COMP_RESTORE=1 after a restart would relaunch the host's apps)
+unset DISPLAY HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK NIRI_SOCKET MIST_COMP_RESTORE MIST_COMP_SAFE MIST_UI_SOCK
+export RUST_LOG=${RUST_LOG:-warn}
+echo "mist-try: starting (log: $LOG); close the window to quit"
+dbus-run-session -- "$COMP" >"$LOG" 2>&1

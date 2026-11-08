@@ -57,6 +57,7 @@ package() {
     install -Dm755 native/target/release/mist-comp "$pkgdir/usr/bin/mist-comp"
     install -Dm755 scripts/mistd/target/release/mistd "$pkgdir/usr/bin/mistd"
     install -Dm755 native/dist/mist-ui "$pkgdir/usr/bin/mist-ui"
+    install -Dm755 native/mist-comp/session/mist-try "$pkgdir/usr/bin/mist-try"
 
     local share="$pkgdir/usr/share/mist"
     install -d "$share/native" "$share/scripts" "$share/shaders" "$share/examples"

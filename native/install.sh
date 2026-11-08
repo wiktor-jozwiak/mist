@@ -34,3 +34,5 @@ cp target/release/mist-comp "$HOME/.local/bin/.mist-comp.new"
 [ -e "$HOME/.local/bin/mist-comp" ] && cp -p "$HOME/.local/bin/mist-comp" "$HOME/.local/bin/.mist-comp.prev"
 mv -f "$HOME/.local/bin/.mist-comp.new" "$HOME/.local/bin/mist-comp"
 ls -l "$HOME/.local/bin/mist-comp"
+# mist-try: the whole desktop in a window on the current one
+install -m 755 mist-comp/session/mist-try "$HOME/.local/bin/mist-try"
