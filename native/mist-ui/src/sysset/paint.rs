@@ -85,7 +85,7 @@ fn gl(c: &mut Canvas, t: &mut Text, cx: f32, cy: f32, name: &str, size: f32, col
 // the window tokens over a blurred backdrop (mist-comp blurs app id mist-settings): translucent enough for the
 // wallpaper's colours to come through, opaque with high contrast
 fn win_bg() -> [(f32, Rgba); 2] {
-    let (t, b) = (crate::tokens::WINDOW_TOP, crate::tokens::WINDOW_BOTTOM);
+    let (t, b) = crate::theme::window_tokens();
     let (a0, a1) = if crate::theme::high_contrast() { (0.97, 0.98) } else { (0.78, 0.86) };
     [(0.0, Rgba::rgb8(t.0, t.1, t.2, a0)), (1.0, Rgba::rgb8(b.0, b.1, b.2, a1))]
 }

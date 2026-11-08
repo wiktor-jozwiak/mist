@@ -80,6 +80,7 @@ time around three rules:
 | **Apps** | Mist Files (also the file chooser of every app), Mist Player (libmpv), system settings |
 | **Snapping** | Windows 11 style: drag to an edge or corner, Snap Layouts on the green button or `Super + Z`, Snap Assist |
 | **Wallpapers** | photos, live GLSL scenes, or a sky that follows the current weather |
+| **Themes** | Mist, Catppuccin, Nord, Gruvbox, Tokyo Night, Rosé Pine, Dracula, or your own JSON file: glass, windows and accent |
 
 **Weather** comes from [Open-Meteo](https://open-meteo.com) without an account: hourly curve, four days,
 rain in the next hour, sun and moon. **Garmin readiness** and **running** show your own Garmin Connect data,
@@ -128,6 +129,23 @@ Not there yet: tiling, tearing control, verified direct scan-out on NVIDIA. Conf
 [docs/CONFIG.md](docs/CONFIG.md#compconf-outputs-mist-comp-only); `mist-comp migrate` converts a Hyprland config.
 
 ## Install
+
+### Try it first, in a window
+
+`mist-try` runs the whole desktop (its compositor, bar, dock, island, widgets) in one window on the desktop
+you already use: Hyprland, Sway, GNOME or KDE. Nothing is installed as a session and nothing of your desktop
+changes; close the window and it is gone.
+
+```bash
+mist-try
+```
+
+It ships with the package and the release tarball (`bin/mist-try`), and `native/install.sh` puts it in
+`~/.local/bin`. Options: `MIST_TRY_SIZE=1600x1000`, `MIST_TRY_KEYBOARD=de`, `MIST_THEME=nord`. It keeps to
+itself: its own runtime directory and D-Bus session bus, so your notifications, tray and polkit agent stay
+where they are.
+
+### Install
 
 Arch: [packaging/arch/PKGBUILD](packaging/arch/PKGBUILD) builds `mist-shell-git`.
 

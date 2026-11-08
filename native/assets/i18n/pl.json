@@ -275,7 +275,12 @@
     "nothing_planned": "Nic nie zaplanowano",
     "new_event": "Nowe wydarzenie",
     "starts_now_wh": "zaczyna się teraz{wh}",
-    "calc": "licz"
+    "calc": "licz",
+    "add_to_calendar": "Dodaj do kalendarza: {}",
+    "add": "Dodaj",
+    "open_in_phone_panel": "Otwórz w panelu telefonu",
+    "sms": "SMS",
+    "quick_add_hint": "Wpisz w wyszukiwarce np. „jutro 15 dentysta”, aby dodać"
   },
   "phone": {
     "phone": "Telefon",
@@ -846,7 +851,7 @@
     "pin_to_favourites": "Przypnij do Ulubionych",
     "unpin_from_favourites": "Odepnij od Ulubionych",
     "move_to_start": "Przesuń na początek",
-    "favourites_are_full_12": "Ulubione są pełne (12): najpierw coś odepnij",
+    "favourites_are_full_12": "Ulubione są pełne (18): najpierw coś odepnij",
     "right_click_an_app": "Prawy przycisk na aplikacji w „Wszystkie” przypina ją tutaj",
     "asks_to_confirm": "Zapyta o potwierdzenie"
   },
@@ -1530,7 +1535,10 @@
     "search_city": "Szukaj miasta…",
     "restart_shell": "Uruchom ponownie powłokę",
     "desktop_page_sub": "Zegar, data, ile kart i co w nich stoi",
-    "takes_effect_after_restart": "Zmiana zadziała po ponownym uruchomieniu powłoki"
+    "takes_effect_after_restart": "Zmiana zadziała po ponownym uruchomieniu powłoki",
+    "theme": "Motyw",
+    "theme_sub": "Barwa szkła, okien i akcentu",
+    "theme_note": "Własny motyw: plik JSON w ~/.config/mist/themes (accent, tone, window_top, window_bottom)."
   },
   "multitasking": {
     "workspaces_vertical": "Pulpity pionowo",

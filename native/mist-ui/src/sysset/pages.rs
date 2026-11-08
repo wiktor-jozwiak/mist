@@ -188,6 +188,7 @@ pub enum Act {
     Back,
     Lang(&'static str),
     Accent(u32),
+    Theme(String),
     Contrast(bool),
     Night(bool),
     Dnd(bool),
@@ -832,6 +833,9 @@ impl Settings {
                 b.push(Block::Note("Zmiany widać od razu na pulpicie.".into()));
             }
             Colors => {
+                let theme = crate::theme::theme_id();
+                b.push(Block::Card(vec![Row::new("palette", "Motyw", "Barwa szkła, okien i akcentu", Ctl::Chips(crate::theme::theme_list().into_iter().map(|(id, name)| (name, id == theme, Act::Theme(id))).collect()))]));
+                b.push(Block::Note("Własny motyw: plik JSON w ~/.config/mist/themes (accent, tone, window_top, window_bottom).".into()));
                 let from_wall = self.d.accent_wall;
                 b.push(Block::Card(vec![Row::new("photo", "Kolor z tapety", "Akcent dobiera się do zdjęcia na pulpicie", Ctl::Toggle(from_wall, if from_wall { Act::Accent(self.accent_now()) } else { Act::Setting("accent", Value::String("wallpaper".into())) }))]));
                 b.push(Block::Caption("Kolor akcentu".into()));

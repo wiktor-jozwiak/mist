@@ -21,10 +21,111 @@ pub fn accent() -> Rgba {
     Rgba::rgb8((v >> 16) as u8, (v >> 8) as u8, v as u8, 1.0)
 }
 pub fn reload_accent() {
+    *PAL.write().unwrap() = None;
     ACC.store(read_accent(), std::sync::atomic::Ordering::Relaxed);
 }
+
+// Themes: settings.json {"theme": "nord"} tints the glass (panels, popups, cards), the app windows' body and
+// the accent; an "accent" of its own still wins. Built in below, or ~/.config/mist/themes/<id>.json with the
+// same keys as hex strings ({"name": "My theme", "accent": "#88c0d0", "tone": "#2e3440", "window_top": "#2e3440",
+// "window_bottom": "#242933"}) to share. Dark themes only: the text colours (T1..T4) stay white.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Palette {
+    pub accent: u32,
+    /// glass tone under panels, popups and desktop cards (drawn at the glass's own opacity)
+    pub tone: u32,
+    /// app window body (Mist Files, Settings), top to bottom; alpha from tokens::WINDOW_TOP / _BOTTOM
+    pub top: u32,
+    pub bottom: u32,
+}
+const fn pack(c: (u8, u8, u8)) -> u32 {
+    (c.0 as u32) << 16 | (c.1 as u32) << 8 | c.2 as u32
+}
+pub const MIST: Palette = Palette { accent: pack(crate::tokens::ACCENT), tone: pack(crate::tokens::TONE), top: pack((crate::tokens::WINDOW_TOP.0, crate::tokens::WINDOW_TOP.1, crate::tokens::WINDOW_TOP.2)), bottom: pack((crate::tokens::WINDOW_BOTTOM.0, crate::tokens::WINDOW_BOTTOM.1, crate::tokens::WINDOW_BOTTOM.2)) };
+/// (id, shown name, palette); the first is the default
+pub const THEMES: [(&str, &str, Palette); 7] = [
+    ("mist", "Mist", MIST),
+    ("catppuccin", "Catppuccin", Palette { accent: 0xcba6f7, tone: 0x181825, top: 0x1e1e2e, bottom: 0x11111b }),
+    ("nord", "Nord", Palette { accent: 0x88c0d0, tone: 0x2e3440, top: 0x2e3440, bottom: 0x242933 }),
+    ("gruvbox", "Gruvbox", Palette { accent: 0xfe8019, tone: 0x1d2021, top: 0x282828, bottom: 0x1d2021 }),
+    ("tokyonight", "Tokyo Night", Palette { accent: 0x7aa2f7, tone: 0x1a1b26, top: 0x1f2335, bottom: 0x16161e }),
+    ("rosepine", "Rosé Pine", Palette { accent: 0xebbcba, tone: 0x191724, top: 0x1f1d2e, bottom: 0x191724 }),
+    ("dracula", "Dracula", Palette { accent: 0xbd93f9, tone: 0x21222c, top: 0x282a36, bottom: 0x21222c }),
+];
+static PAL: std::sync::RwLock<Option<(String, Palette)>> = std::sync::RwLock::new(None);
+
+fn hex_u32(v: &serde_json::Value) -> Option<u32> {
+    v.as_str().and_then(|h| u32::from_str_radix(h.trim_start_matches('#'), 16).ok()).filter(|v| *v <= 0xffffff)
+}
+fn themes_dir() -> String {
+    format!("{}/.config/mist/themes", std::env::var("HOME").unwrap_or_default())
+}
+/// a theme file's palette; keys it lacks come from Mist's own
+pub fn parse_theme(v: &serde_json::Value) -> Palette {
+    let k = |key: &str, d: u32| hex_u32(&v[key]).unwrap_or(d);
+    Palette { accent: k("accent", MIST.accent), tone: k("tone", MIST.tone), top: k("window_top", MIST.top), bottom: k("window_bottom", MIST.bottom) }
+}
+fn theme_by_id(id: &str) -> Option<Palette> {
+    if let Some(t) = THEMES.iter().find(|t| t.0 == id) {
+        return Some(t.2);
+    }
+    // a file name, never a path
+    if id.is_empty() || id.contains('/') || id.starts_with('.') {
+        return None;
+    }
+    read(&format!("{}/{id}.json", themes_dir())).map(|v| parse_theme(&v))
+}
+/// every theme to pick: the built-in ones, then ~/.config/mist/themes/*.json by name
+pub fn theme_list() -> Vec<(String, String)> {
+    let mut v: Vec<(String, String)> = THEMES.iter().map(|t| (t.0.to_string(), t.1.to_string())).collect();
+    let mut own: Vec<(String, String)> = std::fs::read_dir(themes_dir())
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let id = e.file_name().to_string_lossy().strip_suffix(".json")?.to_string();
+            let name = read(&e.path().to_string_lossy()).and_then(|j| j["name"].as_str().map(String::from)).unwrap_or_else(|| id.clone());
+            (!THEMES.iter().any(|t| t.0 == id)).then_some((id, name))
+        })
+        .collect();
+    own.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
+    v.extend(own);
+    v
+}
+/// the chosen theme's id ("mist" when none or an unknown one)
+pub fn theme_id() -> String {
+    palette();
+    PAL.read().unwrap().as_ref().map(|p| p.0.clone()).unwrap_or_else(|| "mist".into())
+}
+/// the chosen theme (MIST_THEME overrides settings.json); read once, again after reload_accent
+pub fn palette() -> Palette {
+    if let Some(p) = PAL.read().unwrap().as_ref() {
+        return p.1;
+    }
+    let id = std::env::var("MIST_THEME").ok().filter(|t| !t.is_empty()).or_else(|| {
+        read(&format!("{}/.config/mist/settings.json", std::env::var("HOME").unwrap_or_default())).and_then(|v| v["theme"].as_str().map(String::from))
+    });
+    let (id, p) = id.and_then(|id| theme_by_id(&id).map(|p| (id, p))).unwrap_or(("mist".into(), MIST));
+    *PAL.write().unwrap() = Some((id, p));
+    p
+}
+fn unpack(v: u32, a: f32) -> Rgba {
+    Rgba::rgb8((v >> 16) as u8, (v >> 8) as u8, v as u8, a)
+}
+/// the glass tone (Glass::default)
+pub fn tone() -> Rgba {
+    unpack(palette().tone, 1.0)
+}
+/// the app window body, top and bottom, as tokens::WINDOW_TOP / _BOTTOM are written (r, g, b, alpha): the
+/// theme's colours at the tokens' opacity
+pub fn window_tokens() -> ((u8, u8, u8, f32), (u8, u8, u8, f32)) {
+    let p = palette();
+    let c = |v: u32, a: f32| ((v >> 16) as u8, (v >> 8) as u8, v as u8, a);
+    (c(p.top, crate::tokens::WINDOW_TOP.3), c(p.bottom, crate::tokens::WINDOW_BOTTOM.3))
+}
 fn read_accent() -> u32 {
-    let def = (crate::tokens::ACCENT.0 as u32) << 16 | (crate::tokens::ACCENT.1 as u32) << 8 | crate::tokens::ACCENT.2 as u32;
+    // no accent of its own: the theme's (Mist's own theme: tokens::ACCENT)
+    let def = palette().accent;
     let hex = |v: &serde_json::Value| v.as_str().and_then(|h| u32::from_str_radix(h.trim_start_matches('#'), 16).ok()).filter(|v| *v <= 0xffffff);
     let set = setting_accent();
     if set.as_str() == Some("wallpaper") {
@@ -32,7 +133,7 @@ fn read_accent() -> u32 {
     }
     hex(&set).unwrap_or(def)
 }
-fn read(path: &str) -> Option<serde_json::Value> {
+pub fn read(path: &str) -> Option<serde_json::Value> {
     std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok())
 }
 fn setting_accent() -> serde_json::Value {
@@ -193,5 +294,25 @@ mod accent_tests {
         assert!((r + g + b) / 3 > 100, "too dark: {c:06x}");
         let grey = image::RgbImage::from_pixel(40, 40, image::Rgb([90, 92, 95]));
         assert_eq!(super::pick_accent(&grey), None);
+    }
+}
+
+#[cfg(test)]
+mod theme_tests {
+    #[test]
+    fn theme_files_and_presets() {
+        // a file with only some keys keeps Mist's for the rest
+        let p = super::parse_theme(&serde_json::json!({ "accent": "#88c0d0", "tone": "2e3440", "window_top": "#zz" }));
+        assert_eq!((p.accent, p.tone, p.top, p.bottom), (0x88c0d0, 0x2e3440, super::MIST.top, super::MIST.bottom));
+        assert_eq!(super::theme_by_id("nord").unwrap().accent, 0x88c0d0);
+        // ids are file names, never paths
+        for bad in ["../settings", "/etc/passwd", ".hidden", ""] {
+            assert!(super::theme_by_id(bad).is_none(), "{bad}");
+        }
+        // ids unique, the default first
+        assert_eq!(super::THEMES[0].0, "mist");
+        let mut ids: Vec<_> = super::THEMES.iter().map(|t| t.0).collect();
+        ids.dedup();
+        assert_eq!(ids.len(), super::THEMES.len());
     }
 }

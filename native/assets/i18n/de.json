@@ -275,7 +275,12 @@
     "nothing_planned": "Nichts geplant",
     "new_event": "Neuer Termin",
     "starts_now_wh": "beginnt jetzt{wh}",
-    "calc": "rechnen"
+    "calc": "rechnen",
+    "add_to_calendar": "Zum Kalender hinzufügen: {}",
+    "add": "Hinzufügen",
+    "open_in_phone_panel": "Im Telefon-Panel öffnen",
+    "sms": "SMS",
+    "quick_add_hint": "Zum Hinzufügen in der Suche z. B. „tomorrow 15 dentist“ eingeben"
   },
   "phone": {
     "phone": "Telefon",
@@ -1530,7 +1535,10 @@
     "search_city": "Stadt suchen…",
     "restart_shell": "Shell neu starten",
     "desktop_page_sub": "Uhr, Datum, wie viele Karten und was sie zeigen",
-    "takes_effect_after_restart": "Wirkt nach einem Neustart der Shell"
+    "takes_effect_after_restart": "Wirkt nach einem Neustart der Shell",
+    "theme": "Design",
+    "theme_sub": "Farbe von Glas, Fenstern und Akzent",
+    "theme_note": "Eigenes Design: eine JSON-Datei in ~/.config/mist/themes (accent, tone, window_top, window_bottom)."
   },
   "multitasking": {
     "workspaces_vertical": "Arbeitsflächen vertikal",

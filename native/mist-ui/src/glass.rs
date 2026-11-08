@@ -19,7 +19,7 @@ pub struct Glass {
 }
 impl Default for Glass {
     fn default() -> Glass {
-        Glass { radius: 26.0, tint: 0.32, tone: Rgba::rgb8(16, 22, 36, 1.0), shine: 1.0, shadow: true, shadow_opacity: 0.22, rim_only: false, rims: true, corners: false }
+        Glass { radius: 26.0, tint: 0.32, tone: crate::theme::tone(), shine: 1.0, shadow: true, shadow_opacity: 0.22, rim_only: false, rims: true, corners: false }
     }
 }
 

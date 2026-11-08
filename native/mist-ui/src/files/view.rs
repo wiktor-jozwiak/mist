@@ -105,7 +105,7 @@ thread_local! {
 }
 
 struct Backdrop {
-    key: (u32, u32, bool, bool, [u32; 4]),
+    key: (u32, u32, bool, bool, [u32; 3], [u32; 4]),
     // per row: runs of one colour (premultiplied RGBA as u32, length); the gradient makes a row one colour
     // outside the sidebar's glass and the panel's edges, so a 1080p backdrop is ~60 KB instead of 8 MB
     rows: Vec<Vec<(u32, u16)>>,
@@ -117,15 +117,16 @@ struct Backdrop {
 /// instead of ~17 ms of painting), pixel-identical.
 fn paint_backdrop(c: &mut Canvas, sidebar: bool, panel: (f32, f32, f32, f32)) {
     let (w, h) = (c.pm.width() as usize, c.pm.height() as usize);
-    let key = (w as u32, h as u32, sidebar, crate::theme::high_contrast(), [panel.0.to_bits(), panel.1.to_bits(), panel.2.to_bits(), panel.3.to_bits()]);
+    let key = (w as u32, h as u32, sidebar, crate::theme::high_contrast(), { let p = crate::theme::palette(); [p.tone, p.top, p.bottom] }, [panel.0.to_bits(), panel.1.to_bits(), panel.2.to_bits(), panel.3.to_bits()]);
     BACKDROP.with(|b| {
         let mut b = b.borrow_mut();
         if b.as_ref().is_none_or(|b| b.key != key) {
             let (fw, fh) = (w as f32, h as f32);
+            let (wt, wb) = crate::theme::window_tokens();
             let mut full = Canvas::new(w as u32, h as u32);
             if let Some(r) = tiny_skia::Rect::from_xywh(0.0, 0.0, fw, fh) {
                 let path = tiny_skia::PathBuilder::from_rect(r);
-                crate::desktop::fill_lin(&mut full, &path, (0.0, 0.0), (0.0, fh), &[(0.0, tok(crate::tokens::WINDOW_TOP)), (1.0, tok(crate::tokens::WINDOW_BOTTOM))]);
+                crate::desktop::fill_lin(&mut full, &path, (0.0, 0.0), (0.0, fh), &[(0.0, tok(wt)), (1.0, tok(wb))]);
             }
             if sidebar {
                 Glass { radius: 20.0, tint: 0.30, shadow: false, corners: true, ..Default::default() }.paint(&mut full, SIDE_X, 8.0, SIDE_W, fh - 16.0);

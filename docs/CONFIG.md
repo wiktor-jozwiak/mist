@@ -18,7 +18,8 @@ them by hand only for what the UI does not offer; `mist-ui` re-reads them on its
 | `lang` | `auto`, `pl`, `en`, `de`, `es`, `fr` | UI language; `auto` follows `$LANG`, falls back to English. Set in Settings → General |
 | `primary` | a Hyprland monitor name | where the dock, island, desktop and weather sky go; default: Hyprland's first monitor |
 | `contrast` | `high` | accessibility: secondary text near full opacity, glass panels opaque (read at start; `MIST_CONTRAST=high` overrides) |
-| `accent` | `"#rrggbb"`, `"wallpaper"` | the accent colour (Settings → Personalization → Colours); `wallpaper`: taken from the photo once per change (cached in `~/.cache/mist/accent-wall.json`), a live wallpaper or a grey photo keep the default |
+| `theme` | `mist`, `catppuccin`, `nord`, `gruvbox`, `tokyonight`, `rosepine`, `dracula`, or the name of `~/.config/mist/themes/<name>.json` | tints the glass, app windows and accent (Settings → Personalization → Colours; `MIST_THEME` overrides). A theme file: `{"name": "My theme", "accent": "#88c0d0", "tone": "#2e3440", "window_top": "#2e3440", "window_bottom": "#242933"}`, missing keys keep Mist's. Dark themes only: text stays white |
+| `accent` | `"#rrggbb"`, `"wallpaper"` | the accent colour, over the theme's (Settings → Personalization → Colours; picking a theme clears it); `wallpaper`: taken from the photo once per change (cached in `~/.cache/mist/accent-wall.json`), a live wallpaper or a grey photo keep the default |
 | `workspace_names` | `{"1": "Work", "2": "Games"}` | shown in the bar over an empty desktop (Settings → Multitasking) |
 | `dnd_auto` | `{"hours": "22:00-07:00", "fullscreen": true, "sharing": true}` | Do Not Disturb by itself: in quiet hours (`""` = never), over a fullscreen window, while the screen is shared or recorded. Urgent notifications still come through (Settings → Notifications) |
 
@@ -178,6 +179,8 @@ mist-comp also speaks ext-workspace-v1 (waybar `ext/workspaces` and other bars) 
 |---|---|
 | `MIST_LANG` | UI language, overrides `settings.json` |
 | `MIST_PRIMARY` | main monitor, overrides `settings.json` |
+| `MIST_THEME` | theme id, overrides `settings.json` |
+| `MIST_TRY` | `1`: running in a window (`mist-try`): no idle lock, polkit agent, logind lock or KDE Connect |
 | `MIST_DIR` | where the Mist files are (default: `~/.local/share/mist/shell`, `/usr/share/mist`) |
 | `MIST_WALLPAPERS` | the photo folder of the gallery |
 | `MIST_FONT_DIR` | a folder with `SF-Pro.ttf` / `tabler-icons.ttf` (the greeter, which cannot read your home) |

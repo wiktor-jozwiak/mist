@@ -377,6 +377,13 @@ impl Settings {
                 crate::theme::reload_accent();
                 self.tell_shell();
             }
+            // a theme brings its own accent: a picked one (or the wallpaper's) goes
+            Act::Theme(id) => {
+                backend::patch_json("settings.json", json!({ "theme": if id == "mist" { Value::Null } else { json!(id) }, "accent": Value::Null }));
+                self.d.accent_wall = false;
+                crate::theme::reload_accent();
+                self.tell_shell();
+            }
             Act::Contrast(on) => {
                 backend::patch_json("settings.json", json!({ "contrast": if on { json!("high") } else { Value::Null } }));
                 crate::theme::reload_contrast();
