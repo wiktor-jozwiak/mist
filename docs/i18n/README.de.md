@@ -27,6 +27,9 @@
   </tr>
 </table>
 
+<a href="../media/mist-demo.mp4"><img src="../img/demo-poster.webp" alt="40-Sekunden-Demovideo abspielen" width="100%"></a>
+<sub>40-s-Demo, aufgenommen in einer Headless-<code>mist-comp</code>-Sitzung mit Demodaten. Musik: <i>Trap Beat</i> von JonasBlakewood (Pixabay)</sub>
+
 </div>
 
 Mist ist Leiste, Dock, Dynamic Island, Desktop-Widgets, Suche, Kontrollzentrum, Benachrichtigungen,
@@ -76,6 +79,8 @@ für Fläche nach drei Regeln neu geschrieben:
 | **Dynamic Island** | Medien mit Equalizer, Timer, Anrufe (KDE Connect oder ADB), Benachrichtigungen, Lautstärke |
 | **Desktop** | Uhr und Glaskarten: Wetter, Garmin-Bereitschaft, Laufen, Musik, Kalender, System, Weltuhren |
 | **Panels** | Spotlight, Start, App-Umschalter, Kontrollzentrum, Mitteilungszentrale, Zwischenablage, Emoji, Sitzungsmenü, Bildschirmfotos |
+| **Schnelle Antworten** | in Spotlight beim Tippen: Rechnen (`128*42`), Einheiten (`212 f to c`, `2 gb to mb`), Zeitzonen (`tokyo time`) |
+| **Telefon** | KDE Connect: Akku, Benachrichtigungen, SMS und Kontakte in einem Panel, Anrufe in der Island |
 | **Einstellungen** | Sprache, Wetterort, Hintergrund, Desktop-Layout, Widgets, Nachtlicht, Sperre und Ruhezustand, Benachrichtigungen |
 | **System** | Benachrichtigungsserver, Polkit-Agent, Sperrbildschirm (PAM), Leerlauf und Ruhezustand |
 | **Apps** | Mist Files (auch der Dateiauswahldialog jeder App), Mist Player (libmpv), Systemeinstellungen |
@@ -111,7 +116,7 @@ Auf `mist-comp` liegen Compositor und ganze Shell zusammen bei **0,04 % CPU und 
 
 ## mist-comp
 
-Mists eigener Wayland-Compositor, rund 12 500 Zeilen Rust auf [Smithay], mit Anmeldebildschirm. Er startet
+Mists eigener Wayland-Compositor, rund 14 000 Zeilen Rust auf [Smithay], mit Anmeldebildschirm. Er startet
 dieselbe Shell und beantwortet genug von Hyprlands IPC, dass `hyprctl` und Mists Skripte unverändert
 funktionieren. Er ist experimentell und neben Hyprland die tägliche Sitzung des Autors.
 
@@ -124,7 +129,7 @@ funktionieren. Er ist experimentell und neben Hyprland die tägliche Sitzung des
 - **Sitzung:** DRM / KMS über logind, Hotplug, VRR, Explicit Sync, XWayland, Bildschirmfreigabe über das Portal,
   etwa 45 Protokolle. Nach einem Absturz kommen die Fenster auf ihre Arbeitsflächen zurück;
   `mist-session restart` lädt eine neue Version ohne Abmelden.
-- **Getestet:** 50 verschachtelte Tests mit Headless-Backend, in der CI auf dem Software-Renderer.
+- **Getestet:** 66 verschachtelte Tests mit Headless-Backend, in der CI auf dem Software-Renderer.
 
 Noch nicht da: Kacheln, Tearing-Steuerung, geprüftes Direct Scan-out auf NVIDIA. Konfiguration:
 [docs/CONFIG.md](../CONFIG.md#compconf-outputs-mist-comp-only); `mist-comp migrate` übernimmt eine Hyprland-Konfiguration.

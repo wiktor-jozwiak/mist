@@ -27,6 +27,9 @@
   </tr>
 </table>
 
+<a href="../media/mist-demo.mp4"><img src="../img/demo-poster.webp" alt="Reproducir el vídeo de demostración de 40 segundos" width="100%"></a>
+<sub>Demo de 40 s, grabada en una sesión <code>mist-comp</code> sin monitor con datos de demostración. Música: <i>Trap Beat</i> de JonasBlakewood (Pixabay)</sub>
+
 </div>
 
 Mist es la barra, el dock, la Dynamic Island, los widgets del escritorio, el buscador, el centro de control,
@@ -76,6 +79,8 @@ superficie a superficie siguiendo tres reglas:
 | **Dynamic Island** | multimedia con ecualizador, temporizadores, llamadas (KDE Connect o ADB), notificaciones, volumen |
 | **Escritorio** | reloj y tarjetas de cristal: tiempo, disposición de Garmin, carrera, música, calendario, sistema, relojes del mundo |
 | **Paneles** | Spotlight, Inicio, cambiador de aplicaciones, centro de control, centro de notificaciones, portapapeles, emoji, menú de sesión, capturas |
+| **Respuestas rápidas** | en Spotlight mientras escribes: cálculos (`128*42`), unidades (`212 f to c`, `2 gb to mb`), zonas horarias (`tokyo time`) |
+| **Teléfono** | KDE Connect: batería, notificaciones, SMS y contactos en un panel, llamadas en la isla |
 | **Ajustes** | idioma, lugar del tiempo, fondo, disposición del escritorio, widgets, luz nocturna, bloqueo y suspensión, notificaciones |
 | **Sistema** | servidor de notificaciones, agente polkit, pantalla de bloqueo (PAM), inactividad y suspensión |
 | **Aplicaciones** | Mist Files (también el selector de archivos de cualquier aplicación), Mist Player (libmpv), ajustes del sistema |
@@ -111,7 +116,7 @@ carga: [docs/BENCHMARKS.md](../BENCHMARKS.md).
 
 ## mist-comp
 
-El compositor Wayland propio de Mist, unas 12 500 líneas de Rust sobre [Smithay], con pantalla de inicio de
+El compositor Wayland propio de Mist, unas 14 000 líneas de Rust sobre [Smithay], con pantalla de inicio de
 sesión. Ejecuta el mismo entorno y responde a suficiente IPC de Hyprland como para que `hyprctl` y los scripts
 de Mist funcionen sin cambios. Es experimental y es la sesión diaria del autor junto a Hyprland.
 
@@ -124,7 +129,7 @@ de Mist funcionen sin cambios. Es experimental y es la sesión diaria del autor 
 - **Sesión:** DRM / KMS mediante logind, conexión de monitores en caliente, VRR, explicit sync, XWayland,
   compartir pantalla mediante el portal, unos 45 protocolos. Tras un fallo las ventanas vuelven a sus
   escritorios; `mist-session restart` carga una versión nueva sin cerrar sesión.
-- **Probado:** 50 pruebas anidadas sobre un backend sin monitor, ejecutadas en la CI con el renderizador por software.
+- **Probado:** 66 pruebas anidadas sobre un backend sin monitor, ejecutadas en la CI con el renderizador por software.
 
 Aún no: mosaico, control del tearing, scan-out directo verificado en NVIDIA. Configuración:
 [docs/CONFIG.md](../CONFIG.md#compconf-outputs-mist-comp-only); `mist-comp migrate` convierte una configuración de Hyprland.

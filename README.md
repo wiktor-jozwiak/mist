@@ -27,6 +27,9 @@
   </tr>
 </table>
 
+<a href="docs/media/mist-demo.mp4"><img src="docs/img/demo-poster.webp" alt="Play the 40 second demo video: island, Spotlight, snapping, themes switched live, lock screen" width="100%"></a>
+<sub>40 s demo, recorded in a headless <code>mist-comp</code> session with demo data. Music: <i>Trap Beat</i> by JonasBlakewood (Pixabay)</sub>
+
 </div>
 
 Mist is the bar, dock, Dynamic Island, desktop widgets, launcher, control centre, notifications, lock screen
@@ -75,6 +78,8 @@ time around three rules:
 | **Dynamic Island** | media with an equalizer, timers, phone calls (KDE Connect or ADB), notifications, volume |
 | **Desktop** | clock and glass cards: weather, Garmin readiness, running, music, calendar, system, world clocks |
 | **Panels** | Spotlight, Start, app switcher, control centre, notification centre, clipboard history, emoji picker, session menu, screenshot toolbar |
+| **Quick answers** | in Spotlight while you type: math (`128*42`), units (`212 f to c`, `2 gb to mb`), time zones (`tokyo time`) |
+| **Phone** | KDE Connect: battery, notifications, texts and contacts in a panel, calls in the island |
 | **Settings** | language, weather place, wallpaper, desktop layout, widgets, night light, lock and sleep, notifications |
 | **System** | notification server, polkit agent, lock screen (PAM), idle and sleep |
 | **Apps** | Mist Files (also the file chooser of every app), Mist Player (libmpv), system settings |
@@ -111,7 +116,7 @@ On `mist-comp` the compositor and the whole shell together idle at **0.04 % CPU 
 
 ## mist-comp
 
-Mist's own Wayland compositor, about 12 500 lines of Rust on [Smithay], with a greeter. It runs the same shell
+Mist's own Wayland compositor, about 14 000 lines of Rust on [Smithay], with a greeter. It runs the same shell
 and answers enough of Hyprland's IPC that `hyprctl` and Mist's scripts work unchanged. It is experimental, and
 the author's daily session next to Hyprland.
 
@@ -123,7 +128,7 @@ the author's daily session next to Hyprland.
 - **Session:** DRM / KMS through logind, hotplug, VRR, explicit sync, XWayland, screen sharing through the
   portal, about 45 protocols. After a crash the windows come back on their workspaces; `mist-session restart`
   loads a new build without logging out.
-- **Tested:** 50 nested tests on a headless backend, run by CI on the software renderer.
+- **Tested:** 66 nested tests on a headless backend, run by CI on the software renderer.
 
 Not there yet: tiling, tearing control, verified direct scan-out on NVIDIA. Configuration:
 [docs/CONFIG.md](docs/CONFIG.md#compconf-outputs-mist-comp-only); `mist-comp migrate` converts a Hyprland config.

@@ -27,6 +27,9 @@
   </tr>
 </table>
 
+<a href="../media/mist-demo.mp4"><img src="../img/demo-poster.webp" alt="Odtwórz 40-sekundowy film demo" width="100%"></a>
+<sub>40 s demo, nagrane w sesji <code>mist-comp</code> bez monitora, na danych demo. Muzyka: <i>Trap Beat</i>, JonasBlakewood (Pixabay)</sub>
+
 </div>
 
 Mist to pasek, dock, Dynamic Island, widżety pulpitu, wyszukiwarka, centrum sterowania, powiadomienia, ekran
@@ -76,6 +79,8 @@ przepisany powierzchnia po powierzchni według trzech zasad:
 | **Dynamic Island** | multimedia z equalizerem, minutniki, połączenia (KDE Connect lub ADB), powiadomienia, głośność |
 | **Pulpit** | zegar i szklane karty: pogoda, gotowość Garmin, bieganie, muzyka, kalendarz, system, zegary świata |
 | **Panele** | Spotlight, Start, przełącznik aplikacji, centrum sterowania, centrum powiadomień, historia schowka, emoji, menu sesji, zrzuty ekranu |
+| **Szybkie odpowiedzi** | w Spotlight podczas pisania: obliczenia (`128*42`), jednostki (`212 f to c`, `2 gb to mb`), strefy czasowe (`tokyo time`) |
+| **Telefon** | KDE Connect: bateria, powiadomienia, SMS-y i kontakty w panelu, połączenia w wyspie |
 | **Ustawienia** | język, miejsce pogody, tapeta, układ pulpitu, widżety, światło nocne, blokada i uśpienie, powiadomienia |
 | **System** | serwer powiadomień, agent polkit, ekran blokady (PAM), bezczynność i uśpienie |
 | **Aplikacje** | Mist Files (także okno wyboru plików w każdej aplikacji), Mist Player (libmpv), ustawienia systemu |
@@ -111,7 +116,7 @@ monitora, renderer programowy). Metoda, liczby kompozytora i prawdziwa, obciąż
 
 ## mist-comp
 
-Własny kompozytor Waylanda dla Mist, około 12 500 linii Rust na [Smithay], z ekranem logowania. Uruchamia tę
+Własny kompozytor Waylanda dla Mist, około 14 000 linii Rust na [Smithay], z ekranem logowania. Uruchamia tę
 samą powłokę i odpowiada na tyle IPC Hyprlanda, że `hyprctl` i skrypty Mist działają bez zmian. Jest
 eksperymentalny i jest codzienną sesją autora obok Hyprlanda.
 
@@ -124,7 +129,7 @@ eksperymentalny i jest codzienną sesją autora obok Hyprlanda.
 - **Sesja:** DRM / KMS przez logind, podłączanie monitorów w locie, VRR, explicit sync, XWayland, udostępnianie
   ekranu przez portal, około 45 protokołów. Po awarii okna wracają na swoje obszary robocze;
   `mist-session restart` ładuje nową wersję bez wylogowania.
-- **Testy:** 50 testów w zagnieżdżonym kompozytorze bez monitora, uruchamianych w CI na rendererze programowym.
+- **Testy:** 66 testów w zagnieżdżonym kompozytorze bez monitora, uruchamianych w CI na rendererze programowym.
 
 Jeszcze nie ma: kafelkowania, kontroli tearingu, sprawdzonego direct scan-out na NVIDII. Konfiguracja:
 [docs/CONFIG.md](../CONFIG.md#compconf-outputs-mist-comp-only); `mist-comp migrate` przenosi konfigurację Hyprlanda.

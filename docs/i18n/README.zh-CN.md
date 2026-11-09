@@ -27,6 +27,9 @@
   </tr>
 </table>
 
+<a href="../media/mist-demo.mp4"><img src="../img/demo-poster.webp" alt="播放 40 秒演示视频" width="100%"></a>
+<sub>40 秒演示，在无头 <code>mist-comp</code> 会话中使用演示数据录制。音乐：JonasBlakewood 的 <i>Trap Beat</i>（Pixabay）</sub>
+
 </div>
 
 Mist 是一个桌面的顶栏、Dock、灵动岛、桌面小组件、搜索、控制中心、通知、锁屏和 polkit 代理，全部在一个约
@@ -73,6 +76,8 @@ Mist 是一个桌面的顶栏、Dock、灵动岛、桌面小组件、搜索、�
 | **灵动岛** | 带均衡器的媒体、计时器、来电（KDE Connect 或 ADB）、通知、音量 |
 | **桌面** | 时钟和玻璃卡片：天气、Garmin 身体准备度、跑步、音乐、日历、系统、世界时钟 |
 | **面板** | Spotlight、开始菜单、应用切换、控制中心、通知中心、剪贴板历史、表情、会话菜单、截图 |
+| **快速回答** | 在 Spotlight 中边输入边计算：算式（`128*42`）、单位（`212 f to c`、`2 gb to mb`）、时区（`tokyo time`） |
+| **手机** | KDE Connect：电量、通知、短信和联系人面板，来电显示在灵动岛 |
 | **设置** | 语言、天气地点、壁纸、桌面布局、小组件、夜间模式、锁屏与睡眠、通知 |
 | **系统** | 通知服务、polkit 代理、锁屏（PAM）、空闲与睡眠 |
 | **应用** | Mist Files（也是所有应用的文件选择器）、Mist Player（libmpv）、系统设置 |
@@ -106,7 +111,7 @@ Mist 是一个桌面的顶栏、Dock、灵动岛、桌面小组件、搜索、�
 
 ## mist-comp
 
-Mist 自己的 Wayland 合成器，基于 [Smithay]，约 12 500 行 Rust，带登录界面。它运行同一个外壳，并实现了足够多的
+Mist 自己的 Wayland 合成器，基于 [Smithay]，约 14 000 行 Rust，带登录界面。它运行同一个外壳，并实现了足够多的
 Hyprland IPC，使 `hyprctl` 和 Mist 的脚本无需修改即可工作。它仍是实验性的，也是作者在 Hyprland 之外的日常会话。
 
 - **窗口：** Mist 标题栏或应用自带标题栏、圆角和阴影、半透明窗口与面板下的玻璃模糊、Windows 11 式贴靠、
@@ -115,7 +120,7 @@ Hyprland IPC，使 `hyprctl` 和 Mist 的脚本无需修改即可工作。它仍
   只收到一帧，而不是六十帧。
 - **会话：** 通过 logind 使用 DRM / KMS、显示器热插拔、VRR、explicit sync、XWayland、通过门户共享屏幕，约 45
   个协议。崩溃后窗口会回到原来的工作区；`mist-session restart` 无需注销即可加载新版本。
-- **测试：** 50 个运行在无头后端上的嵌套测试，CI 中使用软件渲染器运行。
+- **测试：** 66 个运行在无头后端上的嵌套测试，CI 中使用软件渲染器运行。
 
 尚未支持：平铺、撕裂控制、在 NVIDIA 上验证过的直接扫描输出。配置：
 [docs/CONFIG.md](../CONFIG.md#compconf-outputs-mist-comp-only)；`mist-comp migrate` 可转换 Hyprland 配置。
