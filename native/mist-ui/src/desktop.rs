@@ -51,7 +51,7 @@ pub fn level(v: Option<f64>) -> Rgba {
     }
 }
 pub fn km1(x: f64) -> String {
-    format!("{:.1}", (x * 10.0).round() / 10.0).replace('.', ",")
+    format!("{:.1}", (x * 10.0).round() / 10.0).replace('.', crate::i18n::dec_sep())
 }
 pub fn runs_word(n: i64) -> &'static str {
     if n == 1 { "bieg" } else if (2..=4).contains(&(n % 10)) && !(10..20).contains(&(n % 100)) { "biegi" } else { "biegów" }
@@ -1016,7 +1016,7 @@ impl Desk {
                 "hrv" => ("hrv", ns(&g["hrv"]), "ms", "HRV", hrv_delta <= -5.0),
                 "rhr" => ("hr", ns(&g["rhr"]), "bpm", "tętno", false),
                 "stress" => ("st", ns(&g["stress"]), "", "stres", stress.unwrap_or(0.0) > 50.0),
-                "steps" => ("steps", steps.map(|s| if s >= 10000.0 { format!("{:.1}k", s / 1000.0).replace('.', ",") } else { thousands(s) }).unwrap_or("–".into()), "", "kroki", false),
+                "steps" => ("steps", steps.map(|s| if s >= 10000.0 { format!("{:.1}k", s / 1000.0).replace('.', crate::i18n::dec_sep()) } else { thousands(s) }).unwrap_or("–".into()), "", "kroki", false),
                 "bb" => ("bb", ns(&g["bb"]), "", "battery", bb.map(|b| b < 25.0).unwrap_or(false)),
                 "ready" => ("ready", ns(&g["ready"]), "", "gotowość", ready.map(|r| r < 40.0).unwrap_or(false)),
                 _ => return None,

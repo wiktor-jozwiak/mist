@@ -365,7 +365,9 @@
     "screen_on": "Bildschirm an",
     "screen_off": "Bildschirm aus",
     "wants_attention_click": "möchte Aufmerksamkeit · klicken",
-    "attachment": "📎 Anhang"
+    "attachment": "📎 Anhang",
+    "quick_actions": "Schnellaktionen",
+    "on_the_phone": "Auf dem Handy"
   },
   "control_center": {
     "sound": "Ton",
@@ -443,7 +445,10 @@
     "show_less": "Weniger anzeigen",
     "notifications_cleared": "Mitteilungen gelöscht",
     "system": "System",
-    "notifications_2": "Mitteilungen"
+    "notifications_2": "Mitteilungen",
+    "more_one": "+{} Mitteilung",
+    "more_few": "+{} Mitteilungen",
+    "more_many": "+{} Mitteilungen"
   },
   "clipboard": {
     "search_clipboard_history": "Zwischenablage-Verlauf durchsuchen",
@@ -512,7 +517,8 @@
     "set_wallpaper": "Als Hintergrund",
     "browse_tab_category_space": "← →  blättern   ·   Tab  Kategorie   ·   Leertaste  setzen   ·   Enter  setzen und schließen   ·   Esc  schließen",
     "change_folder": "Ordner ändern",
-    "choose_wallpaper_folder": "Hintergrundbild-Ordner wählen"
+    "choose_wallpaper_folder": "Hintergrundbild-Ordner wählen",
+    "animated": "animiert"
   },
   "desktop_settings": {
     "customise_desktop": "Schreibtisch anpassen",
@@ -856,7 +862,8 @@
     "move_to_start": "An den Anfang",
     "favourites_are_full_12": "Favoriten sind voll (12): zuerst etwas lösen",
     "right_click_an_app": "Rechtsklick auf eine App unter „Alle“ heftet sie hier an",
-    "asks_to_confirm": "Fragt nach Bestätigung"
+    "asks_to_confirm": "Fragt nach Bestätigung",
+    "wind_km_h": "Wind, km/h"
   },
   "media": {
     "timer": "Timer",
@@ -1097,7 +1104,9 @@
     "next_event": "Nächster Termin",
     "nothing_planned": "Nichts geplant",
     "for_the_next_30": "für die nächsten 30 Tage",
-    "no_events_planned": "Keine Termine"
+    "no_events_planned": "Keine Termine",
+    "ecb_rate_of": "EZB-Kurs vom {}",
+    "here_lc": "hier"
   },
   "live_presets": {
     "the_sky_s_colours": "Die Farben des Himmels zu dieser Stunde: Nacht, blaue Stunde, goldene Stunde, Tag. Grau, wenn es regnet.",
@@ -1245,7 +1254,20 @@
     "lights": "Lichter",
     "the_moon_over_the": "Der Mond über den Wellen und sein silberner Pfad auf dem Wasser.",
     "sea_at_night": "Meer bei Nacht",
-    "fast_violet_with_pink": "Schnelles Violett mit Rosa."
+    "fast_violet_with_pink": "Schnelles Violett mit Rosa.",
+    "aurora_lake": "Polarlicht am See",
+    "aurora_lake_desc": "Ein Polarlicht tanzt über den Bergen und spiegelt sich im See.",
+    "liquid_chrome": "Flüssiges Chrom",
+    "liquid_chrome_desc": "Glatte, glänzende Falten wie flüssiges Metall.",
+    "liquid_gold": "Flüssiges Gold",
+    "liquid_gold_desc": "Warme, goldene Seidenfalten in langsamer Bewegung.",
+    "neon_city": "Neonstadt",
+    "neon_city_desc": "Eine Stadt bei Nacht im Regen, Neonlichter spiegeln sich auf der nassen Straße.",
+    "rings_desc": "Ein Planet mit Ringen im Licht eines fernen Sterns.",
+    "layers": "Schichten",
+    "layers_desc": "Weiche Wellenschichten, die langsam gleiten.",
+    "layers_sunset": "Schichten Abendrot",
+    "layers_sunset_desc": "Wellenschichten in den Farben des Sonnenuntergangs."
   },
   "widgets": {
     "rings": "Ringe",

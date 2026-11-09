@@ -110,7 +110,7 @@ pub fn time(sec: f64) -> String {
     if h > 0 { format!("{h}:{m:02}:{ss:02}") } else { format!("{m}:{ss:02}") }
 }
 pub fn rate(r: f64) -> String {
-    format!("{}×", format!("{r}").replace('.', ","))
+    format!("{}×", format!("{r}").replace('.', crate::i18n::dec_sep()))
 }
 fn lang(l: &str) -> String {
     let m = match l.to_lowercase().as_str() {
@@ -929,7 +929,7 @@ impl Player {
         let v = self.eng.as_ref().and_then(|e| e.get_f64("sub-delay")).unwrap_or(0.0) + d;
         let v = (v * 10.0).round() / 10.0;
         self.set("sub-delay", &format!("{v}"));
-        self.say("cc", &format!("Opóźnienie napisów {} s", format!("{v:+.1}").replace('.', ",")), cx);
+        self.say("cc", &format!("Opóźnienie napisów {} s", format!("{v:+.1}").replace('.', crate::i18n::dec_sep())), cx);
     }
     fn toggle_sub_visible(&mut self, cx: &mut Cx) {
         let on = self.get_str("sub-visibility").as_deref() != Some("no");
@@ -2002,7 +2002,7 @@ mod tests {
         assert_eq!(time(59.9), "0:59");
         assert_eq!(time(3725.0), "1:02:05");
         assert_eq!(time(-3.0), "0:00");
-        assert_eq!(rate(1.25), "1,25×");
+        assert_eq!(rate(1.25).replace(',', "."), "1.25×"); // the decimal point follows the UI language
         let n = pretty("/m/Prince_and_The_Revolution_-_Purple_Rain_Album_12_edit_SV_Sound_(mp3.pm).mp3");
         assert_eq!(split_name(&n), Some(("Prince and The Revolution".into(), "Purple Rain Album 12 edit SV Sound".into())));
         assert_eq!(split_name("Daft Punk - Get Lucky (Official Video) [HD]"), Some(("Daft Punk".into(), "Get Lucky".into())));

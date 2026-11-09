@@ -72,7 +72,7 @@ fn dir8(d: f64) -> &'static str {
 }
 fn dec1(x: f64) -> String {
     let v = (x * 10.0).round() / 10.0;
-    if v.fract() == 0.0 { format!("{}", v as i64) } else { format!("{v}") }.replace('.', ",")
+    if v.fract() == 0.0 { format!("{}", v as i64) } else { format!("{v}") }.replace('.', crate::i18n::dec_sep())
 }
 fn hhmm(s: &str) -> String {
     if s.is_empty() { "–".into() } else { s.strip_prefix('0').unwrap_or(s).to_string() }
@@ -415,19 +415,19 @@ impl Wx {
         let label = if let Some(h) = &hh {
             let ts = f(h, "t") as i64;
             if self.sel_day == 0 && hover_hour == 0 {
-                "teraz".to_string()
+                crate::i18n::tr("teraz").into_owned()
             } else {
                 let (a, b) = (tm(ts), tm(now));
                 let same = a.tm_yday == b.tm_yday && a.tm_year == b.tm_year;
-                format!("{}, {}:00", if same { "dziś" } else if self.sel_day == 0 { "jutro" } else { DAYS[a.tm_wday as usize] }, a.tm_hour)
+                format!("{}, {}:00", crate::i18n::tr(if same { "dziś" } else if self.sel_day == 0 { "jutro" } else { DAYS[a.tm_wday as usize] }), a.tm_hour)
             }
         } else if let Some(d) = &sd {
             let ts = date_ts(d["date"].as_str().unwrap_or(""), 12);
-            format!("{}, {}", DAYS[tm(ts).tm_wday as usize], day_mon(ts))
+            format!("{}, {}", crate::i18n::tr(DAYS[tm(ts).tm_wday as usize]), crate::i18n::tr(&day_mon(ts)))
         } else {
-            match hero.as_str() { "feels" => "odczuwalna".into(), "rain" => "szansa opadu".into(), "wind" => "wiatr, km/h".into(), _ => String::new() }
+            crate::i18n::tr(match hero.as_str() { "feels" => "odczuwalna", "rain" => "szansa opadu", "wind" => "wiatr, km/h", _ => "" }).into_owned()
         };
-        // the footer: an hour, a day, or the insight carousel
+        // the footer: an hour, a day, or the insight carousel (translated before the capitals, which miss the lookup)
         let summary: (String, Rgba, String) = if let Some(h) = &hh {
             let mut parts = Vec::new();
             if f(h, "pop") >= 20.0 || f(h, "pr") > 0.0 {

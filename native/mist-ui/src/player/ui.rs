@@ -860,7 +860,7 @@ impl Player {
         rows.push(("Dźwięk", format!("{} · {} Hz · {} kan.", at.to_uppercase(), e.get_i64("audio-params/samplerate").unwrap_or(0), e.get_i64("audio-params/channel-count").unwrap_or(0))));
         let br = num("video-bitrate") + num("audio-bitrate");
         if br > 0.0 {
-            rows.push(("Przepływność", format!("{:.1} Mb/s", br / 1e6).replace('.', ",")));
+            rows.push(("Przepływność", format!("{:.1} Mb/s", br / 1e6).replace('.', crate::i18n::dec_sep())));
         }
         let (cw, ch) = (480.0, 20.0 + 34.0 + rows.len() as f32 * 28.0 + 16.0);
         let (x, y) = (24.0, 76.0);

@@ -365,7 +365,9 @@
     "screen_on": "pantalla enc.",
     "screen_off": "pantalla apag.",
     "wants_attention_click": "pide atención · haz clic",
-    "attachment": "📎 adjunto"
+    "attachment": "📎 adjunto",
+    "quick_actions": "Acciones rápidas",
+    "on_the_phone": "En el teléfono"
   },
   "control_center": {
     "sound": "Sonido",
@@ -443,7 +445,10 @@
     "show_less": "Mostrar menos",
     "notifications_cleared": "Notificaciones borradas",
     "system": "Sistema",
-    "notifications_2": "notificaciones"
+    "notifications_2": "notificaciones",
+    "more_one": "+{} notificación",
+    "more_few": "+{} notificaciones",
+    "more_many": "+{} notificaciones"
   },
   "clipboard": {
     "search_clipboard_history": "Buscar en el historial del portapapeles",
@@ -512,7 +517,8 @@
     "set_wallpaper": "Poner de fondo",
     "browse_tab_category_space": "← →  explorar   ·   Tab  categoría   ·   Espacio  poner   ·   Intro  poner y cerrar   ·   Esc  cerrar",
     "change_folder": "Cambiar carpeta",
-    "choose_wallpaper_folder": "Elige una carpeta de fondos"
+    "choose_wallpaper_folder": "Elige una carpeta de fondos",
+    "animated": "animado"
   },
   "desktop_settings": {
     "customise_desktop": "Personalizar escritorio",
@@ -856,7 +862,8 @@
     "move_to_start": "Mover al principio",
     "favourites_are_full_12": "Favoritos llenos (12): desancla algo primero",
     "right_click_an_app": "Clic derecho en una app de «Todas» para anclarla aquí",
-    "asks_to_confirm": "Pide confirmación"
+    "asks_to_confirm": "Pide confirmación",
+    "wind_km_h": "Viento, km/h"
   },
   "media": {
     "timer": "Temporizador",
@@ -1097,7 +1104,9 @@
     "next_event": "Próximo evento",
     "nothing_planned": "Nada planeado",
     "for_the_next_30": "en los próximos 30 días",
-    "no_events_planned": "Sin eventos"
+    "no_events_planned": "Sin eventos",
+    "ecb_rate_of": "tipo del BCE del {}",
+    "here_lc": "aquí"
   },
   "live_presets": {
     "the_sky_s_colours": "Los colores del cielo a esta hora: noche, hora azul, hora dorada, día. Se vuelve gris cuando llueve.",
@@ -1245,7 +1254,20 @@
     "lights": "Luces",
     "the_moon_over_the": "La luna sobre las olas y su camino plateado en el agua.",
     "sea_at_night": "Mar de noche",
-    "fast_violet_with_pink": "Violeta rápido con rosa."
+    "fast_violet_with_pink": "Violeta rápido con rosa.",
+    "aurora_lake": "Aurora sobre el lago",
+    "aurora_lake_desc": "Una aurora baila sobre las montañas y se refleja en el lago.",
+    "liquid_chrome": "Cromo líquido",
+    "liquid_chrome_desc": "Pliegues suaves y brillantes como metal líquido.",
+    "liquid_gold": "Oro líquido",
+    "liquid_gold_desc": "Pliegues cálidos de seda dorada en lento movimiento.",
+    "neon_city": "Ciudad de neón",
+    "neon_city_desc": "Una ciudad de noche bajo la lluvia, los neones se reflejan en la calle mojada.",
+    "rings_desc": "Un planeta con anillos a la luz de una estrella lejana.",
+    "layers": "Capas",
+    "layers_desc": "Capas suaves de ondas que se desplazan despacio.",
+    "layers_sunset": "Capas al atardecer",
+    "layers_sunset_desc": "Capas de ondas con los colores del atardecer."
   },
   "widgets": {
     "rings": "Anillos",

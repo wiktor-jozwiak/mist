@@ -365,7 +365,9 @@
     "screen_on": "ekran wł.",
     "screen_off": "ekran wył.",
     "wants_attention_click": "prosi o uwagę · kliknij",
-    "attachment": "📎 załącznik"
+    "attachment": "📎 załącznik",
+    "quick_actions": "Szybkie akcje",
+    "on_the_phone": "Na telefonie"
   },
   "control_center": {
     "sound": "Dźwięk",
@@ -443,7 +445,10 @@
     "show_less": "Pokaż mniej",
     "notifications_cleared": "Powiadomienia usunięte",
     "system": "System",
-    "notifications_2": "powiadomień"
+    "notifications_2": "powiadomień",
+    "more_one": "+{} powiadomienie",
+    "more_few": "+{} powiadomienia",
+    "more_many": "+{} powiadomień"
   },
   "clipboard": {
     "search_clipboard_history": "Szukaj w historii schowka",
@@ -512,7 +517,8 @@
     "set_wallpaper": "Ustaw tapetę",
     "browse_tab_category_space": "← →  przeglądaj   ·   Tab  kategoria   ·   Spacja  ustaw   ·   Enter  ustaw i zamknij   ·   Esc  zamknij",
     "change_folder": "Zmień folder",
-    "choose_wallpaper_folder": "Wybierz folder z tapetami"
+    "choose_wallpaper_folder": "Wybierz folder z tapetami",
+    "animated": "animowana"
   },
   "desktop_settings": {
     "customise_desktop": "Dostosuj pulpit",
@@ -856,7 +862,8 @@
     "move_to_start": "Przesuń na początek",
     "favourites_are_full_12": "Ulubione są pełne (18): najpierw coś odepnij",
     "right_click_an_app": "Prawy przycisk na aplikacji w „Wszystkie” przypina ją tutaj",
-    "asks_to_confirm": "Zapyta o potwierdzenie"
+    "asks_to_confirm": "Zapyta o potwierdzenie",
+    "wind_km_h": "Wiatr, km/h"
   },
   "media": {
     "timer": "Minutnik",
@@ -1097,7 +1104,9 @@
     "next_event": "Następne wydarzenie",
     "nothing_planned": "Nic w planach",
     "for_the_next_30": "na najbliższe 30 dni",
-    "no_events_planned": "Brak wydarzeń w planie"
+    "no_events_planned": "Brak wydarzeń w planie",
+    "ecb_rate_of": "kurs EBC z {}",
+    "here_lc": "tutaj"
   },
   "live_presets": {
     "the_sky_s_colours": "Kolory nieba o tej porze: noc, niebieska godzina, złota godzina, dzień. Szarzeje, gdy pada.",
@@ -1245,7 +1254,20 @@
     "lights": "Światła",
     "the_moon_over_the": "Księżyc nad falami i jego srebrna droga na wodzie.",
     "sea_at_night": "Morze nocą",
-    "fast_violet_with_pink": "Szybki fiolet z różem."
+    "fast_violet_with_pink": "Szybki fiolet z różem.",
+    "aurora_lake": "Zorza nad jeziorem",
+    "aurora_lake_desc": "Zorza tańczy nad górami i odbija się w jeziorze.",
+    "liquid_chrome": "Płynny chrom",
+    "liquid_chrome_desc": "Płynne, lśniące fałdy jak ciekły metal.",
+    "liquid_gold": "Płynne złoto",
+    "liquid_gold_desc": "Ciepłe, złote fałdy jedwabiu w powolnym ruchu.",
+    "neon_city": "Neonowe miasto",
+    "neon_city_desc": "Nocne miasto w deszczu, neony odbijają się w mokrej ulicy.",
+    "rings_desc": "Planeta z pierścieniami w świetle odległej gwiazdy.",
+    "layers": "Warstwy",
+    "layers_desc": "Miękkie warstwy fal, które powoli się przesuwają.",
+    "layers_sunset": "Warstwy zachód",
+    "layers_sunset_desc": "Warstwy fal w kolorach zachodu słońca."
   },
   "widgets": {
     "rings": "Pierścienie",

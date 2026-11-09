@@ -71,9 +71,9 @@ pub fn bytes(b: f64) -> String {
     if b < 1024.0 {
         format!("{} B", b.round())
     } else if b < 1048576.0 {
-        format!("{:.1} KB", b / 1024.0).replace('.', ",")
+        format!("{:.1} KB", b / 1024.0).replace('.', crate::i18n::dec_sep())
     } else {
-        format!("{:.1} MB", b / 1048576.0).replace('.', ",")
+        format!("{:.1} MB", b / 1048576.0).replace('.', crate::i18n::dec_sep())
     }
 }
 
@@ -169,7 +169,7 @@ pub fn draw_with(c: &mut Canvas, t: &mut Text, s: &BarState, hover: Option<&Hit>
         }
         if stats_open || mem_hot {
             let tint = if s.mem_total > 0.0 && s.mem / s.mem_total > 0.85 { DANGER } else { T2 };
-            g.push(Btn { hit: Hit::Stats, icon: "ram", text: format!("{:.1} GB", s.mem).replace('.', ","), tint, icon_size: 15.0, fixed_w: None });
+            g.push(Btn { hit: Hit::Stats, icon: "ram", text: format!("{:.1} GB", s.mem).replace('.', crate::i18n::dec_sep()), tint, icon_size: 15.0, fixed_w: None });
         }
         if stats_open || net_hot {
             g.push(Btn { hit: Hit::Stats, icon: "down", text: bytes(s.rx) + "/s", tint: T2, icon_size: 15.0, fixed_w: None });

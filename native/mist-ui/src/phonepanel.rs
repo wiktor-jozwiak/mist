@@ -139,7 +139,7 @@ fn when(ms: i64) -> String {
 }
 fn gb(b: f64) -> String {
     let v = b / 1e9;
-    (if b < 1e10 { format!("{v:.1}") } else { format!("{v:.0}") }).replace('.', ",")
+    (if b < 1e10 { format!("{v:.1}") } else { format!("{v:.0}") }).replace('.', crate::i18n::dec_sep())
 }
 fn dur(s: i64) -> String {
     let (d, h) = (s / 86400, s % 86400 / 3600);
@@ -489,7 +489,7 @@ impl PhonePanel {
                 pills.push(("wifi", format!("{}{link}", s(&adb, "ssid")), if weak { ORANGE } else { T1 }));
             }
             if let Some(tp) = adb["temp"].as_f64() {
-                pills.push(("temp", format!("{}°C", tp.to_string().replace('.', ",")), if tp > 40.0 { DANGER } else { T1 }));
+                pills.push(("temp", format!("{}°C", tp.to_string().replace('.', crate::i18n::dec_sep())), if tp > 40.0 { DANGER } else { T1 }));
             }
             if adb["dnd"].as_bool().unwrap_or(false) {
                 pills.push(("bellZ", "nie przeszkadzać".into(), T1));
@@ -577,7 +577,7 @@ impl PhonePanel {
             let (s0, s1) = (num(&adb["storage"], 0), num(&adb["storage"], 1));
             let (r0, r1) = (num(&adb["ram"], 0), num(&adb["ram"], 1));
             let health = if s(&adb, "health").is_empty() { "—".into() } else { s(&adb, "health") };
-            let volt = adb["volt"].as_f64().map(|v| v.to_string().replace('.', ",")).unwrap_or_default();
+            let volt = adb["volt"].as_f64().map(|v| v.to_string().replace('.', crate::i18n::dec_sep())).unwrap_or_default();
             let stats = [
                 ("drive", "Pamięć", format!("{} / {} GB", gb(s1), gb(s0)), (s1 / s0.max(1.0)) as f32, YELLOW),
                 ("ram", "RAM", format!("{} / {} GB", gb(r0 - r1), gb(r0)), (1.0 - r1 / r0.max(1.0)) as f32, accent()),
@@ -627,7 +627,7 @@ impl PhonePanel {
 
         // quick actions
         if online {
-            text(c, t, 4.0, y, "SZYBKIE AKCJE", &st(11.0, 600.0).spaced(1.2), T3, false, None);
+            text(c, t, 4.0, y, &crate::i18n::tr("Szybkie akcje").to_uppercase(), &st(11.0, 600.0).spaced(1.2), T3, false, None);
             y += 16.0 + 10.0;
             let (aok, scr, dnd, have, wifi) = (self.adb_ok(), self.adb["screen"].as_bool().unwrap_or(false), self.adb["dnd"].as_bool().unwrap_or(false), self.adb["have"].as_bool().unwrap_or(false), self.adb["wifi"].as_bool().unwrap_or(false));
             let tiles: [(&str, &str, bool, bool); 12] = [
@@ -680,7 +680,7 @@ impl PhonePanel {
             }
             let (bx, tw) = (86.0, LEFT_W - 86.0 - 12.0 - 106.0);
             let id = p.identity.split(" - ").next().unwrap_or("").to_string();
-            text(c, t, bx, my + 16.0, &format!("NA TELEFONIE · {}", id.to_uppercase()), &st(10.0, 600.0).spaced(1.2), T3, false, Some(tw));
+            text(c, t, bx, my + 16.0, &format!("{} · {}", crate::i18n::tr("Na telefonie").to_uppercase(), id.to_uppercase()), &st(10.0, 600.0).spaced(1.2), T3, false, Some(tw));
             text(c, t, bx, my + 31.0, &p.title, &st(13.5, 620.0), T1, false, Some(tw));
             text(c, t, bx, my + 49.0, &p.artist, &st(11.5, 400.0), T2, false, Some(tw));
             if p.length > 0.0 {

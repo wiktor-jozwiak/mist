@@ -143,6 +143,11 @@ pub fn lang() -> &'static str {
     current().0
 }
 
+// the decimal point of the UI language: a comma in Polish, German, Spanish and French, a dot in English
+pub fn dec_sep() -> &'static str {
+    if lang() == "en" { "." } else { "," }
+}
+
 fn current() -> (&'static str, &'static Table) {
     if let Some(c) = *CUR.read().unwrap() {
         return c;

@@ -365,7 +365,9 @@
     "screen_on": "écran allumé",
     "screen_off": "écran éteint",
     "wants_attention_click": "demande votre attention · cliquez",
-    "attachment": "📎 pièce jointe"
+    "attachment": "📎 pièce jointe",
+    "quick_actions": "Actions rapides",
+    "on_the_phone": "Sur le téléphone"
   },
   "control_center": {
     "sound": "Son",
@@ -443,7 +445,10 @@
     "show_less": "Afficher moins",
     "notifications_cleared": "Notifications effacées",
     "system": "Système",
-    "notifications_2": "notifications"
+    "notifications_2": "notifications",
+    "more_one": "+{} notification",
+    "more_few": "+{} notifications",
+    "more_many": "+{} notifications"
   },
   "clipboard": {
     "search_clipboard_history": "Rechercher dans l'historique du presse-papiers",
@@ -512,7 +517,8 @@
     "set_wallpaper": "Définir le fond d'écran",
     "browse_tab_category_space": "← →  parcourir   ·   Tab  catégorie   ·   Espace  définir   ·   Entrée  définir et fermer   ·   Échap  fermer",
     "change_folder": "Changer de dossier",
-    "choose_wallpaper_folder": "Choisir un dossier de fonds d'écran"
+    "choose_wallpaper_folder": "Choisir un dossier de fonds d'écran",
+    "animated": "animé"
   },
   "desktop_settings": {
     "customise_desktop": "Personnaliser le bureau",
@@ -856,7 +862,8 @@
     "move_to_start": "Placer en premier",
     "favourites_are_full_12": "Favoris pleins (12) : désépinglez d'abord",
     "right_click_an_app": "Clic droit sur une app dans « Toutes » pour l'épingler ici",
-    "asks_to_confirm": "Demande confirmation"
+    "asks_to_confirm": "Demande confirmation",
+    "wind_km_h": "Vent, km/h"
   },
   "media": {
     "timer": "Minuteur",
@@ -1097,7 +1104,9 @@
     "next_event": "Prochain événement",
     "nothing_planned": "Rien de prévu",
     "for_the_next_30": "pour les 30 prochains jours",
-    "no_events_planned": "Aucun événement"
+    "no_events_planned": "Aucun événement",
+    "ecb_rate_of": "taux BCE du {}",
+    "here_lc": "ici"
   },
   "live_presets": {
     "the_sky_s_colours": "Les couleurs du ciel à cette heure : nuit, heure bleue, heure dorée, jour. Grisonne quand il pleut.",
@@ -1245,7 +1254,20 @@
     "lights": "Lumières",
     "the_moon_over_the": "La lune au-dessus des vagues et son chemin d'argent sur l'eau.",
     "sea_at_night": "La mer la nuit",
-    "fast_violet_with_pink": "Violet rapide avec du rose."
+    "fast_violet_with_pink": "Violet rapide avec du rose.",
+    "aurora_lake": "Aurore sur le lac",
+    "aurora_lake_desc": "Une aurore danse au-dessus des montagnes et se reflète dans le lac.",
+    "liquid_chrome": "Chrome liquide",
+    "liquid_chrome_desc": "Des plis lisses et brillants comme du métal en fusion.",
+    "liquid_gold": "Or liquide",
+    "liquid_gold_desc": "Des plis de soie dorée et chaude qui bougent lentement.",
+    "neon_city": "Ville néon",
+    "neon_city_desc": "Une ville la nuit sous la pluie, les néons se reflètent dans la rue mouillée.",
+    "rings_desc": "Une planète à anneaux dans la lumière d'une étoile lointaine.",
+    "layers": "Couches",
+    "layers_desc": "De douces couches de vagues qui glissent lentement.",
+    "layers_sunset": "Couches couchant",
+    "layers_sunset_desc": "Des couches de vagues aux couleurs du coucher de soleil."
   },
   "widgets": {
     "rings": "Anneaux",

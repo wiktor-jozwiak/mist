@@ -90,7 +90,7 @@ pub fn calc(src: &str) -> Option<String> {
         return None;
     }
     let r = (v * 1e8).round() / 1e8;
-    Some(if r.fract() == 0.0 { format!("{}", r as i64) } else { format!("{r}") }.replace('.', ","))
+    Some(if r.fract() == 0.0 { format!("{}", r as i64) } else { format!("{r}") }.replace('.', crate::i18n::dec_sep()))
 }
 
 fn bin() -> String {

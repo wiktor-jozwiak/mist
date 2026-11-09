@@ -512,7 +512,7 @@ impl Pane for Wallpapers {
             let bottom = sy - 28.0;
             let total = clh.max(22.0) + 8.0 + nlh + 8.0 + dlh * lines.len() as f32;
             let mut y = bottom - total;
-            let cat = format!("{}{}", cat_name(&it.cat), if it.key.starts_with("live:") { " · animowana" } else { "" }).to_uppercase();
+            let cat = format!("{}{}", crate::i18n::tr(cat_name(&it.cat)), if it.key.starts_with("live:") { format!(" · {}", crate::i18n::tr("animowana")) } else { String::new() }).to_uppercase();
             let cw = t.width(&cat, &cs);
             let row_h = clh.max(22.0);
             crate::desktop::text(c, t, tx, y + (row_h - clh) / 2.0, &cat, &cs, white(0.62 * a), false, None);

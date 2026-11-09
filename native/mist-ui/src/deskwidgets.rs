@@ -355,13 +355,13 @@ impl Desk {
         for k in &show {
             match k.as_str() {
                 "cpu" => rows.push(("cpu", "procesor", cpu as f32 / 100.0, cpu.to_string(), "%", String::new())),
-                "ram" => rows.push(("ram", "pamięć", ram, format!("{:.1}", mu).replace('.', ","), "GB", format!("z {:.0} GB", mt))),
+                "ram" => rows.push(("ram", "pamięć", ram, format!("{:.1}", mu).replace('.', crate::i18n::dec_sep()), "GB", format!("z {:.0} GB", mt))),
                 "disk" => {
                     if let Some((u, tot)) = disk {
                         rows.push(("drive", "dysk", (u / tot) as f32, gb(u), "GB", format!("z {} GB", gb(tot))));
                     }
                 }
-                "net" => rows.push(("down", "transfer", ((rx / 1048576.0) / 50.0).min(1.0) as f32, format!("{:.1}", rx / 1048576.0).replace('.', ","), "MB/s", "pobieranie".into())),
+                "net" => rows.push(("down", "transfer", ((rx / 1048576.0) / 50.0).min(1.0) as f32, format!("{:.1}", rx / 1048576.0).replace('.', crate::i18n::dec_sep()), "MB/s", "pobieranie".into())),
                 _ => {}
             }
         }
@@ -485,7 +485,7 @@ impl Desk {
             let (hh, mi) = ((lt.rem_euclid(86400)) / 3600, (lt.rem_euclid(3600)) / 60);
             let day_diff = (lt + 0).div_euclid(86400) - (now + here).div_euclid(86400);
             let dh = (off - here) as f32 / 3600.0;
-            let diff = if dh == 0.0 { "ten sam czas".to_string() } else { format!("{}{} h", if dh > 0.0 { "+" } else { "−" }, (if dh.fract() == 0.0 { format!("{}", dh.abs() as i64) } else { format!("{:.1}", dh.abs()).replace('.', ",") })) };
+            let diff = if dh == 0.0 { "ten sam czas".to_string() } else { format!("{}{} h", if dh > 0.0 { "+" } else { "−" }, (if dh.fract() == 0.0 { format!("{}", dh.abs() as i64) } else { format!("{:.1}", dh.abs()).replace('.', crate::i18n::dec_sep()) })) };
             let diff = match day_diff { 1 => format!("{diff} · jutro"), -1 => format!("{diff} · wczoraj"), _ => diff };
             rect(c, cx, ry - 6.0, cw, 1.0, 0.0, HAIR);
             let night = !(6..20).contains(&hh);

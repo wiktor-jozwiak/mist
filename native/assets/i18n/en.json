@@ -365,7 +365,9 @@
     "screen_on": "screen on",
     "screen_off": "screen off",
     "wants_attention_click": "wants attention · click",
-    "attachment": "📎 attachment"
+    "attachment": "📎 attachment",
+    "quick_actions": "Quick actions",
+    "on_the_phone": "On the phone"
   },
   "control_center": {
     "sound": "Sound",
@@ -443,7 +445,10 @@
     "show_less": "Show less",
     "notifications_cleared": "Notifications cleared",
     "system": "System",
-    "notifications_2": "notifications"
+    "notifications_2": "notifications",
+    "more_one": "+{} notification",
+    "more_few": "+{} notifications",
+    "more_many": "+{} notifications"
   },
   "clipboard": {
     "search_clipboard_history": "Search clipboard history",
@@ -512,7 +517,8 @@
     "set_wallpaper": "Set wallpaper",
     "browse_tab_category_space": "← →  browse   ·   Tab  category   ·   Space  set   ·   Enter  set and close   ·   Esc  close",
     "change_folder": "Change folder",
-    "choose_wallpaper_folder": "Choose a wallpaper folder"
+    "choose_wallpaper_folder": "Choose a wallpaper folder",
+    "animated": "animated"
   },
   "desktop_settings": {
     "customise_desktop": "Customise desktop",
@@ -856,7 +862,8 @@
     "move_to_start": "Move to start",
     "favourites_are_full_12": "Favourites are full (12): unpin something first",
     "right_click_an_app": "Right-click an app in “All” to pin it here",
-    "asks_to_confirm": "Asks to confirm"
+    "asks_to_confirm": "Asks to confirm",
+    "wind_km_h": "Wind, km/h"
   },
   "media": {
     "timer": "Timer",
@@ -1097,7 +1104,9 @@
     "next_event": "Next event",
     "nothing_planned": "Nothing planned",
     "for_the_next_30": "for the next 30 days",
-    "no_events_planned": "No events planned"
+    "no_events_planned": "No events planned",
+    "ecb_rate_of": "ECB rate of {}",
+    "here_lc": "here"
   },
   "live_presets": {
     "the_sky_s_colours": "The sky's colours at this hour: night, blue hour, golden hour, day. Turns grey when it rains.",
@@ -1245,7 +1254,20 @@
     "lights": "Lights",
     "the_moon_over_the": "The moon over the waves and its silver path on the water.",
     "sea_at_night": "Sea at night",
-    "fast_violet_with_pink": "Fast violet with pink."
+    "fast_violet_with_pink": "Fast violet with pink.",
+    "aurora_lake": "Aurora over the lake",
+    "aurora_lake_desc": "An aurora dances over the mountains and shines back from the lake.",
+    "liquid_chrome": "Liquid chrome",
+    "liquid_chrome_desc": "Smooth, shining folds like molten metal.",
+    "liquid_gold": "Liquid gold",
+    "liquid_gold_desc": "Warm golden folds of silk moving slowly.",
+    "neon_city": "Neon city",
+    "neon_city_desc": "A city at night in the rain, neon signs reflected in the wet street.",
+    "rings_desc": "A ringed planet in the light of a distant star.",
+    "layers": "Layers",
+    "layers_desc": "Soft layers of waves drifting slowly.",
+    "layers_sunset": "Sunset layers",
+    "layers_sunset_desc": "Layers of waves in sunset colours."
   },
   "widgets": {
     "rings": "Rings",

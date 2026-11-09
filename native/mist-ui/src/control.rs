@@ -859,7 +859,7 @@ impl Control {
                 Self::tile(c, 0.0, y, w, 64.0, false);
                 Self::orb(c, t, 12.0, y + 15.0, if n.kind == "wifi" { "wifi" } else { "ethernet" }, n.up, false);
                 let title = if n.kind == "wifi" { if n.up { n.conn.clone() } else { "Wi-Fi".into() } } else { "Ethernet".into() };
-                let sub = if n.dev.is_empty() { "…".to_string() } else if !n.up { "Rozłączono".into() } else if n.speed > 0 { format!("Połączono · {}", if n.speed >= 1000 { format!("{} Gb/s", (n.speed as f64 / 1000.0).to_string().replace('.', ",")) } else { format!("{} Mb/s", n.speed) }) } else { "Połączono".into() };
+                let sub = if n.dev.is_empty() { "…".to_string() } else if !n.up { "Rozłączono".into() } else if n.speed > 0 { format!("Połączono · {}", if n.speed >= 1000 { format!("{} Gb/s", (n.speed as f64 / 1000.0).to_string().replace('.', crate::i18n::dec_sep())) } else { format!("{} Mb/s", n.speed) }) } else { "Połączono".into() };
                 Self::two_lines(c, t, 58.0, y + 32.0, w - 70.0, &title, Style::ui(13.5, 650.0), T1, &sub, Style::ui(11.5, 400.0), if n.up { GREEN } else { T3 });
                 y += 64.0 + 8.0 + 4.0 + 8.0;
                 y += Self::label(c, t, 0.0, y, "Ruch") + 8.0;

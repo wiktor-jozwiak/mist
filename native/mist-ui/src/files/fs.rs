@@ -721,7 +721,7 @@ pub fn size(b: u64) -> String {
         i += 1;
     }
     let s = if v < 10.0 { format!("{v:.1}") } else { format!("{}", v.round()) };
-    format!("{} {}", s.replace('.', ","), u[i])
+    format!("{} {}", s.replace('.', crate::i18n::dec_sep()), u[i])
 }
 pub fn date(t: i64) -> String {
     if t == 0 {

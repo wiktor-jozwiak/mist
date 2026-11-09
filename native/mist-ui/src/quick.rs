@@ -95,11 +95,12 @@ pub fn fmt(v: f64) -> String {
     let s = if v.abs() >= 1e15 || (v != 0.0 && v.abs() < 1e-6) {
         format!("{v:e}")
     } else {
-        let r = (v * 1e6).round() / 1e6;
-        let s = format!("{r:.6}");
-        s.trim_end_matches('0').trim_end_matches('.').to_string()
+        // two decimals from 1 up, four significant digits below (3.11 mi, 0.0254 m), trailing zeros dropped
+        let d = if v.abs() >= 1.0 || v == 0.0 { 2 } else { (3 - v.abs().log10().floor() as i32).clamp(2, 9) as usize };
+        let s = format!("{v:.d$}");
+        if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
     };
-    s.replace('.', ",")
+    s.replace('.', crate::i18n::dec_sep())
 }
 
 pub fn units(raw: &str) -> Option<(String, String)> {
@@ -184,7 +185,7 @@ pub fn currency(raw: &str, rates: Option<&serde_json::Value>) -> Option<Option<(
     let rate = |c: &str| if c == "EUR" { Some(1.0) } else { r["rates"][c].as_f64() };
     let (ra, rb) = (rate(&a)?, rate(&b)?);
     let v = n / ra * rb;
-    let shown = format!("{:.2}", v).replace('.', ",");
+    let shown = format!("{:.2}", v).replace('.', crate::i18n::dec_sep());
     Some(Some((format!("{shown} {b}"), format!("{} {a} · kurs EBC z {}", fmt(n), r["date"].as_str().unwrap_or("")))))
 }
 
@@ -314,8 +315,8 @@ pub fn time_zone(raw: &str) -> Option<(String, String)> {
     };
     let place = z.rsplit('/').next().unwrap_or(&z).replace('_', " ");
     let sub = match at {
-        Some((h, m)) => format!("{h:02}:{m:02} tutaj = {place} (UTC{off})"),
-        None => format!("teraz · {place} (UTC{off})"),
+        Some((h, m)) => format!("{h:02}:{m:02} {} = {place} (UTC{off})", crate::i18n::tr("tutaj")),
+        None => format!("{} · {place} (UTC{off})", crate::i18n::tr("teraz")),
     };
     Some((hm, sub))
 }
@@ -325,15 +326,19 @@ mod tests {
     use super::*;
     #[test]
     fn conversions() {
-        assert_eq!(units("5 km to mi").unwrap().0, "3,106856 mi");
-        assert_eq!(units("100 c f").unwrap().0, "212 °F");
-        assert_eq!(units("1,5 kg na lb").unwrap().0, "3,306934 lb");
-        assert_eq!(units("1 gib mb").unwrap().0, "1073,741824 mb");
+        // the decimal point follows the UI language: compared with a dot
+        let u = |q: &str| units(q).unwrap().0.replace(',', ".");
+        assert_eq!(u("5 km to mi"), "3.11 mi");
+        assert_eq!(u("100 c f"), "212 °F");
+        assert_eq!(u("1,5 kg na lb"), "3.31 lb");
+        assert_eq!(u("1 gib mb"), "1073.74 mb");
+        assert_eq!(u("1 inch to m"), "0.0254 m");
+        assert_eq!(fmt(0.5).replace(',', "."), "0.5");
         assert!(units("5 km kg").is_none());
         assert!(units("hello").is_none());
         let r = serde_json::json!({"date": "2026-10-23", "rates": {"PLN": 4.25, "USD": 1.08}});
-        assert_eq!(currency("108 usd pln", Some(&r)).unwrap().unwrap().0, "425,00 PLN");
-        assert_eq!(currency("10 euro na zł", Some(&r)).unwrap().unwrap().0, "42,50 PLN");
+        assert_eq!(currency("108 usd pln", Some(&r)).unwrap().unwrap().0.replace(',', "."), "425.00 PLN");
+        assert_eq!(currency("10 euro na zł", Some(&r)).unwrap().unwrap().0.replace(',', "."), "42.50 PLN");
         assert_eq!(currency("10 usd pln", None), Some(None));
         assert_eq!(tz_query("15:00 tokio"), Some((Some((15, 0)), "tokio".into())));
         assert_eq!(tz_query("czas w nowy jork"), Some((None, "nowy jork".into())));

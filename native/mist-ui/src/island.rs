@@ -1265,7 +1265,7 @@ pub fn fmt_dur(s: f64) -> String {
     if s < 60 { format!("{s} s") } else if s < 3600 { format!("{} min {} s", s / 60, s % 60) } else { format!("{} h {} min", s / 3600, s % 3600 / 60) }
 }
 fn gb(b: f64) -> String {
-    if b >= 1e9 { format!("{:.1} GB", b / 1e9).replace('.', ",") } else { format!("{} MB", (b / 1e6).round()) }
+    if b >= 1e9 { format!("{:.1} GB", b / 1e9).replace('.', crate::i18n::dec_sep()) } else { format!("{} MB", (b / 1e6).round()) }
 }
 fn soon_text(start: i64) -> String {
     let left = ((start - data::now()) as f64 / 60.0).ceil() as i64;
