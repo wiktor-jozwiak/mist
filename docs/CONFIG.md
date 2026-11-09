@@ -181,6 +181,7 @@ mist-comp also speaks ext-workspace-v1 (waybar `ext/workspaces` and other bars) 
 | `MIST_PRIMARY` | main monitor, overrides `settings.json` |
 | `MIST_THEME` | theme id, overrides `settings.json` |
 | `MIST_TRY` | `1`: running in a window (`mist-try`): no idle lock, polkit agent, logind lock or KDE Connect |
+| `MIST_HIDE_CAST` | `1`: no screen-sharing indicator in the island (recording a demo of the shell itself) |
 | `MIST_DIR` | where the Mist files are (default: `~/.local/share/mist/shell`, `/usr/share/mist`) |
 | `MIST_WALLPAPERS` | the photo folder of the gallery |
 | `MIST_FONT_DIR` | a folder with `SF-Pro.ttf` / `tabler-icons.ttf` (the greeter, which cannot read your home) |

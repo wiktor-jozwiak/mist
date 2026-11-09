@@ -595,8 +595,9 @@ impl Island {
                 }
             }
             "screencast" => {
-                // screenshots fire this too: sharing only after 1.5 s
-                self.cast_on = d.starts_with('1');
+                // screenshots fire this too: sharing only after 1.5 s. MIST_HIDE_CAST=1: no indicator (demo
+                // recordings of the shell itself, docs/CONFIG.md)
+                self.cast_on = d.starts_with('1') && std::env::var("MIST_HIDE_CAST").as_deref() != Ok("1");
                 if self.cast_on {
                     self.share_at = Some(Instant::now() + Duration::from_millis(1500));
                 } else if self.sharing {
@@ -1185,7 +1186,7 @@ impl Island {
             "ocr" => info("info", 2, 3500, "textScan", accent(), "Tekst w schowku", "Plan treningowy na październik: dwa akcenty w tygodniu"),
             "brightness" => Ev { view: "osd", key: "vol".into(), prio: 3, dur: 2500, icon: "bright".into(), value: 60, ..Default::default() },
             "mic-volume" => Ev { view: "osd", key: "vol".into(), prio: 3, dur: 2500, mic: true, value: -1, ..Default::default() },
-            "notif" => Ev { view: "notif", prio: 2, dur: 5000, app: "Zen Browser".into(), icon: "zen-browser".into(), title: crate::i18n::tr("Nowa wiadomość od Kasi").into_owned(), body: crate::i18n::tr("Hej! Widzimy się dziś o 18 na bieganiu? Weź bidon, bo ma być ciepło.").into_owned(), value: -1, ..Default::default() },
+            "notif" => Ev { view: "notif", prio: 2, dur: 5000, app: "Brave".into(), icon: "brave-desktop".into(), title: crate::i18n::tr("Nowa wiadomość od Kasi").into_owned(), body: crate::i18n::tr("Hej! Widzimy się dziś o 18 na bieganiu? Weź bidon, bo ma być ciepło.").into_owned(), value: -1, ..Default::default() },
             "notif-long" => Ev { view: "notif", prio: 2, dur: 8000, app: "Thunderbird".into(), icon: "thunderbird".into(), title: "Plan treningowy na październik".into(), body: "Cześć! W załączniku plan na najbliższe cztery tygodnie: dwa akcenty w tygodniu (interwały i tempo), jedno długie wybieganie w niedzielę, reszta spokojnie w drugiej strefie. Daj znać, jak się czujesz po sobotnim starcie.".into(), value: -1, ..Default::default() },
             "progress" => Ev { view: "notif", key: "v:demo".into(), prio: 2, dur: 6000, app: "Pobieranie".into(), icon: "folder-download".into(), title: "archlinux-2026.10.01-x86_64.iso".into(), body: "1,1 GB z 1,4 GB · 12 s".into(), value: 78, ..Default::default() },
             "urgent" => Ev { view: "notif", prio: 3, dur: 9000, app: "System".into(), icon: "dialog-warning".into(), title: "Mało miejsca na dysku".into(), body: "Na partycji / zostało 2,1 GB.".into(), urgent: true, value: -1, pulse: true, ..Default::default() },
