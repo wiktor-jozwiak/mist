@@ -27,9 +27,9 @@
   </tr>
 </table>
 
-<a href="https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07"><img src="../img/demo-poster.webp" alt="Mist demo video (40 s)" width="720"></a>
+<a href="https://youtu.be/mwisDtz0Yd0"><img src="../img/demo-poster.webp" alt="Mist demo video (40 s)" width="720"></a>
 
-<sub>ヘッドレスの <code>mist-comp</code> セッションでデモデータを使って収録した 40 秒のデモ。音楽：JonasBlakewood の <i>Trap Beat</i>（Pixabay）</sub>
+<sub>ヘッドレスの <code>mist-comp</code> セッションでデモデータを使って収録した 40 秒のデモ。音楽：JonasBlakewood の <i>Trap Beat</i>（Pixabay） · <a href="https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07">MP4</a></sub>
 
 </div>
 

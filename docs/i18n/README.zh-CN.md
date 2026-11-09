@@ -27,9 +27,9 @@
   </tr>
 </table>
 
-<a href="https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07"><img src="../img/demo-poster.webp" alt="Mist demo video (40 s)" width="720"></a>
+<a href="https://youtu.be/mwisDtz0Yd0"><img src="../img/demo-poster.webp" alt="Mist demo video (40 s)" width="720"></a>
 
-<sub>40 秒演示，在无头 <code>mist-comp</code> 会话中使用演示数据录制。音乐：JonasBlakewood 的 <i>Trap Beat</i>（Pixabay）</sub>
+<sub>40 秒演示，在无头 <code>mist-comp</code> 会话中使用演示数据录制。音乐：JonasBlakewood 的 <i>Trap Beat</i>（Pixabay） · <a href="https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07">MP4</a></sub>
 
 </div>
 
