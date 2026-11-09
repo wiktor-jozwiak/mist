@@ -104,6 +104,8 @@ pub fn init(_event_loop: &mut EventLoop<'static, CalloopData>, state: &mut MistC
         outs.push(Out { buffer, output, damage, size: (w, h) });
     }
     state.headless = Some(Headless { renderer, outs, last: None, tick_armed: false, due: Some(Default::default()) });
+    // comp.conf `output NAME X Y scale S` lines: before any client maps (udev applies them on hotplug)
+    state.apply_output_conf();
     state.fix_ws();
     println!("WAYLAND_DISPLAY={}", state.socket_name.to_string_lossy());
     Ok(())
