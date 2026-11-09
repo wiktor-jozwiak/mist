@@ -955,6 +955,12 @@ impl Logic for Settings {
     fn app_id(&self) -> &str {
         "mist-settings"
     }
+    // a theme picked elsewhere (Control centre, another window): the toggles shown follow settings.json
+    fn theme_changed(&mut self, _cx: &mut Cx) {
+        let st = backend::read_json("settings.json");
+        self.d.contrast = st["contrast"] == "high";
+        self.d.accent_wall = st["accent"] == "wallpaper";
+    }
     fn opened(&mut self, id: WinId, _token: u64, cx: &mut Cx) {
         self.win = Some(id);
         if self.req.is_none() {

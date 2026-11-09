@@ -9,8 +9,27 @@ const FG: Rgba = Rgba(244.0 / 255.0, 247.0 / 255.0, 251.0 / 255.0, 0.97);
 const FG2: Rgba = Rgba(222.0 / 255.0, 230.0 / 255.0, 242.0 / 255.0, 0.86);
 const MUTED: Rgba = Rgba(206.0 / 255.0, 216.0 / 255.0, 232.0 / 255.0, 0.74);
 const FAINT: Rgba = Rgba(196.0 / 255.0, 208.0 / 255.0, 226.0 / 255.0, 0.6);
-const ACC: Rgba = Rgba(138.0 / 255.0, 214.0 / 255.0, 208.0 / 255.0, 1.0);
-const ACC2: Rgba = Rgba(168.0 / 255.0, 228.0 / 255.0, 223.0 / 255.0, 1.0);
+// the player's teal under Mist's own theme and accent; another theme or a picked accent: that accent
+fn acc() -> Rgba {
+    let a = crate::theme::accent();
+    if a == crate::theme::ACCENT { Rgba(138.0 / 255.0, 214.0 / 255.0, 208.0 / 255.0, 1.0) } else { a }
+}
+fn acc2() -> Rgba {
+    acc().mix(Rgba(1.0, 1.0, 1.0, 1.0), 0.25)
+}
+// the window body: Mist's deep navy, or the theme's window bottom colour
+// Filled buttons: macOS blue under the Mist default, the chosen or theme accent otherwise.
+fn btn() -> Rgba {
+    let a = crate::theme::accent();
+    if a == crate::theme::ACCENT { Rgba::hex("#0A84FF") } else { a }
+}
+fn body() -> Rgba {
+    if crate::theme::theme_id() == "mist" {
+        return Rgba::rgb8(14, 19, 29, 1.0);
+    }
+    let (_, b) = crate::theme::window_tokens();
+    Rgba::rgb8(b.0, b.1, b.2, 1.0)
+}
 const RIM: Rgba = Rgba(214.0 / 255.0, 224.0 / 255.0, 242.0 / 255.0, 0.16);
 const HAIR: Rgba = Rgba(200.0 / 255.0, 214.0 / 255.0, 236.0 / 255.0, 0.1);
 const WHITE: Rgba = Rgba(1.0, 1.0, 1.0, 1.0);
@@ -112,7 +131,7 @@ impl Player {
         } else if hov || on {
             c.rrect(x, cy - d / 2.0, d, d, d / 2.0, WHITE.alpha(if on { 0.12 } else { 0.10 }));
         }
-        let col = if big { INK } else if on { ACC2 } else if hov { FG } else { FG2 };
+        let col = if big { INK } else if on { acc2() } else if hov { FG } else { FG2 };
         gl(c, &mut self.text, x + d / 2.0 + if big && g == "play" { 1.5 } else { 0.0 }, cy, g, if big { 24.0 } else { 20.0 }, col);
         d
     }
@@ -221,7 +240,7 @@ impl Player {
             crate::glass::shadow(c, x0, y + 4.0, bw, 42.0, 21.0, 16.0, 0.0, Rgba(0.0, 0.0, 0.0, 0.25));
             c.rrect(x0, y, bw, 42.0, 21.0, Rgba(14.0 / 255.0, 19.0 / 255.0, 29.0 / 255.0, 0.82));
             stroke_rrect(c, x0 + 0.5, y + 0.5, bw - 1.0, 41.0, 20.5, RIM);
-            gl(c, &mut self.text, x0 + 12.0 + 8.0, y + 21.0, "clock", 16.0, ACC2);
+            gl(c, &mut self.text, x0 + 12.0 + 8.0, y + 21.0, "clock", 16.0, acc2());
             c.text(&mut self.text, x0 + 38.0, y + 21.0, &msg, &st, FG);
             let bx = x0 + 38.0 + tw + 10.0;
             let hov = self.hit(bx, y + 7.0, bw2, 28.0, Hit::FromStart);
@@ -229,7 +248,7 @@ impl Player {
             c.text(&mut self.text, bx + 9.0, y + 21.0, "Od początku", &sb, FG);
         }
         if self.drop_hover {
-            c.rrect(14.0, 14.0, w - 28.0, h - 28.0, 22.0, Rgba(10.0 / 255.0, 132.0 / 255.0, 1.0, 0.12));
+            c.rrect(14.0, 14.0, w - 28.0, h - 28.0, 22.0, btn().alpha(0.12));
             stroke_rrect(c, 15.0, 15.0, w - 30.0, h - 30.0, 21.0, Rgba::hex("#0A84FF"));
             gl(c, &mut self.text, w / 2.0, h / 2.0 - 16.0, "plus", 40.0, Rgba::hex("#409CFF"));
             let st = Style::ui(15.0, 600.0);
@@ -252,7 +271,7 @@ impl Player {
     }
     fn paint_backdrop_fresh(&mut self, c: &mut Canvas) {
         let (w, h) = (self.w, self.h);
-        c.rrect(0.0, 0.0, w, h, 0.0, Rgba::rgb8(14, 19, 29, 1.0));
+        c.rrect(0.0, 0.0, w, h, 0.0, body());
         // soft colour blobs (static: no per-frame work); the album art's colours when there is one
         let a = if self.cur.is_empty() { 0.18 } else if self.cover_cols.is_some() { 0.5 } else { 0.4 };
         let m = w.max(h);
@@ -344,7 +363,7 @@ impl Player {
         let st = Style::ui(14.0, 600.0);
         let bw = self.text.width("Otwórz plik…", &st) + 17.0 + 8.0 + 36.0;
         let hov = self.hit(w / 2.0 - bw / 2.0, y, bw, 40.0, Hit::Open);
-        c.rrect(w / 2.0 - bw / 2.0, y, bw, 40.0, 20.0, if hov { Rgba::hex("#409CFF") } else { Rgba::hex("#0A84FF") });
+        c.rrect(w / 2.0 - bw / 2.0, y, bw, 40.0, 20.0, if hov { btn().mix(WHITE, 0.2) } else { btn() });
         gl(c, &mut self.text, w / 2.0 - bw / 2.0 + 18.0 + 8.5, y + 20.0, "open", 17.0, WHITE);
         c.text(&mut self.text, w / 2.0 - bw / 2.0 + 18.0 + 25.0, y + 20.0, "Otwórz plik…", &st, WHITE);
         y += 40.0 + 8.0;
@@ -359,7 +378,7 @@ impl Player {
             let hov = self.hit(w / 2.0 - rw / 2.0, y + 4.0, rw, 34.0, Hit::ResumeQueue);
             c.rrect(w / 2.0 - rw / 2.0, y + 4.0, rw, 34.0, 17.0, WHITE.alpha(if hov { 0.16 } else { 0.09 }));
             stroke_rrect(c, w / 2.0 - rw / 2.0 + 0.5, y + 4.5, rw - 1.0, 33.0, 16.5, HAIR);
-            gl(c, &mut self.text, w / 2.0 - rw / 2.0 + 16.0 + 8.5, y + 21.0, "resumeq", 16.0, ACC2);
+            gl(c, &mut self.text, w / 2.0 - rw / 2.0 + 16.0 + 8.5, y + 21.0, "resumeq", 16.0, acc2());
             c.text(&mut self.text, w / 2.0 - rw / 2.0 + 16.0 + 25.0, y + 21.0, &label, &sm, FG);
             y += 46.0;
         }
@@ -387,7 +406,7 @@ impl Player {
             c.text(&mut self.text, x0 + 6.0 + 46.0, ry + if has_bar { 19.0 } else { 24.0 }, &s, &name, FG);
             if has_bar {
                 c.rrect(x0 + 52.0, ry + 31.0, tw * 0.6, 3.0, 1.5, WHITE.alpha(0.12));
-                c.rrect(x0 + 52.0, ry + 31.0, tw * 0.6 * (r.pos / r.dur).min(1.0) as f32, 3.0, 1.5, ACC);
+                c.rrect(x0 + 52.0, ry + 31.0, tw * 0.6 * (r.pos / r.dur).min(1.0) as f32, 3.0, 1.5, acc());
             }
             let ts = if r.pos > 0.0 { format!("{} / {}", time(r.pos / 1000.0), time(r.dur / 1000.0)) } else { time(r.dur / 1000.0) };
             let tww = self.text.width(&ts, &tm);
@@ -583,7 +602,7 @@ impl Player {
         if hov || on {
             c.rrect(rx, cy - 19.0, lw, 38.0, 19.0, WHITE.alpha(if on { 0.12 } else { 0.10 }));
         }
-        c.text(&mut self.text, rx + 11.0, cy, &label, &st, if on { ACC2 } else if hov { FG } else { MUTED });
+        c.text(&mut self.text, rx + 11.0, cy, &label, &st, if on { acc2() } else if hov { FG } else { MUTED });
     }
 
     fn paint_pop(&mut self, c: &mut Canvas) {
@@ -640,7 +659,7 @@ impl Player {
                         c.rrect(px + 8.0, ry, pw - 16.0, 34.0, 10.0, WHITE.alpha(0.08));
                     }
                     if *on {
-                        gl(c, &mut self.text, px + 8.0 + 18.0, ry + 17.0, "check", 15.0, ACC2);
+                        gl(c, &mut self.text, px + 8.0 + 18.0, ry + 17.0, "check", 15.0, acc2());
                     }
                     // "time\tname": the time right-aligned, tabular
                     let (t, at) = t.split_once('\t').map(|(a, b)| (b, Some(a))).unwrap_or((t.as_str(), None));
@@ -704,10 +723,10 @@ impl Player {
                 let f = (self.pos / self.dur).clamp(0.0, 1.0) as f32;
                 let (lx, lw) = (x + 8.0 + 40.0, sw - 16.0 - 40.0 - 14.0);
                 c.rrect(lx, ry + 41.0, lw, 2.0, 1.0, WHITE.alpha(0.10));
-                c.rrect(lx, ry + 41.0, (lw * f).max(2.0), 2.0, 1.0, ACC);
+                c.rrect(lx, ry + 41.0, (lw * f).max(2.0), 2.0, 1.0, acc());
             }
             if now {
-                gl(c, &mut self.text, x + 8.0 + 21.0, ry + 23.0, if self.paused { "pause" } else { "vol2" }, 16.0, ACC2);
+                gl(c, &mut self.text, x + 8.0 + 21.0, ry + 23.0, if self.paused { "pause" } else { "vol2" }, 16.0, acc2());
             } else {
                 centered(c, &mut self.text, x + 8.0 + 21.0, ry + 23.0, &(i + 1).to_string(), &Style::ui(12.0, 450.0).tnum(), FAINT);
             }
@@ -733,7 +752,7 @@ impl Player {
         let cy = h / 2.0 - 60.0;
         c.rrect(w / 2.0 - 44.0, cy - 44.0, 88.0, 88.0, 26.0, WHITE.alpha(0.08));
         stroke_rrect(c, w / 2.0 - 43.5, cy - 43.5, 87.0, 87.0, 25.5, RIM);
-        gl(c, &mut self.text, w / 2.0, cy, "pip", 40.0, ACC2);
+        gl(c, &mut self.text, w / 2.0, cy, "pip", 40.0, acc2());
         let st = Style::ui(20.0, 650.0);
         let nt = self.nice_title();
         let t = elide(&mut self.text, &nt, &st, w - 80.0);

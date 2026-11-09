@@ -210,6 +210,30 @@ pub trait Logic {
     fn video_surface(&mut self, _id: WinId, _s: Option<VideoSurface>, _cx: &mut Cx) {}
     // the frame callback asked with VideoSurface::request_frame came (the compositor shows the plane)
     fn video_frame(&mut self, _id: WinId, _cx: &mut Cx) {}
+    // the theme, accent or contrast changed (settings.json or a theme file): every window repaints anyway,
+    // this is for what the app keeps of its own (cached backdrops, toggles shown)
+    fn theme_changed(&mut self, _cx: &mut Cx) {}
+}
+
+// One inotify fd on ~/.config/mist (settings.json) and ~/.config/mist/themes (theme files), so the open app
+// windows follow a theme picked anywhere (Settings, Control centre, `msg ui settings`). No polling; the
+// watch costs one fd. Returns the fd and the themes folder's watch (-1 without one).
+fn theme_watch() -> Option<(std::os::fd::OwnedFd, i32)> {
+    use std::os::fd::FromRawFd;
+    let dir = format!("{}/.config/mist", std::env::var("HOME").ok()?);
+    let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
+    if fd < 0 {
+        return None;
+    }
+    let fd = unsafe { std::os::fd::OwnedFd::from_raw_fd(fd) };
+    let add = |p: &str| {
+        let c = std::ffi::CString::new(p).ok()?;
+        let wd = unsafe { libc::inotify_add_watch(std::os::fd::AsRawFd::as_raw_fd(&fd), c.as_ptr(), libc::IN_CLOSE_WRITE | libc::IN_MOVED_TO | libc::IN_DELETE) };
+        (wd >= 0).then_some(wd)
+    };
+    add(&dir)?;
+    let themes = add(&format!("{dir}/themes")).unwrap_or(-1);
+    Some((fd, themes))
 }
 
 // the raw pointer for wl_egl_window_create (a libwayland-client object), and a frame callback
@@ -347,6 +371,32 @@ pub fn run(name: &str, logic: Box<dyn Logic>) -> i32 {
         })
         .unwrap();
     }
+    if let Some((fd, themes_wd)) = theme_watch() {
+        lh.insert_source(Generic::new(fd, Interest::READ, Mode::Level), move |_, fd, rt: &mut Rt| {
+            let mut buf = [0u8; 4096];
+            let mut hit = false;
+            loop {
+                let n = unsafe { libc::read(std::os::fd::AsRawFd::as_raw_fd(&std::os::fd::AsFd::as_fd(fd)), buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+                if n <= 0 {
+                    break;
+                }
+                // struct inotify_event: wd i32, mask u32, cookie u32, len u32, name[len]
+                let (n, mut i) = (n as usize, 0usize);
+                while i + 16 <= n {
+                    let wd = i32::from_ne_bytes(buf[i..i + 4].try_into().unwrap());
+                    let len = u32::from_ne_bytes(buf[i + 12..i + 16].try_into().unwrap()) as usize;
+                    let name = buf[i + 16..(i + 16 + len).min(n)].split(|b| *b == 0).next().unwrap_or(&[]);
+                    hit |= if wd == themes_wd { name.ends_with(b".json") } else { name == b"settings.json" };
+                    i += 16 + len;
+                }
+            }
+            if hit {
+                rt.theme_reload();
+            }
+            Ok(PostAction::Continue)
+        })
+        .unwrap();
+    }
     let shm = Shm::bind(&globals, &qh).expect("wl_shm");
     let pool = SlotPool::new(1200 * 800 * 4, &shm).expect("pool");
     let compositor = CompositorState::bind(&globals, &qh).expect("compositor");
@@ -412,6 +462,19 @@ pub fn run(name: &str, logic: Box<dyn Logic>) -> i32 {
 }
 
 impl Rt {
+    // settings.json or a theme file was written: read the theme again; only a real change repaints
+    fn theme_reload(&mut self) {
+        let now = || (crate::theme::theme_id(), crate::theme::palette(), crate::theme::accent(), crate::theme::high_contrast());
+        let before = now();
+        crate::theme::reload_accent();
+        crate::theme::reload_contrast();
+        if now() != before {
+            for w in &mut self.wins {
+                w.dirty = true;
+            }
+            self.with_logic(|l, cx| l.theme_changed(cx));
+        }
+    }
     fn with_logic(&mut self, f: impl FnOnce(&mut dyn Logic, &mut Cx)) {
         self.cx.mods = self.mods;
         f(self.logic.as_mut(), &mut self.cx);

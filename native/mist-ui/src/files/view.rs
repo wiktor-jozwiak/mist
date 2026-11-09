@@ -20,7 +20,11 @@ const FG: Rgba = Rgba(244.0 / 255.0, 247.0 / 255.0, 251.0 / 255.0, 0.97);
 const FG2: Rgba = Rgba(222.0 / 255.0, 230.0 / 255.0, 242.0 / 255.0, 0.86);
 const MUTED: Rgba = Rgba(206.0 / 255.0, 216.0 / 255.0, 232.0 / 255.0, 0.74);
 const FAINT: Rgba = Rgba(196.0 / 255.0, 208.0 / 255.0, 226.0 / 255.0, 0.6);
-const ACC: Rgba = Rgba(138.0 / 255.0, 214.0 / 255.0, 208.0 / 255.0, 1.0);
+// The accent: Mist teal under the default, the chosen or theme accent otherwise (live, see appwin theme_reload).
+fn acc() -> Rgba {
+    let a = crate::theme::accent();
+    if a == crate::theme::ACCENT { Rgba(138.0 / 255.0, 214.0 / 255.0, 208.0 / 255.0, 1.0) } else { a }
+}
 const BAD: Rgba = Rgba(238.0 / 255.0, 149.0 / 255.0, 163.0 / 255.0, 1.0);
 const HAIR: Rgba = Rgba(200.0 / 255.0, 214.0 / 255.0, 236.0 / 255.0, 0.1);
 const WHITE: Rgba = Rgba(1.0, 1.0, 1.0, 1.0);
@@ -317,7 +321,7 @@ impl Files {
         let mut y = top - w.side_scroll;
         let vis = |y: f32, h: f32| y >= top - 1.0 && y + h <= bot + 1.0;
         let row_bg = |p: &mut P, y: f32, h: f32, on: bool, hov: bool, drop: bool| {
-            let col = if drop { ACC.alpha(0.28) } else if on { WHITE.alpha(0.10) } else if hov { WHITE.alpha(0.05) } else { return };
+            let col = if drop { acc().alpha(0.28) } else if on { WHITE.alpha(0.10) } else if hov { WHITE.alpha(0.05) } else { return };
             p.c.rrect(sx + 8.0, y, sw - 16.0, h, 9.0, col);
         };
         if vis(y, 26.0) {
@@ -330,7 +334,7 @@ impl Files {
                 let hov = p.hit(sx + 8.0, y, sw - 16.0, 30.0, k, "");
                 let on = cur == path;
                 row_bg(p, y, 30.0, on, hov, w.drop.as_deref() == Some(path.as_str()));
-                gl(p.c, t, sx + 8.0 + 10.0 + 8.5, y + 15.0, g, 17.0, ACC);
+                gl(p.c, t, sx + 8.0 + 10.0 + 8.5, y + 15.0, g, 17.0, acc());
                 let st = if on { &labc } else { &lab };
                 let s = crate::bar::elide(t, &name, st, sw - 38.0 - 14.0);
                 p.c.text(t, sx + 38.0, y + 15.0, &s, st, FG);
@@ -349,7 +353,7 @@ impl Files {
                 let hov = p.hit(sx + 8.0, y, sw - 16.0, 46.0, k, "");
                 let on = cur == d.path;
                 row_bg(p, y, 46.0, on, hov, w.drop.as_deref() == Some(d.path.as_str()));
-                gl(p.c, t, sx + 8.0 + 10.0 + 8.5, y + 16.0, if d.removable { "drive" } else { "laptop" }, 17.0, ACC);
+                gl(p.c, t, sx + 8.0 + 10.0 + 8.5, y + 16.0, if d.removable { "drive" } else { "laptop" }, 17.0, acc());
                 let info = format!("{} wolne z {}", fs::size(d.free), fs::size(d.size));
                 let iw = t.width(&info, &small);
                 let st = if on { &labc } else { &lab };
@@ -360,7 +364,7 @@ impl Files {
                 let bw = sw - 38.0 - 18.0;
                 let used = if d.size > 0 { 1.0 - d.free as f32 / d.size as f32 } else { 0.0 };
                 p.c.rrect(sx + 38.0, y + 22.0, bw, 4.0, 2.0, WHITE.alpha(0.10));
-                p.c.rrect(sx + 38.0, y + 22.0, (bw * used).max(4.0), 4.0, 2.0, if used > 0.9 { BAD } else { ACC.alpha(0.85) });
+                p.c.rrect(sx + 38.0, y + 22.0, (bw * used).max(4.0), 4.0, 2.0, if used > 0.9 { BAD } else { acc().alpha(0.85) });
             }
             y += 48.0;
         }
@@ -369,7 +373,7 @@ impl Files {
             let hov = p.hit(sx + 8.0, y, sw - 16.0, 30.0, Hit::Trash, "");
             let on = cur.starts_with("trash:");
             row_bg(p, y, 30.0, on, hov, w.drop.as_deref() == Some("trash:///"));
-            gl(p.c, t, sx + 8.0 + 10.0 + 8.5, y + 15.0, "trash", 17.0, ACC);
+            gl(p.c, t, sx + 8.0 + 10.0 + 8.5, y + 15.0, "trash", 17.0, acc());
             p.c.text(t, sx + 38.0, y + 15.0, "Kosz", if on { &labc } else { &lab }, FG);
         }
     }
@@ -441,7 +445,7 @@ impl Files {
         let editing = w.addr.is_some();
         p.c.rrect(ax, y + 1.0, aw, 36.0, 12.0, WHITE.alpha(if editing { 0.085 } else { 0.055 }));
         if editing {
-            stroke_rrect(p.c, ax + 0.5, y + 1.5, aw - 1.0, 35.0, 11.5, ACC.alpha(0.45));
+            stroke_rrect(p.c, ax + 0.5, y + 1.5, aw - 1.0, 35.0, 11.5, acc().alpha(0.45));
         }
         p.hit(ax, y + 1.0, aw, 36.0, Hit::Addr, "");
         if let Some(le) = w.addr.as_mut() {
@@ -458,7 +462,7 @@ impl Files {
         let sx = x1 - sw;
         p.c.rrect(sx, y + 1.0, sw, 36.0, 12.0, WHITE.alpha(if search_focus { 0.085 } else { 0.055 }));
         if search_focus {
-            stroke_rrect(p.c, sx + 0.5, y + 1.5, sw - 1.0, 35.0, 11.5, ACC.alpha(0.45));
+            stroke_rrect(p.c, sx + 0.5, y + 1.5, sw - 1.0, 35.0, 11.5, acc().alpha(0.45));
         }
         p.hit(sx, y + 1.0, sw, 36.0, Hit::Search, "");
         gl(p.c, &mut self.text, sx + 19.0, y + 19.0, "search", 16.0, FAINT);
@@ -564,16 +568,16 @@ impl Files {
         let mut x = mx;
         if w.pick.is_some() {
             if !t.is_trash() {
-                x += self.label_btn(p, x, y, "folderPlus", "Nowy folder", Act::NewFolder, false, true, ACC) + 2.0;
+                x += self.label_btn(p, x, y, "folderPlus", "Nowy folder", Act::NewFolder, false, true, acc()) + 2.0;
                 x += Self::sep(p, x, y);
             }
         } else if t.is_trash() {
-            x += self.label_btn(p, x, y, "undo", "Przywróć", Act::Restore, false, nsel > 0, ACC) + 2.0;
+            x += self.label_btn(p, x, y, "undo", "Przywróć", Act::Restore, false, nsel > 0, acc()) + 2.0;
             x += self.label_btn(p, x, y, "trash", "Usuń trwale", Act::Delete, false, nsel > 0, BAD) + 2.0;
             x += self.label_btn(p, x, y, "trash", "Opróżnij kosz", Act::EmptyTrash, false, !t.all.is_empty(), BAD) + 2.0;
             x += Self::sep(p, x, y);
         } else {
-            x += self.label_btn(p, x, y, "plus", "Nowy", Act::MenuNew, true, true, ACC) + 2.0;
+            x += self.label_btn(p, x, y, "plus", "Nowy", Act::MenuNew, true, true, acc()) + 2.0;
             x += Self::sep(p, x, y);
             let paste = !self.clip.is_empty();
             for (g, a, tip, en) in [
@@ -593,7 +597,7 @@ impl Files {
         x += self.label_btn(p, x, y, if w.cur().icons { "grid" } else { "list" }, "Widok", Act::MenuView, true, true, FG2) + 2.0;
         // the kind shown: "Rodzaj", or the kind itself in the accent while it filters
         let k = t.kind;
-        x += self.label_btn(p, x, y, k.glyph(), if k == Kind::All { "Rodzaj" } else { k.label() }, Act::MenuKind, true, true, if k == Kind::All { FG2 } else { ACC }) + 2.0;
+        x += self.label_btn(p, x, y, k.glyph(), if k == Kind::All { "Rodzaj" } else { k.label() }, Act::MenuKind, true, true, if k == Kind::All { FG2 } else { acc() }) + 2.0;
         if w.pick.is_none() {
             self.tool_btn(p, x, y, "dots", Hit::Btn(Act::MenuMore), "Więcej", true);
             // right: terminal, only where it does not cover the buttons (a half-screen snap is ~790 px wide)
@@ -611,7 +615,7 @@ impl Files {
         p.hit(px, py, pw, ph, Hit::View, "");
         let drop_here = w.drop.as_deref() == Some(w.cur().path.as_str());
         if drop_here {
-            stroke_rrect(p.c, px + 1.0, py + 1.0, pw - 2.0, ph - 2.0, 15.0, ACC.alpha(0.6));
+            stroke_rrect(p.c, px + 1.0, py + 1.0, pw - 2.0, ph - 2.0, 15.0, acc().alpha(0.6));
         }
         let ch = self.content_h(w);
         // the list draws into a scratch canvas the panel's size (rows clip at the panel edges)
@@ -676,7 +680,7 @@ impl Files {
                 };
                 if fy >= py + top - 2.0 && fy + fh <= py + ph + 2.0 {
                     p.c.rrect(fx, fy, fw, fh, 7.0, Rgba::rgb8(16, 22, 32, 0.98));
-                    stroke_rrect(p.c, fx + 0.5, fy + 0.5, fw - 1.0, fh - 1.0, 6.5, ACC.alpha(0.6));
+                    stroke_rrect(p.c, fx + 0.5, fy + 0.5, fw - 1.0, fh - 1.0, 6.5, acc().alpha(0.6));
                     FIELDS.with(|f| f.borrow_mut().insert(w.id, fx + 6.0));
                     if let Some((_, le)) = w.rename.as_mut() {
                         le.paint(p.c, &mut self.text, fx + 6.0, fy, fw - 12.0, fh, &st, FG, "", true, center);
@@ -702,8 +706,8 @@ impl Files {
             let (x0, y0) = (bx.max(px), by.max(py + top));
             let (x1, y1) = ((bx + bw).min(px + pw), (by + bh).min(py + ph));
             if x1 > x0 && y1 > y0 {
-                p.c.rrect(x0, y0, x1 - x0, y1 - y0, 3.0, ACC.alpha(0.12));
-                stroke_rrect(p.c, x0 + 0.5, y0 + 0.5, x1 - x0 - 1.0, y1 - y0 - 1.0, 3.0, ACC.alpha(0.55));
+                p.c.rrect(x0, y0, x1 - x0, y1 - y0, 3.0, acc().alpha(0.12));
+                stroke_rrect(p.c, x0 + 0.5, y0 + 0.5, x1 - x0 - 1.0, y1 - y0 - 1.0, 3.0, acc().alpha(0.55));
             }
         }
     }
@@ -727,7 +731,7 @@ impl Files {
             p.c.text(&mut self.text, tx, py + HEAD_H / 2.0 + 1.0, label, &st, MUTED);
             if t.sort_key == k {
                 let gx = if k == SortKey::Size { tx - 10.0 } else { tx + lw + 10.0 };
-                gl(p.c, &mut self.text, gx, py + HEAD_H / 2.0 + 1.0, if t.sort_desc { "chevD" } else { "chevU" }, 12.0, ACC);
+                gl(p.c, &mut self.text, gx, py + HEAD_H / 2.0 + 1.0, if t.sort_desc { "chevD" } else { "chevU" }, 12.0, acc());
             }
         }
     }
@@ -752,11 +756,11 @@ impl Files {
             let sel = t.sel.contains(&e.path);
             let drop = e.dir && w.drop.as_deref() == Some(e.path.as_str());
             if drop {
-                c.rrect(x0 - 4.0, y + 1.0, pw - 20.0 + 8.0, ROW_H - 2.0, 9.0, ACC.alpha(0.30));
+                c.rrect(x0 - 4.0, y + 1.0, pw - 20.0 + 8.0, ROW_H - 2.0, 9.0, acc().alpha(0.30));
             } else if sel {
-                c.rrect(x0 - 4.0, y + 1.0, pw - 20.0 + 8.0, ROW_H - 2.0, 9.0, ACC.alpha(0.20));
+                c.rrect(x0 - 4.0, y + 1.0, pw - 20.0 + 8.0, ROW_H - 2.0, 9.0, acc().alpha(0.20));
                 if t.cur == i as i32 {
-                    stroke_rrect(c, x0 - 3.5, y + 1.5, pw - 20.0 + 7.0, ROW_H - 3.0, 8.5, ACC.alpha(0.35));
+                    stroke_rrect(c, x0 - 3.5, y + 1.5, pw - 20.0 + 7.0, ROW_H - 3.0, 8.5, acc().alpha(0.35));
                 }
             } else if hov == Some(i) {
                 c.rrect(x0 - 4.0, y + 1.0, pw - 20.0 + 8.0, ROW_H - 2.0, 9.0, WHITE.alpha(0.045));
@@ -811,11 +815,11 @@ impl Files {
             let drop = e.dir && w.drop.as_deref() == Some(e.path.as_str());
             let (bx, by, bw, bh) = (x + 6.0, y + 4.0, CELL_W - 12.0, CELL_H - 8.0);
             if drop {
-                c.rrect(bx, by, bw, bh, 14.0, ACC.alpha(0.30));
+                c.rrect(bx, by, bw, bh, 14.0, acc().alpha(0.30));
             } else if sel {
-                c.rrect(bx, by, bw, bh, 14.0, ACC.alpha(0.20));
+                c.rrect(bx, by, bw, bh, 14.0, acc().alpha(0.20));
                 if t.cur == i as i32 {
-                    stroke_rrect(c, bx + 0.5, by + 0.5, bw - 1.0, bh - 1.0, 13.5, ACC.alpha(0.35));
+                    stroke_rrect(c, bx + 0.5, by + 0.5, bw - 1.0, bh - 1.0, 13.5, acc().alpha(0.35));
                 }
             } else if hov == Some(i) {
                 c.rrect(bx, by, bw, bh, 14.0, WHITE.alpha(0.045));
@@ -974,7 +978,7 @@ impl Files {
             let s = crate::bar::elide(&mut self.text, &j.title, &st, 260.0);
             x += p.c.text(&mut self.text, x, y + 16.0, &s, &st, FG2) + 10.0;
             p.c.rrect(x, y + 13.0, 160.0, 6.0, 3.0, WHITE.alpha(0.10));
-            p.c.rrect(x, y + 13.0, (160.0 * frac).max(6.0), 6.0, 3.0, ACC);
+            p.c.rrect(x, y + 13.0, (160.0 * frac).max(6.0), 6.0, 3.0, acc());
             x += 168.0;
             if p.hit(x, y + 5.0, 22.0, 22.0, Hit::OpsCancel, "Anuluj") {
                 p.c.rrect(x, y + 5.0, 22.0, 22.0, 11.0, WHITE.alpha(0.10));
@@ -986,11 +990,11 @@ impl Files {
         for (g, a, on, tip) in [("grid", Act::View(true), w.cur().icons, "Ikony (Ctrl+Shift+2)"), ("list", Act::View(false), !w.cur().icons, "Szczegóły (Ctrl+Shift+6)"), ("preview", Act::TogglePreview, self.preview, "Okienko podglądu (Alt+P)")] {
             let hov = p.hit(rx, y + 2.0, 28.0, 28.0, Hit::Btn(a), tip);
             if on {
-                p.c.rrect(rx, y + 2.0, 28.0, 28.0, 8.0, ACC.alpha(0.18));
+                p.c.rrect(rx, y + 2.0, 28.0, 28.0, 8.0, acc().alpha(0.18));
             } else if hov {
                 p.c.rrect(rx, y + 2.0, 28.0, 28.0, 8.0, WHITE.alpha(0.07));
             }
-            gl(p.c, &mut self.text, rx + 14.0, y + 16.0, g, 15.0, if on { ACC } else { FG2 });
+            gl(p.c, &mut self.text, rx + 14.0, y + 16.0, g, 15.0, if on { acc() } else { FG2 });
             rx -= 30.0;
         }
     }
@@ -1008,7 +1012,7 @@ impl Files {
             let focus = w.focus == Focus::Name;
             p.c.rrect(x, y, fw, 36.0, 11.0, WHITE.alpha(if focus { 0.085 } else { 0.055 }));
             if focus {
-                stroke_rrect(p.c, x + 0.5, y + 0.5, fw - 1.0, 35.0, 10.5, ACC.alpha(0.45));
+                stroke_rrect(p.c, x + 0.5, y + 0.5, fw - 1.0, 35.0, 10.5, acc().alpha(0.45));
                 FIELDS.with(|f| f.borrow_mut().insert(w.id, x + 12.0));
             }
             p.hit(x, y, fw, 36.0, Hit::PickName, "");
@@ -1034,7 +1038,7 @@ impl Files {
         p.c.rrect(cx, y + 1.0, cw, 34.0, 11.0, WHITE.alpha(if hov { 0.12 } else { 0.08 }));
         p.c.text(&mut self.text, cx + 18.0, y + 18.0, "Anuluj", &st, FG);
         let hov = p.hit(ax, y + 1.0, aw, 34.0, Hit::PickOk, "");
-        p.c.rrect(ax, y + 1.0, aw, 34.0, 11.0, ACC.alpha(if hov { 1.0 } else { 0.9 }));
+        p.c.rrect(ax, y + 1.0, aw, 34.0, 11.0, acc().alpha(if hov { 1.0 } else { 0.9 }));
         p.c.text(&mut self.text, ax + 18.0, y + 18.0, &accept, &stb, DARK);
     }
 
@@ -1064,7 +1068,7 @@ impl Files {
             let hi = m.hi == i as i32 && e.enabled;
             let a = if e.enabled { 1.0 } else { 0.4 };
             if hi {
-                p.c.rrect(m.x + 6.0, y, m.w - 12.0, 30.0, 9.0, if e.danger { BAD.alpha(0.85) } else { ACC.alpha(0.9) });
+                p.c.rrect(m.x + 6.0, y, m.w - 12.0, 30.0, 9.0, if e.danger { BAD.alpha(0.85) } else { acc().alpha(0.9) });
             }
             let fg = if hi { DARK } else if e.danger { BAD } else { FG };
             let g = if !e.glyph.is_empty() { e.glyph } else if e.checked { "check" } else { "" };
@@ -1076,7 +1080,7 @@ impl Files {
             if !right.is_empty() {
                 let rs = if right == "✓" { Style::ui(13.0, 600.0) } else { Style::ui(12.0, 450.0) };
                 let kw = self.text.width(right, &rs);
-                let col = if hi { DARK.alpha(0.7) } else if right == "✓" { ACC } else { FAINT };
+                let col = if hi { DARK.alpha(0.7) } else if right == "✓" { acc() } else { FAINT };
                 p.c.text(&mut self.text, m.x + m.w - 6.0 - 12.0 - kw, y + 15.0, right, &rs, col.alpha(a));
             }
             let _ = &ks;
@@ -1097,7 +1101,7 @@ impl Files {
         stroke_rrect(p.c, x + 0.5, y + 0.5, cw - 1.0, ch - 1.0, 19.5, Rgba::rgb8(214, 224, 242, 0.12));
         p.hit(x, y, cw, ch, Hit::Sheet, "");
         let danger = matches!(a.act, Act::DeleteNow | Act::EmptyTrashNow);
-        gl(p.c, &mut self.text, x + cw / 2.0, y + 40.0, if danger { "trash" } else { "info" }, 30.0, if danger { BAD } else { ACC });
+        gl(p.c, &mut self.text, x + cw / 2.0, y + 40.0, if danger { "trash" } else { "info" }, 30.0, if danger { BAD } else { acc() });
         let ts = Style::ui(16.0, 650.0);
         let tw = self.text.width(&a.title, &ts);
         p.c.text(&mut self.text, x + (cw - tw) / 2.0, y + 80.0, &a.title, &ts, FG);
@@ -1115,7 +1119,7 @@ impl Files {
         p.c.text(&mut self.text, x + 24.0 + (bw - aw) / 2.0, by + 17.0, "Anuluj", &st, FG);
         let ox = x + 24.0 + bw + 10.0;
         let hov = p.hit(ox, by, bw, 34.0, Hit::AskOk, "");
-        let col = if danger { BAD } else { ACC };
+        let col = if danger { BAD } else { acc() };
         p.c.rrect(ox, by, bw, 34.0, 11.0, col.alpha(if hov { 1.0 } else { 0.88 }));
         let sb = Style::ui(13.0, 600.0);
         let ow = self.text.width(&a.ok, &sb);

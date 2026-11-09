@@ -1433,6 +1433,10 @@ impl Logic for Player {
     fn app_id(&self) -> &str {
         "mist-player"
     }
+    // the backdrop is cached per size: drawn again in the new theme's colours
+    fn theme_changed(&mut self, _cx: &mut Cx) {
+        self.backdrop = None;
+    }
     fn opened(&mut self, id: WinId, token: u64, cx: &mut Cx) {
         if token != 0 && token == self.pip_token {
             trace("pip window");

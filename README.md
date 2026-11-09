@@ -80,7 +80,7 @@ time around three rules:
 | **Apps** | Mist Files (also the file chooser of every app), Mist Player (libmpv), system settings |
 | **Snapping** | Windows 11 style: drag to an edge or corner, Snap Layouts on the green button or `Super + Z`, Snap Assist |
 | **Wallpapers** | photos, live GLSL scenes, or a sky that follows the current weather |
-| **Themes** | Mist, Catppuccin, Nord, Gruvbox, Tokyo Night, Rosé Pine, Dracula, or your own JSON file: glass, windows and accent |
+| **Themes** | Mist, Catppuccin, Nord, Gruvbox, Tokyo Night, Rosé Pine, Dracula, or your own JSON file: glass, windows and accent, switched live in the shell and in Files, Player and Settings |
 
 **Weather** comes from [Open-Meteo](https://open-meteo.com) without an account: hourly curve, four days,
 rain in the next hour, sun and moon. **Garmin readiness** and **running** show your own Garmin Connect data,
