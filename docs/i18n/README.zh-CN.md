@@ -27,7 +27,7 @@
   </tr>
 </table>
 
-https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07
+<a href="https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07"><img src="../img/demo-poster.webp" alt="Mist demo video (40 s)" width="720"></a>
 
 <sub>40 秒演示，在无头 <code>mist-comp</code> 会话中使用演示数据录制。音乐：JonasBlakewood 的 <i>Trap Beat</i>（Pixabay）</sub>
 
@@ -94,21 +94,35 @@ Mist 是一个桌面的顶栏、Dock、灵动岛、桌面小组件、搜索、�
 
 ## 性能
 
-<p align="center"><img src="../img/memory.svg" alt="空闲内存：仅 mist-ui 36 至 50 MB，Mist 加 mist-wall 87 至 106 MB，Noctalia v5 122 MB，空 Quickshell 124 MB，基于 Quickshell 的 Mist 428 MB" width="100%"></p>
+<p align="center"><img src="../img/memory.svg" alt="各 shell 单独运行时的空闲内存 (PSS): swaybar 7 MB, Waybar 32 MB, 不含 mist-wall 的 Mist 38 MB, nwg-panel 56 MB, 带动态壁纸的 Mist 132 MB, Ironbar 137 MB, 空 Quickshell 142 MB, Noctalia 177 MB" width="100%"></p>
 
-整个外壳空闲时的 PSS，Ryzen 7 5700X + RTX 4060，Hyprland 0.56，两台 1080p 显示器，
-[bench/measure.sh](../../bench/measure.sh)：
+每个 shell 单独运行在全新的无头 sway 中，由 GPU 渲染 (RTX 4060，两个 1080p 输出)，使用其软件包自带的配置，
+运行 3 次取中位数 ([bench/shells.sh](../../bench/shells.sh))。*空闲*：一分钟内什么都不发生。*活动*：每 2 秒切换工作区，
+每 6 秒打开一个窗口，每 10 秒一条通知。CPU 为单核百分比。
 
-| 外壳 | 技术 | 内存（PSS） | 空闲 CPU | GL 上下文 |
+| Shell | 绘制内容 | 内存 (PSS) | GPU 内存 | CPU 空闲 | CPU 活动 |
+|---|---|---|---|---|---|
+| swaybar (sway 1.12) | 状态栏 | 7 MB | – | 0 % | 0.03 % |
+| Waybar 0.15 | 状态栏 | 32 MB | – | 0.03 % | 0.38 % |
+| **不含 `mist-wall` 的 Mist** | 状态栏、Dock、灵动岛、桌面小组件、通知 | **38 MB** | – | 0.19 % | 0.72 % |
+| nwg-panel 0.12 | 状态栏 | 56 MB | – | 0.10 % | 0.22 % |
+| **Mist** | 以上全部 + GLSL 动态壁纸 | 132 MB | 42 MiB | 0.83 % | 1.35 % |
+| Ironbar 0.19 | 状态栏 | 137 MB | 9 MiB | 0.37 % | 0.43 % |
+| Quickshell 0.3，一个空 `PanelWindow` | 空状态栏 | 142 MB | 6 MiB | 0 % | 0 % |
+| Noctalia 5.4 | 状态栏、照片壁纸 (以及首次运行对话框) | 177 MB | 60 MiB | 0.12 % | 4.50 % |
+
+合成器：在同一 GPU 上无头运行，1920×1080 60 Hz，运行 5 次 ([bench/compositors.sh](../../bench/compositors.sh))。
+屏幕上没有内容时全部为 0 % CPU：
+
+| 合成器 | 内存 (PSS) | CPU，每帧用 CPU 绘制的客户端 | CPU，全屏 OpenGL 客户端 | 每个 OpenGL 帧的 CPU |
 |---|---|---|---|---|
-| **Mist** | Rust、CPU、`wl_shm` | **87 至 106 MB** | 0.6 %（播放音乐） | 仅 `mist-wall` |
-| Mist，仅 `mist-ui` | | 36 至 50 MB | 0.6 % | 无 |
-| Noctalia v5 | C++、cairo + EGL | 122 MB | 0.07 % | 有 |
-| 空 Quickshell（一个 `PanelWindow`） | Qt Quick | 124 MB | ~0 % | 有 |
-| 基于 Quickshell 的 Mist（旧 QML 版） | Qt Quick | 428 MB | 9.5 % | 有 |
+| **mist-comp** | 100 MB | **1.7 %** | 1.3 % | 0.22 ms |
+| weston 15 | 101 MB | 2.7 % | **0.6 %** | **0.11 ms** |
+| labwc 0.20 | 109 MB | 6.1 % | 6.0 % | 1.0 ms |
+| sway 1.12 | 103 MB | 33.5 % | 6.6 % | 1.1 ms |
 
-在 `mist-comp` 上，合成器加整个外壳空闲时只有 **0.04 % CPU、每秒 6 次唤醒**（无头模式，软件渲染）。测量方法、
-合成器的数据以及一次真实的繁忙会话：[docs/BENCHMARKS.md](../BENCHMARKS.md)。
+Hyprland 和 niri 没有可由脚本启动的无头模式，因此未列入。方法、每次运行、各进程数据以及之前在真实会话中的测量：
+[docs/BENCHMARKS.md](../BENCHMARKS.md)。
 
 ## mist-comp
 

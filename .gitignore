@@ -47,3 +47,4 @@ integrations/zen/
 
 # Python bytecode
 __pycache__/
+bench/results/shots-*/

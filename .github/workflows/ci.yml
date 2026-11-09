@@ -96,4 +96,4 @@ jobs:
           cargo deny --manifest-path native/Cargo.toml --config deny.toml check advisories
           cargo deny --manifest-path scripts/mistd/Cargo.toml --config deny.toml check advisories
       - name: Shell scripts
-        run: for f in native/install.sh native/dist/mist-ui native/mist-comp/session/mist-try scripts/*.sh scripts/mistd/install.sh bench/measure.sh bench/others.sh; do sh -n "$f"; done
+        run: for f in native/install.sh native/dist/mist-ui native/mist-comp/session/mist-try scripts/*.sh scripts/mistd/install.sh bench/measure.sh bench/others.sh bench/shells.sh bench/shells-run.sh bench/activity.sh bench/compositors.sh bench/compositors-run.sh bench/fetch.sh; do sh -n "$f"; done

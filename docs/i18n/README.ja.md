@@ -27,7 +27,7 @@
   </tr>
 </table>
 
-https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07
+<a href="https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07"><img src="../img/demo-poster.webp" alt="Mist demo video (40 s)" width="720"></a>
 
 <sub>ヘッドレスの <code>mist-comp</code> セッションでデモデータを使って収録した 40 秒のデモ。音楽：JonasBlakewood の <i>Trap Beat</i>（Pixabay）</sub>
 
@@ -97,22 +97,35 @@ UI は**英語、ポーランド語、ドイツ語、スペイン語、フラン
 
 ## ベンチマーク
 
-<p align="center"><img src="../img/memory.svg" alt="アイドル時のメモリ：mist-ui のみ 36〜50 MB、mist-wall 込みの Mist 87〜106 MB、Noctalia v5 122 MB、空の Quickshell 124 MB、Quickshell 版 Mist 428 MB" width="100%"></p>
+<p align="center"><img src="../img/memory.svg" alt="各シェル単体のアイドル時メモリ (PSS): swaybar 7 MB, Waybar 32 MB, mist-wall なしの Mist 38 MB, nwg-panel 56 MB, ライブ壁紙付き Mist 132 MB, Ironbar 137 MB, 空の Quickshell 142 MB, Noctalia 177 MB" width="100%"></p>
 
-シェル全体のアイドル時 PSS、Ryzen 7 5700X + RTX 4060、Hyprland 0.56、1080p モニター 2 台、
-[bench/measure.sh](../../bench/measure.sh)：
+各シェルを単体で、GPU で描画する新しいヘッドレス sway (RTX 4060、1080p 出力 2 つ) 上で、パッケージ付属の設定のまま
+3 回実行した中央値です ([bench/shells.sh](../../bench/shells.sh))。*アイドル*: 1 分間何も起きない。*操作中*: 2 秒ごとにワークスペース
+切り替え、6 秒ごとにウィンドウ、10 秒ごとに通知。CPU は 1 コアに対する %。
 
-| シェル | 技術 | メモリ（PSS） | アイドル時 CPU | GL コンテキスト |
+| シェル | 描画するもの | メモリ (PSS) | GPU メモリ | CPU アイドル | CPU 操作中 |
+|---|---|---|---|---|---|
+| swaybar (sway 1.12) | バー | 7 MB | – | 0 % | 0.03 % |
+| Waybar 0.15 | バー | 32 MB | – | 0.03 % | 0.38 % |
+| **`mist-wall` なしの Mist** | バー、Dock、アイランド、デスクトップウィジェット、通知 | **38 MB** | – | 0.19 % | 0.72 % |
+| nwg-panel 0.12 | バー | 56 MB | – | 0.10 % | 0.22 % |
+| **Mist** | 上記すべて + GLSL ライブ壁紙 | 132 MB | 42 MiB | 0.83 % | 1.35 % |
+| Ironbar 0.19 | バー | 137 MB | 9 MiB | 0.37 % | 0.43 % |
+| Quickshell 0.3、空の `PanelWindow` 1 つ | 空のバー | 142 MB | 6 MiB | 0 % | 0 % |
+| Noctalia 5.4 | バー、写真の壁紙 (と初回起動ダイアログ) | 177 MB | 60 MiB | 0.12 % | 4.50 % |
+
+コンポジタ: 同じ GPU 上でヘッドレス、1920×1080 60 Hz、5 回実行 ([bench/compositors.sh](../../bench/compositors.sh))。
+画面に何もないときはすべて CPU 0 %:
+
+| コンポジタ | メモリ (PSS) | CPU、毎フレーム CPU で描画するクライアント | CPU、全画面 OpenGL クライアント | OpenGL 1 フレームあたりの CPU |
 |---|---|---|---|---|
-| **Mist** | Rust、CPU、`wl_shm` | **87〜106 MB** | 0.6 %（音楽再生中） | `mist-wall` のみ |
-| Mist、`mist-ui` のみ | | 36〜50 MB | 0.6 % | なし |
-| Noctalia v5 | C++、cairo + EGL | 122 MB | 0.07 % | あり |
-| 空の Quickshell（`PanelWindow` ひとつ） | Qt Quick | 124 MB | ~0 % | あり |
-| Quickshell 版 Mist（旧 QML 版） | Qt Quick | 428 MB | 9.5 % | あり |
+| **mist-comp** | 100 MB | **1.7 %** | 1.3 % | 0.22 ms |
+| weston 15 | 101 MB | 2.7 % | **0.6 %** | **0.11 ms** |
+| labwc 0.20 | 109 MB | 6.1 % | 6.0 % | 1.0 ms |
+| sway 1.12 | 103 MB | 33.5 % | 6.6 % | 1.1 ms |
 
-`mist-comp` 上では、コンポジターとシェル全体を合わせてもアイドル時 **CPU 0.04 %、毎秒 6 回の起床**です
-（ヘッドレス、ソフトウェアレンダラー）。計測方法、コンポジターの数値、実際の負荷の高いセッション：
-[docs/BENCHMARKS.md](../BENCHMARKS.md)。
+Hyprland と niri にはスクリプトから起動できるヘッドレスモードがないため含まれていません。手法、全実行、
+プロセスごとの数値、以前の実セッションでの測定: [docs/BENCHMARKS.md](../BENCHMARKS.md)。
 
 ## mist-comp
 

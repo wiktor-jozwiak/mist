@@ -27,7 +27,7 @@
   </tr>
 </table>
 
-https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07
+<a href="https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07"><img src="../img/demo-poster.webp" alt="Mist demo video (40 s)" width="720"></a>
 
 <sub>40-s-Demo, aufgenommen in einer Headless-<code>mist-comp</code>-Sitzung mit Demodaten. Musik: <i>Trap Beat</i> von JonasBlakewood (Pixabay)</sub>
 
@@ -98,22 +98,35 @@ den Einstellungen. Eine Sprache ist eine JSON-Datei in [native/assets/i18n](../.
 
 ## Messungen
 
-<p align="center"><img src="../img/memory.svg" alt="Speicher im Leerlauf: mist-ui allein 36 bis 50 MB, Mist mit mist-wall 87 bis 106 MB, Noctalia v5 122 MB, leeres Quickshell 124 MB, Mist auf Quickshell 428 MB" width="100%"></p>
+<p align="center"><img src="../img/memory.svg" alt="Speicher im Leerlauf (PSS), jede Shell allein: swaybar 7 MB, Waybar 32 MB, Mist ohne mist-wall 38 MB, nwg-panel 56 MB, Mist mit Live-Hintergrund 132 MB, Ironbar 137 MB, leeres Quickshell 142 MB, Noctalia 177 MB" width="100%"></p>
 
-Ganze Shell im Leerlauf, PSS, Ryzen 7 5700X + RTX 4060, Hyprland 0.56, zwei 1080p-Monitore,
-[bench/measure.sh](../../bench/measure.sh):
+Jede Shell allein in einem frischen headless sway auf der GPU (RTX 4060, zwei 1080p-Ausgänge), mit der
+Konfiguration aus ihrem Paket, 3 Läufe, Median ([bench/shells.sh](../../bench/shells.sh)). *Leerlauf*: eine Minute passiert nichts.
+*Aktiv*: alle 2 s ein Arbeitsflächenwechsel, alle 6 s ein Fenster, alle 10 s eine Mitteilung. CPU in % eines Kerns.
 
-| Shell | Technik | Speicher (PSS) | CPU im Leerlauf | GL-Kontext |
+| Shell | Was sie zeichnet | Speicher (PSS) | GPU-Speicher | CPU Leerlauf | CPU aktiv |
+|---|---|---|---|---|---|
+| swaybar (sway 1.12) | Leiste | 7 MB | – | 0 % | 0,03 % |
+| Waybar 0.15 | Leiste | 32 MB | – | 0,03 % | 0,38 % |
+| **Mist ohne `mist-wall`** | Leiste, Dock, Island, Desktop-Widgets, Mitteilungen | **38 MB** | – | 0,19 % | 0,72 % |
+| nwg-panel 0.12 | Leiste | 56 MB | – | 0,10 % | 0,22 % |
+| **Mist** | all das + ein Live-GLSL-Hintergrund | 132 MB | 42 MiB | 0,83 % | 1,35 % |
+| Ironbar 0.19 | Leiste | 137 MB | 9 MiB | 0,37 % | 0,43 % |
+| Quickshell 0.3, ein leeres `PanelWindow` | eine leere Leiste | 142 MB | 6 MiB | 0 % | 0 % |
+| Noctalia 5.4 | Leiste, Foto-Hintergrund (und ihr Einrichtungsdialog) | 177 MB | 60 MiB | 0,12 % | 4,50 % |
+
+Compositoren, headless auf derselben GPU, 1920×1080 60 Hz, 5 Läufe ([bench/compositors.sh](../../bench/compositors.sh)).
+Ohne etwas auf dem Bildschirm brauchen alle 0 % CPU:
+
+| Compositor | Speicher (PSS) | CPU, ein Client, der jedes Bild auf der CPU zeichnet | CPU, ein OpenGL-Client im Vollbild | CPU pro OpenGL-Bild |
 |---|---|---|---|---|
-| **Mist** | Rust, CPU, `wl_shm` | **87 bis 106 MB** | 0,6 % (Musik läuft) | nur `mist-wall` |
-| Mist, nur `mist-ui` | | 36 bis 50 MB | 0,6 % | nein |
-| Noctalia v5 | C++, cairo + EGL | 122 MB | 0,07 % | ja |
-| Leeres Quickshell (ein `PanelWindow`) | Qt Quick | 124 MB | ~0 % | ja |
-| Mist auf Quickshell (alte QML-Version) | Qt Quick | 428 MB | 9,5 % | ja |
+| **mist-comp** | 100 MB | **1,7 %** | 1,3 % | 0,22 ms |
+| weston 15 | 101 MB | 2,7 % | **0,6 %** | **0,11 ms** |
+| labwc 0.20 | 109 MB | 6,1 % | 6,0 % | 1,0 ms |
+| sway 1.12 | 103 MB | 33,5 % | 6,6 % | 1,1 ms |
 
-Auf `mist-comp` liegen Compositor und ganze Shell zusammen bei **0,04 % CPU und 6 Aufwachvorgängen pro Sekunde**
-(headless, Software-Renderer). Methode, die Zahlen des Compositors und eine echte, ausgelastete Sitzung:
-[docs/BENCHMARKS.md](../BENCHMARKS.md).
+Hyprland und niri haben keinen headless-Modus, den ein Skript starten kann, und fehlen deshalb. Methode, jeder
+Lauf, Zahlen pro Prozess und die früheren Messungen in der echten Sitzung: [docs/BENCHMARKS.md](../BENCHMARKS.md).
 
 ## mist-comp
 

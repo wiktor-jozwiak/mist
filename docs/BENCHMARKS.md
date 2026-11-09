@@ -1,8 +1,97 @@
 # Benchmarks
 
-What a desktop shell costs while you are not looking at it: memory, CPU at idle, GPU context.
+What a desktop shell and a compositor cost: memory, CPU, wake-ups and GPU memory, measured side by side with
+other shells and compositors on the same machine, under the same conditions.
 
-## Method
+**Machine:** AMD Ryzen 7 5700X (8 cores / 16 threads), NVIDIA GeForce RTX 4060 (driver 620.70), CachyOS,
+kernel 7.3. All numbers below are from 2026-11-09; raw data in [`bench/results`](../bench/results).
+
+## Shells side by side (2026-11-09)
+
+[`bench/shells.sh`](../bench/shells.sh) `3 45 60`: every shell runs **alone** in a fresh headless sway 1.12
+rendering with OpenGL ES on the GPU (two 1920x1080 outputs at 60 Hz), with a throwaway `HOME` and
+`XDG_RUNTIME_DIR` (so each one starts with the configuration its package ships), its own D-Bus session bus,
+and nothing of the running desktop except the PipeWire socket. sway is the host because it is neither
+Hyprland nor mist-comp: no shell plays on home ground, and all of them support it. After 45 s to settle,
+[`bench/sample.py`](../bench/sample.py) measures the shell's whole process tree (helpers it spawns included)
+for two windows of 60 s:
+
+- **idle**: nothing happens;
+- **active**: [`bench/activity.sh`](../bench/activity.sh), a workspace switch every 2 s, a window
+  (`weston-simple-shm`) opened every 6 s and closed 3 s later, a notification every 10 s.
+
+Measured: **PSS** (shared pages split between the processes that map them), **USS** (private pages: what
+stopping the shell frees), **CPU** (run time of every thread from `schedstat`, % of one core), **wake-ups**
+(context switches per second: polling shows here even when its CPU rounds to zero) and **GPU memory**
+(`nvidia-smi`, per process). A screenshot of both outputs from every run proves the shell drew what it
+should. Mist draws its bar, dock, island, desktop clock and widget and a live GLSL wallpaper (`mist-wall`);
+Noctalia its bar, a photo wallpaper and its first-run dialog; the others a bar.
+
+The shells are the distribution packages: [`bench/fetch.sh`](../bench/fetch.sh) unpacks the Arch packages
+into `~/.local/share/mist-bench` without root, checked against the SHA-256 sums in pacman's sync databases.
+Median of the runs, range in brackets:
+
+| Shell | Version | PSS idle | USS idle | GPU memory | CPU idle | wake-ups idle | CPU active | wake-ups active |
+|---|---|---|---|---|---|---|---|---|
+| **Mist** | v0.3.0 | **132 MB** (129 MB–132 MB) | 107 MB (105 MB–107 MB) | 42 MiB | 0.83 % (0.82 %–0.83 %) | 110/s (107/s–111/s) | 1.35 % (1.35 %–1.42 %) | 151/s (149/s–170/s) |
+| Waybar | Waybar v0.15.0 | 32 MB | 26 MB | 0 MiB | 0.03 % (0.02 %–0.04 %) | 2/s (1/s–3/s) | 0.38 % | 28/s (27/s–29/s) |
+| Ironbar | ironbar 0.19.1 | 137 MB (137 MB–139 MB) | 103 MB (103 MB–104 MB) | 9 MiB | 0.37 % (0.36 %–0.39 %) | 160/s (160/s–161/s) | 0.43 % (0.42 %–0.43 %) | 168/s (167/s–169/s) |
+| nwg-panel | nwg-panel 0.12.3-1 | 56 MB | 47 MB | 0 MiB | 0.10 % | 11/s | 0.22 % | 31/s |
+| swaybar | sway version 1.12 | 7 MB | 4 MB | 0 MiB | 0.00 % | 0/s | 0.03 % | 6/s (5/s–6/s) |
+| Quickshell, empty PanelWindow | Quickshell 0.3.2 (revision , distributed by Arch Linux) | 142 MB | 115 MB | 6 MiB | 0.00 % | 0/s | 0.00 % | 0/s |
+| Noctalia | noctalia 5.4.1-1.1 | 177 MB (176 MB–179 MB) | 152 MB (151 MB–154 MB) | 60 MiB | 0.12 % (0.10 %–0.12 %) | 7/s | 4.46 % (4.45 %–4.55 %) | 119/s (115/s–120/s) |
+
+3 runs each. Per process (idle, median PSS / CPU):
+
+- Mist: mist-wall 93.4 MB / 0.63 %, mist-ui 26.4 MB / 0.16 %, mistd 6.6 MB / 0.03 %, nmcli 2.5 MB / 0.00 %, udevadm 1.0 MB / 0.00 %, pactl 1.0 MB / 0.00 %
+- Waybar: waybar 31.6 MB / 0.03 %
+- Ironbar: ironbar 137.2 MB / 0.37 %
+- nwg-panel: nwg-panel 55.2 MB / 0.10 %, pactl 1.0 MB / 0.00 %
+- swaybar: swaybar 6.7 MB / 0.00 %
+- Quickshell, empty PanelWindow: quickshell 142.4 MB / 0.00 %
+- Noctalia: noctalia 176.9 MB / 0.12 %
+
+
+What it says: the live wallpaper is most of Mist's cost (`mist-wall`: 93 MB, 0.63 % CPU, all of its GPU
+memory). The rest of Mist (bar, dock, island, desktop widgets, notifications, `mistd`) is 38 MB with no GPU
+memory, between Waybar and nwg-panel, which draw a bar only. Every toolkit that renders with OpenGL (GTK 4 in
+Ironbar, Qt Quick in Quickshell and Noctalia) starts above 130 MB before it draws anything useful: an empty
+Quickshell bar costs 142 MB.
+
+## Compositors side by side (2026-11-09)
+
+[`bench/compositors.sh`](../bench/compositors.sh) `5 30`: each compositor headless on the GPU (OpenGL ES,
+one 1920x1080 output at 60 Hz, XWayland off, default configuration), a throwaway `HOME` and runtime dir, and
+the same clients from weston's demo set, 30 s each:
+
+- **idle**: no client;
+- **shm**: `weston-simple-shm`, a window drawn on the CPU every frame, the path GTK / Qt software rendering
+  and Mist use;
+- **GL**: `weston-simple-egl -f`, a fullscreen OpenGL client synced to the compositor's frames; its own
+  frame count gives the compositor's CPU time per frame.
+
+| Compositor | Version | PSS idle | GPU memory | CPU idle | CPU, shm client | CPU, GL client | CPU per GL frame | GL client fps |
+|---|---|---|---|---|---|---|---|---|
+| sway | sway version 1.12 | 103 MB (102 MB–104 MB) | 12 MiB | 0.00 % | 33.53 % (33.41 %–33.89 %) | 6.62 % (6.36 %–6.89 %) | 1.120 ms (1.071 ms–1.170 ms) | 59 |
+| labwc | labwc 0.20.2 (+xwayland +nls +rsvg +libsfdo) wlroots-0.20.2 | 109 MB (108 MB–109 MB) | 2 MiB | 0.00 % | 6.14 % (6.09 %–6.18 %) | 5.98 % (5.82 %–6.09 %) | 1.008 ms (0.978 ms–1.027 ms) | 59 (59–60) |
+| weston | weston 15.0.1 | 101 MB (101 MB–102 MB) | 14 MiB | 0.00 % | 2.74 % (2.53 %–2.81 %) | 0.63 % (0.60 %–0.67 %) | 0.105 ms (0.100 ms–0.111 ms) | 60 |
+| **mist-comp** | mist-comp v0.3.0 | **100 MB** (100 MB–101 MB) | 15 MiB | 0.00 % | 1.72 % (1.59 %–2.00 %) | 1.30 % (1.27 %–1.33 %) | 0.217 ms (0.212 ms–0.222 ms) | 60 |
+
+5 runs each.
+
+All four idle at 0 % CPU and 0 wake-ups. With the CPU-drawn client mist-comp is the cheapest; with the
+OpenGL client weston is (half of mist-comp's time per frame), and both are 5 to 10 times cheaper than
+the wlroots compositors. sway with the shm client used 33 % of a core in every run; labwc, on the same
+wlroots, 6 %; the cause was not investigated. Hyprland and niri have no headless mode a script can start,
+so they are not in the table; nested in a window they would depend on the host compositor's frames.
+
+## Live session measurements (Hyprland, October 2026)
+
+The numbers below come from the earlier method: [`bench/measure.sh`](../bench/measure.sh) on the running
+desktop, one shell next to another. They are kept for the history (the QML version, the rewrite); the
+tables above replace them for comparisons.
+
+### Method
 
 [`bench/measure.sh`](../bench/measure.sh) sums every process of a shell:
 
@@ -29,7 +118,7 @@ pointer movement during the window, note whether media is playing (the Dynamic I
 **Machine:** AMD Ryzen 7 5700X (8 cores / 16 threads), NVIDIA GeForce RTX 4060 (driver 615.71), two 1920×1080 monitors (165 Hz +
 75 Hz), Hyprland 0.56.2, CachyOS, kernel 7.2.
 
-## Results: measured on this machine
+### Results, live session
 
 | Shell | Toolkit | Processes | PSS | CPU idle | GL context |
 |---|---|---|---|---|---|
@@ -48,7 +137,7 @@ Where the memory of a GPU-based shell goes: an empty Quickshell window already c
 before any widget. Mist spends its memory on caches it controls (glyph atlas, app icons, the wallpaper at
 screen size).
 
-## Results: reported elsewhere
+### Results reported elsewhere
 
 Other machines, other configs, mostly RSS; useful for the order of magnitude, not for a ranking.
 
@@ -58,10 +147,8 @@ Other machines, other configs, mostly RSS; useful for the order of magnitude, no
 | Caelestia (Quickshell) | ~650 MB after a restart; a launcher bug grew it to 900 MB RSS in 20 min at ~6 % CPU | [caelestia-dots/shell#1927](https://github.com/caelestia-dots/shell/issues/1927) |
 | Noctalia v4.6 (Quickshell) | release notes: system stats polled at 1 Hz, animations off when idle, "0 % CPU on idle" | [v4.6.0 release](https://newreleases.io/project/github/noctalia-dev/noctalia-shell/release/v4.6.0) |
 
-Not measured yet: Waybar, HyprPanel (AGS / GJS), DankMaterialShell, end-4 illogical-impulse, Ironbar (none of
-them is installed on this machine). [`bench/others.sh`](../bench/others.sh) measures every one that is: each is
-started alone next to the running Mist, settles for 3 minutes, is measured for 30 s and stopped; add its
-`TOTAL` line with the date to the table above.
+Not measured: HyprPanel (AGS / GJS), DankMaterialShell, Caelestia and end-4 illogical-impulse, which are
+not in the distribution's repositories.
 
 ## Mist internals
 
