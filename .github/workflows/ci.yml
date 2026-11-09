@@ -36,6 +36,7 @@ jobs:
           RUSTFLAGS: ""
           CARGO_BUILD_RUSTFLAGS: ""
           XCURSOR_THEME: Adwaita # mist-comp's cursor test needs a real theme
+          MIST_DIR: ${{ github.workspace }} # the offscreen render tests read the icon font from native/assets
         run: |
           cargo build --release --locked
           cargo build --release --locked -p mist-comp --examples # test clients of the nested tests
