@@ -596,10 +596,12 @@ impl Files {
         x += self.label_btn(p, x, y, k.glyph(), if k == Kind::All { "Rodzaj" } else { k.label() }, Act::MenuKind, true, true, if k == Kind::All { FG2 } else { ACC }) + 2.0;
         if w.pick.is_none() {
             self.tool_btn(p, x, y, "dots", Hit::Btn(Act::MenuMore), "Więcej", true);
-            // right: terminal
+            // right: terminal, only where it does not cover the buttons (a half-screen snap is ~790 px wide)
             let st = Style::ui(13.0, 500.0);
             let bw = 10.0 + 18.0 + 6.0 + self.text.width("Terminal", &st) + 10.0;
-            self.label_btn(p, w.w - 8.0 - bw, y, "terminal", "Terminal", Act::Terminal(None), false, !t.is_trash(), FG2);
+            if x + 34.0 + 8.0 <= w.w - 8.0 - bw {
+                self.label_btn(p, w.w - 8.0 - bw, y, "terminal", "Terminal", Act::Terminal(None), false, !t.is_trash(), FG2);
+            }
         }
     }
 
