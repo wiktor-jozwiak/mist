@@ -59,7 +59,7 @@ pub fn rule(app: &str, title: &str, x11: bool) -> Rule {
     }
     // a game's real window has a title; the nameless one is its launcher splash
     r.game = (app.starts_with("steam_app") || app == "gamescope") && !title.is_empty();
-    r.primary = r.game || app.ends_with(".exe") || app.contains("launcher") || app == "vesktop" || app == "discord";
+    r.primary = r.game || app.ends_with(".exe") || app.contains("launcher") || app == "vesktop" || app == "dev.vencord.Vesktop" || app == "discord";
     r.no_focus = x11 && app.is_empty() && title.is_empty();
     r
 }

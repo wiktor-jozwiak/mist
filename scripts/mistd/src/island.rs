@@ -231,7 +231,7 @@ fn cam_users() -> Vec<String> {
 fn pretty(c: &str) -> String {
     match c {
         "zen-bin" => "Zen Browser", "firefox" => "Firefox", "chromium" => "Chromium", "chrome" => "Chrome", "obs" => "OBS",
-        "Discord" | "discord" => "Discord", "vesktop" => "Vesktop", "zoom" => "Zoom", "guvcview" => "Guvcview",
+        "Discord" | "discord" => "Discord", "vesktop" | "dev.vencord.Vesktop" => "Vesktop", "zoom" => "Zoom", "guvcview" => "Guvcview",
         "cheese" => "Cheese", "snapshot" => "Snapshot", _ => c,
     }
     .to_string()
