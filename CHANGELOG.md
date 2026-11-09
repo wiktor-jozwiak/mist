@@ -4,7 +4,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-09
+
 ### Added
+- Theme, accent and contrast changes repaint Mist Files, Mist Player and Mist Settings live, without reopening them.
+- The seven newest live wallpapers have names and descriptions in every language.
 - mist-comp: hot corners (`corner tl overview`, Settings → Multitasking), `pin` (always on top, on every
   workspace, Super+Ctrl+T), a dropdown terminal (`dropdown`, Super+Ctrl+Return), saved window layouts
   (`layout save|load NAME`, Spotlight "layout …"); `hyprctl dispatch` takes any comp.conf action.
@@ -30,6 +34,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
   password manager's copy is skipped without an extra `wl-paste` call on wl-clipboard 2.2+.
 
 ### Fixed
+- English UI: the weather card's day label, the phone panel's quick actions, the wallpaper category, time zone
+  and ECB rate answers and the notification count were left in Polish. Numbers use a decimal point in English
+  and a comma in the other languages; unit answers show two decimals instead of six.
 - Settings: the main monitor can be chosen, the lock screen page sets when the screen turns off, restarting
   the shell no longer closes Mist Settings and Mist Files.
 
