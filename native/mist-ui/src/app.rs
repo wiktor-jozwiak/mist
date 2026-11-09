@@ -1537,7 +1537,7 @@ impl App {
         // input region: the shape (nothing while it hides under a fullscreen window)
         let mode = self.island.mode(ringing, call);
         let hidden = self.island.fullscreen && mode == "idle";
-        let w = self.island.w.cur;
+        let w = self.island.w.cur + self.island.bubble_extent();
         let r = if hidden { (0, 0, 0, 0) } else { (((crate::island::WIN_W as f32 - w) / 2.0) as i32, self.island.y.cur.max(0.0) as i32, w.ceil() as i32, self.island.h.cur.ceil() as i32) };
         if isf.input != Some(r) {
             if let Ok(reg) = Region::new(&self.compositor) {
@@ -1574,7 +1574,7 @@ impl App {
         self.island.hits.iter().rev().find(|h| x >= h.0 && x < h.0 + h.2 && y >= h.1 && y < h.1 + h.3).map(|h| h.4.clone())
     }
     fn island_in_shape(&self, x: f32, y: f32) -> bool {
-        let w = self.island.w.cur;
+        let w = self.island.w.cur + self.island.bubble_extent();
         let x0 = (crate::island::WIN_W as f32 - w) / 2.0;
         x >= x0 && x < x0 + w && y >= self.island.y.cur && y < self.island.y.cur + self.island.h.cur
     }

@@ -267,6 +267,12 @@ pub struct Island {
     pub phone_name: String,
     pub track_h: Anim,
     note_bar: Anim,
+    // idle pill: the date (or the event's title) folding away while 2+ things are live, and the timer bubble
+    // pinching off the right end (its last width, kept while it merges back)
+    date_a: Anim,
+    split: Spring,
+    bub_w: f32,
+    idle_now_w: f32,
 }
 
 impl Island {
@@ -284,6 +290,7 @@ impl Island {
             w: Spring::new(120.0, 3.4, 0.3, 0.25), h: Spring::new(30.0, 3.4, 0.3, 0.25), y: Spring::new(5.0, 3.0, 0.32, 0.25), bump_at: None,
             panes: HashMap::new(), shadow: Anim::new(0.0), eq: [Anim::new(4.0); 4], eq_at: now, eq_pos: None, eq_spot: None, hidden: false, drawn: (0, 0, WIN_W as i32, WIN_H as i32), shadow_px: None, hits: Vec::new(), hover_hit: None, seek_drag: None,
             phone_name: String::new(), track_h: Anim::new(5.0), note_bar: Anim::new(0.0),
+            date_a: Anim::new(1.0), split: Spring::new(0.0, 3.4, 0.34, 0.005), bub_w: 0.0, idle_now_w: 0.0,
         }
     }
 
@@ -1238,6 +1245,24 @@ impl Island {
         }
         self.push(e);
     }
+    // `--island-states`: the idle pill with live activities set by name (music, paused, timer, timer-low, rec,
+    // mic, caps, submap, soon), demo data only, no event cards
+    pub fn demo_state(&mut self, flags: &str, art: &str) {
+        for f in flags.split('+') {
+            match f {
+                "music" | "paused" => self.set_players(vec![Player { identity: "Player".into(), title: "Night Drive".into(), artist: "Mist Demo".into(), art: art.into(), playing: f == "music", length: 214.0, ..Default::default() }]),
+                "timer" => self.timer_start(65.0, "Herbata"),
+                "timer-low" => { self.timer_start(65.0, "Herbata"); self.timer_end = now_f() + 7.0; }
+                "rec" => self.rec = Some((Instant::now(), "demo.mp4".into())),
+                "mic" => self.audio.mic_users = vec!["Demo".into()],
+                "caps" => self.caps = true,
+                "submap" => self.submap = "resize".into(),
+                "soon" => self.calendar = serde_json::json!({ "items": [{ "title": "Trening interwałowy", "start": data::now() + 290, "end": data::now() + 3890 }] }),
+                _ => {}
+            }
+        }
+        self.clear_all();
+    }
 }
 
 fn now_f() -> f64 {
@@ -1273,6 +1298,20 @@ fn soon_text(start: i64) -> String {
 }
 
 // ======================================================================================== drawing
+// the gap between the idle pill and the minutnik bubble
+const BUB_GAP: f32 = 6.0;
+// one element of the idle pill
+enum El {
+    Art(String),
+    Cal,
+    Date(String), // with the "·" after it
+    Time(String),
+    Chip,
+    Caps,
+    Dot(Rgba),
+    Eq,
+}
+
 pub struct Ctx<'a> {
     pub t: &'a mut Text,
     pub icons: &'a mut Icons,
@@ -1311,7 +1350,7 @@ impl Island {
     fn animating_but_eq(&self) -> bool {
         self.w.moving || self.h.moving || self.y.moving || self.bump_at.map(|t| t.elapsed().as_millis() < 600).unwrap_or(false) || self.shadow.running()
             || self.panes.values().any(|p| p.0.running() || p.1.moving || p.2.is_some())
-            || self.note_bar.running() || self.track_h.running()
+            || self.note_bar.running() || self.track_h.running() || self.date_a.running() || self.split.moving
     }
     // only the equalizer changes: a frame of the bars alone will do (eq_frame)
     pub fn eq_only(&self) -> bool {
@@ -1355,7 +1394,12 @@ impl Island {
     fn size(&mut self, view: &str, cx: &mut Ctx) -> (f32, f32) {
         let t = &mut *cx.t;
         match view {
-            "idle" => (self.idle_w(cx) + 28.0, 30.0),
+            "idle" => {
+                let els = self.idle_els(cx);
+                // the layer holds the content as it is now (wider while the date folds away)
+                self.idle_now_w = Self::els_w(&els, self.date_a.value()) + 28.0;
+                (Self::els_w(&els, self.date_a.target()) + 28.0, 30.0)
+            }
             "glance" => {
                 let evs = data::upcoming(&self.calendar, 2, 2);
                 let mut h = 0.0;
@@ -1428,29 +1472,79 @@ impl Island {
         }
     }
 
-    fn idle_w(&self, cx: &mut Ctx) -> f32 {
+    // how many live things want room in the idle pill: music playing, the minutnik, a Hyprland submap
+    fn live_n(&self) -> usize {
+        self.playing() as usize + self.timer_on() as usize + (!self.submap.is_empty()) as usize
+    }
+    // the idle pill, left to right, with each element's width. The date (with its "·") is shown while at most one
+    // thing is live, folded away (date_a) when two or more need the room; the minutnik is not in here: it
+    // pinches off into its own bubble (bubble_w, split).
+    fn idle_els(&self, cx: &mut Ctx) -> Vec<(El, f32)> {
         let t = &mut *cx.t;
         let soon = self.soon();
-        let mut items: Vec<f32> = Vec::new();
-        let art = self.player().map(|p| !p.art.is_empty()).unwrap_or(false);
-        if art && soon.is_none() { items.push(18.0); }
-        if soon.is_some() { items.push(Canvas::icon_w(t, "calEvent", 15.0)); }
-        items.push(t.width(&self.idle_text(&soon), &Style::ui(13.0, 600.0)).min(240.0));
-        items.push(t.width("·", &Style::ui(13.0, 450.0)));
-        items.push(t.width(&data::hm(cx.now), &Style::ui(13.0, 600.0)));
-        if self.timer_on() { items.push(15.0 + 5.0 + t.width(&fmt(self.timer_left().ceil()), &Style::ui(12.5, 650.0).tnum())); }
-        if !self.submap.is_empty() { items.push(12.0 + Canvas::icon_w(t, "command", 11.0) + 3.0 + t.width(&self.submap, &Style::ui(11.0, 650.0))); }
-        if self.caps { items.push(Canvas::icon_w(t, "capsLock", 14.0)); }
-        if self.cam_busy { items.push(7.0); }
-        if self.mic_busy() { items.push(7.0); }
-        if self.sharing && self.rec.is_none() { items.push(7.0); }
-        if self.rec.is_some() { items.push(7.0); }
-        if self.playing() { items.push(18.0); }
-        items.iter().sum::<f32>() + 8.0 * (items.len().saturating_sub(1)) as f32
+        let st = Style::ui(13.0, 600.0);
+        let mut v = Vec::new();
+        if self.playing() {
+            if let Some(p) = self.player().filter(|p| !p.art.is_empty()) {
+                v.push((El::Art(p.art.clone()), 18.0));
+            }
+        }
+        if soon.is_some() {
+            v.push((El::Cal, Canvas::icon_w(t, "calEvent", 15.0)));
+        }
+        let date = crate::bar::elide(t, &self.idle_text(&soon), &st, 240.0);
+        let dw = t.width(&date, &st) + 8.0 + t.width("·", &Style::ui(13.0, 450.0));
+        v.push((El::Date(date), dw));
+        let hm = data::hm(cx.now);
+        let tw = t.width(&hm, &st);
+        v.push((El::Time(hm), tw));
+        if !self.submap.is_empty() {
+            v.push((El::Chip, Canvas::icon_w(t, "command", 11.0) + 3.0 + t.width(&self.submap, &Style::ui(11.0, 650.0)) + 12.0));
+        }
+        if self.caps {
+            v.push((El::Caps, Canvas::icon_w(t, "capsLock", 14.0)));
+        }
+        for (on, col) in [(self.cam_busy, GREEN), (self.mic_busy(), ORANGE_I), (self.sharing && self.rec.is_none(), PURPLE), (self.rec.is_some(), DANGER)] {
+            if on {
+                v.push((El::Dot(col), 7.0));
+            }
+        }
+        if self.playing() {
+            v.push((El::Eq, 18.0));
+        }
+        v
     }
+    // the content width with the date shown by `a` (0..1); 8 px between elements
+    fn els_w(els: &[(El, f32)], a: f32) -> f32 {
+        let w: f32 = els.iter().map(|(e, w)| if matches!(e, El::Date(_)) { (w + 8.0) * a } else { w + 8.0 }).sum();
+        (w - 8.0).max(0.0)
+    }
+    // the minutnik bubble: ring, remaining time
+    fn bubble_w(&self, t: &mut Text) -> f32 {
+        9.0 + 15.0 + 5.0 + t.width(&fmt(self.timer_left().ceil()), &Style::ui(12.5, 650.0).tnum()) + 11.0
+    }
+    // the bubble's share of the island's width right now (0 while it is merged in)
+    pub fn bubble_extent(&self) -> f32 {
+        self.split.cur.clamp(0.0, 1.2) * (BUB_GAP + self.bub_w)
+    }
+    // where the idle pill is headed: date folded or not, bubble out or in
+    fn idle_targets(&mut self, mode: &str, t: &mut Text) {
+        self.date_a.set(if self.live_n() <= 1 { 1.0 } else { 0.0 }, 260.0, Ease::OutCubic);
+        let out = mode == "idle" && self.timer_on();
+        if out {
+            self.bub_w = self.bubble_w(t);
+        }
+        self.split.set(if out { 1.0 } else { 0.0 });
+        self.split.step();
+    }
+    // the date, or the next event soon (its title only while nothing else is live)
     fn idle_text(&self, soon: &Option<Value>) -> String {
         if let Some(s) = soon {
-            return format!("{} · {}", s["title"].as_str().unwrap_or(""), soon_text(s["start"].as_i64().unwrap_or(0)));
+            let when = soon_text(s["start"].as_i64().unwrap_or(0));
+            if self.live_n() > 0 {
+                return when;
+            }
+            return format!("{} · {}", s["title"].as_str().unwrap_or(""), when);
         }
         let tm = data::local(data::now());
         format!("{} {} {}", data::DAYS_SHORT[tm.tm_wday as usize], tm.tm_mday, data::MONTHS_GEN[tm.tm_mon as usize].chars().take(3).collect::<String>())
@@ -1473,6 +1567,7 @@ impl Island {
         clear_box(c, prev);
         self.hits.clear();
         let mode = self.mode(ringing, call);
+        self.idle_targets(mode, cx.t);
         let (tw, th) = self.size(mode, cx);
         self.w.set(tw);
         self.h.set(th);
@@ -1484,13 +1579,19 @@ impl Island {
         self.h.step();
         self.y.step();
         self.shadow.set(if mode == "idle" { 0.0 } else { 1.0 }, 220.0, Ease::Linear);
-        let (w, h) = (self.w.cur.max(1.0), self.h.cur.max(1.0));
+        // the minutnik bubble beside the pill: the pair stays centred, the pill moves left by half the bubble
+        let bub = self.bubble_extent();
+        let (w, h) = (self.w.cur.max(1.0) + bub, self.h.cur.max(1.0));
         let x = (WIN_W as f32 - w) / 2.0;
         let y = self.y.cur;
         let r = (h / 2.0).min(30.0);
         let k = self.bump_scale();
         // shadow + black shape (scaled about the top centre while bumping)
         let (sx, sw, sh) = (WIN_W as f32 / 2.0 - w * k / 2.0, w * k, h * k);
+        // the pill alone (the bubble's room and the gap cut off the right end)
+        let sp = self.split.cur.clamp(0.0, 1.2);
+        let (bw, gap) = (self.bub_w * sp * k, BUB_GAP * sp * k);
+        let msw = sw - bub * k;
         let so = self.shadow.value();
         // the shadow and the shape stay inside this box (blur 24, spread -4, 8 px down)
         let cur = clip_box(((sx - 26.0).floor() as i32, (y - 26.0).floor() as i32, (sw + 52.0).ceil() as i32 + 1, (sh + 60.0).ceil() as i32 + 1));
@@ -1507,7 +1608,13 @@ impl Island {
                 }
             }
         }
-        c.rrect(sx, y, sw, sh, r * k, Rgba(0.0, 0.0, 0.0, 1.0));
+        if bw > 0.5 {
+            // pinching off: the gap opens as the bubble grows out of the pill's end
+            c.rrect(sx, y, msw, sh, r * k, Rgba(0.0, 0.0, 0.0, 1.0));
+            c.rrect(sx + msw + gap, y, bw, sh, r * k, Rgba(0.0, 0.0, 0.0, 1.0));
+        } else {
+            c.rrect(sx, y, sw, sh, r * k, Rgba(0.0, 0.0, 0.0, 1.0));
+        }
         // views (each drawn into its own layer, then faded / scaled into the shape, clipped to it)
         for view in ["idle", "glance", "player", "osd", "call", "notif", "track", "info"] {
             let active = view == mode;
@@ -1515,13 +1622,17 @@ impl Island {
             if op <= 0.01 {
                 continue;
             }
-            let (vw, vh) = if active { (tw, th) } else { self.size(view, cx) };
+            let (mut vw, vh) = if active { (tw, th) } else { self.size(view, cx) };
+            if view == "idle" {
+                vw = vw.max(self.idle_now_w);
+            }
             let mut layer = Canvas::new(vw.ceil().max(1.0) as u32, vh.ceil().max(1.0) as u32);
             let hits0 = self.hits.len();
             self.eq_pos = None;
             self.draw_view(view, &mut layer, cx, vw, vh, active);
-            // pane placed centred in the shape
-            let ox = WIN_W as f32 / 2.0 - vw / 2.0;
+            // pane placed centred in the shape (the idle pill: in the pill, left of the bubble)
+            let shift = if view == "idle" { -bub * k / 2.0 } else { 0.0 };
+            let ox = WIN_W as f32 / 2.0 - vw / 2.0 + shift;
             let oy = y + h / 2.0 - vh / 2.0;
             for hb in &mut self.hits[hits0..] {
                 hb.0 += ox;
@@ -1531,7 +1642,7 @@ impl Island {
                 self.hits.truncate(hits0);
             }
             let s = sc * k;
-            let tf = tiny_skia::Transform::from_translate(-vw / 2.0, -vh / 2.0).post_scale(s, s).post_translate(WIN_W as f32 / 2.0, oy + vh / 2.0);
+            let tf = tiny_skia::Transform::from_translate(-vw / 2.0, -vh / 2.0).post_scale(s, s).post_translate(WIN_W as f32 / 2.0 + shift, oy + vh / 2.0);
             // the active view at rest with an equalizer: remember where, for frames of the bars alone
             if let (true, Some((lx, ly, run))) = (active && s == 1.0 && !hidden, self.eq_pos) {
                 let (bx, by) = (lx.floor() as i32 - 3, ly.floor() as i32 - 3);
@@ -1539,7 +1650,7 @@ impl Island {
                 // the box must sit on the opaque black shape, inside the window
                 let rr = r * k;
                 let inside = |px: f32, py: f32| {
-                    let (qx, qy) = ((px - (sx + sw / 2.0)).abs() - (sw / 2.0 - rr), (py - (y + sh / 2.0)).abs() - (sh / 2.0 - rr));
+                    let (qx, qy) = ((px - (sx + msw / 2.0)).abs() - (msw / 2.0 - rr), (py - (y + sh / 2.0)).abs() - (sh / 2.0 - rr));
                     qx.max(0.0).hypot(qy.max(0.0)) + qx.max(qy).min(0.0) - rr < -1.5
                 };
                 let (x0, y0, x1, y1) = (dst.0 as f32, dst.1 as f32, (dst.0 + dst.2) as f32, (dst.1 + dst.3) as f32);
@@ -1549,12 +1660,15 @@ impl Island {
             }
             let shader = tiny_skia::Pattern::new(layer.pm.as_ref(), tiny_skia::SpreadMode::Pad, tiny_skia::FilterQuality::Bilinear, op, tf);
             let paint = tiny_skia::Paint { shader, anti_alias: true, ..Default::default() };
-            if let Some(clip) = tiny_skia::Rect::from_xywh(sx, y, sw, sh) {
+            if let Some(clip) = tiny_skia::Rect::from_xywh(sx, y, if view == "idle" { msw } else { sw }, sh) {
                 let inter = tiny_skia::Rect::from_ltrb(clip.left().max(ox + vw / 2.0 - vw * s / 2.0), clip.top().max(oy + vh / 2.0 - vh * s / 2.0), clip.right().min(ox + vw / 2.0 + vw * s / 2.0), clip.bottom().min(oy + vh / 2.0 + vh * s / 2.0));
                 if let Some(rc) = inter {
                     c.pm.fill_rect(rc, &paint, tiny_skia::Transform::identity(), None);
                 }
             }
+        }
+        if bw > 0.5 {
+            self.draw_bubble(c, cx.t, sx + msw + gap, y, bw, sh, ((sp - 0.3) / 0.6).clamp(0.0, 1.0));
         }
         let _ = x;
         union_box(prev, cur)
@@ -1589,57 +1703,84 @@ impl Island {
     }
 
     fn v_idle(&mut self, c: &mut Canvas, cx: &mut Ctx, w: f32, h: f32, active: bool) {
-        let iw = self.idle_w(cx);
-        let mut x = (w - iw) / 2.0;
+        let els = self.idle_els(cx);
+        let a = self.date_a.value();
+        let mut x = (w - Self::els_w(&els, a)) / 2.0;
         let cy = h / 2.0;
-        let soon = self.soon();
-        let art = self.player().map(|p| p.art.clone()).unwrap_or_default();
-        if !art.is_empty() && soon.is_none() {
-            c.rrect(x, cy - 9.0, 18.0, 18.0, 5.0, FILL);
-            if let Some(pm) = cx.imgs.get(&art, 48, cx.icons) {
-                img::draw(c, &pm, x, cy - 9.0, 18.0, 18.0, 5.0, true, 1.0);
-            }
-            x += 18.0 + 8.0;
-        }
-        if soon.is_some() {
-            let iw = Canvas::icon_w(cx.t, "calEvent", 15.0);
-            c.icon(cx.t, x + iw / 2.0, cy, "calEvent", 15.0, accent());
-            x += iw + 8.0;
-        }
         let st = Style::ui(13.0, 600.0);
-        let txt = crate::bar::elide(cx.t, &self.idle_text(&soon), &st, 240.0);
-        x += c.text(cx.t, x, cy, &txt, &st, if soon.is_some() { accent() } else { T1 }) + 8.0;
-        x += c.text(cx.t, x, cy, "·", &Style::ui(13.0, 450.0), T3) + 8.0;
-        x += c.text(cx.t, x, cy, &data::hm(cx.now), &st, T1) + 8.0;
-        if self.timer_on() {
-            let left = self.timer_left();
-            let col = if left < 10.0 { DANGER } else { ORANGE_I };
-            ring(c, x + 7.5, cy, if self.timer_total > 0.0 { (left / self.timer_total) as f32 } else { 0.0 }, col);
-            x += 15.0 + 5.0;
-            x += c.text(cx.t, x, cy, &fmt(left.ceil()), &Style::ui(12.5, 650.0).tnum(), col) + 8.0;
-        }
-        if !self.submap.is_empty() {
-            let tw = cx.t.width(&self.submap, &Style::ui(11.0, 650.0));
-            let iw = Canvas::icon_w(cx.t, "command", 11.0);
-            let pw = iw + 3.0 + tw + 12.0;
-            c.rrect(x, cy - 9.0, pw, 18.0, 9.0, PURPLE.alpha(0.2));
-            c.icon(cx.t, x + 6.0 + iw / 2.0, cy, "command", 11.0, PURPLE);
-            c.text(cx.t, x + 6.0 + iw + 3.0, cy, &self.submap.clone(), &Style::ui(11.0, 650.0), PURPLE);
-            x += pw + 8.0;
-        }
-        if self.caps {
-            let iw = Canvas::icon_w(cx.t, "capsLock", 14.0);
-            c.icon(cx.t, x + iw / 2.0, cy, "capsLock", 14.0, accent());
-            x += iw + 8.0;
-        }
-        for (on, col) in [(self.cam_busy, GREEN), (self.mic_busy(), ORANGE_I), (self.sharing && self.rec.is_none(), PURPLE), (self.rec.is_some(), DANGER)] {
-            if on {
-                c.rrect(x, cy - 3.5, 7.0, 7.0, 3.5, col);
-                x += 7.0 + 8.0;
+        let soon = self.soon().is_some();
+        for (e, ew) in els {
+            match e {
+                El::Art(art) => {
+                    c.rrect(x, cy - 9.0, 18.0, 18.0, 5.0, FILL);
+                    if let Some(pm) = cx.imgs.get(&art, 48, cx.icons) {
+                        img::draw(c, &pm, x, cy - 9.0, 18.0, 18.0, 5.0, true, 1.0);
+                    }
+                }
+                El::Cal => c.icon(cx.t, x + ew / 2.0, cy, "calEvent", 15.0, accent()),
+                El::Date(d) => {
+                    // folding: the text fades and the clock slides over it (clipped to the room left)
+                    let room = (ew + 8.0) * a;
+                    let op = ((a - 0.3) / 0.7).clamp(0.0, 1.0);
+                    let col = if soon { accent() } else { T1 };
+                    if a >= 0.999 {
+                        let dx = c.text(cx.t, x, cy, &d, &st, col) + 8.0;
+                        c.text(cx.t, x + dx, cy, "·", &Style::ui(13.0, 450.0), T3);
+                    } else if op > 0.01 && room > 1.0 {
+                        let mut l = Canvas::new((ew + 6.0).ceil() as u32, h.ceil().max(1.0) as u32);
+                        let dx = l.text(cx.t, 2.0, cy, &d, &st, col) + 8.0;
+                        l.text(cx.t, 2.0 + dx, cy, "·", &Style::ui(13.0, 450.0), T3);
+                        let tf = tiny_skia::Transform::from_translate(x.round() - 2.0, 0.0);
+                        let shader = tiny_skia::Pattern::new(l.pm.as_ref(), tiny_skia::SpreadMode::Pad, tiny_skia::FilterQuality::Nearest, op, tf);
+                        let paint = tiny_skia::Paint { shader, anti_alias: true, ..Default::default() };
+                        if let Some(rc) = tiny_skia::Rect::from_xywh(x.round() - 2.0, 0.0, (room - 6.0).max(0.0), h) {
+                            c.pm.fill_rect(rc, &paint, tiny_skia::Transform::identity(), None);
+                        }
+                    }
+                    x += room;
+                    continue;
+                }
+                El::Time(hm) => {
+                    c.text(cx.t, x, cy, &hm, &st, T1);
+                }
+                El::Chip => {
+                    let iw = Canvas::icon_w(cx.t, "command", 11.0);
+                    c.rrect(x, cy - 9.0, ew, 18.0, 9.0, PURPLE.alpha(0.2));
+                    c.icon(cx.t, x + 6.0 + iw / 2.0, cy, "command", 11.0, PURPLE);
+                    c.text(cx.t, x + 6.0 + iw + 3.0, cy, &self.submap.clone(), &Style::ui(11.0, 650.0), PURPLE);
+                }
+                El::Caps => c.icon(cx.t, x + ew / 2.0, cy, "capsLock", 14.0, accent()),
+                El::Dot(col) => c.rrect(x, cy - 3.5, 7.0, 7.0, 3.5, col),
+                El::Eq => self.eq_draw(c, x, cy - 7.0, active),
             }
+            x += ew + 8.0;
         }
-        if self.playing() {
-            self.eq_draw(c, x, cy - 7.0, active);
+    }
+    // the minutnik bubble's content, in window pixels (bx, y, bw, h: the bubble; op: how far it has pinched
+    // off). Centred in the bubble; while it grows, drawn into a layer clipped to it.
+    fn draw_bubble(&self, c: &mut Canvas, t: &mut Text, bx: f32, y: f32, bw: f32, h: f32, op: f32) {
+        if !self.timer_on() || op <= 0.01 {
+            return;
+        }
+        let left = self.timer_left();
+        let col = if left < 10.0 { DANGER } else { ORANGE_I };
+        let full = self.bub_w;
+        let paint = |c: &mut Canvas, t: &mut Text, x: f32, cy: f32| {
+            ring_op(c, x + 9.0 + 7.5, cy, if self.timer_total > 0.0 { (left / self.timer_total) as f32 } else { 0.0 }, col, op);
+            c.text(t, x + 9.0 + 20.0, cy, &fmt(left.ceil()), &Style::ui(12.5, 650.0).tnum(), col.alpha(op));
+        };
+        if bw >= full - 0.5 && op >= 1.0 {
+            paint(c, t, (bx + (bw - full) / 2.0).round(), y + h / 2.0);
+            return;
+        }
+        let mut l = Canvas::new(full.ceil().max(1.0) as u32, h.ceil().max(1.0) as u32);
+        paint(&mut l, t, 0.0, h / 2.0);
+        let ox = (bx + (bw - full) / 2.0).round();
+        let tf = tiny_skia::Transform::from_translate(ox, y.round());
+        let shader = tiny_skia::Pattern::new(l.pm.as_ref(), tiny_skia::SpreadMode::Pad, tiny_skia::FilterQuality::Nearest, 1.0, tf);
+        let pnt = tiny_skia::Paint { shader, anti_alias: true, ..Default::default() };
+        if let Some(rc) = tiny_skia::Rect::from_xywh(bx.max(ox), y.round(), bw.min(full), h) {
+            c.pm.fill_rect(rc, &pnt, tiny_skia::Transform::identity(), None);
         }
     }
     // 4-bar equalizer, new heights every 130 ms (120 ms Behavior)
@@ -2237,8 +2378,11 @@ fn put_box(c: &mut Canvas, b: (i32, i32, i32, i32), px: &[u8]) {
 }
 
 fn ring(c: &mut Canvas, cx: f32, cy: f32, frac: f32, col: Rgba) {
-    c.arc(cx, cy, 7.5 - 1.1, 1.0, 2.2, FILL2);
-    c.arc(cx, cy, 7.5 - 1.1, frac.clamp(0.001, 1.0), 2.2, col);
+    ring_op(c, cx, cy, frac, col, 1.0);
+}
+fn ring_op(c: &mut Canvas, cx: f32, cy: f32, frac: f32, col: Rgba, op: f32) {
+    c.arc(cx, cy, 7.5 - 1.1, 1.0, 2.2, FILL2.alpha(op));
+    c.arc(cx, cy, 7.5 - 1.1, frac.clamp(0.001, 1.0), 2.2, col.alpha(op));
 }
 fn elide_w(t: &mut Text, s: &str, st: &Style, max: f32) -> f32 {
     t.width(s, st).min(max)

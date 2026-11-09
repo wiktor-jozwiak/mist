@@ -212,6 +212,55 @@ fn main() {
     if args.get(1).map(|s| s.as_str()) == Some("--png") {
         return png(&args);
     }
+    // `--island-states <dir> [state..]`: the idle pill settled in each state (island::demo_state names joined
+    // with '+', "idle" = nothing live) over a plain backdrop, the top 48 px into <dir>/<state>.png
+    if args.get(1).map(|s| s.as_str()) == Some("--island-states") {
+        let dir = std::path::PathBuf::from(args.get(2).cloned().unwrap_or_else(|| ".".into()));
+        let _ = std::fs::create_dir_all(&dir);
+        let art = args.iter().find_map(|a| a.strip_prefix("--art=")).unwrap_or("/usr/share/pixmaps/archlinux-logo.png").to_string();
+        let mut states: Vec<String> = args[3..].iter().filter(|a| !a.starts_with("--")).cloned().collect();
+        if states.is_empty() {
+            states = ["idle", "music", "paused", "timer", "timer+music", "music+mic", "timer+music+rec+caps", "soon", "soon+music", "submap+music", "timer-low+music"].map(String::from).to_vec();
+        }
+        let (mut t, mut ic, mut im, ph) = (text::Text::new(), apps::Icons::new(), img::Images::new(), phone::State::default());
+        for st in states {
+            let mut isl = island::Island::new();
+            isl.armed = true;
+            // "a>b": settle in a, then b comes on: the transition into <dir>/<a>b>.NN.png (every 33 ms)
+            let (first, then) = st.split_once('>').map(|(a, b)| (a.to_string(), Some(b.to_string()))).unwrap_or((st.clone(), None));
+            isl.demo_state(&first, &art);
+            let mut c = gfx::Canvas::new(island::WIN_W, island::WIN_H);
+            let start = std::time::Instant::now();
+            loop {
+                let mut cx = island::Ctx { t: &mut t, icons: &mut ic, imgs: &mut im, phone: &ph, now: data::now() };
+                isl.clear_all();
+                isl.draw(&mut c, &mut cx, false, false);
+                if (!isl.animating() || isl.eq_only()) && start.elapsed().as_millis() > 400 || start.elapsed().as_secs() > 4 {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(16));
+            }
+            if let Some(then) = then {
+                isl.demo_state(&then, &art);
+                for i in 0..24 {
+                    let mut cx = island::Ctx { t: &mut t, icons: &mut ic, imgs: &mut im, phone: &ph, now: data::now() };
+                    isl.clear_all();
+                    isl.draw(&mut c, &mut cx, false, false);
+                    let mut out = gfx::Canvas::new(island::WIN_W, 48);
+                    out.rrect(0.0, 0.0, island::WIN_W as f32, 48.0, 0.0, gfx::Rgba::hex("#3b4a63"));
+                    out.pm.draw_pixmap(0, 0, c.pm.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), None);
+                    out.pm.save_png(dir.join(format!("{st}.{i:02}.png"))).unwrap();
+                    std::thread::sleep(std::time::Duration::from_millis(33));
+                }
+            }
+            let mut out = gfx::Canvas::new(island::WIN_W, 48);
+            out.rrect(0.0, 0.0, island::WIN_W as f32, 48.0, 0.0, gfx::Rgba::hex("#3b4a63"));
+            out.pm.draw_pixmap(0, 0, c.pm.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), None);
+            out.pm.save_png(dir.join(format!("{st}.png"))).unwrap();
+            println!("{st}: w {:.0}", isl.w.cur);
+        }
+        return;
+    }
     // `--island-bench <demo> [out.png]`: an island demo drawn every 16 ms for 1.5 s (frame cost, to_bgra cost),
     // the last frame into a PNG
     if matches!(args.get(1).map(|s| s.as_str()), Some("--island-bench" | "--island-frames")) {
