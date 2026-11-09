@@ -27,7 +27,8 @@
   </tr>
 </table>
 
-<a href="docs/media/mist-demo.mp4"><img src="docs/img/demo-poster.webp" alt="Play the 40 second demo video: island, Spotlight, snapping, themes switched live, lock screen" width="100%"></a>
+https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07
+
 <sub>40 s demo, recorded in a headless <code>mist-comp</code> session with demo data. Music: <i>Trap Beat</i> by JonasBlakewood (Pixabay)</sub>
 
 </div>

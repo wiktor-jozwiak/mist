@@ -27,7 +27,8 @@
   </tr>
 </table>
 
-<a href="../media/mist-demo.mp4"><img src="../img/demo-poster.webp" alt="40 秒のデモ動画を再生" width="100%"></a>
+https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07
+
 <sub>ヘッドレスの <code>mist-comp</code> セッションでデモデータを使って収録した 40 秒のデモ。音楽：JonasBlakewood の <i>Trap Beat</i>（Pixabay）</sub>
 
 </div>

@@ -27,7 +27,8 @@
   </tr>
 </table>
 
-<a href="../media/mist-demo.mp4"><img src="../img/demo-poster.webp" alt="播放 40 秒演示视频" width="100%"></a>
+https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07
+
 <sub>40 秒演示，在无头 <code>mist-comp</code> 会话中使用演示数据录制。音乐：JonasBlakewood 的 <i>Trap Beat</i>（Pixabay）</sub>
 
 </div>

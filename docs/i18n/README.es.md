@@ -27,7 +27,8 @@
   </tr>
 </table>
 
-<a href="../media/mist-demo.mp4"><img src="../img/demo-poster.webp" alt="Reproducir el vídeo de demostración de 40 segundos" width="100%"></a>
+https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07
+
 <sub>Demo de 40 s, grabada en una sesión <code>mist-comp</code> sin monitor con datos de demostración. Música: <i>Trap Beat</i> de JonasBlakewood (Pixabay)</sub>
 
 </div>
