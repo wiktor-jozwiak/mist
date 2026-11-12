@@ -162,6 +162,17 @@ impl Engine {
             return Err("mpv_create nie działa".into());
         }
         let home = std::env::var("HOME").unwrap_or_default();
+        // subtitles and audio in the UI language first, then English (audio: Japanese before a dub in neither);
+        // screenshots into the user's Pictures folder, whatever it is called
+        let l3 = match crate::i18n::lang() {
+            "pl" => "pl,pol,",
+            "de" => "de,deu,ger,",
+            "es" => "es,spa,",
+            "fr" => "fr,fra,fre,",
+            _ => "",
+        };
+        let (slang, alang) = (format!("{l3}en,eng"), format!("{l3}en,eng,ja,jpn"));
+        let shots = crate::files::fs::xdg_dirs().get("PICTURES").cloned().unwrap_or_else(|| format!("{home}/Pictures"));
         for (k, v) in [
             ("config", "no"),
             ("vo", "libmpv"),
@@ -194,12 +205,12 @@ impl Engine {
             ("sub-font-size", "46"),
             ("sub-border-size", "2.5"),
             ("sub-shadow-offset", "1"),
-            ("slang", "pl,pol,en,eng"),
-            ("alang", "pl,pol,en,eng,ja,jpn"),
+            ("slang", &slang),
+            ("alang", &alang),
             // streams: a bounded read-ahead (local files have no cache)
             ("demuxer-max-bytes", "64MiB"),
             ("demuxer-max-back-bytes", "16MiB"),
-            ("screenshot-directory", &format!("{home}/Obrazy")),
+            ("screenshot-directory", &shots),
             ("screenshot-template", "Mist Player %F %wH-%wM-%wS"),
         ] {
             opt(l, m, k, v);

@@ -241,9 +241,23 @@ const IGNORE_CAM: [&str; 6] = ["pipewire", "wireplumber", "v4l_id", "udevadm", "
 
 // ------------------------------------------------------------ Caps / Num Lock
 fn led(kind: &str) -> bool {
-    let Ok(rd) = std::fs::read_dir("/sys/class/leds") else { return false };
-    rd.flatten().filter(|e| e.file_name().to_string_lossy().ends_with(&format!("::{}", kind))).any(|e| {
-        std::fs::read_to_string(e.path().join("brightness")).map(|s| !matches!(s.trim(), "" | "0")).unwrap_or(false)
+    led_on(&led_files(kind))
+}
+
+/// The brightness files of every keyboard's LED of this kind (found once, then only read: the loop asks 4 times
+/// a second, the kernel sends no event for these).
+fn led_files(kind: &str) -> Vec<std::path::PathBuf> {
+    let Ok(rd) = std::fs::read_dir("/sys/class/leds") else { return vec![] };
+    let suffix = format!("::{}", kind);
+    rd.flatten().filter(|e| e.file_name().to_string_lossy().ends_with(&suffix)).map(|e| e.path().join("brightness")).collect()
+}
+
+fn led_on(files: &[std::path::PathBuf]) -> bool {
+    let mut b = [0u8; 8];
+    files.iter().any(|p| {
+        use std::io::Read;
+        let n = std::fs::File::open(p).and_then(|mut f| f.read(&mut b)).unwrap_or(0);
+        !matches!(std::str::from_utf8(&b[..n]).unwrap_or("").trim(), "" | "0")
     })
 }
 
@@ -310,9 +324,19 @@ pub fn main() {
     out(json!({"t": "lock", "caps": caps, "num": num, "init": true}));
     let mut udev_buf: Vec<String> = vec![];
     let mut usb_seen = HashMap::new();
+    // the LED files, listed again every 10 s (a keyboard plugged in or out); none while mist-comp reports the
+    // locks to mist-ui itself (the flag file mist-ui writes at its first `mistlock` event)
+    let comp_flag = format!("{}/mist/comp-lock", runtime_dir());
+    let comp = |f: &str| std::path::Path::new(f).exists();
+    let mut by_comp = comp(&comp_flag);
+    let mut leds = (led_files("capslock"), led_files("numlock"), Instant::now());
 
     loop {
-        let mut timeout = 250i32;
+        // no keyboard LED to watch: nothing to ask 4 times a second
+        let mut timeout = if by_comp || (leds.0.is_empty() && leds.1.is_empty()) { 10_000i32 } else { 250 };
+        for at in restart.values() {
+            timeout = timeout.min(at.saturating_duration_since(Instant::now()).as_millis() as i32 + 1);
+        }
         if let Some(d) = cam_due {
             timeout = timeout.min(d.saturating_duration_since(Instant::now()).as_millis() as i32);
         }
@@ -418,7 +442,11 @@ pub fn main() {
                 out(json!({"t": "cam", "on": on, "apps": shown}));
             }
         }
-        let (c, n) = (led("capslock"), led("numlock"));
+        if leds.2.elapsed() >= Duration::from_secs(10) {
+            leds = (led_files("capslock"), led_files("numlock"), Instant::now());
+            by_comp = comp(&comp_flag);
+        }
+        let (c, n) = if by_comp { (caps, num) } else { (led_on(&leds.0), led_on(&leds.1)) };
         if (c, n) != (caps, num) {
             (caps, num) = (c, n);
             out(json!({"t": "lock", "caps": caps, "num": num, "init": false}));

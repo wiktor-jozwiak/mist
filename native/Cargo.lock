@@ -275,9 +275,9 @@ dependencies = [
 
 [[package]]
 name = "blocking"
-version = "1.7.0"
+version = "1.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a70e4329df6cb94385eed412ec92375c3cdd8a6e502493d1229b6414e4036dfa"
+checksum = "e83f8d02be6967315521be875afa792a316e28d57b5a2d401897e2a7921b7f21"
 dependencies = [
  "async-channel",
  "async-task",
@@ -1259,6 +1259,7 @@ name = "mist-ui"
 version = "0.3.0"
 dependencies = [
  "async-io",
+ "blocking",
  "calloop 0.14.5",
  "calloop-wayland-source 0.4.1",
  "image",
@@ -1279,6 +1280,7 @@ dependencies = [
 name = "mist-wall"
 version = "0.3.0"
 dependencies = [
+ "blocking",
  "calloop 0.14.5",
  "calloop-wayland-source 0.4.1",
  "glow",

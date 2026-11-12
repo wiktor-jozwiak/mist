@@ -38,7 +38,7 @@ var list = [
     { id: "map", desc: "Poziomice w ciepłym bursztynie, jak stara mapa.", cat: "calm", name: "Mapa", mode: 9, c: ["#0a0706", "#1a120c", "#8a5a2a", "#ecc48e"], stars: 0, vig: 0.85, bright: 0.8, speed: 0.8 },
     { id: "cells", desc: "Kryształowe komórki ze świecącymi krawędziami.", cat: "calm", name: "Kryształy", mode: 19, c: ["#05070c", "#0f1a2a", "#2a5a7a", "#8ad6d0"], stars: 0, vig: 0.85, bright: 0.85, speed: 0.8 },
     { id: "pond", desc: "Krople spadają na taflę i rozchodzą się kręgami.", cat: "calm", name: "Staw", mode: 21, c: ["#040a10", "#0c2030", "#2a6a7a", "#8ad6d0"], stars: 0, vig: 0.85, bright: 0.9, speed: 1 },
-    { id: "dunes", desc: "Wydmy o zmierzchu, piasek wiejący z grzbietów.", cat: "calm", name: "Wydmy", mode: 12, c: ["#0a0608", "#241628", "#7a4226", "#d8985a"], stars: 0.5, vig: 0.8, bright: 0.85, speed: 1 },
+    { id: "dunes", desc: "Wydmy o zmierzchu, piasek wiejący z grzbietów.", cat: "calm", res: 0.5, name: "Wydmy", mode: 12, c: ["#0a0608", "#241628", "#7a4226", "#d8985a"], stars: 0.5, vig: 0.8, bright: 0.85, speed: 1 },
     { id: "snow", desc: "Padający śnieg w kilku warstwach głębi.", cat: "calm", name: "Śnieg", mode: 16, c: ["#03060c", "#0e1a2e", "#2a3a5a", "#6a8ab0"], stars: 0, vig: 0.8, bright: 0.85, speed: 1 },
     // ---- lively
     // ---- lively, shaders/fx.frag

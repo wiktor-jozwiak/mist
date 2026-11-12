@@ -36,6 +36,7 @@ fn cfg() -> (u32, u32) {
 }
 
 pub fn dpms(on: bool) {
+    crate::sys::screens_off(!on);
     crate::paths::screen_note(Some(!on), None);
     crate::sys::hypr_eval(&format!("hl.dispatch(hl.dsp.dpms({{ action = \"{}\" }}))", if on { "on" } else { "off" }));
 }

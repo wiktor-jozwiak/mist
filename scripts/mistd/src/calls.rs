@@ -32,8 +32,15 @@ const RING: &str = "/usr/share/sounds/freedesktop/stereo/phone-incoming-call.oga
 
 static TERM: AtomicBool = AtomicBool::new(false);
 
+static TERM_PIPE: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+
 extern "C" fn on_term(_: libc::c_int) {
     TERM.store(true, Ordering::SeqCst);
+    // wake the main loop (it waits without a timeout): a byte into the pipe a thread reads
+    let fd = TERM_PIPE.load(Ordering::SeqCst);
+    if fd >= 0 {
+        unsafe { libc::write(fd, b"x".as_ptr() as *const libc::c_void, 1) };
+    }
 }
 
 type Objects = HashMap<OwnedObjectPath, HashMap<String, HashMap<String, OwnedValue>>>;
@@ -401,6 +408,18 @@ pub fn main() {
     let (tx, rx) = mpsc::channel::<Ev>();
     stdin_lines(tx.clone(), Ev::Cmd);
     {
+        let mut fds = [0i32; 2];
+        if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } == 0 {
+            TERM_PIPE.store(fds[1], Ordering::SeqCst);
+            let tx = tx.clone();
+            let _ = std::thread::Builder::new().name("term".into()).stack_size(64 * 1024).spawn(move || {
+                let mut b = [0u8; 1];
+                while unsafe { libc::read(fds[0], b.as_mut_ptr() as *mut libc::c_void, 1) } < 0 {}
+                let _ = tx.send(Ev::Cmd(None));
+            });
+        }
+    }
+    {
         // signals of the service (and its restarts): one read after each burst
         let conn = conn.clone();
         let tx = tx.clone();
@@ -441,7 +460,8 @@ pub fn main() {
             ringer.set(false);
             return;
         }
-        let mut wait = Duration::from_millis(500);
+        // SIGTERM interrupts nothing here: the watcher thread below turns it into Ev::Cmd(None)
+        let mut wait = Duration::from_secs(3600);
         for d in [due, audio.due].into_iter().flatten() {
             wait = wait.min(d.saturating_duration_since(Instant::now()));
         }

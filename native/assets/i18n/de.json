@@ -915,7 +915,17 @@
     "pip": "Bild-in-Bild",
     "pip_playing": "Wiedergabe im Bild-in-Bild-Fenster",
     "pip_restore": "Hierher zurückholen",
-    "pip_video_only": "Bild-in-Bild: nur für Videos"
+    "pip_video_only": "Bild-in-Bild: nur für Videos",
+    "audio_track": "Tonspur",
+    "subtitles_next_hide": "Untertitel: nächste / ausblenden",
+    "open_file_subtitles_too": "Datei öffnen (auch Untertitel)",
+    "dropped_frames": "Ausgelassene Bilder",
+    "bitrate": "Bitrate",
+    "subtitles_added_several": "Untertitel hinzugefügt (mehrere Dateien)",
+    "decoder_hardware_val": "Hardware ({hw})",
+    "mpv_create_failed": "mpv_create fehlgeschlagen",
+    "mpv_initialize_failed": "mpv_initialize fehlgeschlagen",
+    "egl_no_display": "EGL: keine Anzeige"
   },
   "files": {
     "file": "Datei",
@@ -1106,7 +1116,11 @@
     "for_the_next_30": "für die nächsten 30 Tage",
     "no_events_planned": "Keine Termine",
     "ecb_rate_of": "EZB-Kurs vom {}",
-    "here_lc": "hier"
+    "here_lc": "hier",
+    "config_errors_val": "Konfigurationsfehler in {} ({})",
+    "restarted_after_error": "Mist wurde nach einem Fehler neu gestartet",
+    "error_in_file_val": "Fehler in {}",
+    "line_col_defaults_used": "Zeile {}, Spalte {} · Standardwerte werden verwendet"
   },
   "live_presets": {
     "the_sky_s_colours": "Die Farben des Himmels zu dieser Stunde: Nacht, blaue Stunde, goldene Stunde, Tag. Grau, wenn es regnet.",
@@ -1289,7 +1303,11 @@
     "colour": "Farbe",
     "clock_colour": "Uhrfarbe",
     "thin": "Dünn",
-    "bold": "Fett"
+    "bold": "Fett",
+    "uptime_val": "läuft seit {}",
+    "one_event_today": "1 Termin heute",
+    "n_events_today": "{n} Termine heute",
+    "n_events_today_2": "{n} Termine heute"
   },
   "system_settings": {
     "measure_again": "Erneut messen",
@@ -1563,7 +1581,9 @@
     "takes_effect_after_restart": "Wirkt nach einem Neustart der Shell",
     "theme": "Design",
     "theme_sub": "Farbe von Glas, Fenstern und Akzent",
-    "theme_note": "Eigenes Design: eine JSON-Datei in ~/.config/mist/themes (accent, tone, window_top, window_bottom)."
+    "theme_note": "Eigenes Design: eine JSON-Datei in ~/.config/mist/themes (accent, tone, window_top, window_bottom).",
+    "move_silently_to_the_next": "Still auf den nächsten Desktop verschieben",
+    "move_silently_to_the_previous": "Still auf den vorherigen Desktop verschieben"
   },
   "multitasking": {
     "workspaces_vertical": "Arbeitsflächen vertikal",

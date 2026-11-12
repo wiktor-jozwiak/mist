@@ -915,7 +915,17 @@
     "pip": "Imagen en imagen",
     "pip_playing": "Reproduciendo en la ventana de imagen en imagen",
     "pip_restore": "Traer aquí",
-    "pip_video_only": "Imagen en imagen: solo vídeo"
+    "pip_video_only": "Imagen en imagen: solo vídeo",
+    "audio_track": "Pista de audio",
+    "subtitles_next_hide": "Subtítulos: siguiente / ocultar",
+    "open_file_subtitles_too": "Abrir un archivo (también subtítulos)",
+    "dropped_frames": "Fotogramas perdidos",
+    "bitrate": "Tasa de bits",
+    "subtitles_added_several": "Subtítulos añadidos (varios archivos)",
+    "decoder_hardware_val": "por hardware ({hw})",
+    "mpv_create_failed": "mpv_create ha fallado",
+    "mpv_initialize_failed": "mpv_initialize ha fallado",
+    "egl_no_display": "EGL: sin pantalla"
   },
   "files": {
     "file": "Archivo",
@@ -1106,7 +1116,11 @@
     "for_the_next_30": "en los próximos 30 días",
     "no_events_planned": "Sin eventos",
     "ecb_rate_of": "tipo del BCE del {}",
-    "here_lc": "aquí"
+    "here_lc": "aquí",
+    "config_errors_val": "Errores de configuración en {} ({})",
+    "restarted_after_error": "Mist se reinició tras un error",
+    "error_in_file_val": "Error en {}",
+    "line_col_defaults_used": "línea {}, columna {} · se usan los valores predeterminados"
   },
   "live_presets": {
     "the_sky_s_colours": "Los colores del cielo a esta hora: noche, hora azul, hora dorada, día. Se vuelve gris cuando llueve.",
@@ -1289,7 +1303,11 @@
     "colour": "Color",
     "clock_colour": "Color del reloj",
     "thin": "Fino",
-    "bold": "Grueso"
+    "bold": "Grueso",
+    "uptime_val": "activo {}",
+    "one_event_today": "1 evento hoy",
+    "n_events_today": "{n} eventos hoy",
+    "n_events_today_2": "{n} eventos hoy"
   },
   "system_settings": {
     "measure_again": "Medir de nuevo",
@@ -1563,7 +1581,9 @@
     "takes_effect_after_restart": "Se aplica al reiniciar el shell",
     "theme": "Tema",
     "theme_sub": "Tono del cristal, las ventanas y el acento",
-    "theme_note": "Tema propio: un archivo JSON en ~/.config/mist/themes (accent, tone, window_top, window_bottom)."
+    "theme_note": "Tema propio: un archivo JSON en ~/.config/mist/themes (accent, tone, window_top, window_bottom).",
+    "move_silently_to_the_next": "Mover en silencio al escritorio siguiente",
+    "move_silently_to_the_previous": "Mover en silencio al escritorio anterior"
   },
   "multitasking": {
     "workspaces_vertical": "Escritorios en vertical",

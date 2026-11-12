@@ -21,7 +21,11 @@ mod stats;
 mod tiles;
 mod tools;
 
+#[path = "../../../native/mist-ui/src/crash.rs"]
+mod crash;
+
 fn main() {
+    crash::install("mistd");
     common::ignore_sigpipe_default();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let a = |i: usize| args.get(i).map(|s| s.as_str()).unwrap_or("");

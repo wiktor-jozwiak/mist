@@ -70,6 +70,7 @@ pub enum Msg {
     /// D-Bus idle inhibitors alive (idle::screensaver)
     IdleInhibit(u32),
     IdleCfg,
+    ConfErr(String, String), // a file in ~/.config/mist that is not JSON: its name, where it breaks
     Polkit(crate::polkit::Ev),
     Shot(String),
     // a window thumbnail for the dock's window picker (wincap.rs): address, image
@@ -219,6 +220,10 @@ pub fn hyprland(tx: Sender<Msg>) {
         let mut last = hypr_state();
         let _ = tx.send(Msg::Hypr(last.clone()));
         let Ok(s) = UnixStream::connect(format!("{}/.socket2.sock", hypr_dir())) else {
+            // another compositor (no instance signature): its socket will never appear, nothing to retry
+            if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_none_or(|v| v.is_empty()) {
+                return;
+            }
             std::thread::sleep(Duration::from_secs(2));
             continue;
         };
@@ -230,7 +235,7 @@ pub fn hyprland(tx: Sender<Msg>) {
                 break;
             }
             let ev = line.split(">>").next().unwrap_or("");
-            if matches!(ev, "activelayout" | "screencast" | "fullscreen" | "submap" | "urgent" | "activespecial" | "configreloaded" | "monitoraddedv2" | "monitorremovedv2" | "pin" | "mistdrag" | "mistsnap" | "mistcover") {
+            if matches!(ev, "activelayout" | "screencast" | "fullscreen" | "submap" | "urgent" | "activespecial" | "configreloaded" | "monitoraddedv2" | "monitorremovedv2" | "pin" | "mistdrag" | "mistsnap" | "mistcover" | "mistlock") {
                 let data = line.trim_end().splitn(2, ">>").nth(1).unwrap_or("").to_string();
                 let _ = tx.send(Msg::HyprEv(ev.to_string(), data));
             }
@@ -534,13 +539,36 @@ fn stats_round_rate(b: f64) -> f64 {
     }
 }
 
+// the screens are off (idle manager): nobody can see the CPU figure, the system card or the music card's
+// progress, so the two-second sampler sleeps until they come back
+static SCREENS_OFF: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static STATS_THREAD: std::sync::OnceLock<std::thread::Thread> = std::sync::OnceLock::new();
+pub fn screens_off(off: bool) {
+    SCREENS_OFF.store(off, std::sync::atomic::Ordering::Relaxed);
+    if !off {
+        if let Some(t) = STATS_THREAD.get() {
+            t.unpark();
+        }
+    }
+}
+
 pub fn stats(tx: Sender<Msg>) {
     spawn("stats", move || {
+        let _ = STATS_THREAD.set(std::thread::current());
         let mut pc = stats_cpu();
         let mut pn = (stats_net(), std::time::Instant::now());
         let mut last = (0i32, 0.0f32, 0.0f32, 0.0f64);
         loop {
             std::thread::sleep(Duration::from_secs(2));
+            if SCREENS_OFF.load(std::sync::atomic::Ordering::Relaxed) {
+                while SCREENS_OFF.load(std::sync::atomic::Ordering::Relaxed) {
+                    std::thread::park(); // woken by screens_off(false); a spurious wake-up re-checks
+                }
+                // the counters moved while nobody looked: start the next interval from now
+                pc = stats_cpu();
+                pn = (stats_net(), std::time::Instant::now());
+                continue;
+            }
             let c = stats_cpu();
             let pct = match (pc, c) {
                 (Some((t0, i0)), Some((t1, i1))) if t1 > t0 => (100.0 * (1.0 - (i1 - i0) as f64 / (t1 - t0) as f64)).round() as i32,
@@ -562,6 +590,12 @@ pub fn stats(tx: Sender<Msg>) {
 }
 
 // ------------------------------------------------------------------ state files written by Quickshell (inotify)
+// where a configuration file stops being JSON ("wiersz 12, kolumna 3"), None when it parses. Every reader
+// falls back to defaults on a broken file, so without this a typo silently resets a whole page of settings.
+pub fn conf_error(text: &str) -> Option<String> {
+    serde_json::from_str::<Value>(text).err().map(|e| format!("wiersz {}, kolumna {}", e.line(), e.column()))
+}
+
 fn read_json(p: &str) -> Value {
     std::fs::read_to_string(p).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null)
 }
@@ -596,6 +630,17 @@ pub fn state_files(tx: Sender<Msg>) {
             }
         };
         send_all("");
+        let check = |name: &str| {
+            if !name.ends_with(".json") {
+                return;
+            }
+            if let Some(at) = std::fs::read_to_string(format!("{cfg}/{name}")).ok().and_then(|s| conf_error(&s)) {
+                let _ = tx.send(Msg::ConfErr(name.into(), at));
+            }
+        };
+        for e in std::fs::read_dir(&cfg).into_iter().flatten().flatten() {
+            check(&e.file_name().to_string_lossy());
+        }
         unsafe {
             let fd = libc::inotify_init1(libc::IN_CLOEXEC);
             for d in [&run, &st, &cfg] {
@@ -621,6 +666,9 @@ pub fn state_files(tx: Sender<Msg>) {
                     } else if name == "apps.json" {
                         let _ = tx.send(Msg::Pins);
                     }
+                    // the same name may be written in the state or runtime directory: only the file in
+                    // ~/.config/mist is read
+                    check(&name);
                     i += std::mem::size_of::<libc::inotify_event>() + name_len;
                 }
             }
@@ -715,7 +763,14 @@ pub fn battery(tx: Sender<Msg>) {
 }
 
 // ------------------------------------------------------------------ mistd island (clipboard, USB, drives, camera, Caps / Num Lock)
+/// mist-comp announces Caps / Num Lock itself (`mistlock`): while this file is there `mistd island` does not ask
+/// the keyboards' LEDs 4 times a second. Written at the first such event, removed when mist-ui starts.
+pub fn comp_lock_flag() -> String {
+    format!("{}/mist/comp-lock", std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".into()))
+}
+
 pub fn island_events(tx: Sender<Msg>) {
+    let _ = std::fs::remove_file(comp_lock_flag());
     spawn("mistd-island", move || loop {
         use std::os::unix::process::CommandExt;
         let bin = crate::paths::mistd();

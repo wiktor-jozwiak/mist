@@ -1,8 +1,10 @@
 // The wallpaper (was LiveWallpaper.qml), ~/.config/mist/wallpaper.json. mist-wall (the only Mist process
-// with a GL context) draws it, the animated scene or the photo (a texture: no shm copy here), and the
-// desktop weather sky; this starts it and restarts it. Only when it keeps crashing does mist-ui draw the
-// photo itself, on the CPU once per monitor (cropped to the monitor, the desktop vignette baked in on the
-// main one, cross-faded 600 ms when it changes; only the shm buffer stays).
+// with a GL context) draws what needs the GPU: the animated scene, the desktop weather card's sky and the
+// wallpaper gallery's preview; this starts it and restarts it. A photo with none of those needs no GL process
+// (NVIDIA: ~100 MB of memory and ~50 MiB of GPU memory for a still picture): mist-ui then draws the photo
+// itself, on the CPU once per monitor (cropped to the monitor, the desktop vignette baked in on the main one,
+// cross-faded 600 ms when it changes; only the shm buffer stays), and mist-wall, started with
+// MIST_WALL_ONDEMAND, leaves by itself (exit 5). The same when mist-wall keeps crashing.
 use smithay_client_toolkit::{
     compositor::{CompositorState, Region},
     shell::{
@@ -17,6 +19,9 @@ use std::time::Instant;
 use wayland_client::{protocol::{wl_output, wl_shm}, QueueHandle};
 
 const FADE_MS: f32 = 600.0;
+
+/// The wallpaper gallery is open (wallpapers.rs): its preview and thumbnails are mist-wall's.
+pub static GALLERY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub struct Surf {
     pub output: wl_output::WlOutput,
@@ -47,6 +52,12 @@ pub struct Wall {
     pending: usize,
     pub off: bool,
     checked: Instant,
+    /// the weather card is on the desktop (its sky is mist-wall's)
+    pub sky: bool,
+    gallery: bool,
+    // what the surfaces were last set up for (photo() can change under them)
+    mode_photo: bool,
+    started_at: std::time::SystemTime,
 }
 
 fn bin() -> String {
@@ -111,18 +122,51 @@ impl Wall {
     pub fn new() -> Wall {
         let (tx, rx) = mpsc::channel();
         let (live, image) = Wall::read_cfg();
-        Wall { surfs: Vec::new(), pool: None, live, image, child: None, started: None, crashes: Vec::new(), given_up: false, tx, rx, pending: 0, off: false, checked: Instant::now() }
+        let mut w = Wall { surfs: Vec::new(), pool: None, live, image, child: None, started: None, crashes: Vec::new(), given_up: false, tx, rx, pending: 0, off: false, checked: Instant::now(), sky: false, gallery: false, mode_photo: false, started_at: std::time::SystemTime::now() };
+        w.mode_photo = w.photo();
+        w
     }
 
     pub fn read_cfg() -> (String, String) {
         let c: serde_json::Value = std::fs::read_to_string(format!("{}/.config/mist/wallpaper.json", std::env::var("HOME").unwrap_or_default())).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
         let def = format!("{}/glow-ember.png", crate::paths::wallpaper_dir());
-        (c["live"].as_str().unwrap_or("").to_string(), c["image"].as_str().filter(|s| !s.is_empty()).unwrap_or(&def).to_string())
+        // no wallpaper.json yet (a new install): the live scene mist-wall starts with
+        let live = if c.is_null() { "dunes" } else { c["live"].as_str().unwrap_or("") };
+        (live.to_string(), c["image"].as_str().filter(|s| !s.is_empty()).unwrap_or(&def).to_string())
     }
 
-    // the CPU photo is needed (mist-wall gave up)
+    // something only mist-wall draws is on: a live scene, the weather card's sky, the gallery
+    fn need_gl(&self) -> bool {
+        !self.live.is_empty() || self.sky || self.gallery
+    }
+    // the CPU photo is needed (nothing for mist-wall to draw, or it gave up)
     pub fn photo(&self) -> bool {
-        self.given_up
+        self.given_up || !self.need_gl()
+    }
+    /// The gallery opened or closed since the last call (checked after every batch of events: its preview
+    /// must not wait for the slow tick).
+    pub fn gallery_changed(&mut self) -> bool {
+        let g = GALLERY.load(std::sync::atomic::Ordering::Relaxed);
+        std::mem::replace(&mut self.gallery, g) != g
+    }
+    // photo() changed (the weather card, the gallery): photo surfaces of our own, or mist-wall
+    pub fn sync(&mut self, comp: &CompositorState, ls: &LayerShell, qh: &QueueHandle<crate::app::App>, outs: &[(wl_output::WlOutput, String)]) {
+        let p = self.photo();
+        if self.off || p == self.mode_photo {
+            return;
+        }
+        self.mode_photo = p;
+        if p {
+            for (o, n) in outs {
+                self.add_output(o, n, comp, ls, qh);
+            }
+            self.request();
+        } else {
+            self.spawn();
+        }
+    }
+    fn up_marker() -> String {
+        format!("{}/mist/wall.up", std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".into()))
     }
     // nobody holds mist-wall's lock (no instance runs, e.g. ours died while mist-ui restarted)
     fn lock_free() -> bool {
@@ -186,7 +230,7 @@ impl Wall {
 
     // config changed (wallpaper.json)
     pub fn set(&mut self, live: String, image: String, comp: &CompositorState, ls: &LayerShell, qh: &QueueHandle<crate::app::App>, outs: &[(wl_output::WlOutput, String)]) {
-        let was_photo = self.photo();
+        let was_photo = self.mode_photo;
         if live != self.live && self.given_up {
             // another choice: give mist-wall another chance
             self.given_up = false;
@@ -207,16 +251,18 @@ impl Wall {
         } else {
             self.spawn();
         }
+        self.mode_photo = self.photo();
     }
 
     fn spawn(&mut self) {
         if self.child.is_some() {
             return;
         }
-        match std::process::Command::new(bin()).stdin(std::process::Stdio::null()).spawn() {
+        match std::process::Command::new(bin()).stdin(std::process::Stdio::null()).env("MIST_WALL_ONDEMAND", "1").spawn() {
             Ok(c) => {
                 self.child = Some(c);
                 self.started = Some(Instant::now());
+                self.started_at = std::time::SystemTime::now();
             }
             Err(e) => {
                 eprintln!("wall: cannot start mist-wall: {e}");
@@ -230,6 +276,7 @@ impl Wall {
         if self.off {
             return;
         }
+        self.sync(comp, ls, qh, outs);
         if let Some(c) = &mut self.child {
             if let Ok(Some(st)) = c.try_wait() {
                 self.child = None;
@@ -240,6 +287,9 @@ impl Wall {
                     for (o, n) in outs {
                         self.add_output(o, n, comp, ls, qh);
                     }
+                } else if !self.photo() && st.code() == Some(5) {
+                    // it left as nothing was its to draw, and something is again
+                    self.spawn();
                 } else if !self.photo() && st.code() != Some(3) {
                     self.crashes.retain(|t| t.elapsed().as_secs() < 120);
                     self.crashes.push(Instant::now());
@@ -261,8 +311,10 @@ impl Wall {
                 self.spawn();
             }
         }
-        // the scene is up: the photo surfaces (and their buffers) can go
-        if !self.photo() && !self.surfs.is_empty() && self.started.map(|t| t.elapsed().as_millis() > 1500).unwrap_or(true) {
+        // mist-wall has drawn its first frame since we started it (it writes wall.up then; 8 s at most, e.g.
+        // when the one that runs is not ours): the photo surfaces (and their buffers) can go
+        let up = || std::fs::metadata(Self::up_marker()).and_then(|m| m.modified()).is_ok_and(|m| m >= self.started_at);
+        if !self.photo() && !self.surfs.is_empty() && self.started.map(|t| t.elapsed().as_millis() > 8000 || (t.elapsed().as_millis() > 300 && up())).unwrap_or(true) {
             self.surfs.clear();
             self.pool = None;
         }
@@ -296,6 +348,7 @@ impl Wall {
                 s.new = Some(px);
             }
         }
+        let mut done = false;
         for s in &mut self.surfs {
             if s.new.is_none() {
                 continue;
@@ -340,7 +393,13 @@ impl Wall {
                 s.fade = None;
                 s.old = None;
                 s.new = None; // the buffer keeps the pixels
+                done = true;
             }
+        }
+        // the decoded pictures (8 MB per 1080p monitor, more while decoding) are freed: back to the system, glibc
+        // would keep them on the heap (+10 MB of private memory measured)
+        if done && !self.busy() {
+            unsafe { libc::malloc_trim(0) };
         }
     }
 }

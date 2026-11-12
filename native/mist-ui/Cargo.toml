@@ -17,6 +17,9 @@ tiny-skia = { version = "0.11", default-features = false, features = ["std", "si
 swash = "0.2"
 async-io = "2"
 zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
+# the thread pool zbus uses. 1.7.0 never ends an idle thread (its limit check): every thread zbus ever used
+# wakes twice a second for good (14 wake-ups/s in an idle shell). Unpin when a release fixes it.
+blocking = "=1.6.2"
 serde_json = "1"
 libc = "0.2"
 calloop-wayland-source = "0.4"

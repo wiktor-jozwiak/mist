@@ -206,6 +206,7 @@ impl Wallpapers {
             return;
         }
         let key = self.shown().map(|i| i.key.clone()).unwrap_or_default();
+        crate::wall::GALLERY.store(true, std::sync::atomic::Ordering::Relaxed);
         if key != self.sent {
             self.sent = key.clone();
             write_atomic(&preview_path(), &serde_json::json!({ "screen": self.screen, "key": key }).to_string());
@@ -271,6 +272,7 @@ impl Wallpapers {
 impl Drop for Wallpapers {
     fn drop(&mut self) {
         // the gallery closed: mist-wall drops the preview
+        crate::wall::GALLERY.store(false, std::sync::atomic::Ordering::Relaxed);
         write_atomic(&preview_path(), r#"{"screen":"","key":""}"#);
     }
 }

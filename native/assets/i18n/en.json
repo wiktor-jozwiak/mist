@@ -915,7 +915,17 @@
     "pip": "Picture in picture",
     "pip_playing": "Playing in the picture-in-picture window",
     "pip_restore": "Bring back here",
-    "pip_video_only": "Picture in picture: video only"
+    "pip_video_only": "Picture in picture: video only",
+    "audio_track": "Audio track",
+    "subtitles_next_hide": "Subtitles: next / hide",
+    "open_file_subtitles_too": "Open a file (subtitles too)",
+    "dropped_frames": "Dropped frames",
+    "bitrate": "Bitrate",
+    "subtitles_added_several": "Subtitles added (several files)",
+    "decoder_hardware_val": "hardware ({hw})",
+    "mpv_create_failed": "mpv_create failed",
+    "mpv_initialize_failed": "mpv_initialize failed",
+    "egl_no_display": "EGL: no display"
   },
   "files": {
     "file": "File",
@@ -1106,7 +1116,11 @@
     "for_the_next_30": "for the next 30 days",
     "no_events_planned": "No events planned",
     "ecb_rate_of": "ECB rate of {}",
-    "here_lc": "here"
+    "here_lc": "here",
+    "config_errors_val": "Configuration errors in {} ({})",
+    "restarted_after_error": "Mist restarted after an error",
+    "error_in_file_val": "Error in {}",
+    "line_col_defaults_used": "line {}, column {} · defaults are used"
   },
   "live_presets": {
     "the_sky_s_colours": "The sky's colours at this hour: night, blue hour, golden hour, day. Turns grey when it rains.",
@@ -1289,7 +1303,11 @@
     "colour": "Colour",
     "clock_colour": "Clock colour",
     "thin": "Thin",
-    "bold": "Bold"
+    "bold": "Bold",
+    "uptime_val": "up {}",
+    "one_event_today": "1 event today",
+    "n_events_today": "{n} events today",
+    "n_events_today_2": "{n} events today"
   },
   "system_settings": {
     "measure_again": "Measure again",
@@ -1563,7 +1581,9 @@
     "takes_effect_after_restart": "Takes effect after the shell restarts",
     "theme": "Theme",
     "theme_sub": "Tint of the glass, windows and accent",
-    "theme_note": "Your own theme: a JSON file in ~/.config/mist/themes (accent, tone, window_top, window_bottom)."
+    "theme_note": "Your own theme: a JSON file in ~/.config/mist/themes (accent, tone, window_top, window_bottom).",
+    "move_silently_to_the_next": "Move silently to the next desktop",
+    "move_silently_to_the_previous": "Move silently to the previous desktop"
   },
   "multitasking": {
     "workspaces_vertical": "Vertical workspaces",

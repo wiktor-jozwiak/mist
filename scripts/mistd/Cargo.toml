@@ -9,6 +9,9 @@ publish = false
 serde_json = "1"
 serde = "1"
 zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
+# the thread pool zbus uses. 1.7.0 never ends an idle thread (its limit check): every thread zbus ever used
+# wakes twice a second for good (14 wake-ups/s in an idle shell). Unpin when a release fixes it.
+blocking = "=1.6.2"
 ureq = { version = "3", features = ["json"] }
 chrono = "0.4"
 chrono-tz = "0.10"

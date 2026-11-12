@@ -377,6 +377,7 @@ impl App {
         if self.test && name != "HDMI-A-1" {
             return;
         }
+        self.wall.sky = self.desk.weather_on();
         self.wall.add_output(&output, &name, &self.compositor, &self.layer_shell, &self.qh);
         if !self.bars.iter().any(|b| b.name == name) && std::env::var("MIST_UI_NO_BAR").is_err() {
             let surface = self.compositor.create_surface(&self.qh);
@@ -536,6 +537,10 @@ impl App {
         n * 100 >= 576 * 85
     }
     pub fn intent_tick(&mut self) {
+        if self.wall.gallery_changed() {
+            let outs = self.outs();
+            self.wall.sync(&self.compositor, &self.layer_shell, &self.qh, &outs);
+        }
         if self.desk.intent.settle() {
             self.desk.dirty = true;
         }
@@ -578,6 +583,7 @@ impl App {
             self.pane_act(a);
         }
         let outs = self.outs();
+        self.wall.sky = self.desk.weather_on();
         self.wall.slow_tick(&self.compositor, &self.layer_shell, &self.qh, &outs);
         let n = crate::wxcard::Wx::n_insights(&self.desk.weather, &self.desk.garmin, &self.desk.cfg);
         if !self.card_covered() && self.desk.wx.tick(n) {
@@ -2830,6 +2836,7 @@ impl App {
             Msg::Dnd(..) => "Dnd",
             Msg::Tray(..) => "Tray",
             Msg::Pins => "Pins",
+            Msg::ConfErr(..) => "ConfErr",
             Msg::Ipc(..) => "Ipc",
             Msg::Note(..) => "Note",
             Msg::Phone2(..) => "Phone2",
@@ -2937,6 +2944,7 @@ impl App {
             Msg::Wall(live, image) => {
                 wall_accent(self.tx.clone());
                 let outs = self.outs();
+                self.wall.sky = self.desk.weather_on();
                 self.wall.set(live, image, &self.compositor, &self.layer_shell, &self.qh, &outs);
             }
             Msg::Tray(t) => self.tray_items = t,
@@ -3002,6 +3010,16 @@ impl App {
             },
             Msg::Cursor(x, y) => self.snap_cursor(x, y),
             Msg::HyprEv(n, d) if n == "mistdrag" || n == "mistsnap" => self.snap_event(&n, &d),
+            // mist-comp: Caps Lock, Num Lock (C,N), at connect and on every change
+            Msg::HyprEv(n, d) if n == "mistlock" => {
+                let first = !std::path::Path::new(&crate::sys::comp_lock_flag()).exists();
+                if first {
+                    let _ = std::fs::write(crate::sys::comp_lock_flag(), "");
+                }
+                let (c, nl) = d.split_once(',').unwrap_or(("0", "1"));
+                self.island.on_sys(&serde_json::json!({"t": "lock", "caps": c == "1", "num": nl == "1", "init": first}));
+                self.island_dirty = true;
+            }
             // mist-comp: a desktop layer under windows (OUTPUT,NAMESPACE,COVERED,FULLSCREEN)
             Msg::HyprEv(n, d) if n == "mistcover" => {
                 let f: Vec<&str> = d.split(',').collect();
@@ -3034,6 +3052,7 @@ impl App {
             }
             Msg::Sys(v) => self.island.on_sys(&v),
             Msg::NmLine(l) => self.island.on_nm(&l),
+            Msg::ConfErr(name, at) => self.island.conf_error(&name, &at),
             Msg::Pins => {
                 self.dock.load_pins();
                 self.dock.forget_tiles();

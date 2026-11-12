@@ -2,12 +2,13 @@
 // NVIDIA). Started (and restarted) by mist-ui, one instance (flock).
 //  - the wallpaper of every monitor (was LiveWallpaper.qml + LiveWall.qml): ~/.config/mist/wallpaper.json
 //    {"live": id | "", "image", "tempo", "music"}. A live scene: shaders/live|fx|toon.frag (GLSL 150 in
-//    shaders/glsl, made from the .qsb Qt used), presets from native/assets/live-presets.js; 30 fps, 5 behind windows (only their
+//    shaders/glsl, made from the .qsb Qt used), presets from native/assets/live-presets.js; 30 fps (24 for calm scenes), at the
+//    preset's render scale `res`, 5 behind windows (only their
 //    blur shows it), paused under a fullscreen window or while the wallpaper gallery covers the monitor; the
 //    music level lifts it gently. A photo: one texture per monitor size, cross-faded 600 ms, drawn only when
 //    it changes. The desktop vignette (shaders/vignette.frag) over both on the main monitor.
 //  - the weather sky of the desktop weather card (was components/Sky.qml): shaders/clouds.frag at half
-//    resolution into a texture (15 fps), shaders/sky.frag over it (30 fps, 5 behind windows), in a Background
+//    resolution into a texture (every 2nd frame), shaders/sky.frag over it (on the wallpaper's ticks, 20 fps alone), in a Background
 //    surface at the card's place ($XDG_RUNTIME_DIR/mist/sky.json, written by mist-ui, which draws the card's
 //    text above it on the Bottom layer).
 #[path = "../../common/astro.rs"]
@@ -327,9 +328,18 @@ struct App {
     photo_tx: std::sync::mpsc::Sender<(String, i32, i32, Vec<u8>)>,
     photo_rx: std::sync::mpsc::Receiver<(String, i32, i32, Vec<u8>)>,
     sky: SkyState,
+    idle_since: Option<Instant>, // nothing of ours to draw since (ONDEMAND)
+    preview_due: bool,
     target_fb: Option<glow::Framebuffer>, // None = the window; an FBO for --png
-    low: HashMap<(i32, i32), (glow::Framebuffer, glow::Texture)>, // software GL: the live scene at half size
+    low: HashMap<(i32, i32), (glow::Framebuffer, glow::Texture, i32, i32)>, // the live scene below window size (preset `res`, software GL), by window size
 }
+
+const SLACK: f32 = 0.008;
+// started by mist-ui (MIST_WALL_ONDEMAND): with a photo, no weather card and the gallery closed nothing here
+// needs a GL context; mist-ui draws the photo itself and this process leaves (exit 5) after IDLE_EXIT
+static ONDEMAND: AtomicBool = AtomicBool::new(false);
+static UP: AtomicBool = AtomicBool::new(false);
+const IDLE_EXIT: Duration = Duration::from_secs(4);
 
 fn home() -> String {
     std::env::var("HOME").unwrap_or_default()
@@ -715,28 +725,49 @@ impl App {
         let _ = self.egl.swap_buffers(self.display, es);
         self.surfs[i].last = Instant::now();
         self.surfs[i].dirty = false;
+        // the first wallpaper frame: mist-ui may drop the photo it showed meanwhile
+        if kind == Kind::Wall && !UP.swap(true, Ordering::Relaxed) {
+            let _ = std::fs::write(format!("{}/wall.up", run_dir()), "");
+        }
         fps_note(&self.surfs[i].name, kind);
     }
 
     fn wall_frame(&mut self, w: i32, h: i32, primary: bool) {
-        if SOFT.load(Ordering::Relaxed) && !self.live.is_empty() {
-            self.wall_scene_low(w, h, primary);
+        let k = self.render_scale();
+        if !self.live.is_empty() && k < 0.99 {
+            self.wall_scene_low(w, h, primary, k);
         } else {
             self.wall_scene(w, h, primary);
         }
     }
-    // software GL: the scene into a half-size texture, stretched (linear) over the window
-    fn wall_scene_low(&mut self, w: i32, h: i32, primary: bool) {
-        let (lw, lh) = ((w + 1) / 2, (h + 1) / 2);
+    // the live scene's render scale: the preset's `res` (soft scenes at 0.5 / 0.75, sharp ones at 1), at most
+    // half size on software GL (llvmpipe, 30 fps at full size: 457 % CPU)
+    fn render_scale(&self) -> f32 {
+        let r = (self.preset()["res"].as_f64().unwrap_or(1.0) as f32).clamp(0.25, 1.0);
+        if SOFT.load(Ordering::Relaxed) { r.min(0.5) } else { r }
+    }
+    // the scene into a texture at k x the window size, stretched (linear) over the window
+    fn wall_scene_low(&mut self, w: i32, h: i32, primary: bool, k: f32) {
+        let (lw, lh) = (((w as f32 * k).round() as i32).max(1), ((h as f32 * k).round() as i32).max(1));
+        // a stale size (another preset's `res`): free it before making the new one
+        if let Some(&(fb, tex, ow, oh)) = self.low.get(&(w, h)) {
+            if (ow, oh) != (lw, lh) {
+                self.low.remove(&(w, h));
+                unsafe {
+                    self.gl().delete_framebuffer(fb);
+                    self.gl().delete_texture(tex);
+                }
+            }
+        }
         let gl = self.gl.as_ref().unwrap();
-        let (fb, _) = *self.low.entry((w, h)).or_insert_with(|| unsafe {
+        let (fb, _, _, _) = *self.low.entry((w, h)).or_insert_with(|| unsafe {
             let tex = gl.create_texture().unwrap();
             gl.bind_texture(glow::TEXTURE_2D, Some(tex));
             gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGBA8 as i32, lw, lh, 0, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(None));
             let fb = gl.create_framebuffer().unwrap();
             gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fb));
             gl.framebuffer_texture_2d(glow::FRAMEBUFFER, glow::COLOR_ATTACHMENT0, glow::TEXTURE_2D, Some(tex), 0);
-            (fb, tex)
+            (fb, tex, lw, lh)
         });
         unsafe {
             self.gl().bind_framebuffer(glow::FRAMEBUFFER, Some(fb));
@@ -795,7 +826,7 @@ impl App {
         let (cov, rain, snow, fog, haze, slant, frost, mist, heat, gsnow) = (sm[0], sm[1], sm[2], sm[3], sm[4], sm[5], sm[6], sm[7], sm[8], sm[9]);
         let wx = [cov, rain, snow, fog];
         let (tw, th) = ((w + 1) / 2, (h + 1) / 2);
-        // clouds every 2nd tick (15 fps), every tick behind windows (5 fps) and while lightning changes
+        // clouds every 2nd tick (10 to 15 fps), every tick behind windows (5 fps) and while lightning changes
         self.sky.tick = self.sky.tick.wrapping_add(1);
         let need = self.sky.fbo.map(|f| f.2 != tw || f.3 != th).unwrap_or(true);
         let bolt_changed = b != self.sky.last_bolt;
@@ -890,7 +921,9 @@ impl App {
     fn cur_fps(&self, name: &str) -> f32 {
         // the other monitors at half rate: the eye is on the main one, half the GPU work there
         let soft = SOFT.load(Ordering::Relaxed) || ON_BATTERY.load(Ordering::Relaxed);
-        if *self.hidden.get(name).unwrap_or(&false) { if soft { 1.0 } else { 2.0 } } else if name != primary_monitor() { if soft { 5.0 } else { 15.0 } } else if soft { 10.0 } else { 30.0 }
+        // slow scenes (the calm presets, the calm tempo) move a few pixels a second: 24 fps looks the same as 30
+        let calm = self.tempo == "calm" || self.preset()["cat"].as_str() == Some("calm");
+        if *self.hidden.get(name).unwrap_or(&false) { if soft { 1.0 } else { 2.0 } } else if name != primary_monitor() { if soft { 5.0 } else if calm { 12.0 } else { 15.0 } } else if soft { 10.0 } else if calm { 24.0 } else { 30.0 }
     }
     fn animate(&self, name: &str) -> bool {
         !self.asleep && !*self.fs.get(name).unwrap_or(&false) && !(self.gallery.0 && self.gallery.1 == name)
@@ -976,7 +1009,9 @@ impl App {
         COLD_AT.store(0, Ordering::Relaxed);
     }
 
-    // one tick: advance the clocks, draw what is due; returns how long to sleep
+    // one tick: advance the clocks, draw what is due; returns how long to sleep. A surface due within SLACK of
+    // this tick is drawn now: the monitors and the sky (24 / 12 / 24 fps) then share ticks instead of each
+    // waking the process on its own schedule (61 wake-ups/s for 56 frames before)
     fn tick(&mut self) -> Duration {
         let dt = self.t_last.elapsed().as_secs_f64().min(0.25);
         self.t_last = Instant::now();
@@ -986,7 +1021,20 @@ impl App {
             TRIM_AT.store(0, Ordering::Relaxed);
             unsafe { libc::malloc_trim(0) };
         }
+        // the gallery may be what this process was started for: its preview.json was written before, and can
+        // only be acted on now (the first tick: the monitors are known, GL is up)
+        if std::mem::take(&mut self.preview_due) {
+            self.load_preview();
+        }
         self.restart_if_cold();
+        if ONDEMAND.load(Ordering::Relaxed) {
+            if !self.live.is_empty() || self.sky.rect.is_some() || self.gallery.0 || self.photo.fade.is_some() {
+                self.idle_since = None;
+            } else if self.idle_since.get_or_insert_with(Instant::now).elapsed() >= IDLE_EXIT {
+                eprintln!("mist-wall: a photo, no sky, no gallery: nothing to draw here, leaving it to mist-ui");
+                std::process::exit(5);
+            }
+        }
         // photos decoded meanwhile
         while let Ok((path, w, h, px)) = self.photo_rx.try_recv() {
             self.photo.asked.retain(|a| !(a.0 == path && a.1 == w && a.2 == h));
@@ -1059,7 +1107,7 @@ impl App {
                 }
                 let due = 1.0 / self.cur_fps(&name);
                 let left = due - self.surfs[i].last.elapsed().as_secs_f32();
-                if left <= 0.002 || self.surfs[i].dirty {
+                if left <= SLACK || self.surfs[i].dirty {
                     self.draw(i);
                     next = next.min(due);
                 } else {
@@ -1114,7 +1162,7 @@ impl App {
                 }
             }
         }
-        // the weather sky: 30 fps, paused under windows (0 fps) or fullscreen window
+        // the weather sky: at the live wallpaper's rate (20 fps alone), the clouds pass every 2nd frame, paused under windows (0 fps) or fullscreen window
         if let Some(i) = self.surfs.iter().position(|s| s.kind == Kind::Sky && s.egl_surf.is_some()) {
             if (now_ms() / 60000.0) as i64 != self.sky.model_at {
                 self.sky_model();
@@ -1122,9 +1170,11 @@ impl App {
             let fs = *self.fs.get(primary_monitor()).unwrap_or(&false) || self.asleep;
             let sdt = self.sky.last.elapsed().as_secs_f64().min(0.25);
             if (!fs && !self.sky.hidden) || self.surfs[i].dirty {
-                let due = if SOFT.load(Ordering::Relaxed) { 1.0 / 10.0 } else { 1.0 / 30.0 };
+                // on the live wallpaper's ticks when one is drawn (one wake-up for both), 20 fps alone
+                let wall_on = !self.live.is_empty() && self.animate(primary_monitor()) && !*self.hidden.get(primary_monitor()).unwrap_or(&false);
+                let due = if wall_on { 1.0 / self.cur_fps(primary_monitor()) } else if SOFT.load(Ordering::Relaxed) { 1.0 / 10.0 } else { 1.0 / 20.0 };
                 let left = due - self.surfs[i].last.elapsed().as_secs_f32();
-                if left <= 0.002 || self.surfs[i].dirty {
+                if left <= SLACK || self.surfs[i].dirty {
                     self.sky.last = Instant::now();
                     if !fs {
                         self.sky.off_x = (self.sky.off_x + self.sky.model.cloud_speed * sdt) % 1e6;
@@ -1506,7 +1556,11 @@ fn read_sky() -> Option<(i32, i32, i32, i32)> {
     Some((v["x"].as_i64()? as i32, v["y"].as_i64()? as i32, v["w"].as_i64()? as i32, v["h"].as_i64()? as i32))
 }
 
+#[path = "../../mist-ui/src/crash.rs"]
+mod crash;
+
 fn main() {
+    crash::install("mist-wall");
     // decoded photos (4K RGBA = 33 MB) always mmapped and returned on free: glibc's dynamic threshold would
     // rise to them and keep them on the heap (+46 MB per photo previewed in the gallery)
     unsafe { libc::mallopt(libc::M_MMAP_THRESHOLD, 1 << 20) };
@@ -1593,6 +1647,8 @@ fn main() {
         },
         target_fb: None,
         low: HashMap::new(),
+        idle_since: None,
+        preview_due: true,
     };
     app.load_cfg();
     app.sky_model();
@@ -1718,8 +1774,10 @@ fn main() {
 
     let mut ev: calloop::EventLoop<App> = calloop::EventLoop::try_new().unwrap();
     let lh = ev.handle();
-    calloop_wayland_source::WaylandSource::new(conn.clone(), queue).insert(lh.clone()).unwrap();
+    let wl_token = calloop_wayland_source::WaylandSource::new(conn.clone(), queue).insert(lh.clone()).unwrap();
     let (tx, rx) = calloop::channel::channel::<Ev>();
+    ONDEMAND.store(std::env::var_os("MIST_WALL_ONDEMAND").is_some(), Ordering::Relaxed);
+    let _ = std::fs::remove_file(format!("{}/wall.up", run_dir()));
     // config / weather / popup / sky files (inotify)
     {
         let tx = tx.clone();
@@ -1825,18 +1883,42 @@ fn main() {
         }
     })
     .unwrap();
-    lh.insert_source(calloop::timer::Timer::from_duration(Duration::from_millis(33)), |_, _, app: &mut App| {
-        let next = if app.gl.is_some() { app.tick() } else { Duration::from_millis(100) };
-        calloop::timer::TimeoutAction::ToDuration(next)
-    })
-    .unwrap();
-    loop {
+    // The ticks are this loop's own deadline, not a calloop timer: while a scene animates (a tick every 60 ms or
+    // less) the Wayland socket is taken out of the poll set and read at each tick, before drawing. The
+    // compositor's answers to a frame (frame callback, buffer release) arrive between two ticks and nothing
+    // here needs them sooner; polled, they woke the process once more per frame (2 wake-ups a frame, now 1).
+    // Slower than that (a photo, covered monitors, software GL) the socket is polled as usual.
+    let lost = |e: calloop::Error| -> ! {
         // the compositor is gone (logout, crash): leave quietly
-        if let Err(e) = ev.dispatch(None, &mut app) {
-            eprintln!("mist-wall: wayland connection lost ({e}), exiting");
-            std::process::exit(0);
+        eprintln!("mist-wall: wayland connection lost ({e}), exiting");
+        std::process::exit(0);
+    };
+    let mut next_tick = Instant::now() + Duration::from_millis(33);
+    let mut wl_polled = true;
+    loop {
+        let wait = next_tick.saturating_duration_since(Instant::now());
+        if !wait.is_zero() {
+            if let Err(e) = ev.dispatch(Some(wait), &mut app) {
+                lost(e);
+            }
+            let _ = conn.flush();
         }
+        if Instant::now() < next_tick {
+            continue;
+        }
+        if !wl_polled {
+            // what the compositor sent since the last tick
+            wl_polled = lh.enable(&wl_token).is_ok();
+            if let Err(e) = ev.dispatch(Some(Duration::ZERO), &mut app) {
+                lost(e);
+            }
+        }
+        let next = if app.gl.is_some() { app.tick() } else { Duration::from_millis(100) };
         let _ = conn.flush();
+        if wl_polled && next <= Duration::from_millis(60) && std::env::var_os("MIST_WALL_POLL").is_none() {
+            wl_polled = lh.disable(&wl_token).is_err();
+        }
+        next_tick = Instant::now() + next;
     }
 }
 

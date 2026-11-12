@@ -915,7 +915,17 @@
     "pip": "Image dans l'image",
     "pip_playing": "Lecture dans la fenêtre image dans l'image",
     "pip_restore": "Ramener ici",
-    "pip_video_only": "Image dans l'image : vidéo uniquement"
+    "pip_video_only": "Image dans l'image : vidéo uniquement",
+    "audio_track": "Piste audio",
+    "subtitles_next_hide": "Sous-titres : suivants / masquer",
+    "open_file_subtitles_too": "Ouvrir un fichier (sous-titres aussi)",
+    "dropped_frames": "Images perdues",
+    "bitrate": "Débit",
+    "subtitles_added_several": "Sous-titres ajoutés (plusieurs fichiers)",
+    "decoder_hardware_val": "matériel ({hw})",
+    "mpv_create_failed": "échec de mpv_create",
+    "mpv_initialize_failed": "échec de mpv_initialize",
+    "egl_no_display": "EGL : aucun affichage"
   },
   "files": {
     "file": "Fichier",
@@ -1106,7 +1116,11 @@
     "for_the_next_30": "pour les 30 prochains jours",
     "no_events_planned": "Aucun événement",
     "ecb_rate_of": "taux BCE du {}",
-    "here_lc": "ici"
+    "here_lc": "ici",
+    "config_errors_val": "Erreurs de configuration dans {} ({})",
+    "restarted_after_error": "Mist a redémarré après une erreur",
+    "error_in_file_val": "Erreur dans {}",
+    "line_col_defaults_used": "ligne {}, colonne {} · valeurs par défaut utilisées"
   },
   "live_presets": {
     "the_sky_s_colours": "Les couleurs du ciel à cette heure : nuit, heure bleue, heure dorée, jour. Grisonne quand il pleut.",
@@ -1289,7 +1303,11 @@
     "colour": "Couleur",
     "clock_colour": "Couleur de l'horloge",
     "thin": "Fin",
-    "bold": "Gras"
+    "bold": "Gras",
+    "uptime_val": "actif depuis {}",
+    "one_event_today": "1 événement aujourd'hui",
+    "n_events_today": "{n} événements aujourd'hui",
+    "n_events_today_2": "{n} événements aujourd'hui"
   },
   "system_settings": {
     "measure_again": "Mesurer à nouveau",
@@ -1563,7 +1581,9 @@
     "takes_effect_after_restart": "Prend effet après le redémarrage du shell",
     "theme": "Thème",
     "theme_sub": "Teinte du verre, des fenêtres et de l'accent",
-    "theme_note": "Thème personnel : un fichier JSON dans ~/.config/mist/themes (accent, tone, window_top, window_bottom)."
+    "theme_note": "Thème personnel : un fichier JSON dans ~/.config/mist/themes (accent, tone, window_top, window_bottom).",
+    "move_silently_to_the_next": "Déplacer discrètement vers le bureau suivant",
+    "move_silently_to_the_previous": "Déplacer discrètement vers le bureau précédent"
   },
   "multitasking": {
     "workspaces_vertical": "Bureaux à la verticale",

@@ -273,6 +273,13 @@ fn one_depth(t: &Table, s: &str, depth: usize) -> Option<String> {
             continue;
         }
         if let Some(caps) = capture(parts, s) {
+            // a template that is only a connector ("{} z {}", "{} w {}") matches any sentence with that word in it:
+            // only numbers or known words around it ("3 z 5"), never free text ("Spotkanie z Olą" stays)
+            if parts.iter().map(|p| p.chars().filter(|c| c.is_alphabetic()).count()).sum::<usize>() <= 2
+                && !caps.iter().all(|c| c.chars().any(|x| x.is_ascii_digit()) || one_depth(t, c, depth + 1).is_some())
+            {
+                continue;
+            }
             // captured texts may be words of their own ("{} dni temu" with "pon")
             let caps: Vec<String> = if depth < 2 {
                 caps.iter().map(|c| one_depth(t, c, depth + 1).unwrap_or_else(|| c.to_string())).collect()
@@ -407,6 +414,24 @@ mod tests {
         }
     }
 
+    // strings that reached the screen untranslated until 2026-11-12 (Mist Player's help and statistics, the
+    // desktop cards' headers, the configuration error notice)
+    #[test]
+    fn late_strings() {
+        for s in ["Ścieżka audio", "Napisy: następne / ukryj", "Otwórz plik (też napisy)", "Pominięte klatki", "Przepływność",
+            "Dodano napisy (kilka plików)", "sprzętowy (nvdec)", "mpv_create nie działa", "EGL: brak wyświetlacza", "działa 3 d",
+            "1 wydarzenie dziś", "3 wydarzenia dziś", "7 wydarzeń dziś", "Błędy konfiguracji mist-comp (2)",
+            "Przenieś po cichu na pulpit: następny"] {
+            for (lang, _) in LANGS {
+                if lang != "pl" {
+                    assert_ne!(with(lang, s), s, "{lang}");
+                }
+            }
+        }
+        assert_eq!(with("en", "sprzętowy (nvdec)"), "hardware (nvdec)");
+        assert_eq!(with("en", "7 wydarzeń dziś"), "7 events today");
+    }
+
     fn with(lang: &'static str, s: &str) -> String {
         *CUR.write().unwrap() = Some((lang, load(lang)));
         tr(s).into_owned()
@@ -431,6 +456,9 @@ mod tests {
         assert_eq!(with("en", "Bez większych opadów · porywy do 40 km/h"), "No significant rain · gusts up to 40 km/h");
         assert_eq!(with("en", "3 d 4 godz."), "3 d 4 h");
         assert_eq!(with("en", "Połączono · 80%"), "Connected · 80%");
+        // a connector-only template ("{} z {}") translates numbers, never free text from an app
+        assert_eq!(with("en", "3 z 5"), "3 of 5");
+        assert_eq!(with("en", "Spotkanie z Olą w biurze"), "Spotkanie z Olą w biurze");
         assert_eq!(with("en", "Piątek, 16 października"), "Friday, 16 October");
         assert_eq!(with("de", "Piątek, 16 października"), "Freitag, 16. Oktober");
         assert_eq!(with("es", "Piątek, 16 października"), "Viernes, 16 de octubre");

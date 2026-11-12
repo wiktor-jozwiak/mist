@@ -42,6 +42,7 @@ mod notifcenter;
 mod switcher;
 mod clipboard;
 mod control;
+mod crash;
 mod phonepanel;
 mod shot;
 mod spotlight;
@@ -70,10 +71,14 @@ use calloop_wayland_source::WaylandSource;
 use wayland_client::{globals::registry_queue_init, Connection};
 
 fn main() {
+    crash::install("mist-ui");
     // ~35 threads, mostly asleep: glibc would give each one that allocates its own malloc arena (memory freed in
     // one is not reused by the others); two arenas are plenty for a shell
     unsafe {
         libc::mallopt(libc::M_ARENA_MAX, 2);
+        // a decoded photo (1080p RGBA: 8 MB) is always mmapped and returned on free; glibc's dynamic threshold
+        // would rise to it and keep such blocks on the heap (+10 MB with a photo wallpaper)
+        libc::mallopt(libc::M_MMAP_THRESHOLD, 4 << 20);
     }
     let args: Vec<String> = std::env::args().collect();
     // `--wayland-globals`: the compositor's globals, one `interface version` per line (checks, CI)

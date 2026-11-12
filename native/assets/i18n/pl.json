@@ -915,7 +915,17 @@
     "pip": "Obraz w obrazie",
     "pip_playing": "Odtwarzanie w oknie obraz w obrazie",
     "pip_restore": "Przywróć tutaj",
-    "pip_video_only": "Obraz w obrazie: tylko dla wideo"
+    "pip_video_only": "Obraz w obrazie: tylko dla wideo",
+    "audio_track": "Ścieżka audio",
+    "subtitles_next_hide": "Napisy: następne / ukryj",
+    "open_file_subtitles_too": "Otwórz plik (też napisy)",
+    "dropped_frames": "Pominięte klatki",
+    "bitrate": "Przepływność",
+    "subtitles_added_several": "Dodano napisy (kilka plików)",
+    "decoder_hardware_val": "sprzętowy ({hw})",
+    "mpv_create_failed": "mpv_create nie działa",
+    "mpv_initialize_failed": "mpv_initialize nie działa",
+    "egl_no_display": "EGL: brak wyświetlacza"
   },
   "files": {
     "file": "Plik",
@@ -1106,7 +1116,11 @@
     "for_the_next_30": "na najbliższe 30 dni",
     "no_events_planned": "Brak wydarzeń w planie",
     "ecb_rate_of": "kurs EBC z {}",
-    "here_lc": "tutaj"
+    "here_lc": "tutaj",
+    "config_errors_val": "Błędy konfiguracji {} ({})",
+    "restarted_after_error": "Mist uruchomił się ponownie po błędzie",
+    "error_in_file_val": "Błąd w pliku {}",
+    "line_col_defaults_used": "wiersz {}, kolumna {} · użyto ustawień domyślnych"
   },
   "live_presets": {
     "the_sky_s_colours": "Kolory nieba o tej porze: noc, niebieska godzina, złota godzina, dzień. Szarzeje, gdy pada.",
@@ -1289,7 +1303,11 @@
     "colour": "Kolor",
     "clock_colour": "Kolor zegara",
     "thin": "Cienki",
-    "bold": "Gruby"
+    "bold": "Gruby",
+    "uptime_val": "działa {}",
+    "one_event_today": "1 wydarzenie dziś",
+    "n_events_today": "{n} wydarzenia dziś",
+    "n_events_today_2": "{n} wydarzeń dziś"
   },
   "system_settings": {
     "measure_again": "Zmierz jeszcze raz",
@@ -1563,7 +1581,9 @@
     "takes_effect_after_restart": "Zmiana zadziała po ponownym uruchomieniu powłoki",
     "theme": "Motyw",
     "theme_sub": "Barwa szkła, okien i akcentu",
-    "theme_note": "Własny motyw: plik JSON w ~/.config/mist/themes (accent, tone, window_top, window_bottom)."
+    "theme_note": "Własny motyw: plik JSON w ~/.config/mist/themes (accent, tone, window_top, window_bottom).",
+    "move_silently_to_the_next": "Przenieś po cichu na pulpit: następny",
+    "move_silently_to_the_previous": "Przenieś po cichu na pulpit: poprzedni"
   },
   "multitasking": {
     "workspaces_vertical": "Pulpity pionowo",

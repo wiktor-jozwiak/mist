@@ -455,12 +455,30 @@ impl Island {
         }
     }
 
+    // a file in ~/.config/mist that does not parse: its readers use defaults until it is fixed
+    pub fn conf_error(&mut self, name: &str, at: &str) {
+        let mut e = info("conf", 3, 9000, "alert", DANGER, &format!("Błąd w pliku {name}"), &format!("{at} · użyto ustawień domyślnych"));
+        e.hold = true;
+        self.push(e);
+    }
+
+    pub fn crashed(&mut self, what: &str) {
+        let mut e = info("crash", 3, 9000, "alert", DANGER, "Mist uruchomił się ponownie po błędzie", what);
+        e.hold = true;
+        self.push(e);
+    }
+
     // ------------------------------------------------------------ timers (called every frame / tick)
     pub fn tick(&mut self, ringing: bool, call: bool) -> bool {
         let now = Instant::now();
         let mut changed = false;
         if !self.armed && self.start.elapsed().as_secs() >= 3 {
             self.armed = true;
+            // the previous run ended in a panic: say so once, with where (the full line is in crash.log)
+            if let Some(c) = crate::crash::take() {
+                self.crashed(&c);
+                changed = true;
+            }
         }
         if self.ev_until.map(|t| now >= t).unwrap_or(false) {
             let keep = (self.hover || self.replying) && self.ev.as_ref().map(|e| e.view == "notif" || e.hold).unwrap_or(false);
@@ -2698,6 +2716,28 @@ mod special_tests {
         assert!(isl.ev.is_none() && isl.queue.is_empty());
         isl.on_hypr("activespecial", "special:scratch,DP-3", &apps, &[], "");
         assert_eq!(isl.ev.as_ref().map(|e| e.key.as_str()), Some("special"));
+    }
+
+    // a broken settings.json is named with the place, in the UI language
+    #[test]
+    fn conf_error_notice() {
+        assert_eq!(crate::sys::conf_error("{\n  \"a\": 1,\n}").as_deref(), Some("wiersz 3, kolumna 1"));
+        assert_eq!(crate::sys::conf_error("{\"a\": 1}"), None);
+        let mut isl = Island::new();
+        isl.armed = true;
+        isl.conf_error("settings.json", "wiersz 3, kolumna 1");
+        let e = isl.ev.as_ref().expect("notice");
+        assert!(e.key == "conf" && e.hold && e.title == "Błąd w pliku settings.json" && e.sub.starts_with("wiersz 3"));
+    }
+
+    // after a panic the restarted shell says so, and keeps the notice until it is dismissed
+    #[test]
+    fn crash_notice() {
+        let mut isl = Island::new();
+        isl.armed = true;
+        isl.crashed("mist-ui: thread 'stats' at mist-ui/src/sys.rs:560:13: index out of bounds");
+        let e = isl.ev.as_ref().expect("notice");
+        assert!(e.key == "crash" && e.hold && e.sub.contains("sys.rs:560"));
     }
 
     // the battery: unplug, 20 / 10 % once each, nothing in between, plug in, full

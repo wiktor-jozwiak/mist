@@ -293,21 +293,26 @@ pub fn time_zone(raw: &str) -> Option<(String, String)> {
     let q = norm(raw);
     let (at, city) = tz_query(&q)?;
     let z = zone(&city)?;
-    let local = std::env::var("TZ").ok();
-    // the moment: now, or that clock time today here
-    let secs = match at {
-        None => date(local.as_deref().unwrap_or(""), &["+%s"])?,
-        Some((h, m)) => {
-            let mut c = std::process::Command::new("date");
-            c.args(["-d", &format!("{h:02}:{m:02}"), "+%s"]);
-            String::from_utf8_lossy(&c.output().ok()?.stdout).trim().to_string()
+    // the moment: now, or that clock time today here (libc, the process's own zone: no `date` for this side)
+    let secs = unsafe {
+        let mut t = libc::time(std::ptr::null_mut());
+        if let Some((h, m)) = at {
+            let mut tm: libc::tm = std::mem::zeroed();
+            libc::localtime_r(&t, &mut tm);
+            (tm.tm_hour, tm.tm_min, tm.tm_sec, tm.tm_isdst) = (h as i32, m as i32, 0, -1);
+            t = libc::mktime(&mut tm);
         }
+        t
     };
     let there = date(&z, &["-d", &format!("@{secs}"), "+%H:%M|%:z|%F"])?;
     let mut it = there.split('|');
     let (hm, off, day) = (it.next()?, it.next()?, it.next()?);
     // another day there: say which
-    let here_day = String::from_utf8_lossy(&std::process::Command::new("date").args(["-d", &format!("@{secs}"), "+%F"]).output().ok()?.stdout).trim().to_string();
+    let here_day = unsafe {
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&secs, &mut tm);
+        format!("{:04}-{:02}-{:02}", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday)
+    };
     let hm = match day.cmp(here_day.as_str()) {
         std::cmp::Ordering::Greater => format!("{hm} ({})", crate::i18n::tr("jutro")),
         std::cmp::Ordering::Less => format!("{hm} ({})", crate::i18n::tr("wczoraj")),
@@ -344,5 +349,23 @@ mod tests {
         assert_eq!(tz_query("czas w nowy jork"), Some((None, "nowy jork".into())));
         assert_eq!(tz_query("15 km"), Some((Some((15, 0)), "km".into())));
         assert_eq!(zone("tokio").as_deref(), Some("Asia/Tokyo"));
+    }
+}
+
+#[cfg(test)]
+mod tz_tests {
+    use super::*;
+    fn sh(c: &str) -> String {
+        String::from_utf8_lossy(&std::process::Command::new("sh").args(["-c", c]).output().unwrap().stdout).trim().to_string()
+    }
+    // the local side is computed in-process (libc): the answer must match what `date` alone says
+    #[test]
+    fn clock_time_elsewhere() {
+        let want = sh("TZ=Asia/Tokyo date -d \"@$(date -d 12:00 +%s)\" +%H:%M");
+        let (got, _) = time_zone("12:00 tokio").expect("an answer");
+        assert!(got.starts_with(&want), "{got} vs {want}");
+        // now: the minute may turn between the two readings
+        let (a, (got, _), b) = (sh("TZ=Asia/Tokyo date +%H:%M"), time_zone("tokio time").expect("an answer"), sh("TZ=Asia/Tokyo date +%H:%M"));
+        assert!(got.starts_with(&a) || got.starts_with(&b), "{got} vs {a} / {b}");
     }
 }

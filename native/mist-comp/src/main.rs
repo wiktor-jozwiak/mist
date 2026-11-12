@@ -64,7 +64,11 @@ pub use state::MistComp;
 /// `LoopHandle<MistComp>`).
 pub type CalloopData = MistComp;
 
+#[path = "../../mist-ui/src/crash.rs"]
+mod crash;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    crash::install("mist-comp");
     // colours only on a terminal (start-mist writes ~/.cache/mist/comp.log)
     let ansi = std::io::IsTerminal::is_terminal(&std::io::stderr());
     if let Ok(env_filter) = tracing_subscriber::EnvFilter::try_from_default_env() {
