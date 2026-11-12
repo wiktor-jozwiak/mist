@@ -44,6 +44,11 @@ for comp in sway labwc weston mist-comp; do
         RT=$(mktemp -d /tmp/mcb.XXXX)
         mkdir -p "$RT/home"
         chmod 700 "$RT"
+        q=0; until sh "$here/quiet.sh" 5 2>/dev/null; do   # a burst (a browser tab) passes: wait up to 10 min
+            q=$((q+1)); [ "$q" -ge ${BENCH_WAIT:-40} ] && break; sleep 12
+        done
+        [ "$q" -gt 0 ] && echo "   (waited for a quiet machine: $q checks)"
+        sh "$here/quiet.sh" 5 || { echo "bench: stopped before this run; quiet the machine and start again (BENCH_BUSY_OK=1 to measure anyway)" >&2; exit 1; }
         echo "== $comp ($ver), run $r/$runs"
         env -i HOME="$RT/home" XDG_RUNTIME_DIR="$RT" PATH="$PATH" LANG=C.UTF-8 USER="$USER" \
             LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}${R:+:$R/usr/lib/weston}" XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/share}" \

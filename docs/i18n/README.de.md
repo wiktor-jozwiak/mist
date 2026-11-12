@@ -16,52 +16,40 @@
 
 <img src="../img/desktop-en.webp" alt="Der Mist-Desktop: obere Leiste, Uhr, Wetter-, Bereitschafts- und Laufkarten, Dock" width="100%">
 
+**[Was du bekommst](#was-du-bekommst) · [Warum es leicht ist](#warum-es-leicht-ist) · [mist-comp](#mist-comp) ·
+[Installation](#installation) · [Tasten](#tasten-und-skripte) · [Entwicklung](#entwicklung)**
+
+</div>
+
+Mist ist eine ganze Desktop-Shell in einem Prozess: Leiste, Dock, Dynamic Island, Desktop-Widgets, Suche,
+Kontrollzentrum, Benachrichtigungen, Sperrbildschirm und Polkit-Agent. Es läuft auf Hyprland oder auf seinem
+eigenen Compositor, [`mist-comp`](#mist-comp), und lässt sich auf dem Desktop, den du schon benutzt,
+[in einem Fenster ausprobieren](#2-in-einem-fenster-ausprobieren).
+
+> [!NOTE]
+> Mist ist der tägliche Desktop einer Person (Arch / CachyOS, zwei Monitore, NVIDIA). Es ist öffentlich, weil
+> es funktioniert, nicht weil es fertig ist: Rechne damit, Code zu lesen.
+
+## Was du bekommst
+
+<div align="center">
+
 <table>
   <tr>
     <td width="50%"><img src="../img/island.gif" alt="Dynamic Island: eine Benachrichtigung, die Lautstärke, gleich Regen, der nächste Termin" width="100%"></td>
     <td width="50%"><img src="../img/weather.gif" alt="Die Wetterkarte im Regen über ihrem Live-Himmel" width="100%"></td>
   </tr>
   <tr>
-    <td align="center"><sub>Dynamic Island: Benachrichtigungen, Lautstärke, Regen in der nächsten Stunde, nächster Termin</sub></td>
+    <td align="center"><sub>Dynamic Island: Benachrichtigungen, Lautstärke, Regen in der nächsten Stunde, der nächste Termin</sub></td>
     <td align="center"><sub>Wetterkarte über einem in Echtzeit gezeichneten GLSL-Himmel</sub></td>
   </tr>
-</table>
-
-<a href="https://youtu.be/mwisDtz0Yd0"><img src="../img/demo-poster.webp" alt="Mist demo video (40 s)" width="720"></a>
-
-<sub>40-s-Demo, aufgenommen in einer Headless-<code>mist-comp</code>-Sitzung mit Demodaten. Musik: <i>Trap Beat</i> von JonasBlakewood (Pixabay) · <a href="https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07">MP4</a></sub>
-
-</div>
-
-Mist ist Leiste, Dock, Dynamic Island, Desktop-Widgets, Suche, Kontrollzentrum, Benachrichtigungen,
-Sperrbildschirm und Polkit-Agent eines Desktops, in einem einzigen Prozess mit ~50 MB, der nie einen
-GPU-Kontext öffnet. Es läuft auf Hyprland oder auf seinem eigenen Compositor, `mist-comp`.
-
-Angefangen hat es als Quickshell-Konfiguration mit 428 MB und 9,5 % CPU im Leerlauf. Seitdem wurde es Fläche
-für Fläche nach drei Regeln neu geschrieben:
-
-- **Auf der CPU zeichnen.** `mist-ui` malt `wl_shm`-Puffer mit [tiny-skia] und [swash] und zeichnet nur neu,
-  was sich geändert hat. Auf NVIDIA kostet jeder OpenGL-Kontext 100 bis 160 MB vor dem ersten Pixel; Mist hat
-  keinen.
-- **Auf Ereignisse warten.** Alles kommt aus dem Compositor-Socket, D-Bus, `pactl subscribe` und inotify.
-  Nichts fragt im Leerlauf zyklisch ab, und verdeckte Flächen arbeiten nicht.
-- **Ein GPU-Prozess, nur wenn er etwas zeigt.** `mist-wall` zeichnet Live-Hintergründe und den Wetterhimmel;
-  bei einem Foto beendet er sich und `mist-ui` zeichnet das Foto.
-
-> [!NOTE]
-> Mist ist der tägliche Desktop einer Person (Arch / CachyOS, zwei Monitore, NVIDIA). Es ist öffentlich, weil
-> es funktioniert, nicht weil es fertig ist: Rechne damit, Code zu lesen.
-
-## Funktionen
-
-<table>
   <tr>
     <td width="50%"><img src="../img/panels/spotlight.webp" alt="Suche im Stil von Spotlight" width="100%"></td>
     <td width="50%"><img src="../img/panels/settings.webp" alt="Einstellungsfenster" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><sub>Spotlight: Apps, Dateien, Befehle, Emoji, Web</sub></td>
-    <td align="center"><sub>Einstellungen: alles in einem Fenster, sofort übernommen</sub></td>
+    <td align="center"><sub>Einstellungen: jede Option in einem Fenster, sofort angewendet</sub></td>
   </tr>
   <tr>
     <td width="50%"><img src="../img/panels/control.webp" alt="Kontrollzentrum" width="100%"></td>
@@ -73,60 +61,92 @@ für Fläche nach drei Regeln neu geschrieben:
   </tr>
 </table>
 
-| | |
-|---|---|
-| **Obere Leiste** | aktive App, Systemablage (StatusNotifierItem + dbusmenu), Netzwerk, Bluetooth, Audio, CPU und Speicher, Uhr |
-| **Dock** | angeheftete und laufende Apps, Vergrößerung, Fensterauswahl mit Live-Vorschau |
-| **Dynamic Island** | Medien mit Equalizer, Timer, Anrufe (KDE Connect oder ADB), Benachrichtigungen, Lautstärke |
-| **Desktop** | Uhr und Glaskarten: Wetter, Garmin-Bereitschaft, Laufen, Musik, Kalender, System, Weltuhren |
-| **Panels** | Spotlight, Start, App-Umschalter, Kontrollzentrum, Mitteilungszentrale, Zwischenablage, Emoji, Sitzungsmenü, Bildschirmfotos |
-| **Schnelle Antworten** | in Spotlight beim Tippen: Rechnen (`128*42`), Einheiten (`212 f to c`, `2 gb to mb`), Zeitzonen (`tokyo time`) |
-| **Telefon** | KDE Connect: Akku, Benachrichtigungen, SMS und Kontakte in einem Panel, Anrufe in der Island |
-| **Einstellungen** | Sprache, Wetterort, Hintergrund, Desktop-Layout, Widgets, Nachtlicht, Sperre und Ruhezustand, Benachrichtigungen |
-| **System** | Benachrichtigungsserver, Polkit-Agent, Sperrbildschirm (PAM), Leerlauf und Ruhezustand |
-| **Apps** | Mist Files (auch der Dateiauswahldialog jeder App), Mist Player (libmpv), Systemeinstellungen |
-| **Andocken** | wie Windows 11: an Rand oder Ecke ziehen, Snap Layouts am grünen Knopf oder mit `Super + Z`, Snap Assist |
-| **Hintergründe** | Fotos, Live-Szenen in GLSL oder ein Himmel, der dem aktuellen Wetter folgt |
+<a href="https://youtu.be/mwisDtz0Yd0"><img src="../img/demo-poster.webp" alt="Mist demo video (40 s)" width="720"></a>
 
-Das **Wetter** kommt ohne Konto von [Open-Meteo](https://open-meteo.com): Stundenkurve, vier Tage, Regen in der
-nächsten Stunde, Sonne und Mond. **Garmin-Bereitschaft** und **Laufen** zeigen deine eigenen Garmin-Connect-Daten,
-die `mistd` in eine lokale SQLite-Datei synchronisiert; die Karten bleiben verborgen, bis du dich einmal
-anmeldest ([Anleitung](../guides/garmin.md)).
+<sub>40-s-Demo, aufgenommen in einer headless <code>mist-comp</code>-Sitzung mit Demodaten. Musik: <i>Trap Beat</i> von JonasBlakewood (Pixabay) · <a href="https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07">MP4</a></sub>
+
+</div>
+
+**Die Shell**
+
+- **Obere Leiste:** aktive App, Systemablage (StatusNotifierItem + dbusmenu), Netzwerk, Bluetooth, Audio, CPU
+  und Speicher, Uhr.
+- **Dock:** angeheftete und laufende Apps, Vergrößerung, Fensterauswahl mit Live-Vorschau.
+- **Dynamic Island:** Medien mit Equalizer, Timer, Anrufe, Benachrichtigungen, Lautstärke.
+- **Panels:** Spotlight, Start, App-Umschalter, Kontrollzentrum, Mitteilungszentrale, Zwischenablage, Emoji,
+  Sitzungsmenü, Bildschirmfoto-Leiste. Spotlight antwortet beim Tippen: Rechnen (`128*42`), Einheiten
+  (`212 f to c`, `2 gb to mb`), Zeitzonen (`tokyo time`).
+- **Andocken von Fenstern** wie in Windows 11: an Rand oder Ecke ziehen, Snap Layouts am grünen Knopf oder
+  mit `Super + Z`, Snap Assist.
+
+**Der Desktop**
+
+- **Uhr und Glaskarten:** Wetter, Garmin-Bereitschaft, Laufen, Musik, Kalender, System, Weltuhren. Das Wetter
+  kommt ohne Konto von [Open-Meteo](https://open-meteo.com): Stundenkurve, vier Tage, Regen in der nächsten
+  Stunde, Sonne und Mond. Die Garmin-Karten zeigen deine eigenen Garmin-Connect-Daten, die in eine lokale
+  SQLite-Datei synchronisiert werden; sie bleiben verborgen, bis du dich einmal anmeldest
+  ([Anleitung](../guides/garmin.md)).
+- **Hintergründe:** Fotos, Live-Szenen in GLSL oder ein Himmel, der dem aktuellen Wetter folgt.
+- **Themes:** Mist, Catppuccin, Nord, Gruvbox, Tokyo Night, Rosé Pine, Dracula oder eine eigene JSON-Datei.
+  Glas, Fenster und Akzentfarbe wechseln live in der Shell und in Files, Player und Einstellungen.
+
+**Was es ersetzt**
+
+- **Dienste:** den Benachrichtigungsserver, den Polkit-Agenten, den Sperrbildschirm (PAM), Leerlauf und
+  Ruhezustand.
+- **Apps:** Mist Files (auch der Dateiauswahldialog jeder App), Mist Player (libmpv), Einstellungen (Sprache,
+  Wetterort, Hintergrund, Desktop-Layout, Widgets, Nachtlicht, Sperre und Ruhezustand, Benachrichtigungen).
+- **Telefon** über KDE Connect: Akku, Benachrichtigungen, SMS und Kontakte in einem Panel, Anrufe in der
+  Island (ADB als Ausweichweg für Anrufe).
 
 Die Oberfläche spricht **Deutsch, Englisch, Polnisch, Spanisch und Französisch**, nach `$LANG` oder der Wahl in
 den Einstellungen. Eine Sprache ist eine JSON-Datei in [native/assets/i18n](../../native/assets/i18n).
 
-## Messungen
+## Warum es leicht ist
 
-<p align="center"><img src="../img/memory.svg" alt="Speicher im Leerlauf (PSS), jede Shell allein: swaybar 7 MB, Waybar 32 MB, Mist ohne mist-wall 38 MB, nwg-panel 56 MB, Mist mit Live-Hintergrund 132 MB, Ironbar 137 MB, leeres Quickshell 142 MB, Noctalia 177 MB" width="100%"></p>
+Angefangen hat Mist als Quickshell-Konfiguration mit 428 MB und 9,5 % CPU im Leerlauf. Es wurde Fläche für
+Fläche nach drei Regeln neu geschrieben:
 
-Jede Shell allein in einem frischen headless sway auf der GPU (RTX 4060, zwei 1080p-Ausgänge), mit der
-Konfiguration aus ihrem Paket, 3 Läufe, Median ([bench/shells.sh](../../bench/shells.sh)). *Leerlauf*: eine Minute passiert nichts.
-*Aktiv*: alle 2 s ein Arbeitsflächenwechsel, alle 6 s ein Fenster, alle 10 s eine Mitteilung. CPU in % eines Kerns.
+- **Auf der CPU zeichnen.** `mist-ui` malt `wl_shm`-Puffer mit [tiny-skia] und [swash] und zeichnet nur neu,
+  was sich geändert hat. Auf NVIDIA kostet jeder OpenGL-Kontext 100 bis 160 MB vor dem ersten Pixel; `mist-ui`
+  hat keinen.
+- **Auf Ereignisse warten.** Der Zustand kommt aus dem Compositor-Socket, D-Bus, `pactl subscribe` und
+  inotify, und verdeckte Flächen arbeiten nicht. Die Shell wacht im Leerlauf 8-mal pro Sekunde auf.
+- **Ein GPU-Prozess, nur solange er etwas zeigt.** `mist-wall` zeichnet Live-Hintergründe, den Himmel der
+  Wetterkarte und die Hintergrundgalerie. Mit einem Foto als Hintergrund und ohne diese beendet er sich, und
+  `mist-ui` zeichnet das Foto.
+
+<p align="center"><img src="../img/memory.svg" alt="Speicher im Leerlauf (PSS), jede Shell allein, von swaybar mit 6 MB bis Noctalia mit 192 MB: Mist mit Foto-Hintergrund 44 MB, Mist mit Live-Hintergrund 144 MB" width="100%"></p>
+
+**Shells.** Jede allein in einem frischen headless sway auf der GPU (RTX 4060, zwei 1080p-Ausgänge), mit der
+Konfiguration aus ihrem Paket; 3 Läufe, Median ([bench/shells.sh](../../bench/shells.sh)). *Leerlauf*: eine
+Minute passiert nichts. *Aktiv*: alle 2 s ein Arbeitsflächenwechsel, alle 6 s ein neues Fenster, alle 10 s
+eine Benachrichtigung. CPU in % eines Kerns.
 
 | Shell | Was sie zeichnet | Speicher (PSS) | GPU-Speicher | CPU Leerlauf | CPU aktiv |
 |---|---|---|---|---|---|
-| swaybar (sway 1.12) | Leiste | 7 MB | – | 0 % | 0,03 % |
-| Waybar 0.15 | Leiste | 32 MB | – | 0,03 % | 0,38 % |
-| **Mist ohne `mist-wall`** | Leiste, Dock, Island, Desktop-Widgets, Mitteilungen | **38 MB** | – | 0,19 % | 0,72 % |
-| nwg-panel 0.12 | Leiste | 56 MB | – | 0,10 % | 0,22 % |
-| **Mist** | all das + ein Live-GLSL-Hintergrund | 132 MB | 42 MiB | 0,83 % | 1,35 % |
-| Ironbar 0.19 | Leiste | 137 MB | 9 MiB | 0,37 % | 0,43 % |
-| Quickshell 0.3, ein leeres `PanelWindow` | eine leere Leiste | 142 MB | 6 MiB | 0 % | 0 % |
-| Noctalia 5.4 | Leiste, Foto-Hintergrund (und ihr Einrichtungsdialog) | 177 MB | 60 MiB | 0,12 % | 4,50 % |
+| swaybar (sway 1.12) | Leiste | 6 MB | – | 0 % | 0,03 % |
+| Waybar 0.15 | Leiste | 34 MB | – | 0,03 % | 0,38 % |
+| **Mist, Foto-Hintergrund** | Leiste, Dock, Island, Desktop-Widgets, Benachrichtigungen, Hintergrund | **44 MB** | – | 0,14 % | 0,66 % |
+| nwg-panel 0.12 | Leiste | 59 MB | – | 0,09 % | 0,23 % |
+| **Mist, Live-Hintergrund** | all das, der Hintergrund eine Live-Szene in GLSL | 144 MB | 50 MiB | 0,79 % | 1,34 % |
+| Ironbar 0.19 | Leiste | 158 MB | 9 MiB | 0,35 % | 0,42 % |
+| Quickshell 0.3, ein leeres `PanelWindow` | eine leere Leiste | 161 MB | 6 MiB | 0 % | 0 % |
+| Noctalia 5.4 | Leiste, Foto-Hintergrund (und ihr Einrichtungsdialog) | 192 MB | 60 MiB | 0,10 % | 4,01 % |
 
-Compositoren, headless auf derselben GPU, 1920×1080 60 Hz, 5 Läufe ([bench/compositors.sh](../../bench/compositors.sh)).
-Ohne etwas auf dem Bildschirm brauchen alle 0 % CPU:
+**Compositoren.** Headless auf derselben GPU, 1920×1080 60 Hz, 5 Läufe
+([bench/compositors.sh](../../bench/compositors.sh)). Ohne etwas auf dem Bildschirm brauchen alle 0 % CPU.
 
 | Compositor | Speicher (PSS) | CPU, ein Client, der jedes Bild auf der CPU zeichnet | CPU, ein OpenGL-Client im Vollbild | CPU pro OpenGL-Bild |
 |---|---|---|---|---|
-| **mist-comp** | 100 MB | **1,7 %** | 1,3 % | 0,22 ms |
-| weston 15 | 101 MB | 2,7 % | **0,6 %** | **0,11 ms** |
-| labwc 0.20 | 109 MB | 6,1 % | 6,0 % | 1,0 ms |
-| sway 1.12 | 103 MB | 33,5 % | 6,6 % | 1,1 ms |
+| **mist-comp** | 128 MB | **2,2 %** | 1,5 % | 0,25 ms |
+| weston 15 | 129 MB | 3,3 % | **0,8 %** | **0,13 ms** |
+| labwc 0.20 | 137 MB | 8,1 % | 8,9 % | 1,5 ms |
+| sway 1.12 | 129 MB | 33,6 % | 8,3 % | 1,4 ms |
 
-Hyprland und niri haben keinen headless-Modus, den ein Skript starten kann, und fehlen deshalb. Methode, jeder
-Lauf, Zahlen pro Prozess und die früheren Messungen in der echten Sitzung: [docs/BENCHMARKS.md](../BENCHMARKS.md).
+Hyprland und niri haben keinen headless-Modus, den ein Skript starten kann, und fehlen deshalb in der Tabelle.
+Methode, jeder Lauf, Aufwachvorgänge, Zahlen pro Prozess und die früheren Messungen in der echten Sitzung:
+[docs/BENCHMARKS.md](../BENCHMARKS.md).
 
 ## mist-comp
 
@@ -135,8 +155,8 @@ dieselbe Shell und beantwortet genug von Hyprlands IPC, dass `hyprctl` und Mists
 funktionieren. Er ist experimentell und neben Hyprland die tägliche Sitzung des Autors.
 
 - **Fenster:** Mist-Titelleisten oder die der App, runde Ecken und Schatten, Glasunschärfe unter
-  durchscheinenden Fenstern und Panels, Andocken wie in Windows 11, Overview (`Super + O`), eine Lupe,
-  Arbeitsflächenwechsel, der den Fingern folgt, Win + D zeigt den Desktop.
+  durchscheinenden Fenstern und Panels, Overview (`Super + O`), eine Lupe, Arbeitsflächenwechsel, der den
+  Fingern folgt, Win + D zeigt den Desktop.
 - **Spart sich, was er auslassen kann:** Ein Monitor zeichnet nur neu, wenn sich darauf etwas geändert hat;
   das Glas wird nur neu weichgezeichnet, wenn sich dahinter etwas bewegt hat; ein verdecktes Fenster bekommt
   ein Bild pro Sekunde statt sechzig.
@@ -150,13 +170,16 @@ Noch nicht da: Kacheln, Tearing-Steuerung, geprüftes Direct Scan-out auf NVIDIA
 
 ## Installation
 
+### 1. Holen
+
 Arch: [packaging/arch/PKGBUILD](../../packaging/arch/PKGBUILD) baut `mist-shell-git`.
 
 ```bash
 git clone https://github.com/wiktor-jozwiak/mist && cd mist/packaging/arch && makepkg -si
 ```
 
-Aus einem Klon, an beliebiger Stelle:
+Überall sonst aus einem Klon. Das erste Skript baut `mistd` (die Backends), das zweite legt `mist-ui-bin`,
+`mist-wall-bin`, `mist-comp` und `mist-try` nach `~/.local/bin`:
 
 ```bash
 git clone https://github.com/wiktor-jozwiak/mist ~/src/mist
@@ -166,13 +189,7 @@ git clone https://github.com/wiktor-jozwiak/mist ~/src/mist
 ~/src/mist/scripts/mistd/install.sh && ~/src/mist/native/install.sh
 ```
 
-Das erste Skript baut `mistd`, das zweite legt `mist-ui-bin`, `mist-wall-bin` und `mist-comp` nach
-`~/.local/bin`. Fertige Binärdateien hängen an jedem [Release](https://github.com/wiktor-jozwiak/mist/releases).
-
-- **Unter Hyprland:** [examples/hyprland/mist.lua](../../examples/hyprland/mist.lua) in die eigene Konfiguration
-  laden und andere Leisten, Benachrichtigungsdienste und Polkit-Agenten entfernen.
-- **Unter mist-comp:** `native/mist-comp/session/install-session.sh --greeter` fügt dem Anmeldebildschirm eine
-  Mist-Sitzung hinzu; Hyprland bleibt.
+Fertige Binärdateien hängen an jedem [Release](https://github.com/wiktor-jozwiak/mist/releases).
 
 <details>
 <summary>Abhängigkeiten</summary>
@@ -191,7 +208,25 @@ Inter, dann Noto Sans.
 
 </details>
 
-## Bedienung
+### 2. In einem Fenster ausprobieren
+
+```bash
+mist-try
+```
+
+Der ganze Desktop (sein Compositor, Leiste, Dock, Island, Widgets) in einem Fenster unter Hyprland, Sway,
+GNOME oder KDE. Er hat ein eigenes Laufzeitverzeichnis und einen eigenen D-Bus-Sitzungsbus, deine
+Benachrichtigungen, Systemablage und dein Polkit-Agent bleiben also, wo sie sind; Fenster zu, und er ist weg.
+Optionen: `MIST_TRY_SIZE=1600x1000`, `MIST_TRY_KEYBOARD=de`, `MIST_THEME=nord`.
+
+### 3. Zu deinem Desktop machen
+
+- **Unter Hyprland:** [examples/hyprland/mist.lua](../../examples/hyprland/mist.lua) in die eigene Konfiguration
+  laden und andere Leisten, Benachrichtigungsdienste und Polkit-Agenten entfernen.
+- **Unter mist-comp:** `native/mist-comp/session/install-session.sh --greeter` fügt dem Anmeldebildschirm eine
+  Mist-Sitzung hinzu; Hyprland bleibt.
+
+## Tasten und Skripte
 
 | Taste | Aktion | | Taste | Aktion |
 |---|---|---|---|---|
@@ -224,6 +259,7 @@ in einem verschachtelten Fenster aus. Mehr in [native/README.md](../../native/RE
 | `native/mist-comp` | Compositor, Sitzung und Anmeldebildschirm |
 | `scripts/mistd` | Backends: Systemwerte, Telefon, Anrufe, Zwischenablage, Garmin-Synchronisierung |
 | `shaders/` | Shader für Hintergründe und Himmel |
+| `bench/` | die Messwerkzeuge und ihre Ergebnisse |
 | Tag `legacy-qml` | die ursprüngliche Quickshell-Version |
 
 ## Dank

@@ -4,9 +4,11 @@ What a desktop shell and a compositor cost: memory, CPU, wake-ups and GPU memory
 other shells and compositors on the same machine, under the same conditions.
 
 **Machine:** AMD Ryzen 7 5700X (8 cores / 16 threads), NVIDIA GeForce RTX 4060 (driver 620.70), CachyOS,
-kernel 7.3. All numbers below are from 2026-11-09; raw data in [`bench/results`](../bench/results).
+kernel 7.3. The two side-by-side sections are one series from 2026-11-12; raw data in
+[`bench/results`](../bench/results). Mist is v0.3.0 plus the changes listed under
+[What changed since 2026-11-09](#what-changed-since-2026-11-09).
 
-## Shells side by side (2026-11-09)
+## Shells side by side (2026-11-12)
 
 [`bench/shells.sh`](../bench/shells.sh) `3 45 60`: every shell runs **alone** in a fresh headless sway 1.12
 rendering with OpenGL ES on the GPU (two 1920x1080 outputs at 60 Hz), with a throwaway `HOME` and
@@ -24,8 +26,9 @@ Measured: **PSS** (shared pages split between the processes that map them), **US
 stopping the shell frees), **CPU** (run time of every thread from `schedstat`, % of one core), **wake-ups**
 (context switches per second: polling shows here even when its CPU rounds to zero) and **GPU memory**
 (`nvidia-smi`, per process). A screenshot of both outputs from every run proves the shell drew what it
-should. Mist draws its bar, dock, island, desktop clock and widget and a live GLSL wallpaper (`mist-wall`);
-Noctalia its bar, a photo wallpaper and its first-run dialog; the others a bar.
+should. Mist draws its bar, dock, island, desktop clock and widget, and is measured twice: with a live GLSL
+wallpaper (`mist-wall`) and with a photo wallpaper, which `mist-ui` draws itself. Noctalia draws its bar, a
+photo wallpaper and its first-run dialog; the others a bar.
 
 The shells are the distribution packages: [`bench/fetch.sh`](../bench/fetch.sh) unpacks the Arch packages
 into `~/.local/share/mist-bench` without root, checked against the SHA-256 sums in pacman's sync databases.
@@ -33,32 +36,90 @@ Median of the runs, range in brackets:
 
 | Shell | Version | PSS idle | USS idle | GPU memory | CPU idle | wake-ups idle | CPU active | wake-ups active |
 |---|---|---|---|---|---|---|---|---|
-| **Mist** | v0.3.0 | **132 MB** (129 MB–132 MB) | 107 MB (105 MB–107 MB) | 42 MiB | 0.83 % (0.82 %–0.83 %) | 110/s (107/s–111/s) | 1.35 % (1.35 %–1.42 %) | 151/s (149/s–170/s) |
-| Waybar | Waybar v0.15.0 | 32 MB | 26 MB | 0 MiB | 0.03 % (0.02 %–0.04 %) | 2/s (1/s–3/s) | 0.38 % | 28/s (27/s–29/s) |
-| Ironbar | ironbar 0.19.1 | 137 MB (137 MB–139 MB) | 103 MB (103 MB–104 MB) | 9 MiB | 0.37 % (0.36 %–0.39 %) | 160/s (160/s–161/s) | 0.43 % (0.42 %–0.43 %) | 168/s (167/s–169/s) |
-| nwg-panel | nwg-panel 0.12.3-1 | 56 MB | 47 MB | 0 MiB | 0.10 % | 11/s | 0.22 % | 31/s |
-| swaybar | sway version 1.12 | 7 MB | 4 MB | 0 MiB | 0.00 % | 0/s | 0.03 % | 6/s (5/s–6/s) |
-| Quickshell, empty PanelWindow | Quickshell 0.3.2 (revision , distributed by Arch Linux) | 142 MB | 115 MB | 6 MiB | 0.00 % | 0/s | 0.00 % | 0/s |
-| Noctalia | noctalia 5.4.1-1.1 | 177 MB (176 MB–179 MB) | 152 MB (151 MB–154 MB) | 60 MiB | 0.12 % (0.10 %–0.12 %) | 7/s | 4.46 % (4.45 %–4.55 %) | 119/s (115/s–120/s) |
+| **Mist** | v0.3.0-3-g7b147ec | **144 MB** (143 MB–147 MB) | 111 MB (110 MB–112 MB) | 50 MiB | 0.79 % (0.78 %–0.82 %) | 38/s (35/s–49/s) | 1.34 % (1.32 %–1.39 %) | 64/s (63/s–75/s) |
+| **Mist, photo wallpaper** | v0.3.0-3-g7b147ec | **44 MB** (43 MB–44 MB) | 33 MB (33 MB–34 MB) | 0 MiB | 0.14 % (0.14 %–0.15 %) | 8/s (8/s–10/s) | 0.66 % (0.65 %–0.67 %) | 39/s (38/s–40/s) |
+| Waybar | Waybar v0.15.0 | 34 MB | 30 MB | 0 MiB | 0.03 % | 2/s (2/s–3/s) | 0.38 % (0.37 %–0.38 %) | 27/s (27/s–29/s) |
+| Ironbar | ironbar 0.19.1 | 158 MB (150 MB–159 MB) | 124 MB (114 MB–126 MB) | 9 MiB | 0.35 % (0.34 %–0.35 %) | 165/s (164/s–165/s) | 0.42 % (0.41 %–0.42 %) | 171/s |
+| nwg-panel | nwg-panel 0.12.3-1 | 59 MB | 52 MB | 0 MiB | 0.09 % | 12/s (11/s–13/s) | 0.23 % (0.22 %–0.23 %) | 33/s (32/s–33/s) |
+| swaybar | sway version 1.12 | 6 MB | 4 MB | 0 MiB | 0.00 % | 0/s | 0.03 % | 5/s |
+| Quickshell, empty PanelWindow | Quickshell 0.3.2 (revision , distributed by Arch Linux) | 161 MB (159 MB–161 MB) | 128 MB (126 MB–128 MB) | 6 MiB | 0.00 % | 0/s | 0.00 % | 0/s |
+| Noctalia | noctalia 5.4.1-1.1 | 192 MB (192 MB–193 MB) | 158 MB (157 MB–158 MB) | 60 MiB | 0.10 % (0.10 %–0.11 %) | 8/s | 4.01 % (3.98 %–4.15 %) | 123/s (121/s–125/s) |
 
 3 runs each. Per process (idle, median PSS / CPU):
 
-- Mist: mist-wall 93.4 MB / 0.63 %, mist-ui 26.4 MB / 0.16 %, mistd 6.6 MB / 0.03 %, nmcli 2.5 MB / 0.00 %, udevadm 1.0 MB / 0.00 %, pactl 1.0 MB / 0.00 %
-- Waybar: waybar 31.6 MB / 0.03 %
-- Ironbar: ironbar 137.2 MB / 0.37 %
-- nwg-panel: nwg-panel 55.2 MB / 0.10 %, pactl 1.0 MB / 0.00 %
-- swaybar: swaybar 6.7 MB / 0.00 %
-- Quickshell, empty PanelWindow: quickshell 142.4 MB / 0.00 %
-- Noctalia: noctalia 176.9 MB / 0.12 %
+- Mist: mist-wall 104.8 MB / 0.64 %, mist-ui 25.5 MB / 0.12 %, mistd 6.9 MB / 0.02 %, nmcli 3.7 MB / 0.00 %, udevadm 1.3 MB / 0.00 %, pactl 1.0 MB / 0.00 %
+- Mist, photo wallpaper: mist-ui 30.2 MB / 0.12 %, mistd 6.9 MB / 0.02 %, nmcli 3.7 MB / 0.00 %, udevadm 1.3 MB / 0.00 %, pactl 1.0 MB / 0.00 %
+- Waybar: waybar 34.3 MB / 0.03 %
+- Ironbar: ironbar 157.8 MB / 0.35 %
+- nwg-panel: nwg-panel 57.9 MB / 0.09 %, pactl 0.9 MB / 0.00 %
+- swaybar: swaybar 5.9 MB / 0.00 %
+- Quickshell, empty PanelWindow: quickshell 160.9 MB / 0.00 %
+- Noctalia: noctalia 191.7 MB / 0.10 %
 
+What it says: the live wallpaper is most of Mist's cost (`mist-wall`: 105 MB, 0.64 % CPU, all of the GPU
+memory). With a photo wallpaper there is no `mist-wall` process and no GPU memory at all: the whole shell
+(bar, dock, island, desktop widgets, notifications, wallpaper, `mistd`) is 44 MB, between Waybar and
+nwg-panel, which draw a bar only. `mist-wall` still starts on demand for the weather card's live sky and the
+wallpaper gallery, and exits when they close. Every toolkit that renders with OpenGL (GTK 4 in Ironbar,
+Qt Quick in Quickshell and Noctalia) starts above 150 MB before it draws anything useful: an empty Quickshell
+bar costs 161 MB.
 
-What it says: the live wallpaper is most of Mist's cost (`mist-wall`: 93 MB, 0.63 % CPU, all of its GPU
-memory). The rest of Mist (bar, dock, island, desktop widgets, notifications, `mistd`) is 38 MB with no GPU
-memory, between Waybar and nwg-panel, which draw a bar only. Every toolkit that renders with OpenGL (GTK 4 in
-Ironbar, Qt Quick in Quickshell and Noctalia) starts above 130 MB before it draws anything useful: an empty
-Quickshell bar costs 142 MB.
+**PSS depends on what else is running.** Every process that uses OpenGL (and the compositors below) reads 10
+to 27 MB higher here than in the 2026-11-09 series, with the same packages and driver: Quickshell 142 MB then,
+161 MB now; sway 103 MB then, 129 MB now. The processes did not grow: their resident size is the same (sway
+172 MB both times). What changed is how many other processes on the machine map the same GPU libraries.
+Mesa's `libLLVM` (26 MB resident in a headless sway), `libnvidia-gpucomp` (35 MB) and `libnvidia-eglcore`
+(13 MB) are file pages, and PSS splits each page between the processes that map it. On 2026-11-12 the desktop around
+the benchmark was mist-comp with `mist-wall`, which load no Mesa, so the shell under test carried the Mesa
+pages alone; the 2026-11-09 figures match a desktop where one more process had them mapped (that desktop's
+process list was not recorded). Measured with a headless sway:
 
-## Compositors side by side (2026-11-09)
+| | PSS | of that, anonymous | of that, files |
+|---|---|---|---|
+| sway alone | 130 MB | 70 MB | 61 MB |
+| with a second sway running | 106 MB | 70 MB | 36 MB |
+| with three running | 96 MB | 70 MB | 27 MB |
+
+So the 2026-11-12 figures are close to what each shell costs as the only OpenGL user on the machine, and the
+2026-11-09 ones were lowered by the desktop they ran beside. Processes without OpenGL did not move (swaybar,
+Waybar, nwg-panel, Mist with a photo wallpaper). Compare within one series, not across them;
+[`bench/sample.py`](../bench/sample.py) now also records `pss_anon`, the part that does not depend on the
+neighbours.
+
+### What changed since 2026-11-09
+
+| Mist, live wallpaper | PSS idle | GPU memory | CPU idle | wake-ups idle | CPU active | wake-ups active |
+|---|---|---|---|---|---|---|
+| 2026-11-09 | 132 MB | 42 MiB | 0.83 % | 110/s | 1.35 % | 151/s |
+| 2026-11-10 | 131 MB | 50 MiB | 0.84 % | 96/s | 1.36 % | 142/s |
+| 2026-11-12 | 144 MB | 50 MiB | 0.79 % | 38/s | 1.34 % | 64/s |
+
+(The 13 MB between the last two rows is the series-wide shift described above, not a change in Mist.)
+
+- **`blocking` pinned to 1.6.2.** In 1.7.0 an idle pool thread never exits and wakes twice a second for the
+  life of the process; zbus starts a few of them while connecting. Three Mist processes use zbus.
+- **`mist-wall` frame timing.** Calm scenes (the default "dunes" among them) run at 24 fps instead of 30 (12
+  instead of 15 on other monitors), the weather card's sky at 20 fps, and each live wallpaper renders at its
+  preset's `res` scale (half resolution for most, then scaled up; this is the extra 8 MiB of GPU memory).
+  Surfaces due within 8 ms of each other are drawn on one tick, so the monitors and the sky share wake-ups
+  instead of each keeping its own schedule.
+- **Photo wallpaper without the OpenGL process.** `mist-ui` decodes and draws the photo into a `wl_shm`
+  buffer once; `mist-wall` is not started. This is the "Mist, photo wallpaper" row.
+- **Caps Lock / Num Lock as an event.** mist-comp sends `mistlock>>CAPS,NUM` on its event socket when the
+  state changes; `mistd island` no longer reads the keyboard LEDs four times a second under mist-comp
+  (0.1 wake-ups/s, measured alone).
+- **Large allocations returned to the system** (`M_MMAP_THRESHOLD`): decoded images and frame buffers are
+  unmapped when freed instead of staying in the heap.
+
+CPU did not move: it is the shader and the composite of the live wallpaper, which these changes do not
+touch. What dropped is the number of times the idle shell wakes the CPU, by two thirds.
+
+A series is only valid on a quiet machine. A first attempt on 2026-11-12 ran beside a dev server using 3.4
+cores and gave sway anything from 16 to 35 % with the shm client (33.1 to 34.0 % in the series above), so
+[`bench/quiet.sh`](../bench/quiet.sh) now samples `/proc/stat` before every run and waits, then stops the
+series, while other processes use more than 5 % of all cores.
+
+## Compositors side by side (2026-11-12)
 
 [`bench/compositors.sh`](../bench/compositors.sh) `5 30`: each compositor headless on the GPU (OpenGL ES,
 one 1920x1080 output at 60 Hz, XWayland off, default configuration), a throwaway `HOME` and runtime dir, and
@@ -72,18 +133,42 @@ the same clients from weston's demo set, 30 s each:
 
 | Compositor | Version | PSS idle | GPU memory | CPU idle | CPU, shm client | CPU, GL client | CPU per GL frame | GL client fps |
 |---|---|---|---|---|---|---|---|---|
-| sway | sway version 1.12 | 103 MB (102 MB–104 MB) | 12 MiB | 0.00 % | 33.53 % (33.41 %–33.89 %) | 6.62 % (6.36 %–6.89 %) | 1.120 ms (1.071 ms–1.170 ms) | 59 |
-| labwc | labwc 0.20.2 (+xwayland +nls +rsvg +libsfdo) wlroots-0.20.2 | 109 MB (108 MB–109 MB) | 2 MiB | 0.00 % | 6.14 % (6.09 %–6.18 %) | 5.98 % (5.82 %–6.09 %) | 1.008 ms (0.978 ms–1.027 ms) | 59 (59–60) |
-| weston | weston 15.0.1 | 101 MB (101 MB–102 MB) | 14 MiB | 0.00 % | 2.74 % (2.53 %–2.81 %) | 0.63 % (0.60 %–0.67 %) | 0.105 ms (0.100 ms–0.111 ms) | 60 |
-| **mist-comp** | mist-comp v0.3.0 | **100 MB** (100 MB–101 MB) | 15 MiB | 0.00 % | 1.72 % (1.59 %–2.00 %) | 1.30 % (1.27 %–1.33 %) | 0.217 ms (0.212 ms–0.222 ms) | 60 |
+| sway | sway version 1.12 | 129 MB (128 MB–130 MB) | 12 MiB | 0.00 % | 33.62 % (33.12 %–34.03 %) | 8.26 % (8.13 %–8.46 %) | 1.410 ms (1.387 ms–1.444 ms) | 59 (58–59) |
+| labwc | labwc 0.20.2 (+xwayland +nls +rsvg +libsfdo) wlroots-0.20.2 | 137 MB (135 MB–137 MB) | 2 MiB | 0.00 % | 8.09 % (6.88 %–8.26 %) | 8.89 % (7.00 %–9.90 %) | 1.502 ms (1.173 ms–1.678 ms) | 59 (59–60) |
+| weston | weston 15.0.1 | 129 MB | 14 MiB | 0.00 % | 3.33 % (2.33 %–3.39 %) | 0.76 % (0.55 %–0.92 %) | 0.126 ms (0.091 ms–0.153 ms) | 60 |
+| **mist-comp** | mist-comp v0.3.0-3-g7b147ec | **128 MB** (127 MB–128 MB) | 15 MiB | 0.00 % | 2.19 % (2.17 %–2.20 %) | 1.47 % (1.41 %–1.49 %) | 0.245 ms (0.235 ms–0.249 ms) | 60 |
 
 5 runs each.
 
 All four idle at 0 % CPU and 0 wake-ups. With the CPU-drawn client mist-comp is the cheapest; with the
-OpenGL client weston is (half of mist-comp's time per frame), and both are 5 to 10 times cheaper than
-the wlroots compositors. sway with the shm client used 33 % of a core in every run; labwc, on the same
-wlroots, 6 %; the cause was not investigated. Hyprland and niri have no headless mode a script can start,
+OpenGL client weston is (half of mist-comp's time per frame), and both are 6 to 12 times cheaper per frame
+than the wlroots compositors. sway with the shm client used 33 % of a core in every run; labwc, on the same
+wlroots, 8 %; the cause was not investigated. Hyprland and niri have no headless mode a script can start,
 so they are not in the table; nested in a window they would depend on the host compositor's frames.
+
+CPU is 13 to 35 % higher for every compositor than in the 2026-11-09 series (weston, the same binary:
+2.74 % then, 3.33 % now with the shm client), and the first run of labwc and of weston came out at the old
+level (weston 2.33 %, then 3.14 to 3.39 %). Three causes were tested and ruled out: other load on the machine
+(a repeat with the browser closed gave the same 3.2 % and 0.8 % for weston, 2.15 % and 1.4 % for mist-comp);
+the desktop's own live wallpaper sharing the GPU (paused with `SIGSTOP`: no change); a settings change
+(governor, boost and frequency driver as before; the one system package updated between the series,
+`cachyos-settings`, changed nothing that affects CPU time). The cause is not known. The order of the four
+and the ratios between them are the same in both series.
+
+Where mist-comp's time per OpenGL frame goes (its `prof` IPC counters, same client, a separate run at
+0.197 ms per frame):
+
+| Stage | Time per frame |
+|---|---|
+| render (smithay's damage renderer and the NVIDIA driver) | 81 µs |
+| client requests (two dispatches per frame) | 28 µs |
+| building the scene (render elements) | 14 µs |
+| event loop turn | 9 µs |
+| texture cache clean-up | 7 µs |
+| frame callbacks and presentation feedback | 5 µs |
+
+No stage of Mist's own code stands out, so nothing was changed: the gap to weston is in the renderer and the
+driver calls under it.
 
 ## Live session measurements (Hyprland, October 2026)
 

@@ -1,0 +1,218 @@
+@@tagline
+macOS に着想を得た Wayland 用デスクトップシェル。Rust で書かれ、CPU で描画します。
+@@desk_img
+desktop-en.webp
+@@desk_alt
+Mist のデスクトップ：トップバー、時計、天気・コンディション・ランニングのカード、Dock
+@@h_what
+できること
+@@h_why
+軽い理由
+@@h_install
+インストール
+@@nav_keys
+キー
+@@h_keys
+キーとスクリプト
+@@h_dev
+開発
+@@intro
+Mist はデスクトップシェルのすべてをひとつのプロセスにまとめたものです：バー、Dock、Dynamic Island、
+デスクトップウィジェット、検索、コントロールセンター、通知、ロック画面、polkit エージェント。Hyprland の上でも、
+独自のコンポジター [`mist-comp`](#mist-comp) の上でも動き、いま使っているデスクトップの上で
+[ウィンドウの中で試す](#{{a_try}})こともできます。
+@@note
+> Mist はひとりの日常のデスクトップです（Arch / CachyOS、デュアルモニター、NVIDIA）。完成したからではなく、
+> 動くから公開しています。コードを読む覚悟をしてください。
+@@alt_island
+Dynamic Island：通知、音量、まもなく雨、次の予定
+@@alt_weather
+雨の中の天気カードと、その背後のライブの空
+@@sub_island
+Dynamic Island：通知、音量、1 時間以内の雨、次の予定
+@@sub_weather
+リアルタイムの GLSL の空に重なる天気カード
+@@alt_spot
+Spotlight 風の検索
+@@alt_set
+設定ウィンドウ
+@@sub_spot
+Spotlight：アプリ、ファイル、コマンド、絵文字、ウェブ
+@@sub_set
+設定：すべての項目がひとつのウィンドウに、すぐに反映
+@@alt_cc
+コントロールセンター
+@@alt_cal
+カレンダー
+@@sub_cc
+コントロールセンター：ネットワーク、Bluetooth、電話、サウンド、夜間モード
+@@sub_cal
+カレンダー：月表示、予定一覧、新しい予定
+@@demo
+40 秒のデモ。ヘッドレスの <code>mist-comp</code> セッションでデモデータを使って録画。音楽：JonasBlakewood の <i>Trap Beat</i>（Pixabay）
+@@g_shell
+シェル
+@@b_shell
+- **トップバー：** 使用中のアプリ、システムトレイ（StatusNotifierItem + dbusmenu）、ネットワーク、Bluetooth、
+  オーディオ、CPU とメモリ、時計。
+- **Dock：** ピン留めと起動中のアプリ、拡大表示、ライブサムネイル付きのウィンドウ選択。
+- **Dynamic Island：** イコライザー付きのメディア、タイマー、着信、通知、音量。
+- **パネル：** Spotlight、スタート、アプリ切り替え、コントロールセンター、通知センター、クリップボード履歴、
+  絵文字、セッションメニュー、スクリーンショットツールバー。Spotlight は入力中に答えます：計算（`128*42`）、
+  単位（`212 f to c`、`2 gb to mb`）、タイムゾーン（`tokyo time`）。
+- **ウィンドウのスナップ**（Windows 11 風）：端や角へドラッグ、緑のボタンか `Super + Z` で Snap Layouts、
+  Snap Assist。
+@@g_desk
+デスクトップ
+@@b_desk
+- **時計とガラスのカード：** 天気、Garmin のコンディション、ランニング、音楽、カレンダー、システム、世界時計。
+  天気はアカウント不要の [Open-Meteo](https://open-meteo.com) から：1 時間ごとのグラフ、4 日間、1 時間以内の雨、
+  太陽と月。Garmin のカードは自分の Garmin Connect のデータを表示し、ローカルの SQLite ファイルに同期されます。
+  一度ログインするまでカードは表示されません（[ガイド](../guides/garmin.md)）。
+- **壁紙：** 写真、動く GLSL シーン、現在の天気に合わせた空。
+- **テーマ：** Mist、Catppuccin、Nord、Gruvbox、Tokyo Night、Rosé Pine、Dracula、または自分の JSON ファイル。
+  ガラス、ウィンドウ、アクセントカラーは、シェルでも Files、Player、設定でもその場で切り替わります。
+@@g_repl
+置き換えるもの
+@@b_repl
+- **デーモン：** 通知サーバー、polkit エージェント、ロック画面（PAM）、アイドルとスリープ。
+- **アプリ：** Mist Files（あらゆるアプリのファイル選択ダイアログも兼ねる）、Mist Player（libmpv）、設定（言語、
+  天気の地点、壁紙、デスクトップの配置、ウィジェット、夜間モード、ロックとスリープ、通知）。
+- **電話**（KDE Connect 経由）：バッテリー、通知、SMS と連絡先をパネルに、通話はアイランドに（通話は ADB を
+  予備の経路として使えます）。
+@@langs
+UI は**英語、ポーランド語、ドイツ語、スペイン語、フランス語**に対応し、`$LANG` か設定での選択に従います。
+言語は [native/assets/i18n](../../native/assets/i18n) の JSON ファイルひとつです。
+@@why_intro
+Mist ははじめ、アイドル時に 428 MB と CPU 9.5 % を使う Quickshell の設定でした。そこから次の三つの原則で、
+画面ごとに書き直されました。
+@@rules
+- **CPU で描く。** `mist-ui` は [tiny-skia] と [swash] で `wl_shm` バッファに描き、変わった部分だけを再描画
+  します。NVIDIA では OpenGL コンテキストひとつが最初のピクセルの前に 100〜160 MB を使いますが、`mist-ui` は
+  ひとつも持ちません。
+- **イベントを待つ。** 状態はコンポジターのソケット、D-Bus、`pactl subscribe`、inotify から届き、隠れた画面は
+  何もしません。アイドル時のシェルの起床は毎秒 {wake} 回です。
+- **GPU プロセスはひとつだけ、何かを表示している間だけ。** `mist-wall` が動く壁紙、天気カードの空、壁紙
+  ギャラリーを描きます。写真の壁紙でそのどれもないときは終了し、写真は `mist-ui` が描きます。
+@@chart_alt
+各シェル単独でのアイドル時メモリ (PSS)。swaybar の {lo} MB から Noctalia の {hi} MB まで：写真の壁紙の Mist は {p_pss} MB、動く壁紙の Mist は {l_pss} MB
+@@shells_p
+**シェル。** それぞれを単独で、GPU 上の新しいヘッドレス sway（RTX 4060、1080p 出力 2 つ）で、パッケージ付属の
+設定のまま実行。3 回の中央値（[bench/shells.sh](../../bench/shells.sh)）。*アイドル*：1 分間何も起きない。
+*アクティブ*：2 秒ごとにワークスペース切り替え、6 秒ごとに新しいウィンドウ、10 秒ごとに通知。CPU は 1 コアに
+対する % です。
+@@t_sh
+シェル | 描画するもの | メモリ (PSS) | GPU メモリ | CPU アイドル | CPU アクティブ
+@@d_bar
+バー
+@@d_mistp
+バー、Dock、アイランド、デスクトップウィジェット、通知、壁紙
+@@d_mistl
+上記すべて、壁紙は動く GLSL シーン
+@@d_qs
+空のバー
+@@d_noct
+バー、写真の壁紙（と初回起動ダイアログ）
+@@n_mistp
+Mist、写真の壁紙
+@@n_mistl
+Mist、動く壁紙
+@@n_qs
+Quickshell 0.3、空の `PanelWindow` ひとつ
+@@comps_p
+**コンポジター。** 同じ GPU 上でヘッドレス、1920×1080 60 Hz、5 回
+（[bench/compositors.sh](../../bench/compositors.sh)）。画面に何もないときはどれも CPU 0 % です。
+@@t_co
+コンポジター | メモリ (PSS) | CPU、毎フレーム CPU で描くクライアント | CPU、全画面の OpenGL クライアント | OpenGL 1 フレームあたりの CPU
+@@bench_more
+Hyprland と niri にはスクリプトから起動できるヘッドレスモードがないため、表にありません。方法、各回の結果、
+起床回数、プロセスごとの数値、以前の実セッションでの計測は [docs/BENCHMARKS.md](../BENCHMARKS.md) にあります。
+@@comp_p
+Mist 独自の Wayland コンポジターで、[Smithay] の上に書かれた約 14 000 行の Rust、ログイン画面付きです。同じ
+シェルを動かし、`hyprctl` と Mist のスクリプトがそのまま動くだけの Hyprland IPC に応答します。実験的ですが、
+Hyprland と並ぶ作者の日常のセッションです。
+@@comp_b
+- **ウィンドウ：** Mist のタイトルバーまたはアプリ自身のもの、角丸と影、半透明のウィンドウやパネルの下の
+  ガラスぼかし、Overview（`Super + O`）、拡大鏡、指に追従するワークスペース切り替え、Win + D でデスクトップ
+  表示。
+- **省ける仕事はしない：** モニターは、その上で何かが変わったときだけ再描画します。ガラスは、背後のものが
+  動いたときだけぼかし直します。他のウィンドウに隠れたウィンドウには、毎秒 60 フレームではなく 1 フレーム
+  だけ送ります。
+- **セッション：** logind 経由の DRM / KMS、ホットプラグ、VRR、explicit sync、XWayland、ポータル経由の画面共有、
+  約 45 のプロトコル。クラッシュ後はウィンドウが元のワークスペースに戻ります。`mist-session restart` は
+  ログアウトせずに新しいビルドを読み込みます。
+- **テスト：** ヘッドレスバックエンド上のネストしたテスト 66 件を、CI でソフトウェアレンダラーを使って実行。
+@@comp_not
+未対応：タイル型配置、ティアリング制御、NVIDIA での検証済みダイレクトスキャンアウト。設定は
+[docs/CONFIG.md](../CONFIG.md#compconf-outputs-mist-comp-only)。`mist-comp migrate` で Hyprland の設定を変換できます。
+@@h_get
+1. 入手する
+@@get_arch
+Arch：[packaging/arch/PKGBUILD](../../packaging/arch/PKGBUILD) が `mist-shell-git` をビルドします。
+@@get_any
+それ以外の環境ではクローンから。最初のスクリプトが `mistd`（バックエンド）をビルドし、次のスクリプトが
+`mist-ui-bin`、`mist-wall-bin`、`mist-comp`、`mist-try` を `~/.local/bin` に置きます：
+@@get_rel
+ビルド済みバイナリは各[リリース](https://github.com/wiktor-jozwiak/mist/releases)に添付されています。
+@@deps
+依存関係
+@@deps_p
+**ビルド：** `rust`、`pkgconf`、`libxkbcommon`、`pam`、`wayland`、`mesa`。`mist-comp` にはさらに `libinput`、
+`libseat`、`libdrm`、`systemd-libs`。
+
+**実行時：** `pipewire-pulse`、`wireplumber`、`networkmanager`、`wl-clipboard`、`grim`、`slurp`、`polkit`、
+`noto-fonts`、`noto-fonts-emoji`。任意：`ddcutil`（モニターの明るさ）、`kdeconnect` または `android-tools`
+（電話）。それぞれが有効にする機能：[docs/CONFIG.md](../CONFIG.md#optional-integrations)。
+
+**フォント：** UI は SF Pro を前提に描かれていますが、Mist には同梱できません。ない場合は Inter、次に
+Noto Sans を使います。
+@@h_try
+2. ウィンドウの中で試す
+@@try_p
+デスクトップ全体（コンポジター、バー、Dock、アイランド、ウィジェット）が、Hyprland、Sway、GNOME、KDE の上の
+ひとつのウィンドウで動きます。専用のランタイムディレクトリと D-Bus セッションバスを持つので、いまの通知、
+トレイ、polkit エージェントはそのままです。ウィンドウを閉じれば何も残りません。オプション：
+`MIST_TRY_SIZE=1600x1000`、`MIST_TRY_KEYBOARD=de`、`MIST_THEME=nord`。
+@@h_make
+3. 自分のデスクトップにする
+@@make_b
+- **Hyprland の場合：** 自分の設定から [examples/hyprland/mist.lua](../../examples/hyprland/mist.lua) を読み込み、
+  他のバー、通知デーモン、polkit エージェントを外します。
+- **mist-comp の場合：** `native/mist-comp/session/install-session.sh --greeter` がログイン画面に Mist の
+  セッションを追加します。Hyprland はそのまま残ります。
+@@keys_t
+| キー | 動作 | | キー | 動作 |
+|---|---|---|---|---|
+| `Super` | スタート | | `Super + A` | 通知センター |
+| `Super + Space` | Spotlight | | `Super + V` | クリップボード履歴 |
+| `Super + Tab` | アプリ切り替え | | `Super + .` | 絵文字 |
+| `Super + I` | コントロールセンター | | `Super + L` | ロック |
+| `Super + Shift + S` | スクリーンショット | | デスクトップを右クリック | 設定 |
+@@keys_p
+すべてスクリプトから操作できます：`mist-ui-bin msg mist toggle spotlight`、`mist-ui-bin msg ui stats`。設定は
+`~/.config/mist/` にあり、各ファイルは [docs/CONFIG.md](../CONFIG.md) で説明されています。ログは
+`~/.cache/mist/ui.log` です。
+@@dev_p
+どの画面もオフスクリーンで描画できるので、動いているセッションに触れずに変更を確認できます：
+`mist-ui-bin --pane-png spotlight 1920 1080 out.png`、`mist-ui-bin --desk-png dir`、
+`mist-wall-bin --png out.ppm dunes 1920 1080`。`native/mist-comp/tests/run-all.sh` はコンポジターのテストを
+ネストしたウィンドウで実行します。詳しくは [native/README.md](../../native/README.md) と
+[CONTRIBUTING.md](../../CONTRIBUTING.md) へ。
+@@paths_t
+| パス | 内容 |
+|---|---|
+| `native/mist-ui` | シェルのすべての画面 |
+| `native/mist-wall` | GPU の壁紙プロセス |
+| `native/mist-comp` | コンポジター、セッション、ログイン画面 |
+| `scripts/mistd` | バックエンド：システム情報、電話、通話、クリップボード、Garmin 同期 |
+| `shaders/` | 壁紙と空のシェーダー |
+| `bench/` | ベンチマークのツールと結果 |
+| タグ `legacy-qml` | 最初の Quickshell 版 |
+@@h_credits
+クレジット
+@@credits
+[Smithay]、[smithay-client-toolkit]、[tiny-skia]、[swash]、[resvg]、[zbus]、[Tabler Icons] の上に作られています。
+最初のバージョンは [Quickshell] 上で動き、[Noctalia] を参考にしました。
+@@apple
+Mist は Apple とは無関係です。macOS、Dynamic Island、Spotlight、SF Pro は Apple Inc. の商標であり、デザインの
+着想元を説明するためにのみ言及しています。

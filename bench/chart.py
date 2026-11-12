@@ -19,8 +19,8 @@ for s in order:
     pss = [d["total"]["pss"] for d in by[s]]
     gpu = statistics.median(d["total"]["gpu"] for d in by[s])
     note = f"{statistics.median(pss):.0f} MB" + (f" · {gpu:.0f} MiB GPU" if gpu else " · no GPU memory")
-    bars.append(("Mist, live wallpaper" if s == "Mist" else s, min(pss), statistics.median(pss), max(pss), note, s == "Mist"))
-    if s == "Mist":  # the UI process without the live wallpaper's renderer
+    bars.append(("Mist, live wallpaper" if s == "Mist" else s, min(pss), statistics.median(pss), max(pss), note, s.startswith("Mist")))
+    if s == "Mist" and "Mist, photo wallpaper" not in order:  # not measured: the tree without the live wallpaper's renderer
         ui = [sum(p["pss"] for p in d["procs"] if p["comm"] != "mist-wall") for d in by[s]]
         bars.append(("Mist without mist-wall", min(ui), statistics.median(ui), max(ui),
                      f"{statistics.median(ui):.0f} MB · no GPU memory", True))

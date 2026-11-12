@@ -27,10 +27,14 @@ XDGC=${R:+$R/etc/xdg:}/etc/xdg
 # Waybar reads only /etc/xdg (not XDG_CONFIG_DIRS): its packaged default config, wherever it was unpacked
 WB=/etc/xdg/waybar; [ -n "${R:-}" ] && [ -f "$R/etc/xdg/waybar/config.jsonc" ] && WB=$R/etc/xdg/waybar
 
+PHOTO=/usr/share/backgrounds/sway/Sway_Wallpaper_Blue_1920x1080.png
+[ -n "${R:-}" ] && [ -f "$R$PHOTO" ] && PHOTO=$R$PHOTO
+
 # name | command (empty: swaybar, which sway itself starts from a `bar` block)
 shells() {
     cat <<EOF
 Mist|$MIST_BIN
+Mist, photo wallpaper|$MIST_BIN
 Waybar|waybar -c $WB/config.jsonc -s $WB/style.css
 Ironbar|ironbar
 nwg-panel|nwg-panel
@@ -42,7 +46,7 @@ EOF
 
 version() {
     case "$1" in
-        Mist) git -C "$ROOT" describe --tags --always 2>/dev/null ;;
+        Mist*) git -C "$ROOT" describe --tags --always 2>/dev/null ;;
         Waybar) waybar --version 2>/dev/null ;;
         Ironbar) ironbar --version 2>/dev/null ;;
         nwg-panel) pacman -Q nwg-panel 2>/dev/null || ls "$HOME"/.local/share/mist-bench/pkg/nwg-panel-*.pkg.tar.zst 2>/dev/null | sed 's|.*/nwg-panel-\([^-]*-[^-]*\)-.*|nwg-panel \1|' ;;
@@ -73,8 +77,19 @@ shells | while IFS='|' read -r name cmd; do
         for f in /usr/share/fonts/inter/InterVariable.ttf /usr/share/fonts/TTF/InterVariable.ttf /usr/share/fonts/noto/NotoSans-Regular.ttf; do
             [ -f "$f" ] && { ln -sf "$f" "$H/.local/share/fonts/SF-Pro/SF-Pro.ttf"; break; }
         done
+        # "Mist, photo wallpaper": sway's packaged picture instead of the live scene (what the other shells that
+        # draw a wallpaper show: a still image), so mist-wall has nothing to animate
+        case "$name" in "Mist, photo"*)
+            mkdir -p "$H/.config/mist"
+            printf '{"live":"","image":"%s"}\n' "$PHOTO" >"$H/.config/mist/wallpaper.json" ;;
+        esac
         printf 'output HEADLESS-1 mode 1920x1080@60Hz pos 0 0\noutput HEADLESS-2 mode 1920x1080@60Hz pos 1920 0\n' >"$RT/sway.conf"
         [ -z "$cmd" ] && printf 'bar {\n    position top\n}\n' >>"$RT/sway.conf"
+        q=0; until sh "$here/quiet.sh" 5 2>/dev/null; do   # a burst (a browser tab) passes: wait up to 10 min
+            q=$((q+1)); [ "$q" -ge ${BENCH_WAIT:-40} ] && break; sleep 12
+        done
+        [ "$q" -gt 0 ] && echo "   (waited for a quiet machine: $q checks)"
+        sh "$here/quiet.sh" 5 || { echo "bench: stopped before this run; quiet the machine and start again (BENCH_BUSY_OK=1 to measure anyway)" >&2; exit 1; }
         echo "== $name ($ver), run $r/$runs"
         env -i HOME="$H" XDG_RUNTIME_DIR="$RT" PATH="$(dirname "$MIST_BIN"):$PATH" LANG=C.UTF-8 USER="$USER" \
             LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" QT_PLUGIN_PATH="${QT_PLUGIN_PATH:-}" QML_IMPORT_PATH="${QML_IMPORT_PATH:-}" \

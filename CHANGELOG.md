@@ -4,6 +4,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+### Added
+- After a panic the restarted shell says so on the island, with the thread and the source line; every Mist
+  binary appends its panics to `~/.cache/mist/crash.log` (time, binary, version, thread, place, message).
+- A file in `~/.config/mist` that is not valid JSON is named on the island with the line and column, at start
+  and whenever it is saved. Before, its readers fell back to defaults without a word.
+- mist-comp sends `mistlock>>CAPS,NUM` on its event socket when Caps Lock or Num Lock changes; the island's
+  indicator follows it instead of reading the keyboard LEDs four times a second.
+- `bench/quiet.sh`: a benchmark series waits for a quiet machine before every run; `bench/sample.py` records
+  `pss_anon`, the part of PSS that does not depend on what else is running.
+
+### Changed
+- A photo wallpaper is drawn by `mist-ui`; `mist-wall` (the only OpenGL process) starts on demand for a live
+  wallpaper, the weather card's sky and the wallpaper gallery, and exits when none is shown.
+- The idle shell wakes the CPU 38 times a second with a live wallpaper (110 before) and 8 times with a photo.
+- The system statistics sampler sleeps while the screens are off.
+- Spotlight's time-zone answers start one `date` process instead of three.
+- `blocking` is pinned to 1.6.2: in 1.7.0 idle pool threads never exit and wake twice a second.
+
+### Fixed
+- Mist Player saved screenshots to `~/Obrazy` whatever the system's Pictures folder was called, and preferred
+  Polish audio and subtitle tracks in every language; both now follow the system and the UI language.
+- 17 strings of Mist Player's help and statistics, the desktop cards' headers and Settings' shortcut names
+  were shown in Polish in every language.
+
 ## [0.3.0] - 2026-11-09
 
 ### Added

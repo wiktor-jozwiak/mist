@@ -104,7 +104,7 @@ def main():
     c1, t1 = counters(p1), time.monotonic()
     dt = t1 - t0
     gpu = gpu_mib()
-    procs, tot = [], {"pss": 0, "uss": 0, "rss": 0, "cpu": 0.0, "wake": 0.0, "gpu": 0, "threads": 0}
+    procs, tot = [], {"pss": 0, "pss_anon": 0, "uss": 0, "rss": 0, "cpu": 0.0, "wake": 0.0, "gpu": 0, "threads": 0}
     for p in sorted(p0 | p1):
         a, b = c0.get(p, (0, 0)), c1.get(p, c0.get(p, (0, 0)))
         m = mem(p) if p in p1 else None
@@ -117,6 +117,9 @@ def main():
         r = {
             "pid": p, "comm": comm, "threads": thr,
             "pss": (m or {}).get("Pss", 0) / 1024, "rss": (m or {}).get("Rss", 0) / 1024,
+            # the part of PSS that other processes cannot share: file pages (GPU libraries above all) are split
+            # with whoever else maps them, so PSS moves with what runs beside the benchmark; this does not
+            "pss_anon": ((m or {}).get("Pss_Anon", 0) + (m or {}).get("Pss_Shmem", 0)) / 1024,
             "uss": ((m or {}).get("Private_Clean", 0) + (m or {}).get("Private_Dirty", 0)) / 1024,
             "cpu": 100 * (b[0] - a[0]) / 1e9 / dt, "wake": (b[1] - a[1]) / dt, "gpu": gpu.get(p, 0),
         }

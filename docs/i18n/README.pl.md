@@ -16,6 +16,24 @@
 
 <img src="../img/desktop.webp" alt="Pulpit Mist: górny pasek, zegar, karty pogody, gotowości i biegania, dock" width="100%">
 
+**[Co dostajesz](#co-dostajesz) · [Dlaczego jest lekki](#dlaczego-jest-lekki) · [mist-comp](#mist-comp) ·
+[Instalacja](#instalacja) · [Klawisze](#klawisze-i-skrypty) · [Rozwój](#rozwój)**
+
+</div>
+
+Mist to cała powłoka pulpitu w jednym procesie: pasek, dock, Dynamic Island, widżety pulpitu, wyszukiwarka,
+centrum sterowania, powiadomienia, ekran blokady i agent polkit. Działa na Hyprlandzie albo na własnym
+kompozytorze, [`mist-comp`](#mist-comp), i można go [wypróbować w oknie](#2-wypróbuj-w-oknie) na pulpicie, którego
+już używasz.
+
+> [!NOTE]
+> Mist to codzienny pulpit jednej osoby (Arch / CachyOS, dwa monitory, NVIDIA). Jest publiczny, bo działa,
+> a nie dlatego, że jest skończony: licz się z czytaniem kodu.
+
+## Co dostajesz
+
+<div align="center">
+
 <table>
   <tr>
     <td width="50%"><img src="../img/island.gif" alt="Dynamic Island: powiadomienie, głośność, zaraz deszcz, następne wydarzenie" width="100%"></td>
@@ -25,6 +43,22 @@
     <td align="center"><sub>Dynamic Island: powiadomienia, głośność, deszcz w najbliższej godzinie, następne wydarzenie</sub></td>
     <td align="center"><sub>Karta pogody nad niebem rysowanym na żywo w GLSL</sub></td>
   </tr>
+  <tr>
+    <td width="50%"><img src="../img/panels/spotlight.webp" alt="Wyszukiwarka w stylu Spotlight" width="100%"></td>
+    <td width="50%"><img src="../img/panels/settings.webp" alt="Okno ustawień" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Spotlight: aplikacje, pliki, polecenia, emoji, sieć</sub></td>
+    <td align="center"><sub>Ustawienia: wszystkie opcje w jednym oknie, stosowane od razu</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="../img/panels/control.webp" alt="Centrum sterowania" width="100%"></td>
+    <td width="50%"><img src="../img/panels/calendar.webp" alt="Kalendarz" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Centrum sterowania: sieć, Bluetooth, telefon, dźwięk, nocne światło</sub></td>
+    <td align="center"><sub>Kalendarz: miesiąc, agenda, nowe wydarzenia</sub></td>
+  </tr>
 </table>
 
 <a href="https://youtu.be/mwisDtz0Yd0"><img src="../img/demo-poster.webp" alt="Mist demo video (40 s)" width="720"></a>
@@ -33,122 +67,109 @@
 
 </div>
 
-Mist to pasek, dock, Dynamic Island, widżety pulpitu, wyszukiwarka, centrum sterowania, powiadomienia, ekran
-blokady i agent polkit jednego pulpitu, w jednym procesie ~50 MB, który nigdy nie otwiera kontekstu GPU.
-Działa na Hyprlandzie albo na własnym kompozytorze, `mist-comp`.
+**Powłoka**
 
-Zaczął jako konfiguracja Quickshell, która na bezczynnym pulpicie zajmowała 428 MB i 9,5 % CPU, i został
+- **Górny pasek:** aktywna aplikacja, zasobnik systemowy (StatusNotifierItem + dbusmenu), sieć, Bluetooth,
+  dźwięk, CPU i pamięć, zegar.
+- **Dock:** przypięte i uruchomione aplikacje, powiększenie, wybór okna z podglądem na żywo.
+- **Dynamic Island:** multimedia z korektorem, minutniki, połączenia telefoniczne, powiadomienia, głośność.
+- **Panele:** Spotlight, Start, przełącznik aplikacji, centrum sterowania, centrum powiadomień, historia
+  schowka, emoji, menu sesji, pasek zrzutów ekranu. Spotlight odpowiada w trakcie pisania: działania
+  (`128*42`), jednostki (`212 f to c`, `2 gb to mb`), strefy czasowe (`tokyo time`).
+- **Przyciąganie okien** jak w Windows 11: przeciągnij do krawędzi lub rogu, Snap Layouts na zielonym
+  przycisku albo `Super + Z`, Snap Assist.
+
+**Pulpit**
+
+- **Zegar i szklane karty:** pogoda, gotowość Garmin, bieganie, muzyka, kalendarz, system, zegary świata.
+  Pogoda pochodzi z [Open-Meteo](https://open-meteo.com), bez konta: krzywa godzinowa, cztery dni, deszcz
+  w najbliższej godzinie, słońce i księżyc. Karty Garmin pokazują twoje własne dane z Garmin Connect,
+  synchronizowane do lokalnego pliku SQLite; są ukryte, dopóki raz się nie zalogujesz
+  ([poradnik](../guides/garmin.md)).
+- **Tapety:** zdjęcia, żywe sceny GLSL albo niebo zgodne z aktualną pogodą.
+- **Motywy:** Mist, Catppuccin, Nord, Gruvbox, Tokyo Night, Rosé Pine, Dracula albo własny plik JSON. Szkło,
+  okna i akcent zmieniają się na żywo w powłoce oraz w Plikach, Odtwarzaczu i Ustawieniach.
+
+**Co zastępuje**
+
+- **Demony:** serwer powiadomień, agent polkit, ekran blokady (PAM), bezczynność i usypianie.
+- **Aplikacje:** Mist Files (także okno wyboru pliku każdej aplikacji), Mist Player (libmpv), Ustawienia
+  (język, miejsce pogody, tapeta, układ pulpitu, widżety, nocne światło, blokada i usypianie, powiadomienia).
+- **Telefon** przez KDE Connect: bateria, powiadomienia, SMS-y i kontakty w panelu, połączenia w wyspie
+  (ADB jako zapas dla połączeń).
+
+Interfejs jest po **polsku, angielsku, niemiecku, hiszpańsku i francusku**, zgodnie z `$LANG` albo wyborem
+w Ustawieniach. Język to jeden plik JSON w [native/assets/i18n](../../native/assets/i18n).
+
+## Dlaczego jest lekki
+
+Mist zaczął jako konfiguracja Quickshell, która na bezczynnym pulpicie zajmowała 428 MB i 9,5 % CPU. Został
 przepisany powierzchnia po powierzchni według trzech zasad:
 
 - **Rysuj na CPU.** `mist-ui` maluje bufory `wl_shm` przez [tiny-skia] i [swash] i odświeża tylko to, co się
-  zmieniło. Na NVIDII każdy kontekst OpenGL kosztuje 100 do 160 MB, zanim pojawi się pierwszy piksel; Mist nie
-  ma żadnego.
-- **Czekaj na zdarzenia.** Wszystko przychodzi z gniazda kompozytora, D-Bus, `pactl subscribe` i inotify. Nic
-  nie odpytuje w kółko, gdy ekran stoi, a ukryte powierzchnie nie pracują.
-- **Jeden proces GPU i tylko wtedy, gdy coś pokazuje.** `mist-wall` rysuje żywe tapety i niebo pogody; przy
-  tapecie ze zdjęcia kończy działanie, a zdjęcie rysuje `mist-ui`.
+  zmieniło. Na NVIDII każdy kontekst OpenGL kosztuje 100 do 160 MB, zanim pojawi się pierwszy piksel;
+  `mist-ui` nie ma żadnego.
+- **Czekaj na zdarzenia.** Stan przychodzi z gniazda kompozytora, D-Bus, `pactl subscribe` i inotify, a ukryte
+  powierzchnie nie pracują. Bezczynna powłoka budzi się 8 razy na sekundę.
+- **Jeden proces GPU i tylko wtedy, gdy coś pokazuje.** `mist-wall` rysuje żywe tapety, niebo karty pogody
+  i galerię tapet. Przy tapecie ze zdjęcia i bez tych elementów kończy działanie, a zdjęcie rysuje `mist-ui`.
 
-> [!NOTE]
-> Mist to codzienny pulpit jednej osoby (Arch / CachyOS, dwa monitory, NVIDIA). Jest publiczny, bo działa,
-> a nie dlatego, że jest skończony: licz się z czytaniem kodu.
+<p align="center"><img src="../img/memory.svg" alt="Pamięć w bezczynności (PSS), każda powłoka osobno, od swaybar (6 MB) do Noctalii (192 MB): Mist z tapetą ze zdjęcia 44 MB, Mist z żywą tapetą 144 MB" width="100%"></p>
 
-## Funkcje
+**Powłoki.** Każda osobno w świeżym sway bez monitora, na GPU (RTX 4060, dwa wyjścia 1080p), z konfiguracją
+ze swojego pakietu; 3 przebiegi, mediana ([bench/shells.sh](../../bench/shells.sh)). *Bezczynność*: przez
+minutę nic się nie dzieje. *Aktywność*: zmiana obszaru roboczego co 2 s, nowe okno co 6 s, powiadomienie co
+10 s. CPU to % jednego rdzenia.
 
-<table>
-  <tr>
-    <td width="50%"><img src="../img/panels/spotlight.webp" alt="Wyszukiwarka w stylu Spotlight" width="100%"></td>
-    <td width="50%"><img src="../img/panels/settings.webp" alt="Okno ustawień" width="100%"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>Spotlight: aplikacje, pliki, polecenia, emoji, sieć</sub></td>
-    <td align="center"><sub>Ustawienia: wszystko w jednym oknie, zmiany od razu</sub></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="../img/panels/control.webp" alt="Centrum sterowania" width="100%"></td>
-    <td width="50%"><img src="../img/panels/calendar.webp" alt="Kalendarz" width="100%"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>Centrum sterowania: sieć, Bluetooth, telefon, dźwięk, światło nocne</sub></td>
-    <td align="center"><sub>Kalendarz: miesiąc, agenda, nowe wydarzenia</sub></td>
-  </tr>
-</table>
-
-| | |
-|---|---|
-| **Górny pasek** | aktywna aplikacja, zasobnik systemowy (StatusNotifierItem + dbusmenu), sieć, Bluetooth, dźwięk, CPU i pamięć, zegar |
-| **Dock** | przypięte i uruchomione aplikacje, powiększanie, wybór okna z podglądem na żywo |
-| **Dynamic Island** | multimedia z equalizerem, minutniki, połączenia (KDE Connect lub ADB), powiadomienia, głośność |
-| **Pulpit** | zegar i szklane karty: pogoda, gotowość Garmin, bieganie, muzyka, kalendarz, system, zegary świata |
-| **Panele** | Spotlight, Start, przełącznik aplikacji, centrum sterowania, centrum powiadomień, historia schowka, emoji, menu sesji, zrzuty ekranu |
-| **Szybkie odpowiedzi** | w Spotlight podczas pisania: obliczenia (`128*42`), jednostki (`212 f to c`, `2 gb to mb`), strefy czasowe (`tokyo time`) |
-| **Telefon** | KDE Connect: bateria, powiadomienia, SMS-y i kontakty w panelu, połączenia w wyspie |
-| **Ustawienia** | język, miejsce pogody, tapeta, układ pulpitu, widżety, światło nocne, blokada i uśpienie, powiadomienia |
-| **System** | serwer powiadomień, agent polkit, ekran blokady (PAM), bezczynność i uśpienie |
-| **Aplikacje** | Mist Files (także okno wyboru plików w każdej aplikacji), Mist Player (libmpv), ustawienia systemu |
-| **Przyciąganie okien** | jak w Windows 11: przeciągnij do krawędzi lub rogu, Snap Layouts na zielonym przycisku albo `Super + Z`, Snap Assist |
-| **Tapety** | zdjęcia, żywe sceny GLSL albo niebo zgodne z aktualną pogodą |
-
-**Pogoda** pochodzi z [Open-Meteo](https://open-meteo.com), bez konta: krzywa godzinowa, cztery dni, deszcz
-w najbliższej godzinie, słońce i księżyc. **Gotowość Garmin** i **bieganie** pokazują Twoje dane z Garmin
-Connect, które `mistd` synchronizuje do lokalnego pliku SQLite; karty są ukryte, dopóki raz się nie zalogujesz
-([instrukcja](../guides/garmin.pl.md)).
-
-Interfejs mówi po **polsku, angielsku, niemiecku, hiszpańsku i francusku**, zgodnie z `$LANG` albo wyborem
-w Ustawieniach. Język to jeden plik JSON w [native/assets/i18n](../../native/assets/i18n).
-
-## Pomiary
-
-<p align="center"><img src="../img/memory.svg" alt="Pamięć bez obciążenia (PSS), każda powłoka osobno: swaybar 7 MB, Waybar 32 MB, Mist bez mist-wall 38 MB, nwg-panel 56 MB, Mist z żywą tapetą 132 MB, Ironbar 137 MB, pusty Quickshell 142 MB, Noctalia 177 MB" width="100%"></p>
-
-Każda powłoka osobno, w świeżym sway bez monitora, renderującym na GPU (RTX 4060, dwa wyjścia 1080p), z konfiguracją
-z paczki, 3 przebiegi, mediana ([bench/shells.sh](../../bench/shells.sh)). *Bez obciążenia*: przez minutę nic się nie dzieje.
-*Aktywnie*: zmiana pulpitu co 2 s, nowe okno co 6 s, powiadomienie co 10 s. CPU w % jednego rdzenia.
-
-| Powłoka | Co rysuje | Pamięć (PSS) | Pamięć GPU | CPU bez obciążenia | CPU aktywnie |
+| Powłoka | Co rysuje | Pamięć (PSS) | Pamięć GPU | CPU bezczynnie | CPU aktywnie |
 |---|---|---|---|---|---|
-| swaybar (sway 1.12) | pasek | 7 MB | – | 0 % | 0,03 % |
-| Waybar 0.15 | pasek | 32 MB | – | 0,03 % | 0,38 % |
-| **Mist bez `mist-wall`** | pasek, dock, wyspa, widżety pulpitu, powiadomienia | **38 MB** | – | 0,19 % | 0,72 % |
-| nwg-panel 0.12 | pasek | 56 MB | – | 0,10 % | 0,22 % |
-| **Mist** | to wszystko + żywa tapeta GLSL | 132 MB | 42 MiB | 0,83 % | 1,35 % |
-| Ironbar 0.19 | pasek | 137 MB | 9 MiB | 0,37 % | 0,43 % |
-| Quickshell 0.3, jedno puste `PanelWindow` | pusty pasek | 142 MB | 6 MiB | 0 % | 0 % |
-| Noctalia 5.4 | pasek, tapeta ze zdjęcia (i okno pierwszego uruchomienia) | 177 MB | 60 MiB | 0,12 % | 4,50 % |
+| swaybar (sway 1.12) | pasek | 6 MB | – | 0 % | 0,03 % |
+| Waybar 0.15 | pasek | 34 MB | – | 0,03 % | 0,38 % |
+| **Mist, tapeta ze zdjęcia** | pasek, dock, wyspa, widżety pulpitu, powiadomienia, tapeta | **44 MB** | – | 0,14 % | 0,66 % |
+| nwg-panel 0.12 | pasek | 59 MB | – | 0,09 % | 0,23 % |
+| **Mist, żywa tapeta** | to samo, a tapetą jest żywa scena GLSL | 144 MB | 50 MiB | 0,79 % | 1,34 % |
+| Ironbar 0.19 | pasek | 158 MB | 9 MiB | 0,35 % | 0,42 % |
+| Quickshell 0.3, jedno puste `PanelWindow` | pusty pasek | 161 MB | 6 MiB | 0 % | 0 % |
+| Noctalia 5.4 | pasek, tapeta ze zdjęcia (i okno pierwszego uruchomienia) | 192 MB | 60 MiB | 0,10 % | 4,01 % |
 
-Kompozytory, bez monitora na tym samym GPU, 1920×1080 60 Hz, 5 przebiegów ([bench/compositors.sh](../../bench/compositors.sh)).
-Bez niczego na ekranie wszystkie zużywają 0 % CPU:
+**Kompozytory.** Bez monitora, na tym samym GPU, 1920×1080 60 Hz, 5 przebiegów
+([bench/compositors.sh](../../bench/compositors.sh)). Gdy na ekranie nic nie ma, wszystkie zużywają 0 % CPU.
 
 | Kompozytor | Pamięć (PSS) | CPU, klient rysujący na CPU co klatkę | CPU, pełnoekranowy klient OpenGL | CPU na klatkę OpenGL |
 |---|---|---|---|---|
-| **mist-comp** | 100 MB | **1,7 %** | 1,3 % | 0,22 ms |
-| weston 15 | 101 MB | 2,7 % | **0,6 %** | **0,11 ms** |
-| labwc 0.20 | 109 MB | 6,1 % | 6,0 % | 1,0 ms |
-| sway 1.12 | 103 MB | 33,5 % | 6,6 % | 1,1 ms |
+| **mist-comp** | 128 MB | **2,2 %** | 1,5 % | 0,25 ms |
+| weston 15 | 129 MB | 3,3 % | **0,8 %** | **0,13 ms** |
+| labwc 0.20 | 137 MB | 8,1 % | 8,9 % | 1,5 ms |
+| sway 1.12 | 129 MB | 33,6 % | 8,3 % | 1,4 ms |
 
-Hyprland i niri nie mają trybu bez monitora, który da się uruchomić ze skryptu, więc ich tu nie ma. Metoda,
-każdy przebieg, liczby na proces i wcześniejsze pomiary w prawdziwej sesji: [docs/BENCHMARKS.md](../BENCHMARKS.md).
+Hyprland i niri nie mają trybu bez monitora, który da się uruchomić ze skryptu, więc nie ma ich w tabeli.
+Metoda, każdy przebieg, wybudzenia, liczby dla każdego procesu i wcześniejsze pomiary na żywej sesji:
+[docs/BENCHMARKS.md](../BENCHMARKS.md).
 
 ## mist-comp
 
-Własny kompozytor Waylanda dla Mist, około 14 000 linii Rust na [Smithay], z ekranem logowania. Uruchamia tę
-samą powłokę i odpowiada na tyle IPC Hyprlanda, że `hyprctl` i skrypty Mist działają bez zmian. Jest
+Własny kompozytor Waylanda Mista, około 14 000 linii Rusta na [Smithay], z ekranem logowania. Uruchamia tę
+samą powłokę i odpowiada na tyle IPC Hyprlanda, że `hyprctl` i skrypty Mista działają bez zmian. Jest
 eksperymentalny i jest codzienną sesją autora obok Hyprlanda.
 
-- **Okna:** paski tytułu Mist albo własne aplikacji, zaokrąglone rogi i cienie, rozmycie szkła pod
-  półprzezroczystymi oknami i panelami, przyciąganie jak w Windows 11, Overview (`Super + O`), lupa,
-  przełączanie obszarów roboczych podążające za palcami, Win + D pokazuje pulpit.
-- **Nie robi pracy, którą może pominąć:** monitor przerysowuje się tylko, gdy coś na nim się zmieniło; szkło
-  rozmywa się ponownie tylko, gdy za nim coś drgnęło; okno zasłonięte innymi dostaje jedną klatkę na sekundę
-  zamiast sześćdziesięciu.
-- **Sesja:** DRM / KMS przez logind, podłączanie monitorów w locie, VRR, explicit sync, XWayland, udostępnianie
-  ekranu przez portal, około 45 protokołów. Po awarii okna wracają na swoje obszary robocze;
+- **Okna:** paski tytułu Mista albo aplikacji, zaokrąglone rogi i cienie, szklane rozmycie pod
+  półprzezroczystymi oknami i panelami, Overview (`Super + O`), lupa, zmiana obszaru roboczego podążająca za
+  palcami, Win + D pokazuje pulpit.
+- **Nie robi pracy, którą może pominąć:** monitor odświeża się tylko wtedy, gdy coś się na nim zmieniło;
+  szkło rozmywa się ponownie tylko wtedy, gdy coś za nim się poruszyło; okno zasłonięte przez inne dostaje
+  jedną klatkę na sekundę zamiast sześćdziesięciu.
+- **Sesja:** DRM / KMS przez logind, podłączanie monitorów w locie, VRR, explicit sync, XWayland,
+  udostępnianie ekranu przez portal, około 45 protokołów. Po awarii okna wracają na swoje obszary robocze;
   `mist-session restart` ładuje nową wersję bez wylogowania.
-- **Testy:** 66 testów w zagnieżdżonym kompozytorze bez monitora, uruchamianych w CI na rendererze programowym.
+- **Testy:** 66 testów zagnieżdżonych na backendzie bez monitora, uruchamianych w CI na rendererze
+  programowym.
 
-Jeszcze nie ma: kafelkowania, kontroli tearingu, sprawdzonego direct scan-out na NVIDII. Konfiguracja:
-[docs/CONFIG.md](../CONFIG.md#compconf-outputs-mist-comp-only); `mist-comp migrate` przenosi konfigurację Hyprlanda.
+Jeszcze nie ma: kafelkowania, sterowania tearingiem, sprawdzonego direct scan-out na NVIDII. Konfiguracja:
+[docs/CONFIG.md](../CONFIG.md#compconf-outputs-mist-comp-only); `mist-comp migrate` konwertuje konfigurację Hyprlanda.
 
 ## Instalacja
+
+### 1. Pobierz
 
 Arch: [packaging/arch/PKGBUILD](../../packaging/arch/PKGBUILD) buduje `mist-shell-git`.
 
@@ -156,7 +177,8 @@ Arch: [packaging/arch/PKGBUILD](../../packaging/arch/PKGBUILD) buduje `mist-shel
 git clone https://github.com/wiktor-jozwiak/mist && cd mist/packaging/arch && makepkg -si
 ```
 
-Z klonu repozytorium, w dowolnym miejscu:
+Gdziekolwiek indziej, z klonu repozytorium. Pierwszy skrypt buduje `mistd` (backendy), drugi umieszcza
+`mist-ui-bin`, `mist-wall-bin`, `mist-comp` i `mist-try` w `~/.local/bin`:
 
 ```bash
 git clone https://github.com/wiktor-jozwiak/mist ~/src/mist
@@ -166,13 +188,7 @@ git clone https://github.com/wiktor-jozwiak/mist ~/src/mist
 ~/src/mist/scripts/mistd/install.sh && ~/src/mist/native/install.sh
 ```
 
-Pierwszy skrypt buduje `mistd`, drugi kładzie `mist-ui-bin`, `mist-wall-bin` i `mist-comp` w `~/.local/bin`.
 Gotowe binarki są dołączone do każdego [wydania](https://github.com/wiktor-jozwiak/mist/releases).
-
-- **Na Hyprlandzie:** wczytaj [examples/hyprland/mist.lua](../../examples/hyprland/mist.lua) w swojej
-  konfiguracji i usuń inne paski, demony powiadomień i agentów polkit.
-- **Na mist-comp:** `native/mist-comp/session/install-session.sh --greeter` dodaje sesję Mist do ekranu
-  logowania; Hyprland zostaje.
 
 <details>
 <summary>Zależności</summary>
@@ -182,16 +198,34 @@ Gotowe binarki są dołączone do każdego [wydania](https://github.com/wiktor-j
 **Budowanie:** `rust`, `pkgconf`, `libxkbcommon`, `pam`, `wayland`, `mesa`; dla `mist-comp` także `libinput`,
 `libseat`, `libdrm`, `systemd-libs`.
 
-**Uruchamianie:** `pipewire-pulse`, `wireplumber`, `networkmanager`, `wl-clipboard`, `grim`, `slurp`,
-`polkit`, `noto-fonts`, `noto-fonts-emoji`. Opcjonalnie: `ddcutil` (jasność monitora), `kdeconnect` albo
-`android-tools` (telefon). Co włącza każda z nich: [docs/CONFIG.md](../CONFIG.md#optional-integrations).
+**Działanie:** `pipewire-pulse`, `wireplumber`, `networkmanager`, `wl-clipboard`, `grim`, `slurp`, `polkit`,
+`noto-fonts`, `noto-fonts-emoji`. Opcjonalnie: `ddcutil` (jasność monitora), `kdeconnect` albo `android-tools`
+(telefon). Co każda z nich włącza: [docs/CONFIG.md](../CONFIG.md#optional-integrations).
 
-**Czcionka:** interfejs jest projektowany pod SF Pro, której Mist nie może dołączyć. Bez niej używa Inter,
+**Czcionka:** interfejs jest rysowany pod SF Pro, której Mist nie może dołączyć. Bez niej używa Inter,
 potem Noto Sans.
 
 </details>
 
-## Użycie
+### 2. Wypróbuj w oknie
+
+```bash
+mist-try
+```
+
+Cały pulpit (jego kompozytor, pasek, dock, wyspa, widżety) w jednym oknie na Hyprlandzie, Sway, GNOME albo
+KDE. Ma własny katalog uruchomieniowy i własną szynę sesji D-Bus, więc twoje powiadomienia, zasobnik i agent
+polkit zostają tam, gdzie są; zamknij okno i nie zostaje po nim nic. Opcje: `MIST_TRY_SIZE=1600x1000`,
+`MIST_TRY_KEYBOARD=de`, `MIST_THEME=nord`.
+
+### 3. Zrób z niego swój pulpit
+
+- **Na Hyprlandzie:** wczytaj [examples/hyprland/mist.lua](../../examples/hyprland/mist.lua) ze swojej
+  konfiguracji i usuń inne paski, demony powiadomień i agentów polkit.
+- **Na mist-comp:** `native/mist-comp/session/install-session.sh --greeter` dodaje sesję Mist do ekranu
+  logowania; Hyprland zostaje.
+
+## Klawisze i skrypty
 
 | Klawisz | Akcja | | Klawisz | Akcja |
 |---|---|---|---|---|
@@ -199,10 +233,10 @@ potem Noto Sans.
 | `Super + Space` | Spotlight | | `Super + V` | historia schowka |
 | `Super + Tab` | przełącznik aplikacji | | `Super + .` | emoji |
 | `Super + I` | centrum sterowania | | `Super + L` | blokada |
-| `Super + Shift + S` | zrzut ekranu | | prawy klik na pulpicie | ustawienia |
+| `Super + Shift + S` | zrzut ekranu | | prawy przycisk na pulpicie | ustawienia |
 
 Wszystko da się oskryptować: `mist-ui-bin msg mist toggle spotlight`, `mist-ui-bin msg ui stats`. Ustawienia
-leżą w `~/.config/mist/`, każdy plik opisuje [docs/CONFIG.md](../CONFIG.md); log to `~/.cache/mist/ui.log`.
+są w `~/.config/mist/`, każdy plik opisuje [docs/CONFIG.md](../CONFIG.md); log to `~/.cache/mist/ui.log`.
 
 ## Rozwój
 
@@ -210,27 +244,29 @@ leżą w `~/.config/mist/`, każdy plik opisuje [docs/CONFIG.md](../CONFIG.md); 
 cd native && cargo build --release && cargo test --release
 ```
 
-Każda powierzchnia renderuje się poza ekranem, więc zmiany sprawdzisz bez ruszania działającej sesji:
+Każda powierzchnia renderuje się poza ekranem, więc zmiany da się sprawdzić bez dotykania działającej sesji:
 `mist-ui-bin --pane-png spotlight 1920 1080 out.png`, `mist-ui-bin --desk-png dir`,
 `mist-wall-bin --png out.ppm dunes 1920 1080`. `native/mist-comp/tests/run-all.sh` uruchamia testy kompozytora
-w zagnieżdżonym oknie. Więcej w [native/README.md](../../native/README.md) i [CONTRIBUTING.md](../../CONTRIBUTING.md).
+w zagnieżdżonym oknie. Więcej w [native/README.md](../../native/README.md) i
+[CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 | Ścieżka | Co |
 |---|---|
 | `native/mist-ui` | wszystkie powierzchnie powłoki |
-| `native/mist-wall` | proces tapet na GPU |
+| `native/mist-wall` | proces GPU tapet |
 | `native/mist-comp` | kompozytor, sesja i ekran logowania |
 | `scripts/mistd` | backendy: statystyki systemu, telefon, połączenia, schowek, synchronizacja Garmin |
 | `shaders/` | shadery tapet i nieba |
+| `bench/` | narzędzia do pomiarów i ich wyniki |
 | tag `legacy-qml` | pierwotna wersja na Quickshell |
 
 ## Podziękowania
 
-Zbudowane na [Smithay], [smithay-client-toolkit], [tiny-skia], [swash], [resvg], [zbus] i [Tabler Icons].
+Zbudowany na [Smithay], [smithay-client-toolkit], [tiny-skia], [swash], [resvg], [zbus] i [Tabler Icons].
 Pierwsza wersja działała na [Quickshell], z [Noctalia] jako punktem odniesienia.
 
-<sub>Mist nie jest powiązany z Apple. macOS, Dynamic Island, Spotlight i SF Pro są znakami towarowymi Apple Inc.,
-wymienionymi tu tylko, by opisać inspirację projektu.</sub>
+<sub>Mist nie jest powiązany z Apple. macOS, Dynamic Island, Spotlight i SF Pro to znaki towarowe Apple Inc.,
+wymienione tu wyłącznie po to, by opisać inspirację projektu.</sub>
 
 [GPL-3.0](../../LICENSE)
 

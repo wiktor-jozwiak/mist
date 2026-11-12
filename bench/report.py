@@ -32,8 +32,8 @@ def shells(rows):
         if not i or not a:
             continue
         t = lambda ds, k: [d["total"][k] for d in ds]
-        b = s == "Mist"
-        print(f"| {'**Mist**' if b else s} | {i[0]['version']} | {cell(t(i, 'pss'), '%.0f MB', b)} | {cell(t(i, 'uss'), '%.0f MB')} "
+        b = s.startswith("Mist")
+        print(f"| {f'**{s}**' if b else s} | {i[0]['version']} | {cell(t(i, 'pss'), '%.0f MB', b)} | {cell(t(i, 'uss'), '%.0f MB')} "
               f"| {cell(t(i, 'gpu'), '%.0f MiB')} | {cell(t(i, 'cpu'), '%.2f %%')} | {cell(t(i, 'wake'), '%.0f/s')} "
               f"| {cell(t(a, 'cpu'), '%.2f %%')} | {cell(t(a, 'wake'), '%.0f/s')} |")
     print(f"\n{len(by[(order[0], 'idle')])} runs each. Per process (idle, median PSS / CPU):\n")
