@@ -89,6 +89,7 @@ impl MistComp {
                     return;
                 }
                 self.bar_drag_motion(pos);
+                self.edge_drag_motion(pos);
                 pointer.motion(self, new_under.clone(), &MotionEvent { location: pos, serial, time: event.time_msec() });
                 self.activate_constraint(new_under.as_ref(), pos);
                 pointer.frame(self);
@@ -313,6 +314,11 @@ impl MistComp {
                         }
                     }
                 }
+                let lk = (mods.caps_lock, mods.num_lock);
+                if st.lock_sent != Some(lk) {
+                    st.lock_sent = Some(lk);
+                    st.hypr_event("mistlock", &format!("{},{}", lk.0 as u8, lk.1 as u8));
+                }
                 let m = Mods::from(mods);
                 let modified = handle.modified_sym().raw();
                 let mut sym = handle.raw_latin_sym_or_raw_current_sym().map(|s| s.raw()).unwrap_or(modified);
@@ -417,6 +423,7 @@ impl MistComp {
             self.dirty = true;
         }
         self.bar_drag_motion(pos);
+        self.edge_drag_motion(pos);
         pointer.motion(self, under.clone(), &MotionEvent { location: pos, serial, time });
         self.activate_constraint(under.as_ref(), pos);
         pointer.frame(self);
@@ -439,6 +446,27 @@ impl MistComp {
                 }
             }
         });
+    }
+
+    /// A frame pressed and the pointer travelled: the resize from that edge / corner, measured from the press.
+    fn edge_drag_motion(&mut self, pos: Point<f64, Logical>) {
+        if !self.edge_press.as_ref().is_some_and(|(_, _, _, p, _)| (pos.x - p.x).abs() + (pos.y - p.y).abs() > crate::decor::EDGE_DRAG) {
+            return;
+        }
+        let (window, edges, wloc, press, button) = self.edge_press.take().unwrap();
+        if self.space.element_location(&window).is_none() {
+            return;
+        }
+        self.focus_window(Some(&window));
+        if let Some(t) = window.toplevel() {
+            t.with_pending_state(|s| s.states.set(xdg_toplevel::State::Resizing));
+            t.send_pending_configure();
+        }
+        let size = window.geometry().size;
+        let start_data = PointerGrabStartData { focus: None, button, location: press };
+        let grab = ResizeSurfaceGrab::start(start_data, window, edges, Rectangle::new(wloc, size));
+        let pointer = self.seat.get_pointer().unwrap();
+        pointer.set_grab(self, grab, SERIAL_COUNTER.next_serial(), Focus::Clear);
     }
 
     fn bar_drag_motion(&mut self, pos: Point<f64, Logical>) {
@@ -484,8 +512,14 @@ impl MistComp {
 
 
         // Super + left drag moves, Super + right drag resizes (from the nearest corner)
-        // ALT works like Super here (windows-like.lua: ALT + mouse:272 / 273)
-        let logo = keyboard.modifier_state().logo || keyboard.modifier_state().alt;
+        // `mouse_mod super|alt|both` in comp.conf; Super only by default (Alt + click belongs to apps:
+        // multi-cursor editors, GIMP, Blender)
+        let m = keyboard.modifier_state();
+        let logo = match self.config.mouse_mod {
+            crate::config::MouseMod::Super => m.logo,
+            crate::config::MouseMod::Alt => m.alt,
+            crate::config::MouseMod::Both => m.logo || m.alt,
+        };
         if logo && button_state == ButtonState::Pressed && !pointer.is_grabbed() && (button == BTN_LEFT || button == BTN_RIGHT) {
             let loc = pointer.current_location();
             // element_under gives where the surface is drawn (CSD shadows included); the grabs work from the
@@ -513,19 +547,22 @@ impl MistComp {
             }
         }
 
-        // a window frame: resize from that edge / corner
+        // a window frame: pressed here, it resizes from that edge / corner once the pointer travels
+        // (edge_drag_motion); released without travel, the click focuses the window under it, if any
+        if button == BTN_LEFT && button_state == ButtonState::Released {
+            if self.edge_press.take().is_some() {
+                let hit = self.space.element_under(pointer.current_location()).map(|(w, _)| w.clone());
+                if let Some(w) = hit.filter(|w| crate::wm::data(w).addr.get() != 0) {
+                    self.focus_window(Some(&w));
+                }
+                pointer.frame(self);
+                return;
+            }
+        }
         if !pointer.is_grabbed() && button == BTN_LEFT && button_state == ButtonState::Pressed {
             let loc = pointer.current_location();
             if let Some((window, edges, wloc)) = self.edge_at(loc) {
-                self.focus_window(Some(&window));
-                if let Some(t) = window.toplevel() {
-                    t.with_pending_state(|s| s.states.set(xdg_toplevel::State::Resizing));
-                    t.send_pending_configure();
-                }
-                let size = window.geometry().size;
-                let start_data = PointerGrabStartData { focus: None, button, location: loc };
-                let grab = ResizeSurfaceGrab::start(start_data, window, edges, Rectangle::new(wloc, size));
-                pointer.set_grab(self, grab, serial, Focus::Clear);
+                self.edge_press = Some((window, edges, wloc, loc, button));
                 return;
             }
         }

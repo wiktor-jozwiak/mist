@@ -95,6 +95,12 @@ pub fn serve(event_loop: &mut EventLoop<CalloopData>, socket: &str) {
     h.insert_source(Generic::new(ev, Interest::READ, Mode::Level), |_, l, data| {
         while let Ok((s, _)) = l.accept() {
             let _ = s.set_nonblocking(true);
+            // Caps / Num Lock as they are now; changes follow from the keyboard handler (input.rs)
+            let mut s = s;
+            if let Some(m) = data.seat.get_keyboard().map(|k| k.modifier_state()) {
+                data.lock_sent = Some((m.caps_lock, m.num_lock));
+                let _ = s.write_all(format!("mistlock>>{},{}\n", m.caps_lock as u8, m.num_lock as u8).as_bytes());
+            }
             data.hypr_listeners.push(s);
             // a new listener learns where the desktop layers are covered (cover.rs)
             data.cover_sent.clear();
@@ -112,7 +118,7 @@ impl MistComp {
     pub fn hypr_event(&mut self, name: &str, data: &str) {
         // every window change goes through here: task bars (wlr foreign toplevel) catch up after this loop turn
         // (not for the drag / snap stream, pointer-rate events that change no window state)
-        if !matches!(name, "mistdrag" | "mistsnap" | "mistcover" | "focusedmon" | "focusedmonv2" | "activelayout" | "screencast" | "bell") {
+        if !matches!(name, "mistdrag" | "mistsnap" | "mistcover" | "mistlock" | "focusedmon" | "focusedmonv2" | "activelayout" | "screencast" | "bell") {
             self.wlr.dirty = true;
             self.scales_dirty = true;
         }

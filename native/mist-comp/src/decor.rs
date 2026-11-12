@@ -312,53 +312,73 @@ fn blend(pm: &mut Pixmap, ox: i32, oy: i32, w: u32, h: u32, mask: &[u8], c: (f32
 }
 
 /// Resize by the frame (Hyprland resize_on_border + extend_border_grab_area): a band this wide around
-/// every window's outside (bar included) grabs the pointer.
+/// every window's outside (bar included) grabs the pointer, over the desktop or a gap between windows.
 pub const EDGE: i32 = 12;
+/// The band where it lies over another window: that window keeps its clicks up to this close.
+pub const EDGE_OVER: i32 = 4;
+/// Pointer travel (|dx| + |dy|, logical px) before a press on a frame becomes a resize: a click stays a click.
+pub const EDGE_DRAG: f64 = 4.0;
+
+/// Which window frame takes the pointer. `stack` is top first: each window's outer box (bar included) and
+/// whether the pointer is over its content (client surfaces, CSD shadows and popups included). A window's
+/// body, its own or one above, wins; the band is EDGE wide over nothing, EDGE_OVER over a window below.
+pub fn frame_edge(stack: &[(Rectangle<f64, Logical>, bool)], pos: Point<f64, Logical>) -> Option<(usize, crate::grabs::resize_grab::ResizeEdge)> {
+    use crate::grabs::resize_grab::ResizeEdge;
+    let body = |i: usize| stack[i].1 || stack[i].0.contains(pos);
+    for (i, (outer, _)) in stack.iter().enumerate() {
+        if body(i) {
+            return None;
+        }
+        let over = (i + 1..stack.len()).any(body);
+        let m = if over { EDGE_OVER } else { EDGE } as f64;
+        let mut band = *outer;
+        band.loc -= Point::from((m, m));
+        band.size += smithay::utils::Size::from((2.0 * m, 2.0 * m));
+        if !band.contains(pos) {
+            continue;
+        }
+        let mut e = ResizeEdge::empty();
+        if pos.x < outer.loc.x {
+            e |= ResizeEdge::LEFT;
+        } else if pos.x >= outer.loc.x + outer.size.w {
+            e |= ResizeEdge::RIGHT;
+        }
+        if pos.y < outer.loc.y {
+            e |= ResizeEdge::TOP;
+        } else if pos.y >= outer.loc.y + outer.size.h {
+            e |= ResizeEdge::BOTTOM;
+        }
+        return Some((i, e));
+    }
+    None
+}
 
 impl MistComp {
     /// The window frame under the pointer: (window, edges, its location). Client surfaces (popups, CSD
-    /// shadows) and windows above win; not over fullscreen or override-redirect X11 windows.
+    /// shadows) and windows above win (frame_edge); not over fullscreen or override-redirect X11 windows.
     pub fn edge_at(&self, pos: Point<f64, Logical>) -> Option<(Window, crate::grabs::resize_grab::ResizeEdge, Point<i32, Logical>)> {
-        use crate::grabs::resize_grab::ResizeEdge;
         if self.locked || self.layer_at(pos).is_some() {
             return None;
         }
+        let mut wins = Vec::new();
+        let mut stack = Vec::new();
         for w in self.space.elements().rev() {
             let Some(loc) = self.space.element_location(w) else { continue };
-            if w.surface_under(pos - (loc - w.geometry().loc).to_f64(), smithay::desktop::WindowSurfaceType::ALL).is_some() {
-                return None;
-            }
+            let content = w.surface_under(pos - (loc - w.geometry().loc).to_f64(), smithay::desktop::WindowSurfaceType::ALL).is_some();
             let bar = self.bar_h(w);
             let g = w.geometry();
             let outer = Rectangle::<i32, Logical>::new((loc.x, loc.y - bar).into(), (g.size.w, g.size.h + bar).into()).to_f64();
-            if outer.contains(pos) {
-                return None;
-            }
-            let mut band = outer;
-            band.loc -= Point::from((EDGE as f64, EDGE as f64));
-            band.size += smithay::utils::Size::from((2.0 * EDGE as f64, 2.0 * EDGE as f64));
-            if !band.contains(pos) {
-                continue;
-            }
-            let fullscreen = w.toplevel().is_some_and(|t| t.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Fullscreen)));
-            let x11_fixed = w.x11_surface().is_some_and(|x| x.is_fullscreen() || x.is_override_redirect() || crate::wm::data(w).addr.get() == 0);
-            if fullscreen || x11_fixed {
-                return None;
-            }
-            let mut e = ResizeEdge::empty();
-            if pos.x < outer.loc.x {
-                e |= ResizeEdge::LEFT;
-            } else if pos.x >= outer.loc.x + outer.size.w {
-                e |= ResizeEdge::RIGHT;
-            }
-            if pos.y < outer.loc.y {
-                e |= ResizeEdge::TOP;
-            } else if pos.y >= outer.loc.y + outer.size.h {
-                e |= ResizeEdge::BOTTOM;
-            }
-            return Some((w.clone(), e, loc));
+            stack.push((outer, content));
+            wins.push((w, loc));
         }
-        None
+        let (i, e) = frame_edge(&stack, pos)?;
+        let (w, loc) = wins[i];
+        let fullscreen = w.toplevel().is_some_and(|t| t.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Fullscreen)));
+        let x11_fixed = w.x11_surface().is_some_and(|x| x.is_fullscreen() || x.is_override_redirect() || crate::wm::data(w).addr.get() == 0);
+        if fullscreen || x11_fixed {
+            return None;
+        }
+        Some((w.clone(), e, loc))
     }
 
     /// Pointer moved: the resize cursor over a frame, back to the default when it leaves.
@@ -395,6 +415,34 @@ impl MistComp {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn frame_edge_band() {
+        use super::{frame_edge, EDGE, EDGE_OVER};
+        use crate::grabs::resize_grab::ResizeEdge;
+        use smithay::utils::{Logical, Rectangle};
+        let r = |x: f64, y: f64, w: f64, h: f64| Rectangle::<f64, Logical>::new((x, y).into(), (w, h).into());
+        let p = |x: f64, y: f64| smithay::utils::Point::<f64, Logical>::from((x, y));
+        // A on top (100..300), B below it to the right (300..600); pointer over B's content beside A
+        let a = r(100.0, 100.0, 200.0, 200.0);
+        let b = r(300.0, 50.0, 300.0, 400.0);
+        let at = |pos, b_content: bool| frame_edge(&[(a, false), (b, b_content)], pos);
+        // over B, 8 px right of A: B keeps the click (the old 12 px band resized A)
+        assert_eq!(at(p(308.0, 200.0), true), None);
+        // over B, 2 px right of A: A's thin band
+        assert_eq!(at(p(302.0, 200.0), true), Some((0, ResizeEdge::RIGHT)));
+        assert!((EDGE_OVER as f64) < 8.0);
+        // over the desktop, 8 px left of A: the full band
+        assert_eq!(at(p(92.0, 200.0), false), Some((0, ResizeEdge::LEFT)));
+        assert_eq!(at(p(100.0 - EDGE as f64 - 1.0, 200.0), false), None);
+        // corner over the desktop
+        assert_eq!(at(p(95.0, 305.0), false), Some((0, ResizeEdge::BOTTOM_LEFT)));
+        // inside A, or over A's client surface (a CSD shadow): never a frame
+        assert_eq!(at(p(150.0, 150.0), false), None);
+        assert_eq!(frame_edge(&[(a, true), (b, false)], p(95.0, 200.0)), None);
+        // above B, out of A's band: B's own top band, full width over the desktop
+        assert_eq!(at(p(305.0, 40.0), false), Some((1, ResizeEdge::TOP)));
+    }
+
     #[test]
     fn bar_without_font() {
         // no font on the system: the bar is still drawn (buttons, no title)

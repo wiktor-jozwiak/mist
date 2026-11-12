@@ -138,6 +138,12 @@ C button left release >/dev/null
 wait_for "[ \"\$(size)\" != \"$SZ\" ] && [ \"\$(geo)\" != \"$G\" ]" 50 # the client's new size, the top edge moved
 G=$(geo); Y3=${G#*,}; SZ=$(size); H1=${SZ#*x}
 check "window: top edge stretched up, stops below the bar" "[ \"$H1\" -gt \"$H0\" ] && [ \"$Y3\" -ge \"${TOP:-0}\" ]" "y $Y -> $Y3, h $H0 -> $H1, top ${TOP:-?}"
+# a click on the frame (no travel past decor::EDGE_DRAG) resizes nothing
+G=$(geo); X=${G%,*}; Y=${G#*,}; SZ=$(size)
+C motion $((X + W / 2 + 40)) $((Y + 300)) >/dev/null; C motion $((X - 6)) $((Y + 300)) >/dev/null
+C button left press >/dev/null; C motion $((X - 4)) $((Y + 301)) >/dev/null; C button left release >/dev/null
+sleep 0.3
+check "window: a click on the frame resizes nothing" "[ \"$(size)\" = \"$SZ\" ] && [ \"$(geo)\" = \"$G\" ]" "$SZ $G -> $(size) $(geo)"
 
 # ------------------------------------------------------------------ typing reaches the window (wev, if installed)
 if command -v wev >/dev/null; then

@@ -112,6 +112,10 @@ pub struct MistComp {
     pub globals_held: std::collections::HashMap<u32, String>,
     /// socket2 listeners (hyprcompat)
     pub hypr_listeners: Vec<std::os::unix::net::UnixStream>,
+    /// (Caps Lock, Num Lock) last announced as `mistlock>>C,N` (the shell's indicator: no LED polling)
+    pub lock_sent: Option<(bool, bool)>,
+    /// the keyboards (libinput): their LEDs follow the xkb state (handlers: led_state_changed)
+    pub kbd_leds: Vec<smithay::reexports::input::Device>,
     /// cover.rs: the geometry the last coverage was computed from, and what was announced per (output, layer)
     /// watchdog.rs: commits per client since its last check
     pub commit_rate: std::collections::HashMap<smithay::reexports::wayland_server::backend::ClientId, u32>,
@@ -174,6 +178,9 @@ pub struct MistComp {
     pub anim: crate::anim::Anims,
     /// title bar pressed: the move starts once the pointer travels (a click keeps the snap state)
     pub bar_drag: Option<(smithay::desktop::Window, Point<f64, Logical>, u32)>,
+    /// window frame pressed: (window, edges, its location, press point, button); the resize starts once the
+    /// pointer travels decor::EDGE_DRAG (a click on a frame resizes nothing)
+    pub edge_press: Option<(smithay::desktop::Window, crate::grabs::resize_grab::ResizeEdge, Point<i32, Logical>, Point<f64, Logical>, u32)>,
     /// session locked: only `bindl` binds work
     pub locked: bool,
     /// something changed while an output waited for its vblank
@@ -334,7 +341,10 @@ impl MistComp {
             corner_in: None,
             anim: Default::default(),
             bar_drag: None,
+            edge_press: None,
             hypr_listeners: Vec::new(),
+            lock_sent: None,
+            kbd_leds: Vec::new(),
             commit_rate: Default::default(),
             session_timer: false,
             restore: Vec::new(),

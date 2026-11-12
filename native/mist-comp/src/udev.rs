@@ -299,6 +299,16 @@ pub fn init(event_loop: &mut EventLoop<CalloopData>, data: &mut CalloopData) -> 
             if d.config_tap_finger_count() > 0 {
                 let _ = d.config_tap_set_enabled(true);
             }
+            if d.has_capability(smithay::reexports::input::DeviceCapability::Keyboard) {
+                // its LEDs as the others' are now (Num Lock is on from the start)
+                if let Some(k) = data.seat.get_keyboard() {
+                    d.led_update(k.led_state().into());
+                }
+                data.kbd_leds.push(d);
+            }
+        }
+        if let smithay::backend::input::InputEvent::DeviceRemoved { device } = &event {
+            data.kbd_leds.retain(|k| k != device);
         }
         data.process_input_event(event);
     })?;

@@ -29,6 +29,13 @@ impl SeatHandler for MistComp {
         &mut self.seat_state
     }
 
+    // the keyboards' Caps / Num / Scroll Lock LEDs: libinput leaves them to the compositor
+    fn led_state_changed(&mut self, _seat: &Seat<Self>, led_state: smithay::input::keyboard::LedState) {
+        for d in &mut self.kbd_leds {
+            d.led_update(led_state.into());
+        }
+    }
+
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: smithay::input::pointer::CursorImageStatus) {
         self.cursor_status = image;
         self.dirty = true;

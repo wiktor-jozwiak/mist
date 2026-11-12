@@ -15,6 +15,7 @@
 //!   pointer flat                                libinput accel profile: flat | adaptive
 //!   explicit_sync off                           no linux-drm-syncobj (default: on where the GPU supports it)
 //!   screencopy_dmabuf on                        screen casting straight into the client's GPU buffer
+//!   mouse_mod super|alt|both                    modifier + left drag moves, + right drag resizes (default super)
 //!   swipe 3|4|off                               touchpad: N-finger horizontal swipe switches workspaces (default 3)
 //!   workspaces vertical                         workspaces stacked top to bottom (niri): the slide and the
 //!                                               swipe go up / down (default horizontal)
@@ -181,6 +182,15 @@ pub fn outputs(c: &Config) -> Vec<OutputConf> {
     all
 }
 
+/// The modifier that turns a left drag into a move and a right drag into a resize (`mouse_mod`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MouseMod {
+    #[default]
+    Super,
+    Alt,
+    Both,
+}
+
 /// What may skip composition and go to a plane as it is.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Scanout {
@@ -224,6 +234,8 @@ pub struct Config {
     pub fifo: bool,
     /// client buffers straight to a scanout plane: `direct_scanout game` (default), `on`, `off`
     pub direct_scanout: Scanout,
+    /// `mouse_mod super|alt|both`: Super + drag moves / resizes windows (default Super only)
+    pub mouse_mod: MouseMod,
 }
 
 pub fn path() -> std::path::PathBuf {
@@ -338,6 +350,14 @@ pub fn parse(text: &str) -> Config {
                     _ => Scanout::Game,
                 };
                 true
+            }
+            "mouse_mod" => {
+                c.mouse_mod = match rest {
+                    "alt" => MouseMod::Alt,
+                    "both" => MouseMod::Both,
+                    _ => MouseMod::Super,
+                };
+                matches!(rest, "super" | "alt" | "both")
             }
             "swipe" => {
                 c.swipe_fingers = if rest == "off" { 0 } else { rest.parse().unwrap_or(3) };
@@ -614,6 +634,14 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn mouse_mod_line() {
+        assert_eq!(parse("").mouse_mod, MouseMod::Super);
+        assert_eq!(parse("mouse_mod alt").mouse_mod, MouseMod::Alt);
+        assert_eq!(parse("mouse_mod both").mouse_mod, MouseMod::Both);
+        assert_eq!(parse("mouse_mod nonsense").mouse_mod, MouseMod::Super);
+    }
 
     #[test]
     fn output_lines() {

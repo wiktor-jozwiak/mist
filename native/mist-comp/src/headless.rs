@@ -161,7 +161,11 @@ pub fn render(state: &mut MistComp, part: Option<&std::collections::HashSet<Stri
         let elems = crate::scene::elements(&mut hl.renderer, space, lock.surfaces.get(&output.name()), *locked, &output, anim, dnd.as_ref());
         let elems = crate::scene::view(elems, anim.zoom, crate::scene::pointer_on(space, &output, ptr));
         let clear = if *locked { [0.0, 0.0, 0.0, 1.0] } else { crate::scene::NESTED_CLEAR };
-        match o.damage.render_output(&mut hl.renderer, &mut fb, age, &elems, clear) {
+        let t1 = std::time::Instant::now();
+        crate::prof::add(0, t1 - t0);
+        let drawn = o.damage.render_output(&mut hl.renderer, &mut fb, age, &elems, clear);
+        crate::prof::add(1, t1.elapsed());
+        match drawn {
             Ok(r) if r.damage.is_some() => {
                 *out_seq.entry(output.name()).or_insert(0) += 1;
                 crate::prof::frame(&output.name(), t0.elapsed());
@@ -177,9 +181,12 @@ pub fn render(state: &mut MistComp, part: Option<&std::collections::HashSet<Stri
             }
         }
         drop(fb);
+        let t2 = std::time::Instant::now();
         // smithay 0.7 frees the GL textures / EGLImages of destroyed client buffers (and our dropped
         // textures) only here: without it every closed panel, resized window and dmabuf stayed in memory
         let _ = smithay::backend::renderer::Renderer::cleanup_texture_cache(&mut hl.renderer);
+        crate::prof::add(2, t2.elapsed());
+        let t3 = std::time::Instant::now();
         // wp_presentation: shown at this tick (no vblank here)
         crate::scene::take_feedback(space, lock.surfaces.get(&output.name()), &output).presented::<_, smithay::utils::Monotonic>(
             smithay::utils::Clock::<smithay::utils::Monotonic>::new().now(),
@@ -188,6 +195,7 @@ pub fn render(state: &mut MistComp, part: Option<&std::collections::HashSet<Stri
             smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback::Kind::empty(),
         );
         crate::scene::send_frames(space, lock.surfaces.get(&output.name()), &output, now);
+        crate::prof::add(3, t3.elapsed());
     }
     if let (Some((icon, _)), Some(first)) = (dnd.as_ref(), hl.outs.first()) {
         smithay::desktop::utils::send_frames_surface_tree(icon, &first.output, now, Some(Duration::ZERO), |_, _| Some(first.output.clone()));
