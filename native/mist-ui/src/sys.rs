@@ -70,7 +70,7 @@ pub enum Msg {
     /// D-Bus idle inhibitors alive (idle::screensaver)
     IdleInhibit(u32),
     IdleCfg,
-    ConfErr(String, String), // a file in ~/.config/mist that is not JSON: its name, where it breaks
+    ConfErr(String, String), // a file in ~/.config/mist that is not JSON: its name, where it breaks ("" = it is fine)
     Polkit(crate::polkit::Ev),
     Shot(String),
     // a window thumbnail for the dock's window picker (wincap.rs): address, image
@@ -653,9 +653,8 @@ pub fn state_files(tx: Sender<Msg>) {
             }
             let Ok(text) = std::fs::read_to_string(format!("{cfg}/{name}")) else { return };
             let at = conf_error(&text).or_else(|| if name == "settings.json" { serde_json::from_str::<Value>(&text).ok().and_then(|v| conf_field(&v)) } else { None });
-            if let Some(at) = at {
-                let _ = tx.send(Msg::ConfErr(name.into(), at));
-            }
+            // "" = the file is fine (again): its notice, if one is up, goes
+            let _ = tx.send(Msg::ConfErr(name.into(), at.unwrap_or_default()));
         };
         for e in std::fs::read_dir(&cfg).into_iter().flatten().flatten() {
             check(&e.file_name().to_string_lossy());

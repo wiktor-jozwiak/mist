@@ -462,6 +462,15 @@ impl Island {
         self.push(e);
     }
 
+    // the file parses again: its notice is held until dismissed, so take it down here
+    pub fn conf_ok(&mut self, name: &str) {
+        let title = format!("Błąd w pliku {name}");
+        self.queue.retain(|e| !(e.key == "conf" && e.title == title));
+        if self.ev.as_ref().is_some_and(|e| e.key == "conf" && e.title == title) {
+            self.clear_ev();
+        }
+    }
+
     pub fn crashed(&mut self, what: &str) {
         let mut e = info("crash", 3, 9000, "alert", DANGER, "Mist uruchomił się ponownie po błędzie", what);
         e.hold = true;
@@ -2724,6 +2733,11 @@ mod special_tests {
         isl.conf_error("settings.json", "wiersz 3, kolumna 1");
         let e = isl.ev.as_ref().expect("notice");
         assert!(e.key == "conf" && e.hold && e.title == "Błąd w pliku settings.json" && e.sub.starts_with("wiersz 3"));
+        // another file being fine leaves it; its own file being fixed takes it down
+        isl.conf_ok("widgets.json");
+        assert!(isl.ev.is_some());
+        isl.conf_ok("settings.json");
+        assert!(isl.ev.is_none());
     }
 
     // a value no reader understands is named with its field; valid files stay silent

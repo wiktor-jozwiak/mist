@@ -3052,6 +3052,7 @@ impl App {
             }
             Msg::Sys(v) => self.island.on_sys(&v),
             Msg::NmLine(l) => self.island.on_nm(&l),
+            Msg::ConfErr(name, at) if at.is_empty() => self.island.conf_ok(&name),
             Msg::ConfErr(name, at) => self.island.conf_error(&name, &at),
             Msg::Pins => {
                 self.dock.load_pins();

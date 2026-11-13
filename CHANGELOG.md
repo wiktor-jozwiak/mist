@@ -11,6 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
   and whenever it is saved. Before, its readers fell back to defaults without a word.
 - `settings.json` with a theme, accent, language or contrast that Mist does not know (a typo in a theme's
   name, say) is named on the island with the field and the value.
+- The island's notice about a broken configuration file goes away by itself when the file is saved correct.
 - mist-comp sends `mistlock>>CAPS,NUM` on its event socket when Caps Lock or Num Lock changes; the island's
   indicator follows it instead of reading the keyboard LEDs four times a second.
 - `bench/quiet.sh`: a benchmark series waits for a quiet machine before every run; `bench/sample.py` records

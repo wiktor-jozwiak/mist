@@ -377,6 +377,7 @@ impl Wx {
         Some((*r0 as i32, (*r1 - *r0) as i32))
     }
     pub fn paint(&mut self, c: &mut Canvas, t: &mut Text, wx: &Value, garmin: &Value, cfg: &Cfg) {
+        let __t=Instant::now();
         c.clear();
         self.hits.clear();
         let (ox, oy) = (CARD_PAD, CARD_PAD);
@@ -397,6 +398,7 @@ impl Wx {
             fill_lin(c, &p, (0.0, oy + h * 0.40), (0.0, oy + h - 1.0), &[(0.0, s.alpha(0.0)), (0.35, s.alpha(0.28)), (1.0, s.alpha(0.58))]);
         }
 
+        eprintln!("P glass {:?}", __t.elapsed());
         let days = wx["days"].as_array().cloned().unwrap_or_default();
         let range = self.range(wx, cfg);
         let n = range.len();
@@ -630,9 +632,10 @@ impl Wx {
                 }
             }
         }
-        // the content layer with its shadow
+        eprintln!("P content {:?}", __t.elapsed());
         put_with_shadow(c, &l.pm, ox as i32, oy as i32, 7.7, Rgba(4.0 / 255.0, 8.0 / 255.0, 18.0 / 255.0, 1.0), 0.6, 1);
 
+        eprintln!("P shadow {:?}", __t.elapsed());
         // the sun and the moon in the sky are hoverable: details pop up next to them
         let m = crate::sky::Model::new(wx, (now / 60 * 60) as f64 * 1000.0);
         let (sw_, sh_) = (w as f64 - 2.0, h as f64 - 2.0);
@@ -674,6 +677,7 @@ impl Wx {
                 lh.push((r.0, r.1, r.2, r.3, Hit::Pop));
             }
         }
+        eprintln!("P sky {:?}", __t.elapsed());
         crate::desktop::Desk::card_rim(c, ox, oy, w, h);
         // the back of the card
         let mut sh: Hits = Vec::new();
@@ -682,6 +686,7 @@ impl Wx {
             lh.push((r.0 - ox, r.1 - oy, r.2, r.3, r.4));
         }
         self.hits = lh;
+        eprintln!("P end {:?}", __t.elapsed());
     }
 
     fn hits_pop_rect(&self) -> Option<(f32, f32, f32, f32)> {
