@@ -1234,7 +1234,7 @@ impl Island {
             "rain" => info("rain", 2, 5000, "umbrella", a, "Deszcz za ok. 30 min", "Kraków"),
             "clip" => info("clip", 2, 2500, "copy", a, "Skopiowano", "„Rozgrzewka 15 min, 5×800 m, przerwy 400 m truchtem”"),
             "link" => info("clip", 2, 2500, "link", a, "Skopiowano link", "https://github.com/quickshell-mirror/quickshell"),
-            "color" => { let mut e = info("clip", 2, 2500, "palette", a, "Skopiowano kolor", "#A9C2EE"); e.swatch = Some(Rgba::hex("#a9c2ee")); e }
+            "clip-color" => { let mut e = info("clip", 2, 2500, "palette", a, "Skopiowano kolor", "#A9C2EE"); e.swatch = Some(Rgba::hex("#a9c2ee")); e }
             "files" => info("clip", 2, 2500, "files", a, "Skopiowano pliki (3)", "plan.pdf, trasa.gpx, zdjęcie.jpg"),
             "image" => { let mut e = info("clip", 2, 3000, "photo", a, "Zrzut ekranu w schowku", "412 KB"); e.img = "/usr/share/pixmaps/archlinux-logo.png".into(); e.photo = true; e }
             "secret" => info("clip", 2, 2000, "lock", ORANGE_I, "Skopiowano hasło", "ukryte · schowek"),
@@ -1373,10 +1373,6 @@ impl Island {
     // only the equalizer changes: a frame of the bars alone will do (eq_frame)
     pub fn eq_only(&self) -> bool {
         self.eq_spot.is_some() && !self.animating_but_eq()
-    }
-    // a new surface / canvas: the next frame clears and damages the whole window
-    pub fn redraw_all(&mut self) {
-        self.drawn = (0, 0, WIN_W as i32, WIN_H as i32);
     }
     pub fn is_hidden(&self) -> bool {
         self.hidden
@@ -2764,7 +2760,7 @@ mod special_tests {
     fn recording_is_not_sharing() {
         let mut isl = Island::new();
         isl.armed = true;
-        let mut cast = |isl: &mut Island| -> String {
+        let cast = |isl: &mut Island| -> String {
             isl.cast_on = true;
             isl.share_at = Some(Instant::now() - Duration::from_millis(1));
             isl.tick(false, false);

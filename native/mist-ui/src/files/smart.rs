@@ -407,7 +407,7 @@ pub fn deep(root: &str, q: &Query, hidden: bool, mime: &MimeDb, stop: &AtomicBoo
                 queue.push_back(p.clone());
             }
             let mt = if dir { "inode/directory".to_string() } else { mime.guess(&name).unwrap_or("application/octet-stream").to_string() };
-            let e = Entry { hidden: name.starts_with('.'), size: if dir { 0 } else { m.len() }, mtime: m.mtime(), name, path: p, dir, mime: mt, link, ..Default::default() };
+            let e = Entry { hidden: name.starts_with('.'), size: if dir { 0 } else { m.len() }, mtime: m.mtime(), name, path: p, dir, mime: mt, ..Default::default() };
             if q.matches(&e) {
                 out.push(e);
                 if out.len() >= DEEP_MAX {

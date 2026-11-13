@@ -925,7 +925,11 @@
     "decoder_hardware_val": "sprzętowy ({hw})",
     "mpv_create_failed": "mpv_create nie działa",
     "mpv_initialize_failed": "mpv_initialize nie działa",
-    "egl_no_display": "EGL: brak wyświetlacza"
+    "egl_no_display": "EGL: brak wyświetlacza",
+    "help_queue_info": "Kolejka / informacje",
+    "help_frame_shot": "Zrzut klatki",
+    "help_speed": "Wolniej / szybciej  (×½ / ×2)",
+    "help_sub_delay": "Napisy −0,1 s / +0,1 s"
   },
   "files": {
     "file": "Plik",

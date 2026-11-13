@@ -15,9 +15,7 @@ pub struct Entry {
     pub mime: String,
     pub mtime: i64,
     pub hidden: bool,
-    pub link: bool,
     pub orig: String,    // trash: original path
-    pub deleted: String, // trash: deletion date (ISO)
     // no glob knows the name: `mime` is octet-stream until `sniff_pending` reads the file's head
     pub sniff: bool,
 }
@@ -225,7 +223,7 @@ pub fn list(path: &str, mime: &MimeDb) -> Result<Vec<Entry>, String> {
                 None => ("application/octet-stream".to_string(), true),
             }
         };
-        out.push(Entry { hidden: name.starts_with('.'), size: if dir { 0 } else { m.len() }, mtime: m.mtime(), name, path: p, dir, mime: mt, link, sniff, ..Default::default() });
+        out.push(Entry { hidden: name.starts_with('.'), size: if dir { 0 } else { m.len() }, mtime: m.mtime(), name, path: p, dir, mime: mt, sniff, ..Default::default() });
     }
     Ok(out)
 }
@@ -321,11 +319,11 @@ pub fn trash_list(mime: &MimeDb) -> Vec<Entry> {
     for d in rd.flatten() {
         let n = d.file_name().to_string_lossy().into_owned();
         let Ok(m) = d.metadata() else { continue };
-        let (orig, del) = trash_info(&n);
+        let (orig, _) = trash_info(&n);
         let dir = m.is_dir();
         let shown = Path::new(&orig).file_name().map(|s| s.to_string_lossy().into_owned()).filter(|s| !s.is_empty()).unwrap_or(n.clone());
         let mt = if dir { "inode/directory".into() } else { mime.guess(&shown).unwrap_or("application/octet-stream").to_string() };
-        out.push(Entry { size: if dir { du(&format!("{files}/{n}"), None) } else { m.len() }, path: format!("trash:///{n}"), name: shown, dir, mime: mt, mtime: m.mtime(), orig, deleted: del, ..Default::default() });
+        out.push(Entry { size: if dir { du(&format!("{files}/{n}"), None) } else { m.len() }, path: format!("trash:///{n}"), name: shown, dir, mime: mt, mtime: m.mtime(), orig, ..Default::default() });
     }
     out
 }
@@ -453,9 +451,6 @@ pub fn trash_find(origs: &[String]) -> Vec<String> {
     hits.sort_by(|a, b| b.0.cmp(&a.0));
     let mut seen = std::collections::HashSet::new();
     hits.into_iter().filter(|(_, o, _)| seen.insert(o.clone())).map(|(_, _, n)| n).collect()
-}
-pub fn trash_count() -> usize {
-    std::fs::read_dir(format!("{}/files", trash_dir())).map(|r| r.count()).unwrap_or(0)
 }
 
 // ---------------------------------------------------------------- copy / move / delete

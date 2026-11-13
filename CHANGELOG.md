@@ -13,6 +13,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
   indicator follows it instead of reading the keyboard LEDs four times a second.
 - `bench/quiet.sh`: a benchmark series waits for a quiet machine before every run; `bench/sample.py` records
   `pss_anon`, the part of PSS that does not depend on what else is running.
+- `native/mist-ui/tests/i18n-miss.sh` draws every pane, Settings page, Mist Player view, Mist Files and the bar
+  offscreen and lists the strings that reached the screen without a translation.
+- CI fails on unused code (`-D unused`) next to the clippy groups it already denied; the workspace builds
+  without a compiler warning.
 
 ### Changed
 - A photo wallpaper is drawn by `mist-ui`; `mist-wall` (the only OpenGL process) starts on demand for a live
@@ -25,7 +29,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 ### Fixed
 - Mist Player saved screenshots to `~/Obrazy` whatever the system's Pictures folder was called, and preferred
   Polish audio and subtitle tracks in every language; both now follow the system and the UI language.
-- 17 strings of Mist Player's help and statistics, the desktop cards' headers and Settings' shortcut names
+- 21 strings of Mist Player's help and statistics, the desktop cards' headers and Settings' shortcut names
   were shown in Polish in every language.
 
 ## [0.3.0] - 2026-11-09

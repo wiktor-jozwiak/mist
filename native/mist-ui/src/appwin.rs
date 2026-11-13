@@ -110,7 +110,6 @@ pub enum Cmd {
     // keep redrawing every frame while true (animations)
     Animate(WinId, bool),
     Move(WinId),
-    Resize(WinId, ResizeEdge),
     Minimize(WinId),
     Maximize(WinId),
     Fullscreen(WinId, bool),
@@ -140,15 +139,6 @@ impl Cx {
     }
     pub fn cursor(&mut self, c: CursorIcon) {
         self.cmds.push(Cmd::Cursor(c));
-    }
-    pub fn maximize(&mut self, id: WinId) {
-        self.cmds.push(Cmd::Maximize(id));
-    }
-    pub fn minimize(&mut self, id: WinId) {
-        self.cmds.push(Cmd::Minimize(id));
-    }
-    pub fn resize(&mut self, id: WinId, edge: ResizeEdge) {
-        self.cmds.push(Cmd::Resize(id, edge));
     }
     // a new window; its id arrives in Logic::opened with the token returned here
     pub fn new_window(&mut self, title: &str, w: u32, h: u32, min: (u32, u32)) -> u64 {
@@ -271,7 +261,6 @@ pub struct Rt {
     outputs: OutputState,
     compositor: CompositorState,
     subcompositor: SubcompositorState,
-    viewporter: Option<wp_viewporter::WpViewporter>,
     inhibit_mgr: Option<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1>,
     cursor_hidden: bool,
     shm: Shm,
@@ -401,13 +390,11 @@ pub fn run(name: &str, logic: Box<dyn Logic>) -> i32 {
     let pool = SlotPool::new(1200 * 800 * 4, &shm).expect("pool");
     let compositor = CompositorState::bind(&globals, &qh).expect("compositor");
     let subcompositor = SubcompositorState::bind(compositor.wl_compositor().clone(), &globals, &qh).expect("subcompositor");
-    let viewporter = globals.bind::<wp_viewporter::WpViewporter, _, _>(&qh, 1..=1, ()).ok();
     let mut rt = Rt {
         registry: RegistryState::new(&globals),
         outputs: OutputState::new(&globals, &qh),
         compositor,
         subcompositor,
-        viewporter,
         inhibit_mgr: globals.bind::<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1, _, _>(&qh, 1..=1, ()).ok(),
         cursor_hidden: false,
         seats: SeatState::new(&globals, &qh),
@@ -541,12 +528,6 @@ impl Rt {
                     let (seat, serial) = (self.seat.clone(), self.press_serial);
                     if let (Some(w), Some(seat)) = (self.win(id), seat) {
                         w.window.move_(&seat, serial);
-                    }
-                }
-                Cmd::Resize(id, edge) => {
-                    let (seat, serial) = (self.seat.clone(), self.press_serial);
-                    if let (Some(w), Some(seat)) = (self.win(id), seat) {
-                        w.window.resize(&seat, serial, edge);
                     }
                 }
                 Cmd::Minimize(id) => {

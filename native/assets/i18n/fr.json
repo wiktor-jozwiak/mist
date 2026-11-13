@@ -925,7 +925,11 @@
     "decoder_hardware_val": "matériel ({hw})",
     "mpv_create_failed": "échec de mpv_create",
     "mpv_initialize_failed": "échec de mpv_initialize",
-    "egl_no_display": "EGL : aucun affichage"
+    "egl_no_display": "EGL : aucun affichage",
+    "help_queue_info": "File d'attente / informations",
+    "help_frame_shot": "Enregistrer l'image",
+    "help_speed": "Plus lent / plus rapide  (×½ / ×2)",
+    "help_sub_delay": "Sous-titres −0,1 s / +0,1 s"
   },
   "files": {
     "file": "Fichier",

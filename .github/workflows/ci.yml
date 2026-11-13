@@ -5,9 +5,10 @@ on:
     branches: [main]
   pull_request:
 
-# clippy: bugs, suspicious code and slow patterns fail the build; style lints stay warnings
+# clippy: bugs, suspicious code, slow patterns and rustc's `unused` group (dead code, unreachable match arms,
+# unused variables) fail the build; style lints stay warnings
 env:
-  CLIPPY: -D clippy::correctness -D clippy::suspicious -D clippy::perf
+  CLIPPY: -D unused -D clippy::correctness -D clippy::suspicious -D clippy::perf
 
 jobs:
   build:

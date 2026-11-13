@@ -925,7 +925,11 @@
     "decoder_hardware_val": "por hardware ({hw})",
     "mpv_create_failed": "mpv_create ha fallado",
     "mpv_initialize_failed": "mpv_initialize ha fallado",
-    "egl_no_display": "EGL: sin pantalla"
+    "egl_no_display": "EGL: sin pantalla",
+    "help_queue_info": "Cola / información",
+    "help_frame_shot": "Guardar el fotograma",
+    "help_speed": "Más lento / más rápido  (×½ / ×2)",
+    "help_sub_delay": "Subtítulos −0,1 s / +0,1 s"
   },
   "files": {
     "file": "Archivo",

@@ -421,7 +421,7 @@ mod tests {
         for s in ["Ścieżka audio", "Napisy: następne / ukryj", "Otwórz plik (też napisy)", "Pominięte klatki", "Przepływność",
             "Dodano napisy (kilka plików)", "sprzętowy (nvdec)", "mpv_create nie działa", "EGL: brak wyświetlacza", "działa 3 d",
             "1 wydarzenie dziś", "3 wydarzenia dziś", "7 wydarzeń dziś", "Błędy konfiguracji mist-comp (2)",
-            "Przenieś po cichu na pulpit: następny"] {
+            "Przenieś po cichu na pulpit: następny", "Kolejka / informacje", "Zrzut klatki", "Wolniej / szybciej  (×½ / ×2)"] {
             for (lang, _) in LANGS {
                 if lang != "pl" {
                     assert_ne!(with(lang, s), s, "{lang}");
@@ -430,6 +430,7 @@ mod tests {
         }
         assert_eq!(with("en", "sprzętowy (nvdec)"), "hardware (nvdec)");
         assert_eq!(with("en", "7 wydarzeń dziś"), "7 events today");
+        assert_eq!(with("en", "Napisy −0,1 s / +0,1 s"), "Subtitles −0.1 s / +0.1 s");
     }
 
     fn with(lang: &'static str, s: &str) -> String {

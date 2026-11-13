@@ -146,7 +146,6 @@ pub fn icon(name: &str) -> Option<char> {
         "command" => 0xea78,
         "window" => 0xefe6,
         "layers" => 0xeaca,
-        "pinned" => 0xed60,
         "screenOn" => 0xf86a,
         "screenOff" => 0xee78,
         "link" => 0xeade,

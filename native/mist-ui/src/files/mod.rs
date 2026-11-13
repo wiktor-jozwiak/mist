@@ -452,7 +452,6 @@ enum Bg {
     FolderInfo { path: String, n: usize, size: u64 },
     Done { win: WinId, msg: String, reload: bool, select: Vec<String> },
     Watch,
-    Pick(portal::Request),
 }
 
 pub struct Files {
@@ -680,11 +679,6 @@ impl Files {
                     })
                     .ok();
             }
-        }
-    }
-    fn send(&self, b: Bg) {
-        if let Some(tx) = &self.tx {
-            let _ = tx.send(Box::new(b));
         }
     }
     fn win_mut(&mut self, id: WinId) -> Option<&mut Win> {
@@ -3217,7 +3211,6 @@ impl Logic for Files {
                 self.folder_info.clear();
                 cx.wake_at(at);
             }
-            Bg::Pick(r) => self.portal_request(r, cx),
         }
     }
 }
