@@ -1124,7 +1124,8 @@
     "config_errors_val": "Błędy konfiguracji {} ({})",
     "restarted_after_error": "Mist uruchomił się ponownie po błędzie",
     "error_in_file_val": "Błąd w pliku {}",
-    "line_col_defaults_used": "wiersz {}, kolumna {} · użyto ustawień domyślnych"
+    "line_col_defaults_used": "wiersz {}, kolumna {} · użyto ustawień domyślnych",
+    "field_unknown_defaults_used": "pole {}: nieznana wartość {} · użyto ustawień domyślnych"
   },
   "live_presets": {
     "the_sky_s_colours": "Kolory nieba o tej porze: noc, niebieska godzina, złota godzina, dzień. Szarzeje, gdy pada.",

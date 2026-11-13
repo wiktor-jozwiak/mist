@@ -163,6 +163,32 @@ pub struct Start {
 fn home() -> String {
     std::env::var("HOME").unwrap_or_default()
 }
+// folders whose newest files Start lists: the XDG user directories, with the English names where
+// user-dirs.dirs has no entry. A directory set to $HOME itself (how xdg-user-dirs marks "disabled") is left
+// out: scanning the whole home two levels deep is neither quick nor what the list is for.
+fn recent_dirs(xdg: &std::collections::HashMap<String, String>, home: &str) -> Vec<String> {
+    let mut v: Vec<String> = Vec::new();
+    for (k, en) in [("DOWNLOAD", "Downloads"), ("PICTURES", "Pictures"), ("DOCUMENTS", "Documents"), ("DESKTOP", "Desktop"), ("VIDEOS", "Videos")] {
+        let d = xdg.get(k).cloned().unwrap_or_else(|| format!("{home}/{en}"));
+        let d = d.trim_end_matches('/').to_string();
+        if !d.is_empty() && d != home.trim_end_matches('/') && !v.contains(&d) {
+            v.push(d);
+        }
+    }
+    v
+}
+#[cfg(test)]
+mod recent_tests {
+    #[test]
+    fn folders_follow_the_system() {
+        let mut x = std::collections::HashMap::new();
+        x.insert("DOWNLOAD".to_string(), "/h/Pobrane".to_string());
+        x.insert("PICTURES".to_string(), "/h/Obrazy/".to_string());
+        x.insert("DESKTOP".to_string(), "/h/".to_string()); // disabled
+        x.insert("VIDEOS".to_string(), "/h/Obrazy".to_string()); // same folder twice
+        assert_eq!(super::recent_dirs(&x, "/h"), ["/h/Pobrane", "/h/Obrazy", "/h/Documents"]);
+    }
+}
 fn pins_path() -> String {
     format!("{}/.config/mist/start.json", home())
 }
@@ -490,10 +516,14 @@ impl Start {
                 }
             }
         }
-        // newest files in Pobrane, Obrazy, Dokumenty, Pulpit, Wideo (most never reach recently-used.xbel)
+        // newest files in the user's Downloads, Pictures, Documents, Desktop and Videos folders, whatever the
+        // system calls them (most never reach recently-used.xbel)
         let (tx, rx) = channel();
         let _ = std::thread::Builder::new().name("start-files".into()).stack_size(256 * 1024).spawn(move || {
-            let o = std::process::Command::new("sh").args(["-c", "find \"$HOME/Pobrane\" \"$HOME/Downloads\" \"$HOME/Obrazy\" \"$HOME/Dokumenty\" \"$HOME/Pulpit\" \"$HOME/Wideo\" -maxdepth 2 -type f ! -name '.*' ! -name '*.part' ! -name '*.crdownload' -printf '%T@\\t%p\\n' 2>/dev/null | sort -rn | head -16"]).output();
+            let mut cmd = std::process::Command::new("sh");
+            cmd.args(["-c", "find \"$@\" -maxdepth 2 -type f ! -name '.*' ! -name '*.part' ! -name '*.crdownload' -printf '%T@\\t%p\\n' 2>/dev/null | sort -rn | head -16", "sh"]);
+            cmd.args(recent_dirs(&crate::files::fs::xdg_dirs(), &home()));
+            let o = cmd.output();
             let v = o
                 .map(|o| String::from_utf8_lossy(&o.stdout).lines().filter_map(|l| l.split_once('\t')).map(|(t, p)| (p.to_string(), (t.parse::<f64>().unwrap_or(0.0) * 1000.0) as i64)).collect())
                 .unwrap_or_default();

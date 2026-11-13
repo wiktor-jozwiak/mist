@@ -1124,7 +1124,8 @@
     "config_errors_val": "Konfigurationsfehler in {} ({})",
     "restarted_after_error": "Mist wurde nach einem Fehler neu gestartet",
     "error_in_file_val": "Fehler in {}",
-    "line_col_defaults_used": "Zeile {}, Spalte {} · Standardwerte werden verwendet"
+    "line_col_defaults_used": "Zeile {}, Spalte {} · Standardwerte werden verwendet",
+    "field_unknown_defaults_used": "Feld {}: unbekannter Wert {} · Standardwerte werden verwendet"
   },
   "live_presets": {
     "the_sky_s_colours": "Die Farben des Himmels zu dieser Stunde: Nacht, blaue Stunde, goldene Stunde, Tag. Grau, wenn es regnet.",

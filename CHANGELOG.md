@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
   binary appends its panics to `~/.cache/mist/crash.log` (time, binary, version, thread, place, message).
 - A file in `~/.config/mist` that is not valid JSON is named on the island with the line and column, at start
   and whenever it is saved. Before, its readers fell back to defaults without a word.
+- `settings.json` with a theme, accent, language or contrast that Mist does not know (a typo in a theme's
+  name, say) is named on the island with the field and the value.
 - mist-comp sends `mistlock>>CAPS,NUM` on its event socket when Caps Lock or Num Lock changes; the island's
   indicator follows it instead of reading the keyboard LEDs four times a second.
 - `bench/quiet.sh`: a benchmark series waits for a quiet machine before every run; `bench/sample.py` records
@@ -27,6 +29,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 - `blocking` is pinned to 1.6.2: in 1.7.0 idle pool threads never exit and wake twice a second.
 
 ### Fixed
+- Start's recent files were looked for in `~/Pobrane`, `~/Obrazy`, `~/Dokumenty`, `~/Pulpit` and `~/Wideo`
+  only; the folders now come from the system's user directories.
 - Mist Player saved screenshots to `~/Obrazy` whatever the system's Pictures folder was called, and preferred
   Polish audio and subtitle tracks in every language; both now follow the system and the UI language.
 - 21 strings of Mist Player's help and statistics, the desktop cards' headers and Settings' shortcut names

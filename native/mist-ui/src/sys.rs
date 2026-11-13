@@ -596,6 +596,23 @@ pub fn conf_error(text: &str) -> Option<String> {
     serde_json::from_str::<Value>(text).err().map(|e| format!("wiersz {}, kolumna {}", e.line(), e.column()))
 }
 
+// a field of settings.json whose value no reader understands ("pole theme: nieznana wartość nrod"); the reader
+// then uses its default, which looks like the setting was ignored. Only fields with a closed set of values.
+pub fn conf_field(v: &Value) -> Option<String> {
+    let hex = |s: &str| s.len() == 7 && s.starts_with('#') && u32::from_str_radix(&s[1..], 16).is_ok();
+    let ok = |k: &str, x: &Value| match (k, x.as_str()) {
+        ("theme", Some(s)) => crate::theme::theme_known(s),
+        ("accent", Some(s)) => s == "wallpaper" || hex(s),
+        ("lang", Some(s)) => s == "auto" || crate::i18n::LANGS.iter().any(|l| l.0 == s),
+        ("contrast", Some(s)) => s == "high" || s == "normal",
+        _ => false,
+    };
+    ["theme", "accent", "lang", "contrast"].into_iter().find(|k| !v[*k].is_null() && !ok(k, &v[*k])).map(|k| {
+        let shown = v[k].as_str().map(String::from).unwrap_or_else(|| v[k].to_string());
+        format!("pole {k}: nieznana wartość {}", shown.chars().take(24).collect::<String>())
+    })
+}
+
 fn read_json(p: &str) -> Value {
     std::fs::read_to_string(p).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null)
 }
@@ -634,7 +651,9 @@ pub fn state_files(tx: Sender<Msg>) {
             if !name.ends_with(".json") {
                 return;
             }
-            if let Some(at) = std::fs::read_to_string(format!("{cfg}/{name}")).ok().and_then(|s| conf_error(&s)) {
+            let Ok(text) = std::fs::read_to_string(format!("{cfg}/{name}")) else { return };
+            let at = conf_error(&text).or_else(|| if name == "settings.json" { serde_json::from_str::<Value>(&text).ok().and_then(|v| conf_field(&v)) } else { None });
+            if let Some(at) = at {
                 let _ = tx.send(Msg::ConfErr(name.into(), at));
             }
         };

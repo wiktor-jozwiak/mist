@@ -2726,6 +2726,19 @@ mod special_tests {
         assert!(e.key == "conf" && e.hold && e.title == "Błąd w pliku settings.json" && e.sub.starts_with("wiersz 3"));
     }
 
+    // a value no reader understands is named with its field; valid files stay silent
+    #[test]
+    fn conf_field_notice() {
+        use serde_json::json;
+        let f = |v| crate::sys::conf_field(&v);
+        assert_eq!(f(json!({"theme": "nord", "accent": "#88c0d0", "lang": "auto", "contrast": "high", "primary": "DP-3"})), None);
+        assert_eq!(f(json!({"accent": "wallpaper", "contrast": null})), None);
+        assert_eq!(f(json!({"theme": "nrod"})).as_deref(), Some("pole theme: nieznana wartość nrod"));
+        assert_eq!(f(json!({"accent": "blue"})).as_deref(), Some("pole accent: nieznana wartość blue"));
+        assert_eq!(f(json!({"lang": "it"})).as_deref(), Some("pole lang: nieznana wartość it"));
+        assert_eq!(f(json!({"theme": 5})).as_deref(), Some("pole theme: nieznana wartość 5"));
+    }
+
     // after a panic the restarted shell says so, and keeps the notice until it is dismissed
     #[test]
     fn crash_notice() {

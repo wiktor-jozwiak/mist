@@ -1124,7 +1124,8 @@
     "config_errors_val": "Errores de configuración en {} ({})",
     "restarted_after_error": "Mist se reinició tras un error",
     "error_in_file_val": "Error en {}",
-    "line_col_defaults_used": "línea {}, columna {} · se usan los valores predeterminados"
+    "line_col_defaults_used": "línea {}, columna {} · se usan los valores predeterminados",
+    "field_unknown_defaults_used": "campo {}: valor desconocido {} · se usan los valores predeterminados"
   },
   "live_presets": {
     "the_sky_s_colours": "Los colores del cielo a esta hora: noche, hora azul, hora dorada, día. Se vuelve gris cuando llueve.",

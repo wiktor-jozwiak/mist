@@ -1124,7 +1124,8 @@
     "config_errors_val": "Configuration errors in {} ({})",
     "restarted_after_error": "Mist restarted after an error",
     "error_in_file_val": "Error in {}",
-    "line_col_defaults_used": "line {}, column {} · defaults are used"
+    "line_col_defaults_used": "line {}, column {} · defaults are used",
+    "field_unknown_defaults_used": "field {}: unknown value {} · defaults are used"
   },
   "live_presets": {
     "the_sky_s_colours": "The sky's colours at this hour: night, blue hour, golden hour, day. Turns grey when it rains.",

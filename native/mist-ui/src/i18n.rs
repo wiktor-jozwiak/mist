@@ -431,6 +431,7 @@ mod tests {
         assert_eq!(with("en", "sprzętowy (nvdec)"), "hardware (nvdec)");
         assert_eq!(with("en", "7 wydarzeń dziś"), "7 events today");
         assert_eq!(with("en", "Napisy −0,1 s / +0,1 s"), "Subtitles −0.1 s / +0.1 s");
+        assert_eq!(with("en", "pole theme: nieznana wartość nrod · użyto ustawień domyślnych"), "field theme: unknown value nrod · defaults are used");
     }
 
     fn with(lang: &'static str, s: &str) -> String {

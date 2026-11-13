@@ -75,6 +75,10 @@ fn theme_by_id(id: &str) -> Option<Palette> {
     }
     read(&format!("{}/{id}.json", themes_dir())).map(|v| parse_theme(&v))
 }
+/// is this a theme that can be drawn: built in, or a file in ~/.config/mist/themes
+pub fn theme_known(id: &str) -> bool {
+    theme_by_id(id).is_some()
+}
 /// every theme to pick: the built-in ones, then ~/.config/mist/themes/*.json by name
 pub fn theme_list() -> Vec<(String, String)> {
     let mut v: Vec<(String, String)> = THEMES.iter().map(|t| (t.0.to_string(), t.1.to_string())).collect();
