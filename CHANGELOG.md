@@ -4,6 +4,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-14
+
 ### Added
 - README redesigned: a header with the logo and the numbers that matter (idle memory, OpenGL contexts,
   wake-ups), a tour of even 16:10 pictures (`docs/img/panels.sh` frames every panel and app window the same
