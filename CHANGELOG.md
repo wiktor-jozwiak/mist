@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 ## [Unreleased]
 
 ### Fixed
+- Desktop, Czas widget: the year's last second counted as the whole year (f32 rounded it up to 1.0); the
+  parts of time passed are worked out in f64 and stay below 1. CI, which runs in UTC, failed on it.
 - Weather card: an hour or a day picked with a click goes back to "now" 2.5 s after the pointer leaves the
   card, as a hovered one does; it stayed 20 s and looked stuck. The Sun's and the Moon's details still stay 20 s.
 - Arch package: the description names the shell and the compositor, Hyprland is optional (mist-comp and

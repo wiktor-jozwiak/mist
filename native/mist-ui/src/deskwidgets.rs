@@ -129,10 +129,12 @@ pub fn note_path() -> String {
 pub fn passed(t: i64) -> ([f32; 4], i32, i32) {
     let tm = crate::data::local(t);
     let (y, m) = ((tm.tm_year + 1900) as i64, (tm.tm_mon + 1) as i64);
-    let day = (tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec) as f32 / 86400.0;
+    let day = (tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec) as f64 / 86400.0;
     let mlen = (days(if m == 12 { y + 1 } else { y }, if m == 12 { 1 } else { m + 1 }, 1) - days(y, m, 1)) as i32;
     let ylen = (days(y + 1, 1, 1) - days(y, 1, 1)) as i32;
-    ([day, (((tm.tm_wday + 6) % 7) as f32 + day) / 7.0, ((tm.tm_mday - 1) as f32 + day) / mlen as f32, (tm.tm_yday as f32 + day) / ylen as f32], mlen, ylen)
+    // in f64, then below 1: the year's last second is 0.99999997 of it, which f32 rounds up to a full 1.0
+    let f = |v: f64| (v as f32).min(0.999_999_94);
+    ([f(day), f((((tm.tm_wday + 6) % 7) as f64 + day) / 7.0), f(((tm.tm_mday - 1) as f64 + day) / mlen as f64), f((tm.tm_yday as f64 + day) / ylen as f64)], mlen, ylen)
 }
 fn uptime() -> String {
     let s: f64 = std::fs::read_to_string("/proc/uptime").ok().and_then(|s| s.split_whitespace().next().and_then(|x| x.parse().ok())).unwrap_or(0.0);
