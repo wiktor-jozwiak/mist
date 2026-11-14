@@ -4,7 +4,7 @@
 // the timeline: the text follows the hour under the pointer, and so does the sky: the sun and the moon travel to
 // where they stand at that hour, the weather becomes that hour's. Hover the sun or the moon
 // for details, or the two chips at the end of the numbers' row (sunrise / sunset, the Moon's light): they are the
-// same switch where the sky hides the bodies behind cloud; a click keeps the details open. Leaving the card returns to "now" (2.5 s; 20 s after a click pinned a day / an hour).
+// same switch where the sky hides the bodies behind cloud; a click keeps the details open. Leaving the card returns to "now" after 2.5 s, also from a day / an hour a click pinned.
 // The row under the headline is both the moment's numbers (rain, wind, humidity, UV) and the timeline's
 // switch: click or wheel over it for temperature / rain / wind. The big number cycles what the card leads with.
 // Cost: the glass and its shades are painted once and copied after that (bg), the text's shadow is blurred at
@@ -1293,7 +1293,9 @@ impl Wx {
         }
         if let Some(a) = self.away {
             let kept = !self.pop_pin.is_empty();
-            if (self.sel_day != 0 || self.pin_hour >= 0 || kept) && a.elapsed().as_millis() >= if self.pinned || kept { 20000 } else { 2500 } {
+            // a picked hour or day holds while the pointer is on the card: off it, "now" comes back after 2.5 s
+            // (a pinned hour staying 20 s read as the card stuck); only the Sun's / Moon's details stay longer
+            if (self.sel_day != 0 || self.pin_hour >= 0 || kept) && a.elapsed().as_millis() >= if kept { 20000 } else { 2500 } {
                 self.pop_pin = "";
                 self.sel_day = 0;
                 self.pin_hour = -1;
@@ -1539,6 +1541,22 @@ mod tests {
         w.away = Some(Instant::now() - Duration::from_secs(21));
         assert!(w.tick(0));
         assert_eq!(w.pop_pin, "");
+    }
+
+    // an hour pinned by a click on the timeline: the pointer off the card brings "now" back after 2.5 s, not 20
+    #[test]
+    fn pinned_hour_returns_to_now() {
+        let mut w = Wx::new();
+        w.pin_hour = 21;
+        w.pinned = true;
+        w.motion(Some((50.0, 50.0)));
+        w.motion(None);
+        assert!(w.away.is_some(), "leaving the card is timed");
+        assert!(!w.tick(0), "not at once");
+        assert_eq!(w.pin_hour, 21);
+        w.away = Some(Instant::now() - Duration::from_millis(2600));
+        assert!(w.tick(0));
+        assert_eq!((w.pin_hour, w.pinned, w.sel_day), (-1, false, 0));
     }
 
     // a turn whose fade got no frame after 220 ms: the next tick paints it in full and drops the blend cache

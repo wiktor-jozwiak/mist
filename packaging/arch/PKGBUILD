@@ -2,16 +2,17 @@
 # Mist from git: mist-ui (bar, dock, island, desktop, panels), mist-wall (live wallpapers), mistd (backends),
 # mist-comp (experimental compositor). Files go to /usr/share/mist, which common/paths.rs looks up.
 pkgname=mist-shell-git
-pkgver=r0
+pkgver=0.4.0.r0.gde61d1c
 pkgrel=1
-pkgdesc="macOS-inspired desktop shell for Hyprland, written in Rust and drawn on the CPU"
+pkgdesc="Wayland desktop shell and compositor, written in Rust and drawn on the CPU"
 arch=('x86_64')
 url="https://github.com/wiktor-jozwiak/mist"
 license=('GPL-3.0-only')
-depends=('hyprland' 'wayland' 'libxkbcommon' 'mesa' 'pam' 'libinput' 'seatd' 'libdrm' 'systemd-libs'
+depends=('wayland' 'libxkbcommon' 'mesa' 'pam' 'libinput' 'seatd' 'libdrm' 'systemd-libs'
          'pipewire-pulse' 'wireplumber' 'wl-clipboard' 'grim' 'slurp' 'xdg-utils' 'xdg-user-dirs')
 makedepends=('git' 'rust' 'pkgconf')
-optdepends=('inter-font: UI font when SF Pro is not installed'
+optdepends=('hyprland: run the shell on Hyprland instead of mist-comp'
+            'inter-font: UI font when SF Pro is not installed'
             'noto-fonts-emoji: emoji picker'
             'networkmanager: network status and Wi-Fi list'
             'bluez-utils: Bluetooth'
@@ -29,7 +30,8 @@ sha256sums=('SKIP')
 
 pkgver() {
     cd mist
-    printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+    # 0.4.0.r12.gabc1234: the last release, commits since, the commit
+    git describe --long --tags --match 'v[0-9]*' | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
 }
 
 build() {

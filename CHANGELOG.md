@@ -4,6 +4,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+### Fixed
+- Weather card: an hour or a day picked with a click goes back to "now" 2.5 s after the pointer leaves the
+  card, as a hovered one does; it stayed 20 s and looked stuck. The Sun's and the Moon's details still stay 20 s.
+- Arch package: the description names the shell and the compositor, Hyprland is optional (mist-comp and
+  `mist-try` run without it), the version reads `0.4.0.r<commits>.g<hash>` instead of `r<commits>`.
+
 ## [0.4.0] - 2026-11-14
 
 ### Added
