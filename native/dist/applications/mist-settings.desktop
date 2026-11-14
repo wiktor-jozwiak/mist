@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Settings
+Name[pl]=Ustawienia
+Name[de]=Einstellungen
+Name[es]=Ajustes
+Name[fr]=Paramètres
+Comment=Mist Settings: display, sound, network, wallpaper, desktop
+Comment[pl]=Ustawienia Mist: ekran, dźwięk, sieć, tapeta, pulpit
+Exec=mist-ui-bin settings
+Icon=mist-settings
+Terminal=false
+Categories=Settings;System;
+StartupWMClass=mist-settings

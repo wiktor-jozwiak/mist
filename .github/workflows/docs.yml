@@ -35,7 +35,16 @@ jobs:
               if t.startswith("docs/"):
                   return f"{m.group(1)}({t[5:]})"
               return f"{m.group(1)}(https://github.com/wiktor-jozwiak/mist/blob/main/{t})"
-          open("docs/index.md", "w").write(re.sub(r"(\]|\[[^\]]*\])\(([^)\s]+)\)", fix, s))
+          s = re.sub(r"(\]|\[[^\]]*\])\(([^)\s]+)\)", fix, s)
+          # the same for the pictures in HTML: docs/ is the site root, the rest from the repository through jsDelivr (raw.githubusercontent serves SVG as text)
+          def src(m):
+              t = m.group(2)
+              if t.startswith(("http", "#")):
+                  return m.group(0)
+              t = t[5:] if t.startswith("docs/") else f"https://cdn.jsdelivr.net/gh/wiktor-jozwiak/mist@main/{t}"
+              return f'{m.group(1)}="{t}"'
+          s = re.sub(r'\b(src|srcset)="([^"]+)"', src, s)
+          open("docs/index.md", "w").write(s)
       - run: mkdocs build
       - uses: actions/upload-pages-artifact@v3
         with:

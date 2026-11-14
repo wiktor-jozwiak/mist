@@ -63,6 +63,8 @@ cp -r docs $share/
 install -m755 native/mist-comp/session/start-mist native/mist-comp/session/mist-session $share/native/mist-comp/session/
 install -m644 native/mist-comp/session/mist-portals.conf $share/native/mist-comp/session/
 install -Dm644 packaging/mist.desktop %{buildroot}%{_datadir}/wayland-sessions/mist.desktop
+install -Dm644 -t %{buildroot}%{_datadir}/applications native/dist/applications/*.desktop
+install -Dm644 -t %{buildroot}%{_datadir}/icons/hicolor/scalable/apps native/assets/icons/hicolor/scalable/apps/mist-*.svg
 
 %files
 %license LICENSE NOTICE.md native/assets/LICENSE.noctalia
@@ -74,6 +76,8 @@ install -Dm644 packaging/mist.desktop %{buildroot}%{_datadir}/wayland-sessions/m
 %{_bindir}/mistd
 %{_datadir}/mist/
 %{_datadir}/wayland-sessions/mist.desktop
+%{_datadir}/applications/mist-*.desktop
+%{_datadir}/icons/hicolor/scalable/apps/mist-*.svg
 
 %changelog
 * Thu Oct 22 2026 Wiktor Józwiak <wjozwiak92@gmail.com> - 0^20261022git-1

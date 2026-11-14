@@ -1,5 +1,5 @@
 @@tagline
-Un entorno de escritorio para Wayland inspirado en macOS, escrito en Rust y dibujado en la CPU.
+Un entorno de escritorio y un compositor Wayland para Linux, escritos en Rust y dibujados en la CPU.
 @@desk_img
 desktop-en.webp
 @@desk_alt
@@ -17,10 +17,14 @@ Teclas y scripts
 @@h_dev
 Desarrollo
 @@intro
-Mist es un entorno de escritorio completo en un solo proceso: barra, dock, Dynamic Island, widgets del
-escritorio, buscador, centro de control, notificaciones, pantalla de bloqueo y agente polkit. Funciona sobre
-Hyprland o sobre su propio compositor, [`mist-comp`](#mist-comp), y puedes
-[probarlo en una ventana](#{{a_try}}) en el escritorio que ya usas.
+Mist son dos programas, y cada uno funciona sin el otro:
+
+| | Qué es | Dónde funciona |
+|---|---|---|
+| **El entorno** (`mist-ui`, `mist-wall`) | barra, dock, Dynamic Island, widgets del escritorio, buscador, centro de control, notificaciones, pantalla de bloqueo, agente polkit, un gestor de archivos y un reproductor de vídeo, en un solo proceso | Hyprland, mist-comp o [una ventana](#{{a_try}}) en el escritorio que ya usas |
+| **El compositor** ([`mist-comp`](#mist-comp)) | un compositor Wayland sobre Smithay, con su propia pantalla de inicio de sesión | una sesión propia, junto a Hyprland |
+
+El aspecto se inspira en macOS a propósito; por debajo es un escritorio Linux.
 @@note
 > Mist es el escritorio diario de una persona (Arch / CachyOS, dos monitores, NVIDIA). Se comparte porque
 > funciona, no porque esté terminado: cuenta con leer algo de código.
@@ -31,13 +35,13 @@ La tarjeta del tiempo bajo la lluvia, sobre su cielo en vivo
 @@sub_island
 Dynamic Island: notificaciones, volumen, lluvia en la próxima hora, el próximo evento
 @@sub_weather
-Tarjeta del tiempo sobre un cielo GLSL en tiempo real
+Tarjeta del tiempo sobre un cielo en vivo que sigue el tiempo y la hora
 @@alt_spot
-Buscador al estilo de Spotlight
+Spotlight respondiendo 128*42
 @@alt_set
-Ventana de ajustes
+Ajustes, la página Personalización
 @@sub_spot
-Spotlight: aplicaciones, archivos, comandos, emoji, web
+Spotlight: aplicaciones, archivos, comandos, cálculos, unidades, husos horarios, emoji, web
 @@sub_set
 Ajustes: todas las opciones en una ventana, aplicadas al instante
 @@alt_cc
@@ -54,35 +58,40 @@ Demo de 40 s, grabada en una sesión <code>mist-comp</code> sin pantalla con dat
 El entorno
 @@b_shell
 - **Barra superior:** aplicación activa, bandeja del sistema (StatusNotifierItem + dbusmenu), red, Bluetooth,
-  audio, CPU y memoria, reloj.
-- **Dock:** aplicaciones fijadas y abiertas, ampliación, selector de ventanas con miniaturas en vivo.
-- **Dynamic Island:** multimedia con ecualizador, temporizadores, llamadas, notificaciones, volumen.
-- **Paneles:** Spotlight, Inicio, cambiador de aplicaciones, centro de control, centro de notificaciones,
-  historial del portapapeles, emoji, menú de sesión, barra de capturas. Spotlight responde mientras escribes:
-  cálculos (`128*42`), unidades (`212 f to c`, `2 gb to mb`), zonas horarias (`tokyo time`).
+  sonido, CPU y memoria, reloj.
+- **Dock:** aplicaciones fijadas y abiertas, ampliación, un selector de ventanas con miniaturas en vivo.
+- **Dynamic Island:** multimedia con ecualizador, temporizadores, llamadas, notificaciones, volumen, Bloq Mayús
+  y un aviso cuando un archivo de configuración tiene un error (con la línea y la columna).
+- **Paneles:** Inicio, Spotlight, selector de aplicaciones, centro de control, centro de notificaciones,
+  calendario, historial del portapapeles, emoji, menú de sesión. Los campos de búsqueda funcionan como
+  cualquier campo de texto: cursor, flechas, selección con Mayús y Ctrl+A.
+- **Capturas de pantalla:** una región elegida sobre la pantalla congelada, una barra de herramientas, texto
+  de la pantalla (OCR), un cuentagotas de color.
 - **Ajuste de ventanas** como en Windows 11: arrastra a un borde o esquina, Snap Layouts en el botón verde o
-  con `Super + Z`, Snap Assist.
+  `Super + Z`, Snap Assist.
+- **Pantalla de bloqueo** sobre PAM, con su propio estilo de reloj, desenfoque y oscurecimiento.
 @@g_desk
 El escritorio
 @@b_desk
-- **Reloj y tarjetas de cristal:** tiempo, disposición de Garmin, carrera, música, calendario, sistema,
-  relojes del mundo. El tiempo viene de [Open-Meteo](https://open-meteo.com) sin cuenta: curva por horas,
-  cuatro días, lluvia en la próxima hora, sol y luna. Las tarjetas de Garmin muestran tus propios datos de
-  Garmin Connect, sincronizados en un archivo SQLite local; siguen ocultas hasta que inicias sesión una vez
-  ([guía](../guides/garmin.md)).
-- **Fondos:** fotos, escenas GLSL animadas o un cielo que sigue el tiempo actual.
+- **Reloj y tarjetas de cristal:** tiempo, disposición de Garmin, carrera, música, calendario, sistema, relojes
+  del mundo, una nota con tareas, el progreso del día, el Sol y la Luna, un marco de fotos, baterías de
+  dispositivos. Las tarjetas de Garmin muestran tus propios datos de Garmin Connect, sincronizados en un
+  archivo SQLite local, y siguen ocultas hasta que inicias sesión una vez ([guía](../guides/garmin.md)).
+- **Tiempo** de [Open-Meteo](https://open-meteo.com), sin cuenta: curva por horas, cuatro días, lluvia en la
+  próxima hora, el día del Sol y de la Luna. El cielo de la tarjeta se dibuja en vivo para el tiempo y la hora
+  que señalas, sobre uno de cinco paisajes (campos, un lago, montañas, una ciudad, el mar).
+- **Fondos:** fotos, escenas GLSL en vivo o el cielo del tiempo actual.
 - **Temas:** Mist, Catppuccin, Nord, Gruvbox, Tokyo Night, Rosé Pine, Dracula o tu propio archivo JSON. El
-  cristal, las ventanas y el color de acento cambian en vivo en el entorno y en Files, Player y Ajustes.
+  cristal, las ventanas y el acento cambian en vivo en el entorno y en Files, Player y Ajustes.
 @@g_repl
 Qué sustituye
 @@b_repl
-- **Demonios:** el servidor de notificaciones, el agente polkit, la pantalla de bloqueo (PAM), la inactividad
-  y la suspensión.
-- **Aplicaciones:** Mist Files (también el selector de archivos de cualquier aplicación), Mist Player
-  (libmpv), Ajustes (idioma, lugar del tiempo, fondo, disposición del escritorio, widgets, luz nocturna,
-  bloqueo y suspensión, notificaciones).
-- **Teléfono**, mediante KDE Connect: batería, notificaciones, SMS y contactos en un panel, llamadas en la
-  isla (ADB como alternativa para las llamadas).
+- **Servicios:** el servidor de notificaciones, el agente polkit, la pantalla de bloqueo, la inactividad y la
+  suspensión.
+- **Aplicaciones:** Mist Files, Mist Player y Ajustes (pantalla, sonido, Bluetooth, red, energía,
+  aplicaciones, fondo, escritorio y widgets, pantalla de bloqueo, notificaciones, idioma).
+- **Teléfono** con KDE Connect: batería, notificaciones, SMS y contactos en un panel, llamadas en la isla (ADB
+  como alternativa para las llamadas).
 @@langs
 La interfaz está en **español, inglés, polaco, alemán y francés**, según `$LANG` o lo elegido en Ajustes. Un
 idioma es un archivo JSON en [native/assets/i18n](../../native/assets/i18n).
@@ -219,6 +228,56 @@ Créditos
 @@credits
 Construido sobre [Smithay], [smithay-client-toolkit], [tiny-skia], [swash], [resvg], [zbus] y [Tabler Icons].
 La primera versión funcionaba sobre [Quickshell], con [Noctalia] como referencia.
+Los asistentes de programación con IA ayudan en el desarrollo.
 @@apple
 Mist no está afiliado a Apple. macOS, Dynamic Island, Spotlight y SF Pro son marcas de Apple Inc., citadas
 aquí solo para describir la inspiración del diseño.
+@@alt_start
+Inicio: campo de búsqueda, aplicaciones favoritas, el calendario de hoy, el teléfono
+@@sub_start
+Inicio: aplicaciones, archivos, comandos, el día de hoy y el teléfono
+@@alt_files
+Mist Files: una carpeta en la vista de detalles
+@@sub_files
+Mist Files, también el selector de archivos de cada aplicación
+@@alt_player
+Mist Player: los controles sobre un vídeo
+@@sub_player
+Mist Player sobre libmpv: capítulos, pistas, imagen en imagen
+@@st_mem
+de memoria para todo el shell en reposo
+@@st_gl
+contextos OpenGL en el proceso del shell
+@@st_wake
+despertares en reposo, sin sondeo
+@@h_tour
+Recorrido
+@@alt_wall
+Las dunas, un fondo animado en GLSL
+@@sub_wall
+Fondos animados en GLSL, fotos o el cielo del tiempo actual
+@@alt_emoji
+El selector de emoji
+@@sub_emoji
+Selector de emoji con búsqueda y categorías
+@@alt_themes
+El centro de control en los siete temas incluidos
+@@sub_themes
+Mist, Catppuccin, Nord, Gruvbox, Tokyo Night, Rosé Pine, Dracula o tu propio archivo JSON. El vidrio, las ventanas y el acento cambian en vivo.
+@@app_files
+pestañas, vista previa, búsqueda inteligente, el selector de archivos del sistema
+@@app_player
+libmpv, MPRIS, imagen en imagen, ritmo de fotogramas estable
+@@app_set_name
+Ajustes
+@@app_set
+pantalla, sonido, red, escritorio, widgets, idioma
+@@nums
+<b>Los números</b>: shells y compositores medidos igual
+@@h_stars
+Historial de estrellas
+@@stars_alt
+Historial de estrellas de wiktor-jozwiak/mist
+@@dev_pics
+Las imágenes de esta página salen de los mismos renders fuera de pantalla, con datos de demostración:
+`docs/img/hero.sh`, `docs/img/panels.sh`, `docs/img/gifs.sh`.

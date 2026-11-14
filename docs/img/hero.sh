@@ -16,16 +16,16 @@ cp "$repo/docs/demo/widgets.json" "$w/home/.config/mist/"
 ln -s "$repo" "$w/home/.config/quickshell/mist"
 [ -d "$HOME/.local/share/fonts/SF-Pro" ] && ln -s "$HOME/.local/share/fonts/SF-Pro" "$w/home/.local/share/fonts/SF-Pro"
 # a demo dock (pinned apps only: no running windows of this session) with the icon theme of this machine
-echo '{"dock": ["mist-files", "firefox", "kitty", "spotify", "org.gnome.Calculator", "btop"], "groups": []}' >"$w/home/.config/mist/apps.json"
+echo '{"dock": ["mist-files", "firefox", "kitty", "spotify", "mist-player", "mist-settings"], "groups": []}' >"$w/home/.config/mist/apps.json"
 mkdir -p "$w/home/.local/share/applications" "$w/home/.config/qt6ct"
-for e in mist-files mist-player; do
+for e in mist-files mist-player mist-settings; do
     [ -f "$HOME/.local/share/applications/$e.desktop" ] && ln -s "$HOME/.local/share/applications/$e.desktop" "$w/home/.local/share/applications/"
 done
 [ -f "$HOME/.config/qt6ct/qt6ct.conf" ] && cp "$HOME/.config/qt6ct/qt6ct.conf" "$w/home/.config/qt6ct/"
 [ -d "$HOME/.local/share/icons" ] && ln -s "$HOME/.local/share/icons" "$w/home/.local/share/icons"
 # the dock's squircle tiles (mistd tiles), where this machine has them
 mkdir -p "$w/home/.cache/mist/tiles"
-for t in @start @trash mist-files firefox kitty spotify org.gnome.Calculator btop; do
+for t in @start @trash mist-files firefox kitty spotify mist-player mist-settings; do
     [ -f "$HOME/.cache/mist/tiles/$t.png" ] && cp "$HOME/.cache/mist/tiles/$t.png" "$w/home/.cache/mist/tiles/"
 done
 

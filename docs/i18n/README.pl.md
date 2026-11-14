@@ -1,13 +1,16 @@
 <div align="center">
 
-<img src="../img/banner.svg" alt="Mist" width="100%">
+<img src="../img/logo.svg" alt="" width="104">
 
-**Powłoka pulpitu dla Waylanda inspirowana macOS, napisana w Rust i rysowana na CPU.**
+# Mist
+
+**Powłoka pulpitu i kompozytor Waylanda dla Linuksa, napisane w Rust i rysowane na CPU.**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/wiktor-jozwiak/mist/ci.yml?branch=main&style=flat-square&label=CI)](../../.github/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/wiktor-jozwiak/mist?style=flat-square&color=3b82f6)](https://github.com/wiktor-jozwiak/mist/releases)
-[![Licencja: GPL-3.0](https://img.shields.io/badge/licencja-GPL--3.0-8d8590?style=flat-square)](../../LICENSE)
-[![Discord](https://img.shields.io/badge/discord-czat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/4rRabwQTPE)
+[![Stars](https://img.shields.io/github/stars/wiktor-jozwiak/mist?style=flat-square&color=e2a03f)](https://github.com/wiktor-jozwiak/mist/stargazers)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-8d8590?style=flat-square)](../../LICENSE)
+[![Discord](https://img.shields.io/badge/discord-chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/4rRabwQTPE)
 
 [English](../../README.md) · [Polski](README.pl.md) · [Deutsch](README.de.md) ·
 [Español](README.es.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
@@ -16,50 +19,80 @@
 
 <img src="../img/desktop.webp" alt="Pulpit Mist: górny pasek, zegar, karty pogody, gotowości i biegania, dock" width="100%">
 
-**[Co dostajesz](#co-dostajesz) · [Dlaczego jest lekki](#dlaczego-jest-lekki) · [mist-comp](#mist-comp) ·
+<table>
+  <tr>
+    <td align="center" width="33%"><h3>44 MB</h3><sub>pamięci zajmuje cała powłoka w bezczynności</sub></td>
+    <td align="center" width="33%"><h3>0</h3><sub>kontekstów OpenGL w procesie powłoki</sub></td>
+    <td align="center" width="33%"><h3>8 / s</h3><sub>wybudzeń w bezczynności, bez odpytywania</sub></td>
+  </tr>
+</table>
+
+**[Przegląd](#przegląd) · [Co dostajesz](#co-dostajesz) · [Dlaczego jest lekki](#dlaczego-jest-lekki) · [mist-comp](#mist-comp) ·
 [Instalacja](#instalacja) · [Klawisze](#klawisze-i-skrypty) · [Rozwój](#rozwój)**
 
 </div>
 
-Mist to cała powłoka pulpitu w jednym procesie: pasek, dock, Dynamic Island, widżety pulpitu, wyszukiwarka,
-centrum sterowania, powiadomienia, ekran blokady i agent polkit. Działa na Hyprlandzie albo na własnym
-kompozytorze, [`mist-comp`](#mist-comp), i można go [wypróbować w oknie](#2-wypróbuj-w-oknie) na pulpicie, którego
-już używasz.
+Mist to dwa programy i każdy działa bez drugiego:
+
+| | Co to jest | Gdzie działa |
+|---|---|---|
+| **Powłoka** (`mist-ui`, `mist-wall`) | pasek, dock, Dynamic Island, widżety pulpitu, wyszukiwarka, centrum sterowania, powiadomienia, ekran blokady, agent polkit, menedżer plików i odtwarzacz wideo, w jednym procesie | Hyprland, mist-comp albo [okno](#2-wypróbuj-w-oknie) na pulpicie, którego już używasz |
+| **Kompozytor** ([`mist-comp`](#mist-comp)) | kompozytor Waylanda na Smithay, z własnym ekranem logowania | osobna sesja logowania, obok Hyprlanda |
+
+Wygląd celowo pożycza od macOS; pod spodem to zwykły linuksowy pulpit.
 
 > [!NOTE]
 > Mist to codzienny pulpit jednej osoby (Arch / CachyOS, dwa monitory, NVIDIA). Jest publiczny, bo działa,
 > a nie dlatego, że jest skończony: licz się z czytaniem kodu.
 
-## Co dostajesz
+## Przegląd
 
 <div align="center">
 
+<img src="../img/island.webp" alt="Dynamic Island: powiadomienie, głośność, zaraz deszcz, następne wydarzenie" width="100%">
+
+<sub>Dynamic Island: powiadomienia, głośność, deszcz w najbliższej godzinie, następne wydarzenie</sub>
+
+<br><br>
+
 <table>
   <tr>
-    <td width="50%"><img src="../img/island.gif" alt="Dynamic Island: powiadomienie, głośność, zaraz deszcz, następne wydarzenie" width="100%"></td>
-    <td width="50%"><img src="../img/weather.gif" alt="Karta pogody w deszczu, nad żywym niebem" width="100%"></td>
+    <td width="50%" align="center"><img src="../img/weather.webp" alt="Karta pogody w deszczu, nad żywym niebem" width="100%"><br><sub>Karta pogody nad żywym niebem, które idzie za pogodą i godziną</sub></td>
+    <td width="50%" align="center"><img src="../img/wallpaper.webp" alt="Wydmy, żywa tapeta w GLSL" width="100%"><br><sub>Żywe tapety w GLSL, zdjęcia albo niebo aktualnej pogody</sub></td>
   </tr>
   <tr>
-    <td align="center"><sub>Dynamic Island: powiadomienia, głośność, deszcz w najbliższej godzinie, następne wydarzenie</sub></td>
-    <td align="center"><sub>Karta pogody nad niebem rysowanym na żywo w GLSL</sub></td>
+    <td align="center"><img src="../img/panels/start.webp" alt="Start: pole wyszukiwania, ulubione aplikacje, dzisiejszy kalendarz, telefon" width="100%"><br><sub>Start: aplikacje, pliki, polecenia, dzisiejszy dzień i telefon</sub></td>
+    <td align="center"><img src="../img/panels/spotlight.webp" alt="Spotlight odpowiada na 128*42" width="100%"><br><sub>Spotlight: aplikacje, pliki, polecenia, działania, jednostki, strefy czasowe, emoji, sieć</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="../img/panels/spotlight.webp" alt="Wyszukiwarka w stylu Spotlight" width="100%"></td>
-    <td width="50%"><img src="../img/panels/settings.webp" alt="Okno ustawień" width="100%"></td>
+    <td align="center"><img src="../img/panels/files.webp" alt="Mist Files: folder w widoku szczegółów" width="100%"><br><sub>Mist Files, także okno wyboru pliku każdej aplikacji</sub></td>
+    <td align="center"><img src="../img/panels/player.webp" alt="Mist Player: sterowanie nad filmem" width="100%"><br><sub>Mist Player na libmpv: rozdziały, ścieżki, obraz w obrazie</sub></td>
   </tr>
   <tr>
-    <td align="center"><sub>Spotlight: aplikacje, pliki, polecenia, emoji, sieć</sub></td>
-    <td align="center"><sub>Ustawienia: wszystkie opcje w jednym oknie, stosowane od razu</sub></td>
+    <td align="center"><img src="../img/panels/settings.webp" alt="Ustawienia, strona Personalizacja" width="100%"><br><sub>Ustawienia: wszystkie opcje w jednym oknie, stosowane od razu</sub></td>
+    <td align="center"><img src="../img/panels/control.webp" alt="Centrum sterowania" width="100%"><br><sub>Centrum sterowania: sieć, Bluetooth, telefon, dźwięk, nocne światło</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="../img/panels/control.webp" alt="Centrum sterowania" width="100%"></td>
-    <td width="50%"><img src="../img/panels/calendar.webp" alt="Kalendarz" width="100%"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>Centrum sterowania: sieć, Bluetooth, telefon, dźwięk, nocne światło</sub></td>
-    <td align="center"><sub>Kalendarz: miesiąc, agenda, nowe wydarzenia</sub></td>
+    <td align="center"><img src="../img/panels/calendar.webp" alt="Kalendarz" width="100%"><br><sub>Kalendarz: miesiąc, agenda, nowe wydarzenia</sub></td>
+    <td align="center"><img src="../img/panels/emoji.webp" alt="Wybór emoji" width="100%"><br><sub>Emoji z wyszukiwaniem i kategoriami</sub></td>
   </tr>
 </table>
+
+<img src="../img/themes.webp" alt="Centrum sterowania w siedmiu wbudowanych motywach" width="100%">
+
+<sub>Mist, Catppuccin, Nord, Gruvbox, Tokyo Night, Rosé Pine, Dracula albo własny plik JSON. Szkło, okna i akcent zmieniają się na żywo.</sub>
+
+<br><br>
+
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="../../native/assets/icons/hicolor/scalable/apps/mist-files.svg" alt="" width="88"><br><b>Mist Files</b><br><sub>karty, podgląd, inteligentne wyszukiwanie, systemowe okno wyboru pliku</sub></td>
+    <td align="center" width="33%"><img src="../../native/assets/icons/hicolor/scalable/apps/mist-player.svg" alt="" width="88"><br><b>Mist Player</b><br><sub>libmpv, MPRIS, obraz w obrazie, równe tempo klatek</sub></td>
+    <td align="center" width="33%"><img src="../../native/assets/icons/hicolor/scalable/apps/mist-settings.svg" alt="" width="88"><br><b>Ustawienia</b><br><sub>ekran, dźwięk, sieć, pulpit, widżety, język</sub></td>
+  </tr>
+</table>
+
+<br>
 
 <a href="https://youtu.be/mwisDtz0Yd0"><img src="../img/demo-poster.webp" alt="Mist demo video (40 s)" width="720"></a>
 
@@ -67,34 +100,42 @@ już używasz.
 
 </div>
 
+## Co dostajesz
+
 **Powłoka**
 
 - **Górny pasek:** aktywna aplikacja, zasobnik systemowy (StatusNotifierItem + dbusmenu), sieć, Bluetooth,
   dźwięk, CPU i pamięć, zegar.
 - **Dock:** przypięte i uruchomione aplikacje, powiększenie, wybór okna z podglądem na żywo.
-- **Dynamic Island:** multimedia z korektorem, minutniki, połączenia telefoniczne, powiadomienia, głośność.
-- **Panele:** Spotlight, Start, przełącznik aplikacji, centrum sterowania, centrum powiadomień, historia
-  schowka, emoji, menu sesji, pasek zrzutów ekranu. Spotlight odpowiada w trakcie pisania: działania
-  (`128*42`), jednostki (`212 f to c`, `2 gb to mb`), strefy czasowe (`tokyo time`).
+- **Dynamic Island:** multimedia z korektorem, minutniki, połączenia telefoniczne, powiadomienia, głośność,
+  Caps Lock i informacja o błędzie w pliku konfiguracji (z wierszem i kolumną).
+- **Panele:** Start, Spotlight, przełącznik aplikacji, centrum sterowania, centrum powiadomień, kalendarz,
+  historia schowka, emoji, menu sesji. Pola wyszukiwania działają jak każde pole tekstowe: kursor, strzałki,
+  zaznaczanie Shiftem i Ctrl+A.
+- **Zrzuty ekranu:** obszar wybierany na zamrożonym ekranie, pasek narzędzi, tekst z ekranu (OCR), próbnik
+  koloru.
 - **Przyciąganie okien** jak w Windows 11: przeciągnij do krawędzi lub rogu, Snap Layouts na zielonym
   przycisku albo `Super + Z`, Snap Assist.
+- **Ekran blokady** na PAM, z własnym stylem zegara, rozmyciem i przyciemnieniem.
 
 **Pulpit**
 
-- **Zegar i szklane karty:** pogoda, gotowość Garmin, bieganie, muzyka, kalendarz, system, zegary świata.
-  Pogoda pochodzi z [Open-Meteo](https://open-meteo.com), bez konta: krzywa godzinowa, cztery dni, deszcz
-  w najbliższej godzinie, słońce i księżyc. Karty Garmin pokazują twoje własne dane z Garmin Connect,
-  synchronizowane do lokalnego pliku SQLite; są ukryte, dopóki raz się nie zalogujesz
-  ([poradnik](../guides/garmin.md)).
-- **Tapety:** zdjęcia, żywe sceny GLSL albo niebo zgodne z aktualną pogodą.
+- **Zegar i szklane karty:** pogoda, gotowość Garmin, bieganie, muzyka, kalendarz, system, zegary świata,
+  notatka z listą zadań, postęp dnia, Słońce i Księżyc, ramka na zdjęcie, baterie urządzeń. Karty Garmin
+  pokazują twoje własne dane z Garmin Connect, synchronizowane do lokalnego pliku SQLite, i są ukryte, dopóki
+  raz się nie zalogujesz ([poradnik](../guides/garmin.md)).
+- **Pogoda** z [Open-Meteo](https://open-meteo.com), bez konta: krzywa godzinowa, cztery dni, deszcz
+  w najbliższej godzinie, dzień Słońca i Księżyca. Niebo karty rysuje się na żywo dla pogody i godziny, którą
+  wskażesz, nad jednym z pięciu krajobrazów (pola, jezioro, góry, miasto, morze).
+- **Tapety:** zdjęcia, żywe sceny GLSL albo niebo aktualnej pogody.
 - **Motywy:** Mist, Catppuccin, Nord, Gruvbox, Tokyo Night, Rosé Pine, Dracula albo własny plik JSON. Szkło,
   okna i akcent zmieniają się na żywo w powłoce oraz w Plikach, Odtwarzaczu i Ustawieniach.
 
 **Co zastępuje**
 
-- **Demony:** serwer powiadomień, agent polkit, ekran blokady (PAM), bezczynność i usypianie.
-- **Aplikacje:** Mist Files (także okno wyboru pliku każdej aplikacji), Mist Player (libmpv), Ustawienia
-  (język, miejsce pogody, tapeta, układ pulpitu, widżety, nocne światło, blokada i usypianie, powiadomienia).
+- **Demony:** serwer powiadomień, agent polkit, ekran blokady, bezczynność i usypianie.
+- **Aplikacje:** Mist Files, Mist Player i Ustawienia (ekran, dźwięk, Bluetooth, sieć, zasilanie, aplikacje,
+  tapeta, pulpit i widżety, ekran blokady, powiadomienia, język).
 - **Telefon** przez KDE Connect: bateria, powiadomienia, SMS-y i kontakty w panelu, połączenia w wyspie
   (ADB jako zapas dla połączeń).
 
@@ -115,6 +156,11 @@ przepisany powierzchnia po powierzchni według trzech zasad:
   i galerię tapet. Przy tapecie ze zdjęcia i bez tych elementów kończy działanie, a zdjęcie rysuje `mist-ui`.
 
 <p align="center"><img src="../img/memory.svg" alt="Pamięć w bezczynności (PSS), każda powłoka osobno, od swaybar (6 MB) do Noctalii (192 MB): Mist z tapetą ze zdjęcia 44 MB, Mist z żywą tapetą 144 MB" width="100%"></p>
+
+<details>
+<summary><b>Liczby</b>: powłoki i kompozytory zmierzone w ten sam sposób</summary>
+
+<br>
 
 **Powłoki.** Każda osobno w świeżym sway bez monitora, na GPU (RTX 4060, dwa wyjścia 1080p), z konfiguracją
 ze swojego pakietu; 3 przebiegi, mediana ([bench/shells.sh](../../bench/shells.sh)). *Bezczynność*: przez
@@ -145,6 +191,8 @@ minutę nic się nie dzieje. *Aktywność*: zmiana obszaru roboczego co 2 s, now
 Hyprland i niri nie mają trybu bez monitora, który da się uruchomić ze skryptu, więc nie ma ich w tabeli.
 Metoda, każdy przebieg, wybudzenia, liczby dla każdego procesu i wcześniejsze pomiary na żywej sesji:
 [docs/BENCHMARKS.md](../BENCHMARKS.md).
+
+</details>
 
 ## mist-comp
 
@@ -250,6 +298,9 @@ Każda powierzchnia renderuje się poza ekranem, więc zmiany da się sprawdzić
 w zagnieżdżonym oknie. Więcej w [native/README.md](../../native/README.md) i
 [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
+Obrazy na tej stronie pochodzą z tych samych renderów poza ekranem, na danych demo: `docs/img/hero.sh`,
+`docs/img/panels.sh`, `docs/img/gifs.sh`.
+
 | Ścieżka | Co |
 |---|---|
 | `native/mist-ui` | wszystkie powierzchnie powłoki |
@@ -260,10 +311,21 @@ w zagnieżdżonym oknie. Więcej w [native/README.md](../../native/README.md) i
 | `bench/` | narzędzia do pomiarów i ich wyniki |
 | tag `legacy-qml` | pierwotna wersja na Quickshell |
 
+## Historia gwiazdek
+
+<a href="https://star-history.com/#wiktor-jozwiak/mist&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date&theme=dark">
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date">
+    <img alt="Historia gwiazdek wiktor-jozwiak/mist" src="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date" width="100%">
+  </picture>
+</a>
+
 ## Podziękowania
 
 Zbudowany na [Smithay], [smithay-client-toolkit], [tiny-skia], [swash], [resvg], [zbus] i [Tabler Icons].
 Pierwsza wersja działała na [Quickshell], z [Noctalia] jako punktem odniesienia.
+W rozwoju projektu pomagają asystenci AI.
 
 <sub>Mist nie jest powiązany z Apple. macOS, Dynamic Island, Spotlight i SF Pro to znaki towarowe Apple Inc.,
 wymienione tu wyłącznie po to, by opisać inspirację projektu.</sub>

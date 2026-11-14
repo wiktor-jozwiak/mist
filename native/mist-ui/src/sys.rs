@@ -73,6 +73,8 @@ pub enum Msg {
     ConfErr(String, String), // a file in ~/.config/mist that is not JSON: its name, where it breaks ("" = it is fine)
     Polkit(crate::polkit::Ev),
     Shot(String),
+    // the screen frozen for a region screenshot: the picture, the monitor, copy to the clipboard
+    ShotFrozen(String, String, bool),
     // a window thumbnail for the dock's window picker (wincap.rs): address, image
     WinThumb(String, tiny_skia::Pixmap),
 }

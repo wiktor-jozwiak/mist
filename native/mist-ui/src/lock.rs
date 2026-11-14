@@ -349,6 +349,77 @@ struct L {
     greeter: Option<std::sync::Arc<Greeter>>,
 }
 
+// Ustawienia > Ekran blokady: one read of widgets.json ("lock") for this lock's life
+fn lo(key: &str) -> String {
+    static C: std::sync::OnceLock<crate::desktop::Cfg> = std::sync::OnceLock::new();
+    C.get_or_init(crate::desktop::Cfg::load).s("lock", key)
+}
+
+// date + glass numerals (MacLock clock column), cached per minute by the caller
+// (`mist-ui --lock-clock-png file` writes it over a dark ground, for checks)
+pub fn clock_pm(t: &mut crate::text::Text, w: u32) -> Pixmap {
+    let now = crate::data::now();
+    let tm = crate::data::local(now);
+    const DAYS: [&str; 7] = ["Niedziela", "Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota"];
+    let date = format!("{}, {} {}", DAYS[tm.tm_wday as usize], tm.tm_mday, crate::data::MONTHS_GEN[tm.tm_mon as usize]);
+    // Ustawienia > Ekran blokady: the clock's size, weight and colour, the date, 12 or 24 hours. The room it
+    // takes stays that of the big clock, so the rest of the screen never moves
+    let (size, wght, colour, date_on, h12) = (lo("clock"), lo("clockw"), lo("clockc"), lo("date"), lo("h12") == "12");
+    let date = if lo("datef") == "short" { format!("{}, {}.{:02}", crate::data::DAYS_SHORT[tm.tm_wday as usize], tm.tm_mday, tm.tm_mon + 1) } else { date };
+    let time = crate::desktop::clock_str(now, h12);
+    let ds = Style::ui(24.0, 600.0);
+    let dh = crate::desktop::line_h(t, &ds);
+    let k = match size.as_str() { "small" => 0.62f32, "hide" => 0.0, _ => 1.0 };
+    let th = crate::desktop::line_h(t, &Style::ui(176.0, 700.0).spaced(-5.0)) - 44.0;
+    let ts = Style::ui((176.0 * k).max(1.0), match wght.as_str() { "thin" => 300.0, "bold" => 850.0, _ => 700.0 }).spaced(-5.0 * k);
+    let th_k = th * k;
+    let pad = 60.0;
+    let mut out = Canvas::new(w, (dh + th + 2.0 * pad) as u32);
+    // date: shadow black .25, blur .5, 1 px down
+    let mut l = Canvas::new(w, (dh + 2.0 * pad) as u32);
+    let dw = t.width(&date, &ds);
+    if date_on != "hide" {
+        crate::desktop::text(&mut l, t, ((w as f32 - dw) / 2.0).round(), pad, &date, &ds, Rgba(1.0, 1.0, 1.0, 0.92), false, None);
+    }
+    crate::desktop::put_with_shadow(&mut out, &l.pm, 0, 0, 6.4, Rgba(0.0, 0.0, 0.0, 1.0), 0.25, 1);
+    // time: the glyphs' alpha painted with the glass gradient (glasstext.frag), shadow .16 blur 40, 6 px down
+    let tw = t.width(&time, &ts);
+    let mut g = Canvas::new(w, (th + 2.0 * pad) as u32);
+    let ty = pad; // the item's top; the glyphs sit 20 px higher (topPadding -20)
+    if k > 0.0 {
+        crate::desktop::text(&mut g, t, ((w as f32 - tw) / 2.0).round(), ty - 20.0 * k, &time, &ts, Rgba(1.0, 1.0, 1.0, 1.0), false, None);
+    }
+    let tint = crate::desktop::clock_colour(&colour);
+    let th = th_k.max(1.0);
+    let (c_top, c_mid, c_bot) = ([1.0f32, 1.0, 1.0, 0.97], [1.0f32, 1.0, 1.0, 0.84], [220.0 / 255.0, 232.0 / 255.0, 1.0, 0.74]);
+    let (gw, gh) = (g.pm.width() as usize, g.pm.height() as usize);
+    let d = g.pm.data_mut();
+    for y in 0..gh {
+        let v = ((y as f32 - ty) / th).clamp(0.0, 1.0);
+        let c = if v < 0.5 {
+            let k = v / 0.5;
+            [0, 1, 2, 3].map(|i| c_top[i] + (c_mid[i] - c_top[i]) * k)
+        } else {
+            let k = (v - 0.5) / 0.5;
+            [0, 1, 2, 3].map(|i| c_mid[i] + (c_bot[i] - c_mid[i]) * k)
+        };
+        let c = [c[0] * tint.0, c[1] * tint.1, c[2] * tint.2, c[3]];
+        for x in 0..gw {
+            let i = (y * gw + x) * 4;
+            let a = d[i + 3] as f32 / 255.0 * c[3];
+            d[i] = (c[0] * a * 255.0) as u8;
+            d[i + 1] = (c[1] * a * 255.0) as u8;
+            d[i + 2] = (c[2] * a * 255.0) as u8;
+            d[i + 3] = (a * 255.0) as u8;
+        }
+    }
+    let sh = crate::desktop::drop_shadow(&g.pm, 16.0, Rgba(2.0 / 255.0, 6.0 / 255.0, 16.0 / 255.0, 1.0), 0.16, 0, 6);
+    let oy = dh as i32;
+    out.pm.draw_pixmap(0, oy, sh.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+    out.pm.draw_pixmap(0, oy, g.pm.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+    out.pm
+}
+
 impl L {
     fn wake(&mut self) {
         let was = self.awake.target();
@@ -412,58 +483,6 @@ impl L {
         self.surfs.push(LSurf { output: o, name, surface: ls, w: 0, h: 0, sharp: None, blurred: None, clock: None, base: None, drawn_aw: u16::MAX, drawn_min: 0, canvas: Canvas::new(1, 1), dirty: true });
     }
 
-    // date + glass numerals (MacLock clock column), cached per minute
-    fn clock(&mut self, w: u32) -> Pixmap {
-        let t = &mut self.text;
-        let now = crate::data::now();
-        let tm = crate::data::local(now);
-        const DAYS: [&str; 7] = ["Niedziela", "Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota"];
-        let date = format!("{}, {} {}", DAYS[tm.tm_wday as usize], tm.tm_mday, crate::data::MONTHS_GEN[tm.tm_mon as usize]);
-        let time = format!("{}:{:02}", tm.tm_hour, tm.tm_min);
-        let ds = Style::ui(24.0, 600.0);
-        let dh = crate::desktop::line_h(t, &ds);
-        let ts = Style::ui(176.0, 700.0).spaced(-5.0);
-        let th = crate::desktop::line_h(t, &ts) - 44.0;
-        let pad = 60.0;
-        let mut out = Canvas::new(w, (dh + th + 2.0 * pad) as u32);
-        // date: shadow black .25, blur .5, 1 px down
-        let mut l = Canvas::new(w, (dh + 2.0 * pad) as u32);
-        let dw = t.width(&date, &ds);
-        crate::desktop::text(&mut l, t, ((w as f32 - dw) / 2.0).round(), pad, &date, &ds, Rgba(1.0, 1.0, 1.0, 0.92), false, None);
-        crate::desktop::put_with_shadow(&mut out, &l.pm, 0, 0, 6.4, Rgba(0.0, 0.0, 0.0, 1.0), 0.25, 1);
-        // time: the glyphs' alpha painted with the glass gradient (glasstext.frag), shadow .16 blur 40, 6 px down
-        let tw = t.width(&time, &ts);
-        let mut g = Canvas::new(w, (th + 2.0 * pad) as u32);
-        let ty = pad; // the item's top; the glyphs sit 20 px higher (topPadding -20)
-        crate::desktop::text(&mut g, t, ((w as f32 - tw) / 2.0).round(), ty - 20.0, &time, &ts, Rgba(1.0, 1.0, 1.0, 1.0), false, None);
-        let (c_top, c_mid, c_bot) = ([1.0f32, 1.0, 1.0, 0.97], [1.0f32, 1.0, 1.0, 0.84], [220.0 / 255.0, 232.0 / 255.0, 1.0, 0.74]);
-        let gw = g.pm.width() as usize;
-        let d = g.pm.data_mut();
-        for y in 0..(th + 2.0 * pad) as usize {
-            let v = ((y as f32 - ty) / th).clamp(0.0, 1.0);
-            let c = if v < 0.5 {
-                let k = v / 0.5;
-                [0, 1, 2, 3].map(|i| c_top[i] + (c_mid[i] - c_top[i]) * k)
-            } else {
-                let k = (v - 0.5) / 0.5;
-                [0, 1, 2, 3].map(|i| c_mid[i] + (c_bot[i] - c_mid[i]) * k)
-            };
-            for x in 0..gw {
-                let i = (y * gw + x) * 4;
-                let a = d[i + 3] as f32 / 255.0 * c[3];
-                d[i] = (c[0] * a * 255.0) as u8;
-                d[i + 1] = (c[1] * a * 255.0) as u8;
-                d[i + 2] = (c[2] * a * 255.0) as u8;
-                d[i + 3] = (a * 255.0) as u8;
-            }
-        }
-        let sh = crate::desktop::drop_shadow(&g.pm, 16.0, Rgba(2.0 / 255.0, 6.0 / 255.0, 16.0 / 255.0, 1.0), 0.16, 0, 6);
-        let oy = dh as i32;
-        out.pm.draw_pixmap(0, oy, sh.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
-        out.pm.draw_pixmap(0, oy, g.pm.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
-        out.pm
-    }
-
     fn draw(&mut self, i: usize) {
         let (w, h) = (self.surfs[i].w, self.surfs[i].h);
         if w == 0 {
@@ -484,22 +503,25 @@ impl L {
         }
         let minute = crate::data::now() / 60;
         if self.surfs[i].clock.as_ref().map(|c| c.0 != minute).unwrap_or(true) {
-            let pm = self.clock(w);
+            let pm = clock_pm(&mut self.text, w);
             self.surfs[i].clock = Some((minute, pm));
         }
         let t0 = Instant::now();
         let aw = self.awake.value();
-        let k = (aw.clamp(0.0, 1.0) * 256.0).round() as u16;
+        // Rozmycie tapety: sharp until woken (the default), always, never
+        let k = match lo("blur").as_str() { "always" => 256, "never" => 0, _ => (aw.clamp(0.0, 1.0) * 256.0).round() as u16 };
         let s = &mut self.surfs[i];
         let rebuilt = s.base.as_ref().map(|b| b.0.width() != w || b.0.height() != h).unwrap_or(true);
         if rebuilt {
+            // Przyciemnienie: the vignette's strength, and a veil over the whole photo
+            let dim: (f32, f32) = match lo("dim").as_str() { "none" => (0.0, 0.0), "strong" => (1.0, 0.28), _ => (1.0, 0.0) };
             let layer = |bg: &Pixmap| {
                 let mut c = Canvas::new(w, h);
                 c.pm.draw_pixmap(0, 0, bg.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
                 // soft vignette top and bottom
                 if let Some(p) = crate::gfx::rrect_path(0.0, 0.0, w as f32, h as f32, 0.0) {
                     let k = Rgba(0.0, 0.0, 0.0, 1.0);
-                    crate::desktop::fill_lin(&mut c, &p, (0.0, 0.0), (0.0, h as f32), &[(0.0, k.alpha(0.22)), (0.32, k.alpha(0.0)), (0.7, k.alpha(0.0)), (1.0, k.alpha(0.30))]);
+                    crate::desktop::fill_lin(&mut c, &p, (0.0, 0.0), (0.0, h as f32), &[(0.0, k.alpha(0.22 * dim.0 + dim.1)), (0.32, k.alpha(dim.1)), (0.7, k.alpha(dim.1)), (1.0, k.alpha(0.30 * dim.0 + dim.1))]);
                 }
                 c.pm
             };
@@ -520,7 +542,7 @@ impl L {
         let (a, b) = s.base.as_ref().unwrap();
         mix(c.pm.data_mut(), a.data(), b.data(), k);
         if let Some((_, pm)) = &s.clock {
-            c.pm.draw_pixmap(0, (h as f32 * 0.075).round() as i32 - 60, pm.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+            c.pm.draw_pixmap(0, (h as f32 * if lo("pos") == "middle" { 0.26 } else { 0.075 }).round() as i32 - 60, pm.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
         }
         if field {
             // the frosted layer behind the field's glass
@@ -592,7 +614,9 @@ impl L {
         }
         // hairline ring: the avatar stays apart from a light wallpaper
         crate::desktop::border(&mut a, 30.0, 30.0, 72.0, 72.0, 36.0, 1.0, Rgba(1.0, 1.0, 1.0, 0.22));
-        crate::desktop::put_with_shadow(c, &a.pm, (cx - 66.0) as i32, (top - 30.0) as i32, 7.7, Rgba(0.0, 0.0, 0.0, 1.0), 0.28, 2);
+        if lo("avatar") != "hide" {
+            crate::desktop::put_with_shadow(c, &a.pm, (cx - 66.0) as i32, (top - 30.0) as i32, 7.7, Rgba(0.0, 0.0, 0.0, 1.0), 0.28, 2);
+        }
         // name
         let mut y = top + 72.0 + 12.0;
         let nw = t.width(&self.full_name, &ns);

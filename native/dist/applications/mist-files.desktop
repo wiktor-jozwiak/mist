@@ -1,0 +1,29 @@
+[Desktop Entry]
+Type=Application
+Name=Files
+Name[pl]=Pliki
+Name[de]=Dateien
+Name[es]=Archivos
+Name[fr]=Fichiers
+GenericName=File Manager
+GenericName[pl]=Menedżer plików
+GenericName[de]=Dateimanager
+GenericName[es]=Gestor de archivos
+GenericName[fr]=Gestionnaire de fichiers
+Comment=Mist Files: browse files and folders
+Comment[pl]=Mist Files: przeglądaj pliki i foldery
+Exec=mist-ui-bin files %U
+Icon=mist-files
+Terminal=false
+Categories=System;FileManager;Utility;
+MimeType=inode/directory;
+StartupWMClass=mist-files
+Actions=new-window;
+
+[Desktop Action new-window]
+Name=New Window
+Name[pl]=Nowe okno
+Name[de]=Neues Fenster
+Name[es]=Nueva ventana
+Name[fr]=Nouvelle fenêtre
+Exec=mist-ui-bin files

@@ -1,11 +1,14 @@
 <div align="center">
 
-<img src="docs/img/banner.svg" alt="Mist" width="100%">
+<img src="docs/img/logo.svg" alt="" width="104">
 
-**A macOS-inspired desktop shell for Wayland, written in Rust and drawn on the CPU.**
+# Mist
+
+**A Wayland desktop shell and compositor for Linux, written in Rust and drawn on the CPU.**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/wiktor-jozwiak/mist/ci.yml?branch=main&style=flat-square&label=CI)](.github/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/wiktor-jozwiak/mist?style=flat-square&color=3b82f6)](https://github.com/wiktor-jozwiak/mist/releases)
+[![Stars](https://img.shields.io/github/stars/wiktor-jozwiak/mist?style=flat-square&color=e2a03f)](https://github.com/wiktor-jozwiak/mist/stargazers)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-8d8590?style=flat-square)](LICENSE)
 [![Discord](https://img.shields.io/badge/discord-chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/4rRabwQTPE)
 
@@ -16,84 +19,121 @@
 
 <img src="docs/img/desktop-en.webp" alt="The Mist desktop: top bar, clock, weather, readiness and running cards, dock" width="100%">
 
-**[What you get](#what-you-get) · [Why it is light](#why-it-is-light) · [mist-comp](#mist-comp) ·
+<table>
+  <tr>
+    <td align="center" width="33%"><h3>44 MB</h3><sub>memory of the whole shell at idle</sub></td>
+    <td align="center" width="33%"><h3>0</h3><sub>OpenGL contexts in the shell process</sub></td>
+    <td align="center" width="33%"><h3>8 / s</h3><sub>wake-ups at idle, no polling</sub></td>
+  </tr>
+</table>
+
+**[Tour](#tour) · [What you get](#what-you-get) · [Why it is light](#why-it-is-light) · [mist-comp](#mist-comp) ·
 [Install](#install) · [Keys](#keys-and-scripting) · [Develop](#develop)**
 
 </div>
 
-Mist is a whole desktop shell in one process: bar, dock, Dynamic Island, desktop widgets, launcher, control
-centre, notifications, lock screen and polkit agent. It runs on Hyprland or on its own compositor,
-[`mist-comp`](#mist-comp), and you can [try it in a window](#2-try-it-in-a-window) on the desktop you already
-use.
+Mist is two programs, and each one works without the other:
+
+| | What it is | Where it runs |
+|---|---|---|
+| **The shell** (`mist-ui`, `mist-wall`) | bar, dock, Dynamic Island, desktop widgets, launcher, control centre, notifications, lock screen, polkit agent, a file manager and a video player, in one process | Hyprland, mist-comp, or [a window](#2-try-it-in-a-window) on the desktop you already use |
+| **The compositor** ([`mist-comp`](#mist-comp)) | a Wayland compositor on Smithay, with its own greeter | a login session of its own, next to Hyprland |
+
+The look borrows from macOS on purpose; everything under it is a Linux desktop.
 
 > [!NOTE]
 > Mist is one person's daily desktop (Arch / CachyOS, two monitors, NVIDIA). It is shared because it works,
 > not because it is finished: expect to read some code.
 
-## What you get
+## Tour
 
 <div align="center">
 
+<img src="docs/img/island.webp" alt="Dynamic Island: a notification, the volume, rain soon, the next event" width="100%">
+
+<sub>Dynamic Island: notifications, volume, rain nowcast, the next event</sub>
+
+<br><br>
+
 <table>
   <tr>
-    <td width="50%"><img src="docs/img/island.gif" alt="Dynamic Island: a notification, the volume, rain soon, the next event" width="100%"></td>
-    <td width="50%"><img src="docs/img/weather.gif" alt="The weather card in the rain, over its live sky" width="100%"></td>
+    <td width="50%" align="center"><img src="docs/img/weather.webp" alt="The weather card in the rain, over its live sky" width="100%"><br><sub>Weather card over a live sky that follows the weather and the hour</sub></td>
+    <td width="50%" align="center"><img src="docs/img/wallpaper.webp" alt="The dunes, a live GLSL wallpaper" width="100%"><br><sub>Live wallpapers in GLSL, photos, or the sky of the current weather</sub></td>
   </tr>
   <tr>
-    <td align="center"><sub>Dynamic Island: notifications, volume, rain nowcast, the next event</sub></td>
-    <td align="center"><sub>Weather card over a real-time GLSL sky</sub></td>
+    <td align="center"><img src="docs/img/panels/start.webp" alt="Start: search field, favourite apps, today's calendar, the phone" width="100%"><br><sub>Start: apps, files, commands, today and the phone</sub></td>
+    <td align="center"><img src="docs/img/panels/spotlight.webp" alt="Spotlight answering 128*42" width="100%"><br><sub>Spotlight: apps, files, commands, math, units, time zones, emoji, web</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/img/panels/spotlight.webp" alt="Spotlight-style search" width="100%"></td>
-    <td width="50%"><img src="docs/img/panels/settings.webp" alt="Settings window" width="100%"></td>
+    <td align="center"><img src="docs/img/panels/files.webp" alt="Mist Files: a folder in the details view" width="100%"><br><sub>Mist Files, also the file chooser of every app</sub></td>
+    <td align="center"><img src="docs/img/panels/player.webp" alt="Mist Player: the controls over a video" width="100%"><br><sub>Mist Player on libmpv: chapters, tracks, picture in picture</sub></td>
   </tr>
   <tr>
-    <td align="center"><sub>Spotlight: apps, files, commands, emoji, web</sub></td>
-    <td align="center"><sub>Settings: every option in one window, applied at once</sub></td>
+    <td align="center"><img src="docs/img/panels/settings.webp" alt="Settings, the Personalization page" width="100%"><br><sub>Settings: every option in one window, applied at once</sub></td>
+    <td align="center"><img src="docs/img/panels/control.webp" alt="Control centre" width="100%"><br><sub>Control centre: network, Bluetooth, phone, sound, night light</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/img/panels/control.webp" alt="Control centre" width="100%"></td>
-    <td width="50%"><img src="docs/img/panels/calendar.webp" alt="Calendar" width="100%"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>Control centre: network, Bluetooth, phone, sound, night light</sub></td>
-    <td align="center"><sub>Calendar: month, agenda, new events</sub></td>
+    <td align="center"><img src="docs/img/panels/calendar.webp" alt="Calendar" width="100%"><br><sub>Calendar: the month, the agenda, new events</sub></td>
+    <td align="center"><img src="docs/img/panels/emoji.webp" alt="The emoji picker" width="100%"><br><sub>Emoji picker with search and categories</sub></td>
   </tr>
 </table>
 
+<img src="docs/img/themes.webp" alt="The control centre in the seven built-in themes" width="100%">
+
+<sub>Mist, Catppuccin, Nord, Gruvbox, Tokyo Night, Rosé Pine, Dracula, or your own JSON file. Glass, windows and accent switch live.</sub>
+
+<br><br>
+
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="native/assets/icons/hicolor/scalable/apps/mist-files.svg" alt="" width="88"><br><b>Mist Files</b><br><sub>tabs, previews, smart search, the system's file chooser</sub></td>
+    <td align="center" width="33%"><img src="native/assets/icons/hicolor/scalable/apps/mist-player.svg" alt="" width="88"><br><b>Mist Player</b><br><sub>libmpv, MPRIS, picture in picture, frame pacing</sub></td>
+    <td align="center" width="33%"><img src="native/assets/icons/hicolor/scalable/apps/mist-settings.svg" alt="" width="88"><br><b>Settings</b><br><sub>display, sound, network, desktop, widgets, language</sub></td>
+  </tr>
+</table>
+
+<br>
+
 <a href="https://youtu.be/mwisDtz0Yd0"><img src="docs/img/demo-poster.webp" alt="Mist demo video (40 s)" width="720"></a>
 
-<sub>40 s demo, recorded in a headless <code>mist-comp</code> session with demo data. Music: <i>Trap Beat</i> by JonasBlakewood (Pixabay) · <a href="https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07">MP4</a></sub>
+<sub>40 s demo, recorded in a headless <code>mist-comp</code> session with demo data · <a href="https://github.com/user-attachments/assets/ed8137a5-daf5-488e-8515-686aa54e6e07">MP4</a></sub>
 
 </div>
+
+## What you get
 
 **The shell**
 
 - **Top bar:** active app, system tray (StatusNotifierItem + dbusmenu), network, Bluetooth, audio, CPU and
   memory, clock.
 - **Dock:** pinned and running apps, magnification, a window picker with live thumbnails.
-- **Dynamic Island:** media with an equalizer, timers, phone calls, notifications, volume.
-- **Panels:** Spotlight, Start, app switcher, control centre, notification centre, clipboard history, emoji
-  picker, session menu, screenshot toolbar. Spotlight answers while you type: math (`128*42`), units
-  (`212 f to c`, `2 gb to mb`), time zones (`tokyo time`).
+- **Dynamic Island:** media with an equalizer, timers, phone calls, notifications, volume, Caps Lock, and a
+  note when a configuration file has a mistake (with the line and column).
+- **Panels:** Start, Spotlight, app switcher, control centre, notification centre, calendar, clipboard history,
+  emoji picker, session menu. Search fields work like any text field: caret, arrows, Shift and Ctrl+A select.
+- **Screenshots:** a region picked over the frozen screen, a toolbar, text from the screen (OCR), a colour picker.
 - **Window snapping**, Windows 11 style: drag to an edge or corner, Snap Layouts on the green button or
   `Super + Z`, Snap Assist.
+- **Lock screen** on PAM, with its own clock style, blur and dimming.
 
 **The desktop**
 
-- **Clock and glass cards:** weather, Garmin readiness, running, music, calendar, system, world clocks.
-  Weather comes from [Open-Meteo](https://open-meteo.com) without an account: hourly curve, four days, rain in
-  the next hour, sun and moon. The Garmin cards show your own Garmin Connect data, synced into a local SQLite
-  file; they stay hidden until you log in once ([guide](docs/guides/garmin.md)).
-- **Wallpapers:** photos, live GLSL scenes, or a sky that follows the current weather.
+- **Clock and glass cards:** weather, Garmin readiness, running, music, calendar, system, world clocks, a note
+  with to-dos, the day's progress, Sun and Moon, a photo frame, device batteries. Garmin cards show your own
+  Garmin Connect data synced into a local SQLite file and stay hidden until you log in once
+  ([guide](docs/guides/garmin.md)).
+- **Weather** from [Open-Meteo](https://open-meteo.com), no account: hourly curve, four days, rain in the next
+  hour, the Sun's and the Moon's day. The card's sky is drawn live for the weather and the hour you point at,
+  over one of five landscapes (fields, a lake, mountains, a city, the sea).
+- **Wallpapers:** photos, live GLSL scenes, or the sky of the current weather.
 - **Themes:** Mist, Catppuccin, Nord, Gruvbox, Tokyo Night, Rosé Pine, Dracula, or your own JSON file. Glass,
   windows and accent switch live in the shell and in Files, Player and Settings.
 
 **What it replaces**
 
-- **Daemons:** the notification server, the polkit agent, the lock screen (PAM), idle and sleep.
-- **Apps:** Mist Files (also the file chooser of every app), Mist Player (libmpv), Settings (language,
-  weather place, wallpaper, desktop layout, widgets, night light, lock and sleep, notifications).
+- **Daemons:** the notification server, the polkit agent, the lock screen, idle and sleep.
+- **Apps:** Mist Files, Mist Player, and Settings (display, sound, Bluetooth, network, power, apps, wallpaper,
+  desktop and widgets, lock screen, notifications, language).
 - **Phone**, through KDE Connect: battery, notifications, texts and contacts in a panel, calls in the island
   (ADB as a fallback for calls).
 
@@ -113,6 +153,11 @@ time around three rules:
   and the wallpaper gallery. With a photo wallpaper and none of those it exits, and `mist-ui` draws the photo.
 
 <p align="center"><img src="docs/img/memory.svg" alt="Idle memory (PSS) of each shell alone, from swaybar at 6 MB to Noctalia at 192 MB: Mist with a photo wallpaper 44 MB, Mist with the live wallpaper 144 MB" width="100%"></p>
+
+<details>
+<summary><b>The numbers</b>: shells and compositors measured the same way</summary>
+
+<br>
 
 **Shells.** Each one alone in a fresh headless sway on the GPU (RTX 4060, two 1080p outputs), with the
 configuration its package ships; 3 runs, median ([bench/shells.sh](bench/shells.sh)). *Idle*: nothing happens
@@ -144,6 +189,8 @@ Hyprland and niri have no headless mode a script can start, so they are not in t
 wake-ups, per-process numbers and the earlier live-session measurements:
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
+</details>
+
 ## mist-comp
 
 Mist's own Wayland compositor, about 14 000 lines of Rust on [Smithay], with a greeter. It runs the same shell
@@ -161,7 +208,8 @@ the author's daily session next to Hyprland.
 - **Tested:** 66 nested tests on a headless backend, run by CI on the software renderer.
 
 Not there yet: tiling, tearing control, verified direct scan-out on NVIDIA. Configuration:
-[docs/CONFIG.md](docs/CONFIG.md#compconf-outputs-mist-comp-only); `mist-comp migrate` converts a Hyprland config.
+[docs/CONFIG.md](docs/CONFIG.md#compconf-outputs-mist-comp-only); `mist-comp migrate` converts a Hyprland
+config. How to run it, the code and the tests: [native/mist-comp/README.md](native/mist-comp/README.md).
 
 ## Install
 
@@ -245,6 +293,9 @@ Every surface renders offscreen, so changes can be checked without touching the 
 `mist-wall-bin --png out.ppm dunes 1920 1080`. `native/mist-comp/tests/run-all.sh` runs the compositor tests
 in a nested window. More in [native/README.md](native/README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
+The pictures on this page come from the same offscreen renders, with demo data: `docs/img/hero.sh`,
+`docs/img/panels.sh`, `docs/img/gifs.sh`.
+
 | Path | What |
 |---|---|
 | `native/mist-ui` | every shell surface |
@@ -255,10 +306,21 @@ in a nested window. More in [native/README.md](native/README.md) and [CONTRIBUTI
 | `bench/` | the benchmark harness and its results |
 | tag `legacy-qml` | the original Quickshell version |
 
+## Star history
+
+<a href="https://star-history.com/#wiktor-jozwiak/mist&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date&theme=dark">
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date">
+    <img alt="Star history of wiktor-jozwiak/mist" src="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date" width="100%">
+  </picture>
+</a>
+
 ## Credits
 
 Built on [Smithay], [smithay-client-toolkit], [tiny-skia], [swash], [resvg], [zbus] and [Tabler Icons].
 The first version ran on [Quickshell], with [Noctalia] as a reference.
+AI coding assistants help with the development.
 
 <sub>Mist is not affiliated with Apple. macOS, Dynamic Island, Spotlight and SF Pro are trademarks of Apple Inc.,
 named here only to describe the design inspiration.</sub>

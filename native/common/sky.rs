@@ -8,6 +8,11 @@ use serde_json::Value;
 
 pub const HOR: f64 = 0.6; // horizon line of the weather card
 pub const FOV: f64 = 1.8;
+// The camera looks toward the equator (south in the northern hemisphere) and does not turn: the Sun and the Moon
+// cross the card from one side to the other as the hours pass. Their azimuth off the view's centre is squeezed
+// by this much, so a summer day's whole arc (130° each way at 52° N) stays on the card and a winter day's sits
+// in its middle third
+pub const AZ_K: f64 = 0.42;
 
 #[derive(Clone, Copy, Default, Debug)]
 pub struct V3 {
@@ -37,6 +42,7 @@ pub struct Model {
     pub sun: astro::Body,
     pub moon: astro::Body,
     pub yaw: f64,
+    pub az_k: f64,
     pub pitch: f64,
     pub moon_light: f64,
     pub aurora_k: f64,
@@ -54,6 +60,13 @@ pub struct Model {
     pub halo_k: f64,
     pub firefly_k: f64,
     pub mote_k: f64,
+    // weather cases with a scene of their own
+    pub blizzard_k: f64, // snow driven by a strong wind
+    pub glaze_k: f64,    // freezing rain or drizzle: ice on everything
+    pub gale_k: f64,     // storm-force gusts
+    pub diamond_k: f64,  // deep frost under a clear sky: ice crystals in the air, sun dogs
+    pub wet_k: f64,      // it rained in the last hours and stopped: puddles
+    pub gfog_k: f64,     // calm damp air around dawn or at night: fog lying on the fields
 }
 
 fn f(w: &Value, k: &str, d: f64) -> f64 {
@@ -73,6 +86,22 @@ fn local(ms: f64) -> (i32, i32) {
 impl Model {
     // `now`: unix ms of the minute (Data.now)
     pub fn new(wx: &Value, now: f64) -> Model {
+        Self::make(wx, &wx["hourly"], now)
+    }
+    // the sky of another moment: the Sun and the Moon where they stand at `astro_ms`, the weather of the forecast
+    // hour holding `wx_ms` (the current reading when the forecast has no such hour)
+    pub fn at(wx: &Value, astro_ms: f64, wx_ms: f64) -> Model {
+        let hour = wx["hourly"].as_array().and_then(|h| h.iter().find(|x| { let t = f(x, "t", 0.0) * 1000.0; wx_ms >= t && wx_ms < t + 3600e3 }));
+        let Some(h) = hour else { return Self::make(wx, &wx["hourly"], astro_ms) };
+        // hourly sums are per hour, the reading's precipitation per quarter
+        let o = serde_json::json!({
+            "code": h["code"], "wind": h["wind"], "gust": h["gust"], "temp": h["temp"], "hum": h["hum"], "cloud": h["cloud"], "vis": h["vis"],
+            "precip": f(h, "pr", 0.0) / 4.0, "snow": f(h, "sn", 0.0) / 4.0, "windDir": h["dir"], "snowDepth": h["depth"],
+            "lat": wx["lat"], "lon": wx["lon"], "kp": wx["kp"],
+        });
+        Self::make(&o, &wx["hourly"], astro_ms)
+    }
+    fn make(wx: &Value, hourly: &Value, now: f64) -> Model {
         let code = wx["code"].as_i64().unwrap_or(3);
         let (wind, gust, temp, hum) = (f(wx, "wind", 0.0), f(wx, "gust", 0.0), f(wx, "temp", 10.0), f(wx, "hum", 70.0));
         let precip = f(wx, "precip", 0.0);
@@ -113,7 +142,8 @@ impl Model {
         let sun = astro::sun(now, lat, lon);
         let moon = astro::moon(now, lat, lon);
         let bow_k = if rain_k > 0.0 && sun.alt > 0.0 && sun.alt < 42.0 && cover_pct < 85.0 { (rain_k * 2.0).min(1.0) * (1.0 - cover_pct / 100.0) * ((42.0 - sun.alt) / 8.0).min(1.0) } else { 0.0 };
-        let yaw = if bow_k > 0.0 { sun.az + 180.0 } else if sun.alt > -4.0 { sun.az } else if moon.alt > 0.0 { moon.az } else { 180.0 };
+        // a rainbow stands opposite the Sun: only then the camera turns, to look away from it
+        let (yaw, az_k) = if bow_k > 0.0 { (sun.az + 180.0, 1.0) } else { (if lat >= 0.0 { 180.0 } else { 0.0 }, AZ_K) };
         let focus = if bow_k > 0.0 { 0.0 } else if sun.alt > -4.0 { sun.alt } else if moon.alt > 0.0 { moon.alt } else { 0.0 };
         let pitch = (focus - 36.0).max(0.0).to_radians();
         let moon_light = moon.fraction * ((moon.alt + 1.0) / 9.0).clamp(0.0, 1.0) * if sun.alt < -5.0 { 1.0 } else { 0.0 };
@@ -134,15 +164,24 @@ impl Model {
         let halo_k = if !raining && !snowing && fog_k < 0.3 && (30.0..=85.0).contains(&cover_pct) && ((sun.alt > 4.0 && sun.alt < 50.0) || (sun.alt < -6.0 && moon.alt > 5.0 && moon.fraction > 0.5)) { 0.8 } else { 0.0 };
         let firefly_k = if (5..=7).contains(&month) && sun.alt < -4.0 && temp >= 14.0 && !raining && wind < 18.0 { 1.0 } else { 0.0 };
         let mote_k = if (2..=8).contains(&month) && sun.alt > 8.0 && temp >= 12.0 && !raining && !snowing && cover_pct < 70.0 && wind < 25.0 { 0.8 } else { 0.0 };
+        let wmax = gust.max(wind * 1.4);
+        let blizzard_k = if snowing && !sleet && (wmax >= 50.0 || (code == 86 && wind >= 30.0)) { ((wmax - 40.0) / 35.0).clamp(0.3, 1.0) * snow_k.max(0.5) } else { 0.0 };
+        let glaze_k = if freezing { if drizzle { 0.6 } else { 0.9 } } else { 0.0 };
+        let gale_k = if wmax >= 70.0 { ((wmax - 60.0) / 40.0).clamp(0.3, 1.0) } else { 0.0 };
+        let diamond_k = if temp <= -8.0 && !snowing && !raining && fog_k < 0.3 && cover_pct < 40.0 { ((-8.0 - temp) / 8.0).clamp(0.3, 1.0) } else { 0.0 };
+        // the rain of the last three hours, when it has stopped and nothing froze or lies white
+        let recent: f64 = hourly.as_array().map(|h| h.iter().filter(|x| { let t = f(x, "t", 0.0) * 1000.0; t > now - 3.5 * 3600e3 && t <= now }).map(|x| f(x, "pr", 0.0)).sum()).unwrap_or(0.0);
+        let wet_k = if !raining && !snowing && temp > 1.0 && gsnow_k <= 0.0 && recent >= 0.3 { (recent / 2.0).clamp(0.35, 1.0) } else { 0.0 };
+        let gfog_k = if hum >= 90.0 && wind < 10.0 && sun.alt < 10.0 && fog_k < 0.3 && !raining && !snowing && cover_pct < 70.0 { ((hum - 88.0) / 8.0).min(1.0) * ((10.0 - sun.alt) / 6.0).clamp(0.0, 1.0) } else { 0.0 };
         Model {
-            code, wind, gust, temp, hum, cover_pct, rate, rain_k, snow_k, fog_k, haze_k, storm_k, hail_k, wind_k, slant, cloud_speed, sun, moon, yaw, pitch, moon_light, aurora_k, meteor_k, bow_k,
-            leaf_k, bird_k, ray_k, frost_k, mist_k, heat_k, gsnow_k, curtain_k, glass_snow_k, halo_k, firefly_k, mote_k,
+            code, wind, gust, temp, hum, cover_pct, rate, rain_k, snow_k, fog_k, haze_k, storm_k, hail_k, wind_k, slant, cloud_speed, sun, moon, yaw, az_k, pitch, moon_light, aurora_k, meteor_k, bow_k,
+            leaf_k, bird_k, ray_k, frost_k, mist_k, heat_k, gsnow_k, curtain_k, glass_snow_k, halo_k, firefly_k, mote_k, blizzard_k, glaze_k, gale_k, diamond_k, wet_k, gfog_k,
         }
     }
 
     // camera frame: x right, y up, z forward
     pub fn dir(&self, az: f64, alt: f64) -> V3 {
-        let a = (az - self.yaw).to_radians();
+        let a = (((az - self.yaw + 540.0).rem_euclid(360.0) - 180.0) * self.az_k).to_radians();
         let e = alt.to_radians();
         V3 { x: a.sin() * e.cos(), y: e.sin(), z: a.cos() * e.cos() }
     }
@@ -187,4 +226,35 @@ pub fn bolt(t: f64, storm_k: f64) -> [f64; 4] {
 // the sky's clock: wall time, so mist-ui knows when a strike falls without asking mist-wall
 pub fn sky_time() -> f64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0) % 3600.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // 2026-07-15 at Mist's home coordinates, hour by hour (UTC ms)
+    fn day(h: f64) -> f64 {
+        (1_784_073_600.0 + h * 3600.0) * 1000.0
+    }
+
+    #[test]
+    fn the_sun_crosses_the_sky() {
+        let wx = json!({"lat": 52.75, "lon": 18.11, "code": 0, "cloud": 5});
+        // 04:00..18:00 UTC: sunrise to sunset; x (0..1 of the card) grows the whole day and stays inside it
+        let xs: Vec<f64> = (4..=18).map(|h| Model::at(&wx, day(h as f64), day(h as f64)).sun_s(546.0, 310.0).0).collect();
+        assert!(xs.windows(2).all(|w| w[1] > w[0] + 0.02), "{xs:?}");
+        assert!(xs[0] > 0.05 && xs[xs.len() - 1] < 0.95, "{xs:?}");
+        assert!(xs[xs.len() - 1] - xs[0] > 0.6, "{xs:?}");
+    }
+
+    #[test]
+    fn a_preview_takes_that_hour() {
+        let t = (day(12.0) / 1000.0) as i64;
+        let wx = json!({"lat": 52.75, "lon": 18.11, "code": 0, "cloud": 5,
+            "hourly": [{"t": t, "code": 63, "cloud": 100, "pr": 2.0}, {"t": t + 3600, "code": 0, "cloud": 0, "pr": 0.0}]});
+        assert!(Model::at(&wx, day(12.0), day(12.0)).rain_k > 0.0);
+        assert_eq!(Model::at(&wx, day(13.0), day(13.0)).rain_k, 0.0);
+        assert_eq!(Model::new(&wx, day(12.0)).rain_k, 0.0);
+    }
 }

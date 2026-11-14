@@ -36,6 +36,155 @@ pub fn capture(o: &Opts, tx: Option<calloop::channel::Sender<crate::sys::Msg>>) 
     });
 }
 
+// a region: the monitor is captured first and shown frozen under the selection (a video or a menu holds still
+// while it is framed), the picked box is cut from that picture. grim -l 0: no compression, the file lives ~1 s
+pub fn freeze(o: &Opts, screen: String, tx: Option<calloop::channel::Sender<crate::sys::Msg>>) {
+    let (delay, copy) = (o.delay, o.copy);
+    std::thread::spawn(move || {
+        // the toolbar must be gone from the screen first
+        std::thread::sleep(std::time::Duration::from_millis(250) + std::time::Duration::from_secs(delay as u64));
+        let f = format!("{}/mist/shot-freeze-{}.png", std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".into()), std::process::id());
+        let ok = std::process::Command::new("grim").args(["-l", "0", "-o", &screen, &f]).status().map(|s| s.success()).unwrap_or(false);
+        if let (true, Some(tx)) = (ok, tx) {
+            let _ = tx.send(crate::sys::Msg::ShotFrozen(f, screen, copy));
+        }
+    });
+}
+// cut the picked box out of the frozen picture (shot.sh names the file, copies it, removes the frozen one)
+pub fn crop(frozen: String, g: (i32, i32, i32, i32), copy: bool, tx: Option<calloop::channel::Sender<crate::sys::Msg>>) {
+    let sh = crate::paths::mist_path("scripts/shot.sh");
+    std::thread::spawn(move || {
+        let out = std::process::Command::new(sh).args(["crop", "0", if copy { "1" } else { "0" }, &frozen, &format!("{}x{}+{}+{}", g.2, g.3, g.0, g.1)]).output();
+        let f = out.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+        if let (false, Some(tx)) = (f.is_empty(), tx) {
+            let _ = tx.send(crate::sys::Msg::Shot(f));
+        }
+    });
+}
+
+// ------------------------------------------------------------------ the region picker over the frozen screen
+pub struct Region {
+    file: String,
+    copy: bool,
+    pic: tiny_skia::Pixmap,
+    // the picture at the surface's size, dimmed: painted whole, the selection shows `sharp` through it
+    dim: Option<(tiny_skia::Pixmap, tiny_skia::Pixmap)>,
+    from: Option<(f32, f32)>,
+    ptr: (f32, f32),
+    size: (f32, f32),
+    cut: bool,
+}
+
+impl Region {
+    pub fn new(file: String, copy: bool) -> Option<Region> {
+        let pic = crate::img::decode_file(&file, 16384)?;
+        Some(Region { file, copy, pic, dim: None, from: None, ptr: (-1.0, -1.0), size: (1.0, 1.0), cut: false })
+    }
+    // the selection in surface pixels: x, y, w, h
+    fn sel(&self) -> Option<(f32, f32, f32, f32)> {
+        let (a, b) = (self.from?, self.ptr);
+        let (x0, y0) = (a.0.min(b.0).max(0.0).round(), a.1.min(b.1).max(0.0).round());
+        let (x1, y1) = (a.0.max(b.0).min(self.size.0).round(), a.1.max(b.1).min(self.size.1).round());
+        Some((x0, y0, x1 - x0, y1 - y0))
+    }
+}
+impl Drop for Region {
+    fn drop(&mut self) {
+        if !self.cut {
+            let _ = std::fs::remove_file(&self.file);
+        }
+    }
+}
+
+impl Pane for Region {
+    fn name(&self) -> &'static str {
+        "shotsel"
+    }
+    fn paint(&mut self, c: &mut Canvas, cx: &mut Ctx) {
+        use tiny_skia::{PixmapPaint, Transform};
+        let (w, h) = (c.pm.width(), c.pm.height());
+        self.size = (w as f32, h as f32);
+        if self.dim.as_ref().map(|d| d.0.width() != w || d.0.height() != h).unwrap_or(true) {
+            let mut sharp = Canvas::new(w, h);
+            let k = (w as f32 / self.pic.width() as f32, h as f32 / self.pic.height() as f32);
+            sharp.pm.draw_pixmap(0, 0, self.pic.as_ref(), &PixmapPaint { quality: if k.0 == 1.0 { tiny_skia::FilterQuality::Nearest } else { tiny_skia::FilterQuality::Bilinear }, ..Default::default() }, Transform::from_scale(k.0, k.1), None);
+            let mut dim = Canvas::new(w, h);
+            dim.pm.draw_pixmap(0, 0, sharp.pm.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+            crate::desktop::rect(&mut dim, 0.0, 0.0, w as f32, h as f32, 0.0, Rgba(0.02, 0.03, 0.06, 0.38));
+            self.dim = Some((dim.pm, sharp.pm));
+        }
+        let Some((dim, sharp)) = &self.dim else { return };
+        c.pm.data_mut().copy_from_slice(dim.data());
+        let acc = Rgba::hex("#a9c2ee");
+        let ls = Style::ui(12.0, 600.0).tnum();
+        match self.sel().filter(|s| s.2 >= 1.0 && s.3 >= 1.0) {
+            Some((x, y, sw, sh)) => {
+                if let Some(r) = tiny_skia::Rect::from_xywh(x, y, sw, sh) {
+                    let mut paint = tiny_skia::Paint::default();
+                    paint.shader = tiny_skia::Pattern::new(sharp.as_ref(), tiny_skia::SpreadMode::Pad, tiny_skia::FilterQuality::Nearest, 1.0, Transform::identity());
+                    paint.blend_mode = tiny_skia::BlendMode::Source;
+                    c.pm.fill_rect(r, &paint, Transform::identity(), None);
+                }
+                crate::desktop::border(c, x - 1.0, y - 1.0, sw + 2.0, sh + 2.0, 0.0, 1.0, acc);
+                // its size in the picture's pixels, under the box (above it at the bottom edge)
+                let k = self.pic.width() as f32 / w as f32;
+                let lab = format!("{} × {}", (sw * k).round() as i32, (sh * k).round() as i32);
+                let (lw, lh) = (cx.t.width(&lab, &ls), crate::desktop::line_h(cx.t, &ls));
+                let ly = if y + sh + lh + 14.0 < h as f32 { y + sh + 8.0 } else { (y - lh - 14.0).max(4.0) };
+                let lx = (x + sw - lw - 16.0).clamp(4.0, w as f32 - lw - 20.0);
+                crate::desktop::rect(c, lx, ly, lw + 16.0, lh + 6.0, (lh + 6.0) / 2.0, Rgba(0.04, 0.06, 0.10, 0.82));
+                crate::desktop::text(c, cx.t, lx + 8.0, ly + 3.0, &lab, &ls, Rgba(1.0, 1.0, 1.0, 0.95), false, None);
+            }
+            None => {
+                // nothing picked yet: the hint, and hairlines through the pointer to aim with
+                let hint = "Przeciągnij, aby zaznaczyć wycinek · Esc anuluje";
+                let hs = Style::ui(13.0, 550.0);
+                let (hw, hh) = (cx.t.width(hint, &hs), crate::desktop::line_h(cx.t, &hs));
+                let (hx, hy) = (((w as f32 - hw) / 2.0 - 14.0).round(), 28.0);
+                crate::desktop::rect(c, hx, hy, hw + 28.0, hh + 12.0, (hh + 12.0) / 2.0, Rgba(0.04, 0.06, 0.10, 0.82));
+                crate::desktop::text(c, cx.t, hx + 14.0, hy + 6.0, hint, &hs, Rgba(1.0, 1.0, 1.0, 0.95), false, None);
+                if self.ptr.0 >= 0.0 {
+                    crate::desktop::rect(c, self.ptr.0.round(), 0.0, 1.0, h as f32, 0.0, acc.alpha(0.55));
+                    crate::desktop::rect(c, 0.0, self.ptr.1.round(), w as f32, 1.0, 0.0, acc.alpha(0.55));
+                }
+            }
+        }
+    }
+    fn pointer(&mut self, ev: Ptr, x: f32, y: f32, _cx: &mut Ctx) -> Act {
+        self.ptr = (x, y);
+        match ev {
+            Ptr::Press(_) => {
+                self.from = Some((x, y));
+                Act::Redraw
+            }
+            Ptr::Release(_) => match self.sel() {
+                // a click without a drag (or a sliver) picks nothing: the hint again
+                Some((sx, sy, sw, sh)) if sw >= 4.0 && sh >= 4.0 => {
+                    let k = self.pic.width() as f32 / self.size.0;
+                    self.cut = true;
+                    Act::Crop(self.file.clone(), ((sx * k).round() as i32, (sy * k).round() as i32, (sw * k).round() as i32, (sh * k).round() as i32), self.copy)
+                }
+                _ => {
+                    self.from = None;
+                    Act::Redraw
+                }
+            },
+            Ptr::Leave => Act::None,
+            _ => Act::Redraw,
+        }
+    }
+    fn key(&mut self, ev: &KeyEvent, _cx: &mut Ctx) -> Act {
+        if ev.keysym == Keysym::Escape { Act::Close } else { Act::None }
+    }
+    fn seed(&mut self, q: &str) {
+        let v: Vec<f32> = q.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+        if let [x0, y0, x1, y1] = v[..] {
+            self.from = Some((x0, y0));
+            self.ptr = (x1, y1);
+        }
+    }
+}
+
 pub struct Toolbar {
     pub o: Opts,
     ptr: (f32, f32),

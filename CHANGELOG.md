@@ -5,6 +5,60 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 ## [Unreleased]
 
 ### Added
+- README redesigned: a header with the logo and the numbers that matter (idle memory, OpenGL contexts,
+  wake-ups), a tour of even 16:10 pictures (`docs/img/panels.sh` frames every panel and app window the same
+  way, `docs/img/gifs.sh` writes animated WebP instead of GIF, a tenth of the size), the seven themes side by
+  side, the app icons, the benchmark tables folded, star history. The translations follow the same layout;
+  `bench/i18n/gen.py` takes the badges from the English README.
+- Icons of their own for Mist Files, Mist Player and Settings (`native/assets/icons/make.py` writes the SVGs:
+  the macOS icon grid, Mist's dusk colours, a glass rim). `native/install.sh` and the Arch and Fedora packages
+  install them with launchers for all three apps; Settings had none and did not show in Start.
+- Desktop: three new widgets for the bento row. Notatka shows `~/.config/mist/note.txt` (`# ` a heading, `- ` a
+  point, `- [ ]` and `- [x]` a to-do list with the count of what is left; a click opens the file in the system's
+  editor; small, standard or large text, glass or paper). Czas shows how much of the day, the week, the month
+  and the year has passed and counts down to the next calendar event, the weekend or the New Year. Słońce i
+  Księżyc draws the day's arc with the Sun on it and the Moon's disc and phase (both, the Sun alone or the Moon
+  alone). None of them starts a thread or polls: they are drawn with the stage's paint.
+- Desktop: two more widgets. Zdjęcie is a picture frame: a photo of the wallpaper folders, another one every day
+  or every hour, or the file `~/.config/mist/photo.jpg` (.jpeg, .png); fill or fit, an optional caption. Decoded
+  once per pick. Urządzenia shows the batteries the bar already knows (laptop, phone, a Bluetooth device) and
+  redraws only when one of them changes.
+- Desktop clock: 12 or 24 hours, a short date ("pt 13.11"), three opacities, blue and pink. Zegary: face (ticks,
+  numbers, plain), colour of the accents, 12 or 24 hours.
+- Lock screen: Ustawienia > Ekran blokady > Zegar sets the clock's size (big, small, hidden), weight, colour, the
+  date and 12 or 24 hours. `mist-ui --lock-clock-png file` renders it for checks.
+- Settings > Pulpit is simpler: one row picks the widgets (a click adds or takes one off, three at most), the ones
+  shown follow as rows that open their settings; Liczba kart and the three Miejsce rows are gone. The rest is
+  four short cards: Wygląd kart, Zegar, Wygląd zegara.
+- Weather sky: rain no longer stutters. A streak fell 1.5 to 2.5 card heights a second, its whole length between
+  two frames at 20 fps; it now falls 0.85 to 1.45, is fainter and sparser, and the sky draws 30 fps while rain or
+  snow falls and 60 fps while the shown moment travels. Pogoda > Deszcz i śnieg: off, soft (the default), full.
+- Settings > Pogoda in three short cards (Karta, Niebo, Stopka), every row saying what it changes.
+- Lock screen: date format, the clock at the top or nearer the middle, wallpaper blur (after waking, always,
+  never), dimming, the user picture shown or hidden.
+- Screenshots: a region is picked over the frozen screen. The monitor is captured first and shown still under
+  the selection (a video or an open menu holds while it is framed), the box shows its size, Esc cancels; mist-ui
+  draws the picker itself (slurp and hyprpicker, which mist-comp cannot serve, are no longer used for regions).
+- Weather card, Sun view: the day's arc is gone; the next five days stand in columns with sunrise, sunset and the
+  length of the day, as the Moon's view shows its phases.
+- Translations: seven cities of Zegary (Londyn, Nowy Jork, Tokio…) were Polish in every language.
+- Desktop settings: Poświata kart (how strongly the cards glow in their colour: off, soft, standard, strong);
+  Zegary knows eight more cities (Warszawa, Chicago, São Paulo, Reykjavik, Moskwa, Bangkok, Singapur, Seul); the
+  weather card's Sun and Moon chips can be hidden.
+- Weather sky, new scenes for weather that had none: blizzard (gusts of white, snow running over the ground),
+  freezing rain (icicles on the glass, the plain turned to ice), gale (twigs and dust torn along, trees
+  thrashing), deep frost under a clear sky (diamond dust, sun dogs, a pillar of light), puddles mirroring the sky
+  after rain, ground fog over the fields on calm damp nights and dawns.
+- Weather card: five landscapes under the sky, picked in the card's settings (Landscape): fields, a lake that
+  mirrors the sky and the far shore and freezes over under snow, mountains with snow caps and alpenglow, a city
+  skyline with lit windows and their light on the water, the sea with swell, foam and a lighthouse on a headland.
+  Water carries a path of glitter under the Sun or the Moon.
+- Weather card: the sky follows the hour or the day pointed at on the timeline (the Sun and the Moon where they
+  will stand, that hour's weather), gliding there in 0.7 s and back when the pointer leaves.
+- `sky-scenes.py <out> lands` draws every landscape through one day (`lands.png`); `MIST_SKY_LAND=0..4` picks the
+  landscape for the weather cases.
+- `native/mist-wall/tests/sky-scenes.py` draws the sky of 31 weather cases offscreen into a contact sheet;
+  `MIST_SKY_NOW` and `MIST_SKY_T` set the moment and the sky's clock of `mist-wall --png out.ppm sky`.
 - After a panic the restarted shell says so on the island, with the thread and the source line; every Mist
   binary appends its panics to `~/.cache/mist/crash.log` (time, binary, version, thread, place, message).
 - A file in `~/.config/mist` that is not valid JSON is named on the island with the line and column, at start
@@ -22,6 +76,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
   without a compiler warning.
 
 ### Changed
+- Weather card: pointing at the Sun or the Moon (in the sky or on its chip) no longer opens a popup: the card
+  itself turns to that body, in the weather's layout, and back when the pointer leaves (a click keeps it, a click
+  anywhere else or 20 s away brings the weather back). The Sun's card leads with the next sunset or sunrise and
+  the time left, draws the day's arc over the horizon with the Sun on it (under the line at night) and says how
+  long the day is and how tomorrow's compares; the Moon's shows the disc, the phase, how much is lit, the Moon of
+  the next ten days and its distance. Both give rise, set and altitude, for the hour pinned on the timeline.
+- Weather card: the Sun and the Moon cross the sky through the day and the night. The view now faces the equator
+  and holds still, so the Sun rises on the left, stands in the middle at noon and sets on the right (mirrored in
+  the southern hemisphere); before, the view turned with the Sun, which stayed in the middle of the card.
+- Weather card: a row of the moment's numbers under the headline (rain chance and millimetres, wind with its
+  direction, humidity, UV; cloud cover for an hour, hours of sun for a day) is always shown and replaces the
+  hover-only chips. Its first three are the timeline's switch: click one or turn the wheel over the row. The
+  timeline marks sunrise, sunset and "now", the next days show their temperature span on a common scale, the
+  wheel over the footer walks the insights, a click on the big number picks what the card leads with.
+- Weather card: the sun and the moon have chips at the end of the numbers' row (the next sunrise or sunset, how
+  much of the Moon is lit). Hovering one opens the same details as the body in the sky, which cloud or fog often
+  hides; a click on a chip or a body keeps them open. While the card is hovered a faint ring marks both bodies.
+- Weather sky, every scene: far hills behind the treeline, fields in perspective with strips of crops, the land
+  lit by the night sky and the Moon instead of black, village lights at night, warm light of a low sun, a pink
+  belt opposite it, the Milky Way, a larger sun and moon, the sun as a pale coin through fog and overcast, a
+  taller two-curtain aurora, a branching bolt and sheet lightning in a darker storm deck, dithered gradients.
+- Weather card: a hover repaint costs 4.3 ms instead of 10.7 ms (the glass is painted once and copied, the
+  text's shadow is blurred at half resolution); the insights are no longer worked out every second.
 - A photo wallpaper is drawn by `mist-ui`; `mist-wall` (the only OpenGL process) starts on demand for a live
   wallpaper, the weather card's sky and the wallpaper gallery, and exits when none is shown.
 - The idle shell wakes the CPU 38 times a second with a live wallpaper (110 before) and 8 times with a photo.
@@ -30,6 +107,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 - `blocking` is pinned to 1.6.2: in 1.7.0 idle pool threads never exit and wake twice a second.
 
 ### Fixed
+- Spotlight and Start: the search field has a caret. Left and Right move it (Ctrl a word), Home and End, Shift
+  selects, Ctrl+A selects everything and typing replaces it; before, the arrows did nothing and Ctrl+A only
+  marked the whole text.
+- Mist Files: "zaznaczono N" in the status bar was Polish in every language.
+- `MIST_LANG` is kept when the language setting is read again (it fell back to `settings.json`).
+- `docs/img/panels.sh`: Settings is a window now (`settings --png`); Start, Files and Player shots added, the
+  app windows rendered from a demo home.
 - Start's recent files were looked for in `~/Pobrane`, `~/Obrazy`, `~/Dokumenty`, `~/Pulpit` and `~/Wideo`
   only; the folders now come from the system's user directories.
 - Mist Player saved screenshots to `~/Obrazy` whatever the system's Pictures folder was called, and preferred

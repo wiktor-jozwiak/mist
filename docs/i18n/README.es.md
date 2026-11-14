@@ -1,12 +1,15 @@
 <div align="center">
 
-<img src="../img/banner.svg" alt="Mist" width="100%">
+<img src="../img/logo.svg" alt="" width="104">
 
-**Un entorno de escritorio para Wayland inspirado en macOS, escrito en Rust y dibujado en la CPU.**
+# Mist
+
+**Un entorno de escritorio y un compositor Wayland para Linux, escritos en Rust y dibujados en la CPU.**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/wiktor-jozwiak/mist/ci.yml?branch=main&style=flat-square&label=CI)](../../.github/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/wiktor-jozwiak/mist?style=flat-square&color=3b82f6)](https://github.com/wiktor-jozwiak/mist/releases)
-[![Licencia: GPL-3.0](https://img.shields.io/badge/licencia-GPL--3.0-8d8590?style=flat-square)](../../LICENSE)
+[![Stars](https://img.shields.io/github/stars/wiktor-jozwiak/mist?style=flat-square&color=e2a03f)](https://github.com/wiktor-jozwiak/mist/stargazers)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-8d8590?style=flat-square)](../../LICENSE)
 [![Discord](https://img.shields.io/badge/discord-chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/4rRabwQTPE)
 
 [English](../../README.md) · [Polski](README.pl.md) · [Deutsch](README.de.md) ·
@@ -16,50 +19,80 @@
 
 <img src="../img/desktop-en.webp" alt="El escritorio Mist: barra superior, reloj, tarjetas de tiempo, disposición y carrera, dock" width="100%">
 
-**[Qué ofrece](#qué-ofrece) · [Por qué es ligero](#por-qué-es-ligero) · [mist-comp](#mist-comp) ·
+<table>
+  <tr>
+    <td align="center" width="33%"><h3>44 MB</h3><sub>de memoria para todo el shell en reposo</sub></td>
+    <td align="center" width="33%"><h3>0</h3><sub>contextos OpenGL en el proceso del shell</sub></td>
+    <td align="center" width="33%"><h3>8 / s</h3><sub>despertares en reposo, sin sondeo</sub></td>
+  </tr>
+</table>
+
+**[Recorrido](#recorrido) · [Qué ofrece](#qué-ofrece) · [Por qué es ligero](#por-qué-es-ligero) · [mist-comp](#mist-comp) ·
 [Instalación](#instalación) · [Teclas](#teclas-y-scripts) · [Desarrollo](#desarrollo)**
 
 </div>
 
-Mist es un entorno de escritorio completo en un solo proceso: barra, dock, Dynamic Island, widgets del
-escritorio, buscador, centro de control, notificaciones, pantalla de bloqueo y agente polkit. Funciona sobre
-Hyprland o sobre su propio compositor, [`mist-comp`](#mist-comp), y puedes
-[probarlo en una ventana](#2-pruébalo-en-una-ventana) en el escritorio que ya usas.
+Mist son dos programas, y cada uno funciona sin el otro:
+
+| | Qué es | Dónde funciona |
+|---|---|---|
+| **El entorno** (`mist-ui`, `mist-wall`) | barra, dock, Dynamic Island, widgets del escritorio, buscador, centro de control, notificaciones, pantalla de bloqueo, agente polkit, un gestor de archivos y un reproductor de vídeo, en un solo proceso | Hyprland, mist-comp o [una ventana](#2-pruébalo-en-una-ventana) en el escritorio que ya usas |
+| **El compositor** ([`mist-comp`](#mist-comp)) | un compositor Wayland sobre Smithay, con su propia pantalla de inicio de sesión | una sesión propia, junto a Hyprland |
+
+El aspecto se inspira en macOS a propósito; por debajo es un escritorio Linux.
 
 > [!NOTE]
 > Mist es el escritorio diario de una persona (Arch / CachyOS, dos monitores, NVIDIA). Se comparte porque
 > funciona, no porque esté terminado: cuenta con leer algo de código.
 
-## Qué ofrece
+## Recorrido
 
 <div align="center">
 
+<img src="../img/island.webp" alt="Dynamic Island: una notificación, el volumen, lluvia inminente, el próximo evento" width="100%">
+
+<sub>Dynamic Island: notificaciones, volumen, lluvia en la próxima hora, el próximo evento</sub>
+
+<br><br>
+
 <table>
   <tr>
-    <td width="50%"><img src="../img/island.gif" alt="Dynamic Island: una notificación, el volumen, lluvia inminente, el próximo evento" width="100%"></td>
-    <td width="50%"><img src="../img/weather.gif" alt="La tarjeta del tiempo bajo la lluvia, sobre su cielo en vivo" width="100%"></td>
+    <td width="50%" align="center"><img src="../img/weather.webp" alt="La tarjeta del tiempo bajo la lluvia, sobre su cielo en vivo" width="100%"><br><sub>Tarjeta del tiempo sobre un cielo en vivo que sigue el tiempo y la hora</sub></td>
+    <td width="50%" align="center"><img src="../img/wallpaper.webp" alt="Las dunas, un fondo animado en GLSL" width="100%"><br><sub>Fondos animados en GLSL, fotos o el cielo del tiempo actual</sub></td>
   </tr>
   <tr>
-    <td align="center"><sub>Dynamic Island: notificaciones, volumen, lluvia en la próxima hora, el próximo evento</sub></td>
-    <td align="center"><sub>Tarjeta del tiempo sobre un cielo GLSL en tiempo real</sub></td>
+    <td align="center"><img src="../img/panels/start.webp" alt="Inicio: campo de búsqueda, aplicaciones favoritas, el calendario de hoy, el teléfono" width="100%"><br><sub>Inicio: aplicaciones, archivos, comandos, el día de hoy y el teléfono</sub></td>
+    <td align="center"><img src="../img/panels/spotlight.webp" alt="Spotlight respondiendo 128*42" width="100%"><br><sub>Spotlight: aplicaciones, archivos, comandos, cálculos, unidades, husos horarios, emoji, web</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="../img/panels/spotlight.webp" alt="Buscador al estilo de Spotlight" width="100%"></td>
-    <td width="50%"><img src="../img/panels/settings.webp" alt="Ventana de ajustes" width="100%"></td>
+    <td align="center"><img src="../img/panels/files.webp" alt="Mist Files: una carpeta en la vista de detalles" width="100%"><br><sub>Mist Files, también el selector de archivos de cada aplicación</sub></td>
+    <td align="center"><img src="../img/panels/player.webp" alt="Mist Player: los controles sobre un vídeo" width="100%"><br><sub>Mist Player sobre libmpv: capítulos, pistas, imagen en imagen</sub></td>
   </tr>
   <tr>
-    <td align="center"><sub>Spotlight: aplicaciones, archivos, comandos, emoji, web</sub></td>
-    <td align="center"><sub>Ajustes: todas las opciones en una ventana, aplicadas al instante</sub></td>
+    <td align="center"><img src="../img/panels/settings.webp" alt="Ajustes, la página Personalización" width="100%"><br><sub>Ajustes: todas las opciones en una ventana, aplicadas al instante</sub></td>
+    <td align="center"><img src="../img/panels/control.webp" alt="Centro de control" width="100%"><br><sub>Centro de control: red, Bluetooth, teléfono, sonido, luz nocturna</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="../img/panels/control.webp" alt="Centro de control" width="100%"></td>
-    <td width="50%"><img src="../img/panels/calendar.webp" alt="Calendario" width="100%"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>Centro de control: red, Bluetooth, teléfono, sonido, luz nocturna</sub></td>
-    <td align="center"><sub>Calendario: mes, agenda, eventos nuevos</sub></td>
+    <td align="center"><img src="../img/panels/calendar.webp" alt="Calendario" width="100%"><br><sub>Calendario: mes, agenda, eventos nuevos</sub></td>
+    <td align="center"><img src="../img/panels/emoji.webp" alt="El selector de emoji" width="100%"><br><sub>Selector de emoji con búsqueda y categorías</sub></td>
   </tr>
 </table>
+
+<img src="../img/themes.webp" alt="El centro de control en los siete temas incluidos" width="100%">
+
+<sub>Mist, Catppuccin, Nord, Gruvbox, Tokyo Night, Rosé Pine, Dracula o tu propio archivo JSON. El vidrio, las ventanas y el acento cambian en vivo.</sub>
+
+<br><br>
+
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="../../native/assets/icons/hicolor/scalable/apps/mist-files.svg" alt="" width="88"><br><b>Mist Files</b><br><sub>pestañas, vista previa, búsqueda inteligente, el selector de archivos del sistema</sub></td>
+    <td align="center" width="33%"><img src="../../native/assets/icons/hicolor/scalable/apps/mist-player.svg" alt="" width="88"><br><b>Mist Player</b><br><sub>libmpv, MPRIS, imagen en imagen, ritmo de fotogramas estable</sub></td>
+    <td align="center" width="33%"><img src="../../native/assets/icons/hicolor/scalable/apps/mist-settings.svg" alt="" width="88"><br><b>Ajustes</b><br><sub>pantalla, sonido, red, escritorio, widgets, idioma</sub></td>
+  </tr>
+</table>
+
+<br>
 
 <a href="https://youtu.be/mwisDtz0Yd0"><img src="../img/demo-poster.webp" alt="Mist demo video (40 s)" width="720"></a>
 
@@ -67,38 +100,45 @@ Hyprland o sobre su propio compositor, [`mist-comp`](#mist-comp), y puedes
 
 </div>
 
+## Qué ofrece
+
 **El entorno**
 
 - **Barra superior:** aplicación activa, bandeja del sistema (StatusNotifierItem + dbusmenu), red, Bluetooth,
-  audio, CPU y memoria, reloj.
-- **Dock:** aplicaciones fijadas y abiertas, ampliación, selector de ventanas con miniaturas en vivo.
-- **Dynamic Island:** multimedia con ecualizador, temporizadores, llamadas, notificaciones, volumen.
-- **Paneles:** Spotlight, Inicio, cambiador de aplicaciones, centro de control, centro de notificaciones,
-  historial del portapapeles, emoji, menú de sesión, barra de capturas. Spotlight responde mientras escribes:
-  cálculos (`128*42`), unidades (`212 f to c`, `2 gb to mb`), zonas horarias (`tokyo time`).
+  sonido, CPU y memoria, reloj.
+- **Dock:** aplicaciones fijadas y abiertas, ampliación, un selector de ventanas con miniaturas en vivo.
+- **Dynamic Island:** multimedia con ecualizador, temporizadores, llamadas, notificaciones, volumen, Bloq Mayús
+  y un aviso cuando un archivo de configuración tiene un error (con la línea y la columna).
+- **Paneles:** Inicio, Spotlight, selector de aplicaciones, centro de control, centro de notificaciones,
+  calendario, historial del portapapeles, emoji, menú de sesión. Los campos de búsqueda funcionan como
+  cualquier campo de texto: cursor, flechas, selección con Mayús y Ctrl+A.
+- **Capturas de pantalla:** una región elegida sobre la pantalla congelada, una barra de herramientas, texto
+  de la pantalla (OCR), un cuentagotas de color.
 - **Ajuste de ventanas** como en Windows 11: arrastra a un borde o esquina, Snap Layouts en el botón verde o
-  con `Super + Z`, Snap Assist.
+  `Super + Z`, Snap Assist.
+- **Pantalla de bloqueo** sobre PAM, con su propio estilo de reloj, desenfoque y oscurecimiento.
 
 **El escritorio**
 
-- **Reloj y tarjetas de cristal:** tiempo, disposición de Garmin, carrera, música, calendario, sistema,
-  relojes del mundo. El tiempo viene de [Open-Meteo](https://open-meteo.com) sin cuenta: curva por horas,
-  cuatro días, lluvia en la próxima hora, sol y luna. Las tarjetas de Garmin muestran tus propios datos de
-  Garmin Connect, sincronizados en un archivo SQLite local; siguen ocultas hasta que inicias sesión una vez
-  ([guía](../guides/garmin.md)).
-- **Fondos:** fotos, escenas GLSL animadas o un cielo que sigue el tiempo actual.
+- **Reloj y tarjetas de cristal:** tiempo, disposición de Garmin, carrera, música, calendario, sistema, relojes
+  del mundo, una nota con tareas, el progreso del día, el Sol y la Luna, un marco de fotos, baterías de
+  dispositivos. Las tarjetas de Garmin muestran tus propios datos de Garmin Connect, sincronizados en un
+  archivo SQLite local, y siguen ocultas hasta que inicias sesión una vez ([guía](../guides/garmin.md)).
+- **Tiempo** de [Open-Meteo](https://open-meteo.com), sin cuenta: curva por horas, cuatro días, lluvia en la
+  próxima hora, el día del Sol y de la Luna. El cielo de la tarjeta se dibuja en vivo para el tiempo y la hora
+  que señalas, sobre uno de cinco paisajes (campos, un lago, montañas, una ciudad, el mar).
+- **Fondos:** fotos, escenas GLSL en vivo o el cielo del tiempo actual.
 - **Temas:** Mist, Catppuccin, Nord, Gruvbox, Tokyo Night, Rosé Pine, Dracula o tu propio archivo JSON. El
-  cristal, las ventanas y el color de acento cambian en vivo en el entorno y en Files, Player y Ajustes.
+  cristal, las ventanas y el acento cambian en vivo en el entorno y en Files, Player y Ajustes.
 
 **Qué sustituye**
 
-- **Demonios:** el servidor de notificaciones, el agente polkit, la pantalla de bloqueo (PAM), la inactividad
-  y la suspensión.
-- **Aplicaciones:** Mist Files (también el selector de archivos de cualquier aplicación), Mist Player
-  (libmpv), Ajustes (idioma, lugar del tiempo, fondo, disposición del escritorio, widgets, luz nocturna,
-  bloqueo y suspensión, notificaciones).
-- **Teléfono**, mediante KDE Connect: batería, notificaciones, SMS y contactos en un panel, llamadas en la
-  isla (ADB como alternativa para las llamadas).
+- **Servicios:** el servidor de notificaciones, el agente polkit, la pantalla de bloqueo, la inactividad y la
+  suspensión.
+- **Aplicaciones:** Mist Files, Mist Player y Ajustes (pantalla, sonido, Bluetooth, red, energía,
+  aplicaciones, fondo, escritorio y widgets, pantalla de bloqueo, notificaciones, idioma).
+- **Teléfono** con KDE Connect: batería, notificaciones, SMS y contactos en un panel, llamadas en la isla (ADB
+  como alternativa para las llamadas).
 
 La interfaz está en **español, inglés, polaco, alemán y francés**, según `$LANG` o lo elegido en Ajustes. Un
 idioma es un archivo JSON en [native/assets/i18n](../../native/assets/i18n).
@@ -118,6 +158,11 @@ superficie a superficie siguiendo tres reglas:
   foto la dibuja `mist-ui`.
 
 <p align="center"><img src="../img/memory.svg" alt="Memoria en reposo (PSS) de cada shell sola, de swaybar con 6 MB a Noctalia con 192 MB: Mist con una foto de fondo 44 MB, Mist con fondo animado 144 MB" width="100%"></p>
+
+<details>
+<summary><b>Los números</b>: shells y compositores medidos igual</summary>
+
+<br>
 
 **Shells.** Cada una sola en un sway sin pantalla recién iniciado sobre la GPU (RTX 4060, dos salidas 1080p),
 con la configuración de su paquete; 3 ejecuciones, mediana ([bench/shells.sh](../../bench/shells.sh)).
@@ -148,6 +193,8 @@ cada 6 s, una notificación cada 10 s. CPU en % de un núcleo.
 Hyprland y niri no tienen un modo sin pantalla que un script pueda iniciar, por eso no están en la tabla.
 Método, cada ejecución, despertares, cifras por proceso y las mediciones anteriores en la sesión real:
 [docs/BENCHMARKS.md](../BENCHMARKS.md).
+
+</details>
 
 ## mist-comp
 
@@ -254,6 +301,9 @@ Cada superficie se renderiza fuera de pantalla, así que los cambios se comprueb
 compositor en una ventana anidada. Más en [native/README.md](../../native/README.md) y
 [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
+Las imágenes de esta página salen de los mismos renders fuera de pantalla, con datos de demostración:
+`docs/img/hero.sh`, `docs/img/panels.sh`, `docs/img/gifs.sh`.
+
 | Ruta | Qué |
 |---|---|
 | `native/mist-ui` | todas las superficies del entorno |
@@ -264,10 +314,21 @@ compositor en una ventana anidada. Más en [native/README.md](../../native/READM
 | `bench/` | las herramientas de medición y sus resultados |
 | etiqueta `legacy-qml` | la versión original en Quickshell |
 
+## Historial de estrellas
+
+<a href="https://star-history.com/#wiktor-jozwiak/mist&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date&theme=dark">
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date">
+    <img alt="Historial de estrellas de wiktor-jozwiak/mist" src="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date" width="100%">
+  </picture>
+</a>
+
 ## Créditos
 
 Construido sobre [Smithay], [smithay-client-toolkit], [tiny-skia], [swash], [resvg], [zbus] y [Tabler Icons].
 La primera versión funcionaba sobre [Quickshell], con [Noctalia] como referencia.
+Los asistentes de programación con IA ayudan en el desarrollo.
 
 <sub>Mist no está afiliado a Apple. macOS, Dynamic Island, Spotlight y SF Pro son marcas de Apple Inc., citadas
 aquí solo para describir la inspiración del diseño.</sub>

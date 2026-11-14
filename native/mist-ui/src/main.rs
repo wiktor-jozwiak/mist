@@ -144,6 +144,16 @@ fn main() {
     if args.get(1).map(|s| s.as_str()) == Some("greeter") {
         std::process::exit(lock::run(&args[1..]));
     }
+    // `--lock-clock-png file`: the lock screen's date and clock as Ustawienia > Ekran blokady set them, for checks
+    if args.get(1).map(|s| s.as_str()) == Some("--lock-clock-png") {
+        let mut t = text::Text::new();
+        let pm = lock::clock_pm(&mut t, 1280);
+        let mut bg = tiny_skia::Pixmap::new(pm.width(), pm.height()).expect("pixmap");
+        bg.fill(tiny_skia::Color::from_rgba8(38, 48, 74, 255));
+        bg.draw_pixmap(0, 0, pm.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), None);
+        bg.save_png(args.get(2).map(|s| s.as_str()).unwrap_or("lock-clock.png")).expect("png");
+        return;
+    }
     // `--desk-png dir`: the desktop stage and the weather card (cached data), for checks
     if args.get(1).map(|s| s.as_str()) == Some("--desk-png") {
         let mut t = text::Text::new();
@@ -189,9 +199,27 @@ fn main() {
         let p = desktop::CARD_PAD;
         let mut c = gfx::Canvas::new((desktop::WX_W + 2.0 * p) as u32, (desktop::BENTO_H + 2.0 * p) as u32);
         let (wx, g) = (d.weather.clone(), d.garmin.clone());
+        // MIST_WX_DAY=n: that day picked; MIST_WX_HOUR=n: that hour of the timeline pinned
+        let env = |k: &str| std::env::var(k).ok().and_then(|s| s.parse::<i32>().ok());
+        if let Some(n) = env("MIST_WX_DAY") {
+            d.wx.sel_day = n.max(0) as usize;
+            d.wx.pinned = true;
+        }
+        // MIST_WX_POP=sun|moon: that body's details open (as after a click on its chip)
+        if let Ok(k) = std::env::var("MIST_WX_POP") {
+            d.wx.pin_pop(if k == "moon" { "moon" } else { "sun" });
+        }
+        if let Some(n) = env("MIST_WX_HOUR") {
+            d.wx.pin_hour = n;
+            d.wx.pinned = true;
+        }
         let t0 = std::time::Instant::now();
         d.wx.paint(&mut c, &mut t, &wx, &g, &d.cfg);
         eprintln!("card {:?}", t0.elapsed());
+        // warm (glyphs cached): what a hover repaint costs
+        let t0 = std::time::Instant::now();
+        d.wx.paint(&mut c, &mut t, &wx, &g, &d.cfg);
+        eprintln!("card again {:?}", t0.elapsed());
         c.pm.save_png(format!("{}/card.png", args[2])).unwrap();
         // where the shell puts them on a 1920 px monitor (stage, card window, the sky under it), for docs/img
         let (cx, cy) = d.card_at(&mut t);
@@ -395,7 +423,7 @@ fn main() {
         let mut c = gfx::Canvas::new(w, h);
         let bst = bar::BarState { net: "ethernet".into(), ..Default::default() };
         loop {
-            let mut cx = pane::Ctx { t: &mut t, cal: &cal, icons: &mut ic, imgs: &mut im, apps: &ap, notif_hidden: &mut hid, ctrl: false, st: &bst, players: &[], phone_name: "", wx: &serde_json::Value::Null };
+            let mut cx = pane::Ctx { t: &mut t, cal: &cal, icons: &mut ic, imgs: &mut im, apps: &ap, notif_hidden: &mut hid, ctrl: false, shift: false, st: &bst, players: &[], phone_name: "", wx: &serde_json::Value::Null };
             p.paint(&mut c, &mut cx);
             if !p.animating() {
                 break;
@@ -406,7 +434,7 @@ fn main() {
         if let Some(n) = std::env::var("MIST_BENCH").ok().and_then(|v| v.parse::<u32>().ok()) {
             let t0 = std::time::Instant::now();
             for _ in 0..n {
-                let mut cx = pane::Ctx { t: &mut t, cal: &cal, icons: &mut ic, imgs: &mut im, apps: &ap, notif_hidden: &mut hid, ctrl: false, st: &bst, players: &[], phone_name: "", wx: &serde_json::Value::Null };
+                let mut cx = pane::Ctx { t: &mut t, cal: &cal, icons: &mut ic, imgs: &mut im, apps: &ap, notif_hidden: &mut hid, ctrl: false, shift: false, st: &bst, players: &[], phone_name: "", wx: &serde_json::Value::Null };
                 p.paint(&mut c, &mut cx);
             }
             eprintln!("paint {:.2} ms", t0.elapsed().as_secs_f64() * 1000.0 / n.max(1) as f64);

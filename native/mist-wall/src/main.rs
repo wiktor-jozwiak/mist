@@ -198,10 +198,12 @@ struct SkyUniforms {
     env: [f32; 4],
     env2: [f32; 4],
     env3: [f32; 4],
+    env4: [f32; 4],
+    env5: [f32; 4],
 }
 
 impl SkyUniforms {
-    fn as_slice(&self) -> [(&'static str, &[f32]); 14] {
+    fn as_slice(&self) -> [(&'static str, &[f32]); 16] {
         [
             ("time", &self.time),
             ("radius", &self.radius),
@@ -217,6 +219,8 @@ impl SkyUniforms {
             ("env", &self.env),
             ("env2", &self.env2),
             ("env3", &self.env3),
+            ("env4", &self.env4),
+            ("env5", &self.env5),
         ]
     }
 }
@@ -289,7 +293,17 @@ struct SkyState {
     sm: [Smooth; 10],
     fbo: Option<(glow::Framebuffer, glow::Texture, i32, i32)>,
     hidden: bool,
+    // the landscape under the sky (sky.json "land": 0 fields, 1 lake, 2 mountains, 3 city, 4 sea)
+    land: i32,
+    // how strong falling rain and snow are drawn (sky.json "fx": 0 none, 0.55 soft, 1 full)
+    fxk: f32,
+    // the moment the card previews (sky.json "t", unix ms; 0 = now) and the glide of the shown moment to it:
+    // from, to, since. The Sun and the Moon travel there in GLIDE_S instead of jumping
+    pv: f64,
+    glide: Option<(f64, f64, Instant)>,
+    shown: f64,
 }
+const GLIDE_S: f64 = 0.7;
 
 struct App {
     registry: RegistryState,
@@ -819,7 +833,8 @@ impl App {
     // Sky.qml: pass A (clouds, half resolution, into a texture) when due, pass B (details, corners) on top
     fn sky_scene(&mut self, w: i32, h: i32) {
         let m = self.sky.model.clone();
-        let t = sky::sky_time();
+        // MIST_SKY_T=s: the sky's clock held there (checks: a lightning strike, the same frame twice)
+        let t = std::env::var("MIST_SKY_T").ok().and_then(|v| v.parse::<f64>().ok()).unwrap_or_else(sky::sky_time);
         let b = sky::bolt(t, m.storm_k);
         let bolt = [b[0] as f32, b[1] as f32, b[2] as f32, b[3] as f32];
         let sm: [f32; 10] = std::array::from_fn(|i| self.sky.sm[i].get());
@@ -851,7 +866,8 @@ impl App {
                 self.sky.fbo = Some((fb, tex, tw, th));
             }
         }
-        if need || self.sky.hidden || self.sky.tick % 2 == 0 || bolt_changed {
+        // (and every tick while the moment travels: clouds lit by a sun half a step behind flicker)
+        if need || self.sky.hidden || self.sky.tick % 2 == 0 || bolt_changed || self.sky.glide.is_some() {
             self.sky.ct = t;
             self.sky.c_off = self.sky.off_x;
             self.sky.c_evo = self.sky.evo;
@@ -886,17 +902,19 @@ impl App {
             time: [t as f32],
             radius: [25.0],
             size: [w as f32, h as f32],
-            sun: [sx as f32, sy as f32, m.sun.alt as f32, 0.0],
+            sun: [sx as f32, sy as f32, m.sun.alt as f32, m.wet_k as f32],
             moon: [mx as f32, my as f32, m.moon.alt as f32, m.moon.fraction as f32],
             moon_lit: [(-z.sin() * i.sin()) as f32, (-z.cos() * i.sin()) as f32, i.cos() as f32, m.moon.pa as f32],
             wx,
             wx2: [m.storm_k as f32, m.hail_k as f32, if m.rate < 0.5 { 1.0 } else { 0.0 }, m.wind_k as f32],
-            fx: [slant, 0.0, m.meteor_k as f32, haze],
+            fx: [slant, m.gfog_k as f32, m.meteor_k as f32, haze],
             bolt,
             life: [1.0, m.leaf_k as f32, m.bird_k as f32, m.ray_k as f32],
-            env: [m.temp as f32, (m.hum / 100.0) as f32, frost, heat],
+            env: [self.sky.land as f32, (m.hum / 100.0) as f32, frost, heat],
             env2: [gsnow, m.firefly_k as f32, m.mote_k as f32, sky::HOR as f32],
             env3: [m.halo_k as f32, mist, m.curtain_k as f32, m.glass_snow_k as f32],
+            env4: [m.blizzard_k as f32, m.glaze_k as f32, m.gale_k as f32, m.diamond_k as f32],
+            env5: [self.sky.fxk, 0.0, 0.0, 0.0],
         };
         let tex = self.sky.fbo.unwrap().1;
         unsafe {
@@ -908,9 +926,33 @@ impl App {
 
     // the weather reading / minute changed: new sky model, smoothed inputs glide to it
     fn sky_model(&mut self) {
-        let now_min = (now_ms() / 60000.0).floor() * 60000.0;
-        self.sky.model = sky::Model::new(&self.weather, now_min);
-        self.sky.model_at = (now_min / 60000.0) as i64;
+        // MIST_SKY_NOW=unix ms: the sky of that moment (checks: any hour and season with a weather.json to match)
+        let now = std::env::var("MIST_SKY_NOW").ok().and_then(|v| v.parse::<f64>().ok()).unwrap_or_else(now_ms);
+        let now_min = (now / 60000.0).floor() * 60000.0;
+        self.sky.model_at = (now_ms() / 60000.0) as i64;
+        // where the shown moment is headed: the hour the card previews, else now
+        let target = if self.sky.pv > 0.0 { self.sky.pv } else { now_min };
+        if self.sky.shown == 0.0 {
+            self.sky.shown = target;
+        }
+        match self.sky.glide {
+            Some((from, to, since)) => {
+                let k = (since.elapsed().as_secs_f64() / GLIDE_S).min(1.0);
+                let e = -((std::f64::consts::PI * k).cos() - 1.0) / 2.0;
+                self.sky.shown = from + (to - from) * e;
+                if k >= 1.0 {
+                    self.sky.glide = None;
+                }
+            }
+            // a minute's step is drawn at once; anything longer (a preview, back from one) is travelled
+            None if (target - self.sky.shown).abs() > 90e3 => self.sky.glide = Some((self.sky.shown, target, Instant::now())),
+            None => self.sky.shown = target,
+        }
+        self.sky.model = if self.sky.pv > 0.0 || self.sky.glide.is_some() {
+            sky::Model::at(&self.weather, self.sky.shown, if self.sky.pv > 0.0 { self.sky.pv } else { now_min })
+        } else {
+            sky::Model::new(&self.weather, now_min)
+        };
         let m = &self.sky.model;
         let v = [m.cover_pct / 100.0, m.rain_k, m.snow_k, m.fog_k, m.haze_k, m.slant, m.frost_k, m.mist_k, m.heat_k, m.gsnow_k];
         for (s, x) in self.sky.sm.iter_mut().zip(v) {
@@ -1164,7 +1206,7 @@ impl App {
         }
         // the weather sky: at the live wallpaper's rate (20 fps alone), the clouds pass every 2nd frame, paused under windows (0 fps) or fullscreen window
         if let Some(i) = self.surfs.iter().position(|s| s.kind == Kind::Sky && s.egl_surf.is_some()) {
-            if (now_ms() / 60000.0) as i64 != self.sky.model_at {
+            if (now_ms() / 60000.0) as i64 != self.sky.model_at || self.sky.glide.is_some() {
                 self.sky_model();
             }
             let fs = *self.fs.get(primary_monitor()).unwrap_or(&false) || self.asleep;
@@ -1172,7 +1214,11 @@ impl App {
             if (!fs && !self.sky.hidden) || self.surfs[i].dirty {
                 // on the live wallpaper's ticks when one is drawn (one wake-up for both), 20 fps alone
                 let wall_on = !self.live.is_empty() && self.animate(primary_monitor()) && !*self.hidden.get(primary_monitor()).unwrap_or(&false);
-                let due = if wall_on { 1.0 / self.cur_fps(primary_monitor()) } else if SOFT.load(Ordering::Relaxed) { 1.0 / 10.0 } else { 1.0 / 20.0 };
+                // falling rain and snow at 30 fps: at 20 the streaks stepped
+                let falling = self.sky.fxk > 0.0 && (self.sky.sm[1].get() > 0.01 || self.sky.sm[2].get() > 0.01);
+                // while the shown moment travels (the card previews an hour, or comes back from one) the sun, the
+                // light and the colours all move: 60 fps for those seconds (0.1 ms a frame), 20 looked like steps
+                let due = if self.sky.glide.is_some() && !SOFT.load(Ordering::Relaxed) { 1.0 / 60.0 } else if wall_on { 1.0 / self.cur_fps(primary_monitor()) } else if SOFT.load(Ordering::Relaxed) { 1.0 / 10.0 } else if falling { 1.0 / 30.0 } else { 1.0 / 20.0 };
                 let left = due - self.surfs[i].last.elapsed().as_secs_f32();
                 if left <= SLACK || self.surfs[i].dirty {
                     self.sky.last = Instant::now();
@@ -1548,6 +1594,14 @@ enum Ev {
     Level(f32),
 }
 
+// what the card asks of the sky besides its place: the moment it previews (unix ms, 0 = now), the landscape
+fn read_sky_extra() -> (f64, i32, f32) {
+    let v = read_json(&format!("{}/sky.json", run_dir()));
+    let land = std::env::var("MIST_SKY_LAND").ok().and_then(|l| l.parse().ok()).unwrap_or(v["land"].as_i64().unwrap_or(0) as i32);
+    let fx = std::env::var("MIST_SKY_FX").ok().and_then(|l| l.parse().ok()).unwrap_or(v["fx"].as_f64().unwrap_or(0.55) as f32);
+    (v["t"].as_f64().unwrap_or(0.0) * 1000.0, land, fx)
+}
+
 fn read_sky() -> Option<(i32, i32, i32, i32)> {
     let v = read_json(&format!("{}/sky.json", run_dir()));
     if !v["show"].as_bool().unwrap_or(false) {
@@ -1644,6 +1698,11 @@ fn main() {
             sm: [sm(4000.0, true), sm(3000.0, false), sm(3000.0, false), sm(4000.0, false), sm(4000.0, false), sm(3000.0, false), sm(5000.0, true), sm(4000.0, true), sm(3000.0, false), sm(4000.0, false)],
             fbo: None,
             hidden: false,
+            land: read_sky_extra().1,
+            fxk: read_sky_extra().2,
+            pv: 0.0,
+            glide: None,
+            shown: 0.0,
         },
         target_fb: None,
         low: HashMap::new(),
@@ -1875,6 +1934,16 @@ fn main() {
                 if r != app.sky.rect {
                     app.sky.rect = r;
                     app.place_sky(false);
+                }
+                let (pv, land, fxk) = read_sky_extra();
+                if pv != app.sky.pv || land != app.sky.land || fxk != app.sky.fxk {
+                    app.sky.fxk = fxk;
+                    app.sky.pv = pv;
+                    app.sky.land = land;
+                    app.sky_model();
+                    if let Some(s) = app.surfs.iter_mut().find(|s| s.kind == Kind::Sky) {
+                        s.dirty = true;
+                    }
                 }
             }
             Ev::Cover(m) => app.on_cover(m),

@@ -165,7 +165,8 @@ pub fn generation() -> u32 {
 
 // the saved setting again (another process, Mist Settings, changed it)
 pub fn reload() {
-    let lang = resolve(&setting());
+    // MIST_LANG still wins (offscreen renders, tests): only the saved setting can have changed
+    let lang = resolve(&std::env::var("MIST_LANG").unwrap_or_else(|_| setting()));
     if CUR.read().unwrap().map(|c| c.0) != Some(lang) {
         *CUR.write().unwrap() = Some((lang, load(lang)));
         GEN.fetch_add(1, Ordering::Relaxed);

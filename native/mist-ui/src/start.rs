@@ -111,7 +111,7 @@ struct Drag {
 }
 
 pub struct Start {
-    field: Field,
+    field: crate::edit::LineEdit,
     sel: usize,
     armed: String,
     power_tip: String,
@@ -530,7 +530,7 @@ impl Start {
             let _ = tx.send(v);
         });
         Start {
-            field: Field::default(),
+            field: crate::edit::LineEdit::default(),
             sel: 0,
             armed: String::new(),
             power_tip: String::new(),
@@ -940,8 +940,6 @@ impl Start {
         let t = &mut *cx.t;
         let icon = match mode { "Terminal" => "terminal", "Kalkulator" => "calc", "Sieć" => "world", _ => "search" };
         c.icon(t, 22.0 + 9.0, FH / 2.0, icon, 18.0, if mode.is_empty() { T2 } else { accent() });
-        // the typed text as typed ("jutro" stays "jutro" in an English UI)
-        let fs = st(16.5, 400.0).verbatim();
         let mut hint_w = 0.0;
         if !mode.is_empty() {
             let hs = st(11.5, 600.0);
@@ -968,25 +966,8 @@ impl Start {
             hint_w = fw_all - 14.0 - x;
         }
         let fw = fw_all - 50.0 - hint_w - 22.0;
-        if self.field.text.is_empty() {
-            rect(c, 50.0, FH / 2.0 - 10.0, 2.0, 20.0, 1.0, accent());
-            text_cy(c, t, 55.0, FH / 2.0, "Szukaj aplikacji, plików i poleceń…", &st(16.5, 400.0), T3, Some(fw));
-        } else {
-            let mut shown: &str = &self.field.text;
-            while t.width(shown, &fs) > fw - 4.0 && !shown.is_empty() {
-                let mut it = shown.char_indices();
-                it.next();
-                shown = it.next().map(|(i, _)| &shown[i..]).unwrap_or("");
-            }
-            let w = t.width(shown, &fs);
-            if self.field.sel_all {
-                rect(c, 48.0, FH / 2.0 - 11.0, w + 4.0, 22.0, 4.0, accent().alpha(0.35));
-            }
-            text_cy(c, t, 50.0, FH / 2.0, shown, &fs, M_FG, None);
-            if !self.field.sel_all {
-                rect(c, 50.0 + w + 1.0, FH / 2.0 - 10.0, 2.0, 20.0, 1.0, accent());
-            }
-        }
+        // caret, Shift / Ctrl+A selection, scroll that keeps the caret in view
+        self.field.paint(c, t, 50.0, 0.0, fw, FH, &st(16.5, 400.0), M_FG, "Szukaj aplikacji, plików i poleceń…", true, false);
         self.push_hit((0.0, 0.0, fw_all, FH), Hit::Field);
     }
     fn paint_left(&mut self, c: &mut Canvas, cx: &mut Ctx) {
@@ -2012,7 +1993,7 @@ impl Pane for Start {
         matches!(self.hit(), Some(h) if !matches!(h, Hit::Sheet | Hit::Field))
     }
     fn seed(&mut self, q: &str) {
-        self.field.text = q.into();
+        self.field.set(q);
     }
     fn set_page(&mut self, p: &str) -> bool {
         // `--pane-png start:all`
@@ -2264,8 +2245,9 @@ impl Pane for Start {
                 };
                 match h {
                     Hit::Field => {
-                        if self.field.sel_all {
-                            self.field.sel_all = false;
+                        if self.field.has_sel() {
+                            let n = self.field.caret;
+                            self.field.select(n, n);
                             Act::Redraw
                         } else {
                             Act::None
@@ -2414,8 +2396,7 @@ impl Pane for Start {
             }
             Keysym::Escape => {
                 if !empty {
-                    self.field.text.clear();
-                    self.field.sel_all = false;
+                    self.field.set("");
                     self.sel = 0;
                     self.armed.clear();
                     Act::Redraw
@@ -2472,13 +2453,15 @@ impl Pane for Start {
                 }
             }
             _ => {
-                if self.field.key(ev, cx.ctrl) {
-                    self.sel = 0;
-                    self.armed.clear();
-                    self.res_scroll = 0.0;
-                    Act::Redraw
-                } else {
-                    Act::None
+                match search_key(&mut self.field, ev, cx.ctrl, cx.shift) {
+                    (_, true) => {
+                        self.sel = 0;
+                        self.armed.clear();
+                        self.res_scroll = 0.0;
+                        Act::Redraw
+                    }
+                    (true, false) => Act::Redraw,
+                    _ => Act::None,
                 }
             }
         }

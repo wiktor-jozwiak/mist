@@ -10,7 +10,7 @@ dir="${MIST_SHOT_DIR:-$pics/$sub}"
 mkdir -p "$dir"
 
 sel() { slurp -d -b '#0b0f1860' -c '#a9c2eeff' -s '#a9c2ee22' -w 1 -B '#a9c2ee18' "$@"; }
-sleep 0.25 # schowanie interfejsu paska
+[ "$mode" = crop ] || sleep 0.25 # schowanie interfejsu paska
 
 [ "$delay" -gt 0 ] 2>/dev/null && sleep "$delay"
 
@@ -22,6 +22,16 @@ case "${LANG:-}" in
 esac
 ts=$(date +'%Y-%m-%d_%H.%M.%S')
 f="$dir/$word ${ts%%_*} $at ${ts#*_}.png"
+
+# shot.sh crop 0 <copy> <frozen.png> <WxH+X+Y>: the region picked in mist-ui over the frozen screen
+if [ "$mode" = "crop" ]; then
+    magick "$4" -crop "$5" +repage "$f"
+    rm -f "$4"
+    [ -s "$f" ] || exit 1
+    [ "$copy" = 1 ] && wl-copy --type image/png < "$f"
+    echo "$f"
+    exit 0
+fi
 
 if [ "$mode" = "screen" ]; then
     g=$(hyprctl monitors -j | python3 -c 'import json,sys;m=[m for m in json.load(sys.stdin) if m["focused"]][0];print("%d,%d %dx%d"%(m["x"],m["y"],m["width"],m["height"]))')

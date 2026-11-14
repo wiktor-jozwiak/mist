@@ -284,6 +284,7 @@ pub struct App {
     pane_ptr: (f32, f32),
     notif_hidden: std::collections::HashMap<String, i64>,
     ctrl: bool,
+    shift: bool,
     clip_watch: Option<std::process::Child>,
     shot_opts: (&'static str, u32, bool),
     thumb: Option<(crate::shot::Thumb, LayerSurface, bool, bool, Canvas, Instant)>,
@@ -359,6 +360,7 @@ impl App {
             pane_ptr: (0.0, 0.0),
             notif_hidden: std::collections::HashMap::new(),
             ctrl: false,
+            shift: false,
             clip_watch: None,
             shot_opts: ("region", 0, true),
             thumb: None,
@@ -585,7 +587,7 @@ impl App {
         let outs = self.outs();
         self.wall.sky = self.desk.weather_on();
         self.wall.slow_tick(&self.compositor, &self.layer_shell, &self.qh, &outs);
-        let n = crate::wxcard::Wx::n_insights(&self.desk.weather, &self.desk.garmin, &self.desk.cfg);
+        let n = self.desk.wx.n_shown();
         if !self.card_covered() && self.desk.wx.tick(n) {
             self.desk.card_dirty = true;
         }
@@ -933,11 +935,19 @@ impl App {
             }
             Act::Capture => {
                 let o = self.pane.as_mut().and_then(|p| p.p.as_shot()).map(|t| (t.o.mode, t.o.delay, t.o.copy));
+                let scr = self.pane.as_ref().map(|p| p.screen.clone()).unwrap_or_default();
                 self.pane_close();
-                if let Some(o) = o {
+                if let Some(o) = o.filter(|o| o.0 == "region") {
+                    self.shot_opts = o;
+                    crate::shot::freeze(&crate::shot::Opts { mode: o.0, delay: o.1, copy: o.2 }, scr, self.tx.clone());
+                } else if let Some(o) = o {
                     self.shot_opts = o;
                     crate::shot::capture(&crate::shot::Opts { mode: o.0, delay: o.1, copy: o.2 }, self.tx.clone());
                 }
+            }
+            Act::Crop(file, g, copy) => {
+                self.pane_close();
+                crate::shot::crop(file, g, copy, self.tx.clone());
             }
             Act::Toggle(name) => {
                 let scr = self.pane.as_ref().map(|p| p.screen.clone()).unwrap_or_default();
@@ -956,7 +966,7 @@ impl App {
         }
         p.dirty = false;
         let mut c = std::mem::replace(&mut p.canvas, Canvas::new(1, 1));
-        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl, st: &self.st, players: &self.island.players, phone_name: &self.island.phone_name, wx: &self.desk.weather };
+        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl, shift: self.shift, st: &self.st, players: &self.island.players, phone_name: &self.island.phone_name, wx: &self.desk.weather };
         let t0 = Instant::now();
         p.p.paint(&mut c, &mut cx);
         let ms = t0.elapsed().as_millis() as u64;
@@ -1014,7 +1024,7 @@ impl App {
             }
         };
         let Some(p) = self.pane.as_mut() else { return };
-        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl, st: &self.st, players: &self.island.players, phone_name: &self.island.phone_name, wx: &self.desk.weather };
+        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl, shift: self.shift, st: &self.st, players: &self.island.players, phone_name: &self.island.phone_name, wx: &self.desk.weather };
         let a = p.p.pointer(ev, x, y, &mut cx);
         let hand = p.p.hand();
         self.desk_cursor(if hand { "hand" } else { "" });
@@ -1380,6 +1390,7 @@ impl App {
         if self.desk.dirty && self.desk.stage_cfg {
             self.desk.dirty = false;
             let t0 = Instant::now();
+            self.desk.devs = (self.st.battery, self.st.phone.clone(), self.st.bt_on, self.st.bt_dev);
             self.desk.paint_stage(&mut self.text);
             count("stage", 1);
             count("stage_us", t0.elapsed().as_micros() as u64);
@@ -1407,6 +1418,8 @@ impl App {
             count("card", 1);
             count("card_us", t0.elapsed().as_micros() as u64);
             self.desk.card_canvas = c;
+            // the moment it previews or the landscape may have changed: mist-wall's sky follows (written on a change)
+            self.desk.write_sky(&mut self.text);
             if let Some(l) = &self.desk.card {
                 let cw = self.desk.card_canvas.pm.width() as i32;
                 let (y, h) = rows.unwrap_or((0, self.desk.card_canvas.pm.height() as i32));
@@ -1462,7 +1475,7 @@ impl App {
                 let dy = if vertical.discrete != 0 { vertical.discrete as f64 } else { vertical.absolute };
                 if dy != 0.0 {
                     let wx = self.desk.weather.clone();
-                    if self.desk.wx.wheel(dy > 0.0, &wx) {
+                    if self.desk.wx.wheel(dy > 0.0, &wx, &mut self.desk.cfg) {
                         self.desk.card_dirty = true;
                     }
                 }
@@ -1937,7 +1950,7 @@ impl App {
                 let ev = KeyEvent { time: 0, raw_code: 0, keysym, utf8 };
                 match self.pane.as_mut() {
                     Some(p) => {
-                        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl, st: &self.st, players: &self.island.players, phone_name: &self.island.phone_name, wx: &self.desk.weather };
+                        let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl, shift: self.shift, st: &self.st, players: &self.island.players, phone_name: &self.island.phone_name, wx: &self.desk.weather };
                         let act = p.p.key(&ev, &mut cx);
                         self.pane_act(act);
                         String::new()
@@ -1969,7 +1982,7 @@ impl App {
                     true => {
                         for (ev, x, y) in evs {
                             let Some(p) = self.pane.as_mut() else { break };
-                            let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl, st: &self.st, players: &self.island.players, phone_name: &self.island.phone_name, wx: &self.desk.weather };
+                            let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl, shift: self.shift, st: &self.st, players: &self.island.players, phone_name: &self.island.phone_name, wx: &self.desk.weather };
                             let act = p.p.pointer(ev, x, y, &mut cx);
                             self.pane_act(act);
                         }
@@ -2026,7 +2039,13 @@ impl App {
                 let m: &'static str = match m { "screen" => "screen", "window" => "window", _ => "region" };
                 self.pane_close();
                 self.shot_opts.0 = m;
-                crate::shot::capture(&crate::shot::Opts { mode: m, delay: self.shot_opts.1, copy: self.shot_opts.2 }, self.tx.clone());
+                let o = crate::shot::Opts { mode: m, delay: self.shot_opts.1, copy: self.shot_opts.2 };
+                if m == "region" {
+                    let scr = self.focused_screen();
+                    crate::shot::freeze(&o, scr, self.tx.clone());
+                } else {
+                    crate::shot::capture(&o, self.tx.clone());
+                }
                 String::new()
             }
             ("switcher", "next") => {
@@ -2857,6 +2876,7 @@ impl App {
             Msg::IdleCfg => "IdleCfg",
             Msg::Polkit(..) => "Polkit",
             Msg::Shot(..) => "Shot",
+            Msg::ShotFrozen(..) => "ShotFrozen",
             Msg::WinThumb(..) => "WinThumb",
         };
         DRAWS.with(|d| *d.borrow_mut().entry(k).or_insert(0) += 1);
@@ -2875,6 +2895,10 @@ impl App {
             }
             Msg::Net(n) => self.st.net = n,
             Msg::Bt(on, dev) => {
+                // the Urządzenia card draws these; the desktop is repainted only when what it shows changed
+                if (self.st.bt_on, self.st.bt_dev) != (on, dev) && self.desk.shows("devices") {
+                    self.desk.dirty = true;
+                }
                 self.st.bt_on = on;
                 self.st.bt_dev = dev;
             }
@@ -2895,7 +2919,12 @@ impl App {
                     self.desk.dirty = true;
                 }
             }
-            Msg::Phone(p) => self.st.phone = p,
+            Msg::Phone(p) => {
+                if self.desk.shows("devices") && self.st.phone.as_ref().map(|x| (x.battery, x.charging)) != p.as_ref().map(|x| (x.battery, x.charging)) {
+                    self.desk.dirty = true;
+                }
+                self.st.phone = p;
+            }
             Msg::Ui(p, s) => {
                 let was_start = self.dock.start_open;
                 let is_start = p == "start" || self.pane.as_ref().map(|q| q.p.name() == "start").unwrap_or(false);
@@ -2926,6 +2955,12 @@ impl App {
             }
             Msg::Polkit(ev) => self.on_polkit(ev),
             Msg::Shot(f) => self.thumb_show(f),
+            Msg::ShotFrozen(f, scr, copy) => match crate::shot::Region::new(f.clone(), copy) {
+                Some(r) => self.pane_open_box(Box::new(r), &scr),
+                None => {
+                    let _ = std::fs::remove_file(f);
+                }
+            },
             Msg::WinThumb(a, pm) => {
                 if let Some(p) = self.pane.as_mut() {
                     if p.p.as_winpick().map(|w| w.thumb(a, pm)).unwrap_or(false) {
@@ -3046,6 +3081,9 @@ impl App {
                 if self.st.battery.map(|x| (x.pct.round(), x.charging, x.full)) != b.map(|x| (x.pct.round(), x.charging, x.full)) {
                     self.st.battery = b;
                     self.mark_all();
+                    if self.desk.shows("devices") {
+                        self.desk.dirty = true;
+                    }
                 } else {
                     self.st.battery = b;
                 }
@@ -3233,7 +3271,7 @@ impl KeyboardHandler for App {
             return;
         }
         if let Some(p) = self.pane.as_mut() {
-            let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl, st: &self.st, players: &self.island.players, phone_name: &self.island.phone_name, wx: &self.desk.weather };
+            let mut cx = crate::pane::Ctx { t: &mut self.text, cal: &self.island.calendar, icons: &mut self.icons, imgs: &mut self.imgs, apps: &self.apps, notif_hidden: &mut self.notif_hidden, ctrl: self.ctrl, shift: self.shift, st: &self.st, players: &self.island.players, phone_name: &self.island.phone_name, wx: &self.desk.weather };
             let a = p.p.key(&ev, &mut cx);
             self.pane_act(a);
             return;
@@ -3266,6 +3304,7 @@ impl KeyboardHandler for App {
     }
     fn update_modifiers(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, m: Modifiers, _: RawModifiers, _: u32) {
         self.ctrl = m.ctrl;
+        self.shift = m.shift;
     }
 }
 impl ShmHandler for App {

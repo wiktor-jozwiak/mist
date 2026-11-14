@@ -1,5 +1,5 @@
 @@tagline
-Powłoka pulpitu dla Waylanda inspirowana macOS, napisana w Rust i rysowana na CPU.
+Powłoka pulpitu i kompozytor Waylanda dla Linuksa, napisane w Rust i rysowane na CPU.
 @@desk_img
 desktop.webp
 @@desk_alt
@@ -17,10 +17,14 @@ Klawisze i skrypty
 @@h_dev
 Rozwój
 @@intro
-Mist to cała powłoka pulpitu w jednym procesie: pasek, dock, Dynamic Island, widżety pulpitu, wyszukiwarka,
-centrum sterowania, powiadomienia, ekran blokady i agent polkit. Działa na Hyprlandzie albo na własnym
-kompozytorze, [`mist-comp`](#mist-comp), i można go [wypróbować w oknie](#{{a_try}}) na pulpicie, którego
-już używasz.
+Mist to dwa programy i każdy działa bez drugiego:
+
+| | Co to jest | Gdzie działa |
+|---|---|---|
+| **Powłoka** (`mist-ui`, `mist-wall`) | pasek, dock, Dynamic Island, widżety pulpitu, wyszukiwarka, centrum sterowania, powiadomienia, ekran blokady, agent polkit, menedżer plików i odtwarzacz wideo, w jednym procesie | Hyprland, mist-comp albo [okno](#{{a_try}}) na pulpicie, którego już używasz |
+| **Kompozytor** ([`mist-comp`](#mist-comp)) | kompozytor Waylanda na Smithay, z własnym ekranem logowania | osobna sesja logowania, obok Hyprlanda |
+
+Wygląd celowo pożycza od macOS; pod spodem to zwykły linuksowy pulpit.
 @@note
 > Mist to codzienny pulpit jednej osoby (Arch / CachyOS, dwa monitory, NVIDIA). Jest publiczny, bo działa,
 > a nie dlatego, że jest skończony: licz się z czytaniem kodu.
@@ -31,13 +35,13 @@ Karta pogody w deszczu, nad żywym niebem
 @@sub_island
 Dynamic Island: powiadomienia, głośność, deszcz w najbliższej godzinie, następne wydarzenie
 @@sub_weather
-Karta pogody nad niebem rysowanym na żywo w GLSL
+Karta pogody nad żywym niebem, które idzie za pogodą i godziną
 @@alt_spot
-Wyszukiwarka w stylu Spotlight
+Spotlight odpowiada na 128*42
 @@alt_set
-Okno ustawień
+Ustawienia, strona Personalizacja
 @@sub_spot
-Spotlight: aplikacje, pliki, polecenia, emoji, sieć
+Spotlight: aplikacje, pliki, polecenia, działania, jednostki, strefy czasowe, emoji, sieć
 @@sub_set
 Ustawienia: wszystkie opcje w jednym oknie, stosowane od razu
 @@alt_cc
@@ -56,29 +60,35 @@ Powłoka
 - **Górny pasek:** aktywna aplikacja, zasobnik systemowy (StatusNotifierItem + dbusmenu), sieć, Bluetooth,
   dźwięk, CPU i pamięć, zegar.
 - **Dock:** przypięte i uruchomione aplikacje, powiększenie, wybór okna z podglądem na żywo.
-- **Dynamic Island:** multimedia z korektorem, minutniki, połączenia telefoniczne, powiadomienia, głośność.
-- **Panele:** Spotlight, Start, przełącznik aplikacji, centrum sterowania, centrum powiadomień, historia
-  schowka, emoji, menu sesji, pasek zrzutów ekranu. Spotlight odpowiada w trakcie pisania: działania
-  (`128*42`), jednostki (`212 f to c`, `2 gb to mb`), strefy czasowe (`tokyo time`).
+- **Dynamic Island:** multimedia z korektorem, minutniki, połączenia telefoniczne, powiadomienia, głośność,
+  Caps Lock i informacja o błędzie w pliku konfiguracji (z wierszem i kolumną).
+- **Panele:** Start, Spotlight, przełącznik aplikacji, centrum sterowania, centrum powiadomień, kalendarz,
+  historia schowka, emoji, menu sesji. Pola wyszukiwania działają jak każde pole tekstowe: kursor, strzałki,
+  zaznaczanie Shiftem i Ctrl+A.
+- **Zrzuty ekranu:** obszar wybierany na zamrożonym ekranie, pasek narzędzi, tekst z ekranu (OCR), próbnik
+  koloru.
 - **Przyciąganie okien** jak w Windows 11: przeciągnij do krawędzi lub rogu, Snap Layouts na zielonym
   przycisku albo `Super + Z`, Snap Assist.
+- **Ekran blokady** na PAM, z własnym stylem zegara, rozmyciem i przyciemnieniem.
 @@g_desk
 Pulpit
 @@b_desk
-- **Zegar i szklane karty:** pogoda, gotowość Garmin, bieganie, muzyka, kalendarz, system, zegary świata.
-  Pogoda pochodzi z [Open-Meteo](https://open-meteo.com), bez konta: krzywa godzinowa, cztery dni, deszcz
-  w najbliższej godzinie, słońce i księżyc. Karty Garmin pokazują twoje własne dane z Garmin Connect,
-  synchronizowane do lokalnego pliku SQLite; są ukryte, dopóki raz się nie zalogujesz
-  ([poradnik](../guides/garmin.md)).
-- **Tapety:** zdjęcia, żywe sceny GLSL albo niebo zgodne z aktualną pogodą.
+- **Zegar i szklane karty:** pogoda, gotowość Garmin, bieganie, muzyka, kalendarz, system, zegary świata,
+  notatka z listą zadań, postęp dnia, Słońce i Księżyc, ramka na zdjęcie, baterie urządzeń. Karty Garmin
+  pokazują twoje własne dane z Garmin Connect, synchronizowane do lokalnego pliku SQLite, i są ukryte, dopóki
+  raz się nie zalogujesz ([poradnik](../guides/garmin.md)).
+- **Pogoda** z [Open-Meteo](https://open-meteo.com), bez konta: krzywa godzinowa, cztery dni, deszcz
+  w najbliższej godzinie, dzień Słońca i Księżyca. Niebo karty rysuje się na żywo dla pogody i godziny, którą
+  wskażesz, nad jednym z pięciu krajobrazów (pola, jezioro, góry, miasto, morze).
+- **Tapety:** zdjęcia, żywe sceny GLSL albo niebo aktualnej pogody.
 - **Motywy:** Mist, Catppuccin, Nord, Gruvbox, Tokyo Night, Rosé Pine, Dracula albo własny plik JSON. Szkło,
   okna i akcent zmieniają się na żywo w powłoce oraz w Plikach, Odtwarzaczu i Ustawieniach.
 @@g_repl
 Co zastępuje
 @@b_repl
-- **Demony:** serwer powiadomień, agent polkit, ekran blokady (PAM), bezczynność i usypianie.
-- **Aplikacje:** Mist Files (także okno wyboru pliku każdej aplikacji), Mist Player (libmpv), Ustawienia
-  (język, miejsce pogody, tapeta, układ pulpitu, widżety, nocne światło, blokada i usypianie, powiadomienia).
+- **Demony:** serwer powiadomień, agent polkit, ekran blokady, bezczynność i usypianie.
+- **Aplikacje:** Mist Files, Mist Player i Ustawienia (ekran, dźwięk, Bluetooth, sieć, zasilanie, aplikacje,
+  tapeta, pulpit i widżety, ekran blokady, powiadomienia, język).
 - **Telefon** przez KDE Connect: bateria, powiadomienia, SMS-y i kontakty w panelu, połączenia w wyspie
   (ADB jako zapas dla połączeń).
 @@langs
@@ -215,6 +225,56 @@ Podziękowania
 @@credits
 Zbudowany na [Smithay], [smithay-client-toolkit], [tiny-skia], [swash], [resvg], [zbus] i [Tabler Icons].
 Pierwsza wersja działała na [Quickshell], z [Noctalia] jako punktem odniesienia.
+W rozwoju projektu pomagają asystenci AI.
 @@apple
 Mist nie jest powiązany z Apple. macOS, Dynamic Island, Spotlight i SF Pro to znaki towarowe Apple Inc.,
 wymienione tu wyłącznie po to, by opisać inspirację projektu.
+@@alt_start
+Start: pole wyszukiwania, ulubione aplikacje, dzisiejszy kalendarz, telefon
+@@sub_start
+Start: aplikacje, pliki, polecenia, dzisiejszy dzień i telefon
+@@alt_files
+Mist Files: folder w widoku szczegółów
+@@sub_files
+Mist Files, także okno wyboru pliku każdej aplikacji
+@@alt_player
+Mist Player: sterowanie nad filmem
+@@sub_player
+Mist Player na libmpv: rozdziały, ścieżki, obraz w obrazie
+@@st_mem
+pamięci zajmuje cała powłoka w bezczynności
+@@st_gl
+kontekstów OpenGL w procesie powłoki
+@@st_wake
+wybudzeń w bezczynności, bez odpytywania
+@@h_tour
+Przegląd
+@@alt_wall
+Wydmy, żywa tapeta w GLSL
+@@sub_wall
+Żywe tapety w GLSL, zdjęcia albo niebo aktualnej pogody
+@@alt_emoji
+Wybór emoji
+@@sub_emoji
+Emoji z wyszukiwaniem i kategoriami
+@@alt_themes
+Centrum sterowania w siedmiu wbudowanych motywach
+@@sub_themes
+Mist, Catppuccin, Nord, Gruvbox, Tokyo Night, Rosé Pine, Dracula albo własny plik JSON. Szkło, okna i akcent zmieniają się na żywo.
+@@app_files
+karty, podgląd, inteligentne wyszukiwanie, systemowe okno wyboru pliku
+@@app_player
+libmpv, MPRIS, obraz w obrazie, równe tempo klatek
+@@app_set_name
+Ustawienia
+@@app_set
+ekran, dźwięk, sieć, pulpit, widżety, język
+@@nums
+<b>Liczby</b>: powłoki i kompozytory zmierzone w ten sam sposób
+@@h_stars
+Historia gwiazdek
+@@stars_alt
+Historia gwiazdek wiktor-jozwiak/mist
+@@dev_pics
+Obrazy na tej stronie pochodzą z tych samych renderów poza ekranem, na danych demo: `docs/img/hero.sh`,
+`docs/img/panels.sh`, `docs/img/gifs.sh`.

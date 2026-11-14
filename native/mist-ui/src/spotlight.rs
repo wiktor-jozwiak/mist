@@ -156,7 +156,7 @@ const CATEGORIES: &[(&str, &str, &str)] = &[
 ];
 
 pub struct Spotlight {
-    field: Field,
+    field: crate::edit::LineEdit,
     sel: usize,
     cat_sel: usize,
     cat_rows: Vec<((f32, f32, f32, f32), usize)>,
@@ -283,7 +283,7 @@ impl Spotlight {
     pub fn new(emoji_mode: bool) -> Spotlight {
         let usage = std::fs::read_to_string(usage_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
         let emoji = std::fs::read_to_string(crate::paths::mist_path("native/assets/emoji.json")).or_else(|_| std::fs::read_to_string("/usr/share/noctalia/assets/emoji.json")).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).and_then(|v| v.as_array().cloned()).unwrap_or_default();
-        Spotlight { field: Field::new(if emoji_mode { ":" } else { "" }), sel: 0, cat_sel: 0, cat_rows: Vec::new(), usage, emoji, h: Anim::new(60.0), ptr: (-1.0, -1.0), rows: Vec::new(), card: (0.0, 0.0, 0.0, 0.0), pressed_outside: false, etop: 0, as_emoji: emoji_mode, wins: std::cell::OnceCell::new() }
+        Spotlight { field: crate::edit::LineEdit::new(if emoji_mode { ":" } else { "" }), sel: 0, cat_sel: 0, cat_rows: Vec::new(), usage, emoji, h: Anim::new(60.0), ptr: (-1.0, -1.0), rows: Vec::new(), card: (0.0, 0.0, 0.0, 0.0), pressed_outside: false, etop: 0, as_emoji: emoji_mode, wins: std::cell::OnceCell::new() }
     }
     fn emoji_mode(&self) -> bool {
         self.field.text.starts_with(':')
@@ -451,7 +451,7 @@ impl Pane for Spotlight {
         self.h.running()
     }
     fn seed(&mut self, q: &str) {
-        self.field.text = q.into();
+        self.field.set(q);
     }
     fn paint(&mut self, c: &mut Canvas, cx: &mut Ctx) {
         let t = &mut *cx.t;
@@ -491,25 +491,10 @@ impl Pane for Spotlight {
         // the capsule
         c.icon(t, x0 + 22.0 + 11.0, y0 + 30.0, "search", 22.0, T2);
         let fs = Style::ui(24.0, 400.0);
-        let fh = crate::desktop::line_h(t, &fs);
         let fx = x0 + 22.0 + 22.0 + 14.0;
         let fw = w - (fx - x0) - 22.0;
-        let tw = if self.field.text.is_empty() {
-            crate::desktop::text(c, t, fx, y0 + (60.0 - fh) / 2.0, "Szukaj w Spotlight", &fs, T3, false, Some(fw));
-            0.0
-        } else {
-            // the typed text as typed, never translated
-            let vs = fs.verbatim();
-            let tw = t.width(&self.field.text, &vs);
-            if self.field.sel_all {
-                crate::desktop::rect(c, fx - 2.0, y0 + (60.0 - fh) / 2.0 - 2.0, tw + 4.0, fh + 4.0, 4.0, crate::theme::accent().alpha(0.35));
-            }
-            crate::desktop::text(c, t, fx, y0 + (60.0 - fh) / 2.0, &self.field.text, &vs, T1, false, Some(fw));
-            tw
-        };
-        if !self.field.sel_all {
-            crate::desktop::rect(c, fx + tw + 1.0, y0 + 17.0, 1.5, 26.0, 0.0, T1);
-        }
+        // caret, selection, scroll (the typed text as typed, never translated; the placeholder translated)
+        self.field.paint(c, t, fx, y0, fw, 60.0, &fs, T1, "Szukaj w Spotlight", true, false);
         if (n > 0 || emode) && h > 62.0 {
             crate::desktop::rect(c, x0 + 16.0, y0 + 60.0, w - 32.0, 1.0, 0.0, HAIR);
         }
@@ -738,12 +723,14 @@ impl Pane for Spotlight {
             }
             Keysym::Return | Keysym::KP_Enter => self.activate(self.sel, cx.apps),
             _ => {
-                if self.field.key(ev, cx.ctrl) {
-                    self.sel = 0;
-                    self.etop = 0;
-                    Act::Redraw
-                } else {
-                    Act::None
+                match search_key(&mut self.field, ev, cx.ctrl, cx.shift) {
+                    (_, true) => {
+                        self.sel = 0;
+                        self.etop = 0;
+                        Act::Redraw
+                    }
+                    (true, false) => Act::Redraw,
+                    _ => Act::None,
                 }
             }
         }

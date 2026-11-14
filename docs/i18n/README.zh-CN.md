@@ -1,11 +1,14 @@
 <div align="center">
 
-<img src="../img/banner.svg" alt="Mist" width="100%">
+<img src="../img/logo.svg" alt="" width="104">
 
-**受 macOS 启发的 Wayland 桌面外壳，用 Rust 编写，在 CPU 上绘制。**
+# Mist
+
+**面向 Linux 的 Wayland 桌面外壳和合成器，用 Rust 编写，在 CPU 上绘制。**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/wiktor-jozwiak/mist/ci.yml?branch=main&style=flat-square&label=CI)](../../.github/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/wiktor-jozwiak/mist?style=flat-square&color=3b82f6)](https://github.com/wiktor-jozwiak/mist/releases)
+[![Stars](https://img.shields.io/github/stars/wiktor-jozwiak/mist?style=flat-square&color=e2a03f)](https://github.com/wiktor-jozwiak/mist/stargazers)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-8d8590?style=flat-square)](../../LICENSE)
 [![Discord](https://img.shields.io/badge/discord-chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/4rRabwQTPE)
 
@@ -16,49 +19,80 @@
 
 <img src="../img/desktop-en.webp" alt="Mist 桌面：顶栏、时钟、天气、身体准备度和跑步卡片、Dock" width="100%">
 
-**[功能](#功能) · [为什么轻量](#为什么轻量) · [mist-comp](#mist-comp) ·
+<table>
+  <tr>
+    <td align="center" width="33%"><h3>44 MB</h3><sub>整个外壳空闲时的内存</sub></td>
+    <td align="center" width="33%"><h3>0</h3><sub>外壳进程中的 OpenGL 上下文</sub></td>
+    <td align="center" width="33%"><h3>8 / s</h3><sub>空闲时的唤醒次数，不轮询</sub></td>
+  </tr>
+</table>
+
+**[一览](#一览) · [功能](#功能) · [为什么轻量](#为什么轻量) · [mist-comp](#mist-comp) ·
 [安装](#安装) · [按键](#按键与脚本) · [开发](#开发)**
 
 </div>
 
-Mist 是在一个进程里的完整桌面外壳：顶栏、Dock、灵动岛、桌面小组件、搜索、控制中心、通知、锁屏和 polkit
-代理。它可以运行在 Hyprland 上，也可以运行在自己的合成器 [`mist-comp`](#mist-comp) 上，还可以在你现在使用的
-桌面上[在一个窗口里试用](#2-在窗口里试用)。
+Mist 由两个程序组成，各自都能单独使用：
+
+| | 是什么 | 运行在哪里 |
+|---|---|---|
+| **外壳**（`mist-ui`、`mist-wall`） | 顶栏、Dock、灵动岛、桌面小组件、搜索、控制中心、通知、锁屏、polkit 代理、文件管理器和视频播放器，都在一个进程里 | Hyprland、mist-comp，或者你现在桌面上的[一个窗口](#2-在窗口里试用) |
+| **合成器**（[`mist-comp`](#mist-comp)） | 基于 Smithay 的 Wayland 合成器，带自己的登录界面 | 独立的登录会话，与 Hyprland 并存 |
+
+外观有意借鉴 macOS；底下是一个 Linux 桌面。
 
 > [!NOTE]
 > Mist 是一个人的日常桌面（Arch / CachyOS、双显示器、NVIDIA）。公开它是因为它能用，而不是因为它已经完成：
 > 你可能需要读一些代码。
 
-## 功能
+## 一览
 
 <div align="center">
 
+<img src="../img/island.webp" alt="灵动岛：一条通知、音量、即将下雨、下一个日程" width="100%">
+
+<sub>灵动岛：通知、音量、一小时内降雨、下一个日程</sub>
+
+<br><br>
+
 <table>
   <tr>
-    <td width="50%"><img src="../img/island.gif" alt="灵动岛：一条通知、音量、即将下雨、下一个日程" width="100%"></td>
-    <td width="50%"><img src="../img/weather.gif" alt="雨中的天气卡片，背后是实时天空" width="100%"></td>
+    <td width="50%" align="center"><img src="../img/weather.webp" alt="雨中的天气卡片，背后是实时天空" width="100%"><br><sub>天气卡片之下是随天气和时间变化的实时天空</sub></td>
+    <td width="50%" align="center"><img src="../img/wallpaper.webp" alt="沙丘，GLSL 动态壁纸" width="100%"><br><sub>GLSL 动态壁纸、照片，或当前天气的天空</sub></td>
   </tr>
   <tr>
-    <td align="center"><sub>灵动岛：通知、音量、一小时内降雨、下一个日程</sub></td>
-    <td align="center"><sub>天气卡片与实时 GLSL 天空</sub></td>
+    <td align="center"><img src="../img/panels/start.webp" alt="开始菜单：搜索框、常用应用、今天的日历、手机" width="100%"><br><sub>开始菜单：应用、文件、命令、今天和手机</sub></td>
+    <td align="center"><img src="../img/panels/spotlight.webp" alt="Spotlight 回答 128*42" width="100%"><br><sub>Spotlight：应用、文件、命令、计算、单位、时区、表情、网页</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="../img/panels/spotlight.webp" alt="Spotlight 风格的搜索" width="100%"></td>
-    <td width="50%"><img src="../img/panels/settings.webp" alt="设置窗口" width="100%"></td>
+    <td align="center"><img src="../img/panels/files.webp" alt="Mist Files：详细信息视图中的文件夹" width="100%"><br><sub>Mist Files，同时也是所有应用的文件选择器</sub></td>
+    <td align="center"><img src="../img/panels/player.webp" alt="Mist Player：视频上的控制栏" width="100%"><br><sub>基于 libmpv 的 Mist Player：章节、音轨、画中画</sub></td>
   </tr>
   <tr>
-    <td align="center"><sub>Spotlight：应用、文件、命令、表情、网页</sub></td>
-    <td align="center"><sub>设置：所有选项在一个窗口里，立即生效</sub></td>
+    <td align="center"><img src="../img/panels/settings.webp" alt="设置的个性化页面" width="100%"><br><sub>设置：所有选项在一个窗口里，立即生效</sub></td>
+    <td align="center"><img src="../img/panels/control.webp" alt="控制中心" width="100%"><br><sub>控制中心：网络、蓝牙、手机、声音、夜间模式</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="../img/panels/control.webp" alt="控制中心" width="100%"></td>
-    <td width="50%"><img src="../img/panels/calendar.webp" alt="日历" width="100%"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>控制中心：网络、蓝牙、手机、声音、夜间模式</sub></td>
-    <td align="center"><sub>日历：月视图、日程、新建事件</sub></td>
+    <td align="center"><img src="../img/panels/calendar.webp" alt="日历" width="100%"><br><sub>日历：月视图、日程、新建事件</sub></td>
+    <td align="center"><img src="../img/panels/emoji.webp" alt="表情选择器" width="100%"><br><sub>可搜索、分类的表情选择器</sub></td>
   </tr>
 </table>
+
+<img src="../img/themes.webp" alt="控制中心的七种内置主题" width="100%">
+
+<sub>Mist、Catppuccin、Nord、Gruvbox、Tokyo Night、Rosé Pine、Dracula，或你自己的 JSON 文件。玻璃、窗口和强调色实时切换。</sub>
+
+<br><br>
+
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="../../native/assets/icons/hicolor/scalable/apps/mist-files.svg" alt="" width="88"><br><b>Mist Files</b><br><sub>标签页、预览、智能搜索、系统文件选择器</sub></td>
+    <td align="center" width="33%"><img src="../../native/assets/icons/hicolor/scalable/apps/mist-player.svg" alt="" width="88"><br><b>Mist Player</b><br><sub>libmpv、MPRIS、画中画、平稳帧节奏</sub></td>
+    <td align="center" width="33%"><img src="../../native/assets/icons/hicolor/scalable/apps/mist-settings.svg" alt="" width="88"><br><b>设置</b><br><sub>显示、声音、网络、桌面、小组件、语言</sub></td>
+  </tr>
+</table>
+
+<br>
 
 <a href="https://youtu.be/mwisDtz0Yd0"><img src="../img/demo-poster.webp" alt="Mist demo video (40 s)" width="720"></a>
 
@@ -66,31 +100,36 @@ Mist 是在一个进程里的完整桌面外壳：顶栏、Dock、灵动岛、�
 
 </div>
 
+## 功能
+
 **外壳**
 
-- **顶栏：** 当前应用、系统托盘（StatusNotifierItem + dbusmenu）、网络、蓝牙、音频、CPU 与内存、时钟。
-- **Dock：** 固定与运行中的应用、放大效果、带实时缩略图的窗口选择。
-- **灵动岛：** 带均衡器的媒体、计时器、来电、通知、音量。
-- **面板：** Spotlight、开始菜单、应用切换、控制中心、通知中心、剪贴板历史、表情、会话菜单、截图工具栏。
-  Spotlight 边输入边回答：算式（`128*42`）、单位（`212 f to c`、`2 gb to mb`）、时区（`tokyo time`）。
-- **窗口贴靠**，类似 Windows 11：拖到边缘或角落，绿色按钮或 `Super + Z` 打开 Snap Layouts，Snap Assist。
+- **顶栏：** 当前应用、系统托盘（StatusNotifierItem + dbusmenu）、网络、蓝牙、声音、CPU 和内存、时钟。
+- **Dock：** 固定和运行中的应用、放大效果、带实时缩略图的窗口选择。
+- **灵动岛：** 带均衡器的媒体、计时器、电话、通知、音量、大写锁定，以及配置文件出错时的提示（带行号和列号）。
+- **面板：** 开始菜单、Spotlight、应用切换器、控制中心、通知中心、日历、剪贴板历史、表情、会话菜单。搜索框
+  和普通文本框一样：光标、方向键、Shift 和 Ctrl+A 选择。
+- **截图：** 在冻结的屏幕上选择区域、工具栏、屏幕文字识别（OCR）、取色器。
+- **窗口贴靠**，Windows 11 风格：拖到边缘或角落，绿色按钮或 `Super + Z` 打开 Snap Layouts，Snap Assist。
+- **锁屏** 基于 PAM，可以设置时钟样式、模糊和变暗。
 
 **桌面**
 
-- **时钟和玻璃卡片：** 天气、Garmin 身体准备度、跑步、音乐、日历、系统、世界时钟。天气来自
-  [Open-Meteo](https://open-meteo.com)，无需账号：逐小时曲线、四天预报、一小时内降雨、日月。Garmin 卡片显示你
-  自己的 Garmin Connect 数据，同步到本地 SQLite 文件；在你登录一次之前它们不会出现
-  （[说明](../guides/garmin.md)）。
-- **壁纸：** 照片、GLSL 动态场景，或跟随当前天气的天空。
+- **时钟和玻璃卡片：** 天气、Garmin 身体准备度、跑步、音乐、日历、系统、世界时钟、带待办的便签、一天的进度、
+  太阳和月亮、相框、设备电量。Garmin 卡片显示你自己的 Garmin Connect 数据，同步到本地 SQLite 文件，在你登录
+  一次之前保持隐藏（[指南](../guides/garmin.md)）。
+- **天气** 来自 [Open-Meteo](https://open-meteo.com)，无需账号：逐小时曲线、四天预报、未来一小时的降雨、
+  太阳和月亮的一天。卡片的天空按天气和你指向的时刻实时绘制，背景是五种风景之一（田野、湖泊、山脉、城市、大海）。
+- **壁纸：** 照片、实时 GLSL 场景，或当前天气的天空。
 - **主题：** Mist、Catppuccin、Nord、Gruvbox、Tokyo Night、Rosé Pine、Dracula，或你自己的 JSON 文件。玻璃、
-  窗口和强调色会在外壳以及 Files、Player 和设置中实时切换。
+  窗口和强调色在外壳以及 Files、Player 和设置中实时切换。
 
 **它取代了什么**
 
-- **守护进程：** 通知服务、polkit 代理、锁屏（PAM）、空闲与睡眠。
-- **应用：** Mist Files（也是所有应用的文件选择器）、Mist Player（libmpv）、设置（语言、天气地点、壁纸、
-  桌面布局、小组件、夜间模式、锁屏与睡眠、通知）。
-- **手机**，通过 KDE Connect：电量、通知、短信和联系人面板，来电显示在灵动岛（来电可用 ADB 作为后备）。
+- **守护进程：** 通知服务、polkit 代理、锁屏、空闲和睡眠。
+- **应用：** Mist Files、Mist Player 和设置（显示、声音、蓝牙、网络、电源、应用、壁纸、桌面和小组件、锁屏、
+  通知、语言）。
+- **手机**，通过 KDE Connect：电量、通知、面板中的短信和联系人、灵动岛中的来电（来电可用 ADB 作为备用）。
 
 界面支持**英语、波兰语、德语、西班牙语和法语**，跟随 `$LANG` 或设置中的选择。每种语言是
 [native/assets/i18n](../../native/assets/i18n) 中的一个 JSON 文件。
@@ -107,6 +146,11 @@ Mist 最初是一个 Quickshell 配置，空闲时占用 428 MB 内存和 9.5 % 
   使用照片壁纸且没有这些内容时它会退出，由 `mist-ui` 绘制照片。
 
 <p align="center"><img src="../img/memory.svg" alt="各 shell 单独运行时的空闲内存 (PSS)，从 swaybar 的 6 MB 到 Noctalia 的 192 MB：使用照片壁纸的 Mist 44 MB，使用动态壁纸的 Mist 144 MB" width="100%"></p>
+
+<details>
+<summary><b>数据</b>：以相同方法测量的外壳与合成器</summary>
+
+<br>
 
 **Shell。** 每个 shell 单独运行在全新的无头 sway 中，由 GPU 渲染（RTX 4060，两个 1080p 输出），使用其软件包
 自带的配置；运行 3 次取中位数（[bench/shells.sh](../../bench/shells.sh)）。*空闲*：一分钟内什么都不发生。
@@ -135,6 +179,8 @@ Mist 最初是一个 Quickshell 配置，空闲时占用 428 MB 内存和 9.5 % 
 
 Hyprland 和 niri 没有可由脚本启动的无头模式，因此未列入表中。方法、每次运行、唤醒次数、各进程数据以及之前在
 真实会话中的测量：[docs/BENCHMARKS.md](../BENCHMARKS.md)。
+
+</details>
 
 ## mist-comp
 
@@ -232,6 +278,8 @@ cd native && cargo build --release && cargo test --release
 `mist-wall-bin --png out.ppm dunes 1920 1080`。`native/mist-comp/tests/run-all.sh` 在嵌套窗口中运行合成器测试。
 更多内容见 [native/README.md](../../native/README.md) 和 [CONTRIBUTING.md](../../CONTRIBUTING.md)。
 
+本页图片来自同样的离屏渲染，使用演示数据：`docs/img/hero.sh`、`docs/img/panels.sh`、`docs/img/gifs.sh`。
+
 | 路径 | 内容 |
 |---|---|
 | `native/mist-ui` | 外壳的所有界面 |
@@ -242,10 +290,21 @@ cd native && cargo build --release && cargo test --release
 | `bench/` | 基准测试工具及其结果 |
 | 标签 `legacy-qml` | 最初的 Quickshell 版本 |
 
+## Star 历史
+
+<a href="https://star-history.com/#wiktor-jozwiak/mist&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date&theme=dark">
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date">
+    <img alt="wiktor-jozwiak/mist 的 Star 历史" src="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date" width="100%">
+  </picture>
+</a>
+
 ## 致谢
 
 基于 [Smithay]、[smithay-client-toolkit]、[tiny-skia]、[swash]、[resvg]、[zbus] 和 [Tabler Icons] 构建。
 第一个版本运行在 [Quickshell] 上，并以 [Noctalia] 为参考。
+AI 编程助手协助项目的开发。
 
 <sub>Mist 与 Apple 没有任何关联。macOS、Dynamic Island、Spotlight 和 SF Pro 是 Apple Inc. 的商标，这里提及它们
 只是为了说明设计灵感的来源。</sub>

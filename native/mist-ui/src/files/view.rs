@@ -960,10 +960,11 @@ impl Files {
             }
             let n = t.sel.len();
             if n > 0 {
+                // "zaznaczono 3" and the size as segments of their own: tr() translates "zaznaczono", keeps the number
                 s += &format!(" · zaznaczono {n}");
                 let sz = t.sel_size();
                 if sz > 0 {
-                    s += &format!(", {}", fs::size(sz));
+                    s += &format!(" · {}", fs::size(sz));
                 }
             }
             s

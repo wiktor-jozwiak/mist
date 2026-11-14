@@ -1,11 +1,14 @@
 <div align="center">
 
-<img src="../img/banner.svg" alt="Mist" width="100%">
+<img src="../img/logo.svg" alt="" width="104">
 
-**macOS に着想を得た Wayland 用デスクトップシェル。Rust で書かれ、CPU で描画します。**
+# Mist
+
+**Linux 用の Wayland デスクトップシェルとコンポジター。Rust で書かれ、CPU で描画します。**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/wiktor-jozwiak/mist/ci.yml?branch=main&style=flat-square&label=CI)](../../.github/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/wiktor-jozwiak/mist?style=flat-square&color=3b82f6)](https://github.com/wiktor-jozwiak/mist/releases)
+[![Stars](https://img.shields.io/github/stars/wiktor-jozwiak/mist?style=flat-square&color=e2a03f)](https://github.com/wiktor-jozwiak/mist/stargazers)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-8d8590?style=flat-square)](../../LICENSE)
 [![Discord](https://img.shields.io/badge/discord-chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/4rRabwQTPE)
 
@@ -16,50 +19,80 @@
 
 <img src="../img/desktop-en.webp" alt="Mist のデスクトップ：トップバー、時計、天気・コンディション・ランニングのカード、Dock" width="100%">
 
-**[できること](#できること) · [軽い理由](#軽い理由) · [mist-comp](#mist-comp) ·
+<table>
+  <tr>
+    <td align="center" width="33%"><h3>44 MB</h3><sub>アイドル時のシェル全体のメモリ</sub></td>
+    <td align="center" width="33%"><h3>0</h3><sub>シェルプロセス内の OpenGL コンテキスト</sub></td>
+    <td align="center" width="33%"><h3>8 / s</h3><sub>アイドル時のウェイクアップ、ポーリングなし</sub></td>
+  </tr>
+</table>
+
+**[ツアー](#ツアー) · [できること](#できること) · [軽い理由](#軽い理由) · [mist-comp](#mist-comp) ·
 [インストール](#インストール) · [キー](#キーとスクリプト) · [開発](#開発)**
 
 </div>
 
-Mist はデスクトップシェルのすべてをひとつのプロセスにまとめたものです：バー、Dock、Dynamic Island、
-デスクトップウィジェット、検索、コントロールセンター、通知、ロック画面、polkit エージェント。Hyprland の上でも、
-独自のコンポジター [`mist-comp`](#mist-comp) の上でも動き、いま使っているデスクトップの上で
-[ウィンドウの中で試す](#2-ウィンドウの中で試す)こともできます。
+Mist はふたつのプログラムで、どちらも単独で使えます：
+
+| | 何か | どこで動くか |
+|---|---|---|
+| **シェル**（`mist-ui`、`mist-wall`） | バー、Dock、Dynamic Island、デスクトップウィジェット、検索、コントロールセンター、通知、ロック画面、polkit エージェント、ファイルマネージャー、動画プレーヤーをひとつのプロセスで | Hyprland、mist-comp、またはいま使っているデスクトップ上の[ウィンドウ](#2-ウィンドウの中で試す) |
+| **コンポジター**（[`mist-comp`](#mist-comp)） | Smithay ベースの Wayland コンポジター、専用のログイン画面つき | Hyprland と並ぶ独立したログインセッション |
+
+見た目は意図して macOS を参考にしています。中身は Linux のデスクトップです。
 
 > [!NOTE]
 > Mist はひとりの日常のデスクトップです（Arch / CachyOS、デュアルモニター、NVIDIA）。完成したからではなく、
 > 動くから公開しています。コードを読む覚悟をしてください。
 
-## できること
+## ツアー
 
 <div align="center">
 
+<img src="../img/island.webp" alt="Dynamic Island：通知、音量、まもなく雨、次の予定" width="100%">
+
+<sub>Dynamic Island：通知、音量、1 時間以内の雨、次の予定</sub>
+
+<br><br>
+
 <table>
   <tr>
-    <td width="50%"><img src="../img/island.gif" alt="Dynamic Island：通知、音量、まもなく雨、次の予定" width="100%"></td>
-    <td width="50%"><img src="../img/weather.gif" alt="雨の中の天気カードと、その背後のライブの空" width="100%"></td>
+    <td width="50%" align="center"><img src="../img/weather.webp" alt="雨の中の天気カードと、その背後のライブの空" width="100%"><br><sub>天気と時刻に合わせて動くライブの空の上の天気カード</sub></td>
+    <td width="50%" align="center"><img src="../img/wallpaper.webp" alt="砂丘、GLSL のライブ壁紙" width="100%"><br><sub>GLSL のライブ壁紙、写真、または現在の天気の空</sub></td>
   </tr>
   <tr>
-    <td align="center"><sub>Dynamic Island：通知、音量、1 時間以内の雨、次の予定</sub></td>
-    <td align="center"><sub>リアルタイムの GLSL の空に重なる天気カード</sub></td>
+    <td align="center"><img src="../img/panels/start.webp" alt="スタート：検索欄、お気に入りのアプリ、今日のカレンダー、電話" width="100%"><br><sub>スタート：アプリ、ファイル、コマンド、今日の予定と電話</sub></td>
+    <td align="center"><img src="../img/panels/spotlight.webp" alt="128*42 に答える Spotlight" width="100%"><br><sub>Spotlight：アプリ、ファイル、コマンド、計算、単位、タイムゾーン、絵文字、ウェブ</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="../img/panels/spotlight.webp" alt="Spotlight 風の検索" width="100%"></td>
-    <td width="50%"><img src="../img/panels/settings.webp" alt="設定ウィンドウ" width="100%"></td>
+    <td align="center"><img src="../img/panels/files.webp" alt="Mist Files：詳細表示のフォルダー" width="100%"><br><sub>Mist Files、すべてのアプリのファイル選択ダイアログでもあります</sub></td>
+    <td align="center"><img src="../img/panels/player.webp" alt="Mist Player：動画の上のコントロール" width="100%"><br><sub>libmpv ベースの Mist Player：チャプター、トラック、ピクチャーインピクチャー</sub></td>
   </tr>
   <tr>
-    <td align="center"><sub>Spotlight：アプリ、ファイル、コマンド、絵文字、ウェブ</sub></td>
-    <td align="center"><sub>設定：すべての項目がひとつのウィンドウに、すぐに反映</sub></td>
+    <td align="center"><img src="../img/panels/settings.webp" alt="設定のパーソナライズページ" width="100%"><br><sub>設定：すべての項目がひとつのウィンドウに、すぐに反映</sub></td>
+    <td align="center"><img src="../img/panels/control.webp" alt="コントロールセンター" width="100%"><br><sub>コントロールセンター：ネットワーク、Bluetooth、電話、サウンド、夜間モード</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="../img/panels/control.webp" alt="コントロールセンター" width="100%"></td>
-    <td width="50%"><img src="../img/panels/calendar.webp" alt="カレンダー" width="100%"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>コントロールセンター：ネットワーク、Bluetooth、電話、サウンド、夜間モード</sub></td>
-    <td align="center"><sub>カレンダー：月表示、予定一覧、新しい予定</sub></td>
+    <td align="center"><img src="../img/panels/calendar.webp" alt="カレンダー" width="100%"><br><sub>カレンダー：月表示、予定一覧、新しい予定</sub></td>
+    <td align="center"><img src="../img/panels/emoji.webp" alt="絵文字ピッカー" width="100%"><br><sub>検索とカテゴリ付きの絵文字ピッカー</sub></td>
   </tr>
 </table>
+
+<img src="../img/themes.webp" alt="7 つの内蔵テーマで表示したコントロールセンター" width="100%">
+
+<sub>Mist、Catppuccin、Nord、Gruvbox、Tokyo Night、Rosé Pine、Dracula、または自作の JSON ファイル。ガラス、ウィンドウ、アクセントはその場で切り替わります。</sub>
+
+<br><br>
+
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="../../native/assets/icons/hicolor/scalable/apps/mist-files.svg" alt="" width="88"><br><b>Mist Files</b><br><sub>タブ、プレビュー、スマート検索、システムのファイル選択</sub></td>
+    <td align="center" width="33%"><img src="../../native/assets/icons/hicolor/scalable/apps/mist-player.svg" alt="" width="88"><br><b>Mist Player</b><br><sub>libmpv、MPRIS、ピクチャーインピクチャー、安定したフレーム間隔</sub></td>
+    <td align="center" width="33%"><img src="../../native/assets/icons/hicolor/scalable/apps/mist-settings.svg" alt="" width="88"><br><b>設定</b><br><sub>ディスプレイ、サウンド、ネットワーク、デスクトップ、ウィジェット、言語</sub></td>
+  </tr>
+</table>
+
+<br>
 
 <a href="https://youtu.be/mwisDtz0Yd0"><img src="../img/demo-poster.webp" alt="Mist demo video (40 s)" width="720"></a>
 
@@ -67,35 +100,42 @@ Mist はデスクトップシェルのすべてをひとつのプロセスにま
 
 </div>
 
+## できること
+
 **シェル**
 
-- **トップバー：** 使用中のアプリ、システムトレイ（StatusNotifierItem + dbusmenu）、ネットワーク、Bluetooth、
-  オーディオ、CPU とメモリ、時計。
-- **Dock：** ピン留めと起動中のアプリ、拡大表示、ライブサムネイル付きのウィンドウ選択。
-- **Dynamic Island：** イコライザー付きのメディア、タイマー、着信、通知、音量。
-- **パネル：** Spotlight、スタート、アプリ切り替え、コントロールセンター、通知センター、クリップボード履歴、
-  絵文字、セッションメニュー、スクリーンショットツールバー。Spotlight は入力中に答えます：計算（`128*42`）、
-  単位（`212 f to c`、`2 gb to mb`）、タイムゾーン（`tokyo time`）。
-- **ウィンドウのスナップ**（Windows 11 風）：端や角へドラッグ、緑のボタンか `Super + Z` で Snap Layouts、
-  Snap Assist。
+- **トップバー：** アクティブなアプリ、システムトレイ（StatusNotifierItem + dbusmenu）、ネットワーク、Bluetooth、
+  サウンド、CPU とメモリ、時計。
+- **Dock：** ピン留めと実行中のアプリ、拡大表示、ライブサムネイル付きのウィンドウ選択。
+- **Dynamic Island：** イコライザー付きのメディア、タイマー、通話、通知、音量、Caps Lock、設定ファイルに
+  誤りがあるときのお知らせ（行と列つき）。
+- **パネル：** スタート、Spotlight、アプリスイッチャー、コントロールセンター、通知センター、カレンダー、
+  クリップボード履歴、絵文字、セッションメニュー。検索欄は普通のテキスト欄と同じく、カーソル、矢印キー、
+  Shift と Ctrl+A での選択が使えます。
+- **スクリーンショット：** 止めた画面の上で範囲を選択、ツールバー、画面の文字認識（OCR）、カラーピッカー。
+- **ウィンドウのスナップ**（Windows 11 風）：端や角へドラッグ、緑のボタンか `Super + Z` で Snap Layouts、Snap Assist。
+- **ロック画面** は PAM で動き、時計のスタイル、ぼかし、暗さを設定できます。
 
 **デスクトップ**
 
-- **時計とガラスのカード：** 天気、Garmin のコンディション、ランニング、音楽、カレンダー、システム、世界時計。
-  天気はアカウント不要の [Open-Meteo](https://open-meteo.com) から：1 時間ごとのグラフ、4 日間、1 時間以内の雨、
-  太陽と月。Garmin のカードは自分の Garmin Connect のデータを表示し、ローカルの SQLite ファイルに同期されます。
-  一度ログインするまでカードは表示されません（[ガイド](../guides/garmin.md)）。
-- **壁紙：** 写真、動く GLSL シーン、現在の天気に合わせた空。
+- **時計とガラスのカード：** 天気、Garmin のコンディション、ランニング、音楽、カレンダー、システム、世界時計、
+  ToDo 付きメモ、一日の進み具合、太陽と月、フォトフレーム、デバイスのバッテリー。Garmin のカードは自分の
+  Garmin Connect のデータをローカルの SQLite ファイルに同期して表示し、一度ログインするまでは表示されません
+  （[ガイド](../guides/garmin.md)）。
+- **天気** は [Open-Meteo](https://open-meteo.com) から、アカウント不要：1 時間ごとのグラフ、4 日間、次の 1 時間の雨、
+  太陽と月の一日。カードの空は天気と指した時刻に合わせてライブで描かれ、5 つの風景（畑、湖、山、街、海）の
+  どれかの上に広がります。
+- **壁紙：** 写真、ライブの GLSL シーン、または今の天気の空。
 - **テーマ：** Mist、Catppuccin、Nord、Gruvbox、Tokyo Night、Rosé Pine、Dracula、または自分の JSON ファイル。
-  ガラス、ウィンドウ、アクセントカラーは、シェルでも Files、Player、設定でもその場で切り替わります。
+  ガラス、ウィンドウ、アクセントはシェルと Files、Player、設定でその場で切り替わります。
 
 **置き換えるもの**
 
-- **デーモン：** 通知サーバー、polkit エージェント、ロック画面（PAM）、アイドルとスリープ。
-- **アプリ：** Mist Files（あらゆるアプリのファイル選択ダイアログも兼ねる）、Mist Player（libmpv）、設定（言語、
-  天気の地点、壁紙、デスクトップの配置、ウィジェット、夜間モード、ロックとスリープ、通知）。
-- **電話**（KDE Connect 経由）：バッテリー、通知、SMS と連絡先をパネルに、通話はアイランドに（通話は ADB を
-  予備の経路として使えます）。
+- **デーモン：** 通知サーバー、polkit エージェント、ロック画面、アイドルとスリープ。
+- **アプリ：** Mist Files、Mist Player、設定（ディスプレイ、サウンド、Bluetooth、ネットワーク、電源、アプリ、
+  壁紙、デスクトップとウィジェット、ロック画面、通知、言語）。
+- **電話**（KDE Connect 経由）：バッテリー、通知、パネルでの SMS と連絡先、アイランドでの着信（着信は ADB を
+  予備として使えます）。
 
 UI は**英語、ポーランド語、ドイツ語、スペイン語、フランス語**に対応し、`$LANG` か設定での選択に従います。
 言語は [native/assets/i18n](../../native/assets/i18n) の JSON ファイルひとつです。
@@ -114,6 +154,11 @@ Mist ははじめ、アイドル時に 428 MB と CPU 9.5 % を使う Quickshell
   ギャラリーを描きます。写真の壁紙でそのどれもないときは終了し、写真は `mist-ui` が描きます。
 
 <p align="center"><img src="../img/memory.svg" alt="各シェル単独でのアイドル時メモリ (PSS)。swaybar の 6 MB から Noctalia の 192 MB まで：写真の壁紙の Mist は 44 MB、動く壁紙の Mist は 144 MB" width="100%"></p>
+
+<details>
+<summary><b>数値</b>：同じ方法で測ったシェルとコンポジター</summary>
+
+<br>
 
 **シェル。** それぞれを単独で、GPU 上の新しいヘッドレス sway（RTX 4060、1080p 出力 2 つ）で、パッケージ付属の
 設定のまま実行。3 回の中央値（[bench/shells.sh](../../bench/shells.sh)）。*アイドル*：1 分間何も起きない。
@@ -143,6 +188,8 @@ Mist ははじめ、アイドル時に 428 MB と CPU 9.5 % を使う Quickshell
 
 Hyprland と niri にはスクリプトから起動できるヘッドレスモードがないため、表にありません。方法、各回の結果、
 起床回数、プロセスごとの数値、以前の実セッションでの計測は [docs/BENCHMARKS.md](../BENCHMARKS.md) にあります。
+
+</details>
 
 ## mist-comp
 
@@ -248,6 +295,8 @@ cd native && cargo build --release && cargo test --release
 ネストしたウィンドウで実行します。詳しくは [native/README.md](../../native/README.md) と
 [CONTRIBUTING.md](../../CONTRIBUTING.md) へ。
 
+このページの画像は同じオフスクリーン描画から、デモデータで作られています：`docs/img/hero.sh`、`docs/img/panels.sh`、`docs/img/gifs.sh`。
+
 | パス | 内容 |
 |---|---|
 | `native/mist-ui` | シェルのすべての画面 |
@@ -258,10 +307,21 @@ cd native && cargo build --release && cargo test --release
 | `bench/` | ベンチマークのツールと結果 |
 | タグ `legacy-qml` | 最初の Quickshell 版 |
 
+## スター履歴
+
+<a href="https://star-history.com/#wiktor-jozwiak/mist&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date&theme=dark">
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date">
+    <img alt="wiktor-jozwiak/mist のスター履歴" src="https://api.star-history.com/svg?repos=wiktor-jozwiak/mist&type=Date" width="100%">
+  </picture>
+</a>
+
 ## クレジット
 
 [Smithay]、[smithay-client-toolkit]、[tiny-skia]、[swash]、[resvg]、[zbus]、[Tabler Icons] の上に作られています。
 最初のバージョンは [Quickshell] 上で動き、[Noctalia] を参考にしました。
+AI コーディングアシスタントが開発を手伝っています。
 
 <sub>Mist は Apple とは無関係です。macOS、Dynamic Island、Spotlight、SF Pro は Apple Inc. の商標であり、デザインの
 着想元を説明するためにのみ言及しています。</sub>

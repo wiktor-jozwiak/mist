@@ -236,14 +236,16 @@ pub enum Hit {
     Sheet,                 // swallows the pointer
     // weather card
     Metric(&'static str),
+    Hero,                  // the big number: the next thing to lead with
     Day(usize),
     Foot,
     Timeline,
     Sun,
     Moon,
-    Pop,
     // the music card's buttons (prev / toggle / next)
     Media(&'static str),
+    // the note card: open its file
+    Note,
 }
 pub type Hits = Vec<(f32, f32, f32, f32, Hit)>;
 pub fn hit_at(h: &Hits, x: f32, y: f32) -> Option<Hit> {
@@ -252,7 +254,9 @@ pub fn hit_at(h: &Hits, x: f32, y: f32) -> Option<Hit> {
 
 // ------------------------------------------------------------------ settings (widgets.json)
 // every widget that can take a place in the bento row (key, name); weather is the wide one
-pub const WIDGETS: [(&str, &str); 7] = [("weather", "Pogoda"), ("garmin", "Garmin"), ("running", "Bieganie"), ("music", "Muzyka"), ("calendar", "Kalendarz"), ("system", "System"), ("clocks", "Zegary")];
+// the weather sky's landscapes, in the order mist-wall numbers them (sky.json "land")
+pub const LANDS: [&str; 5] = ["fields", "lake", "mountains", "city", "sea"];
+pub const WIDGETS: [(&str, &str); 12] = [("weather", "Pogoda"), ("garmin", "Garmin"), ("running", "Bieganie"), ("music", "Muzyka"), ("calendar", "Kalendarz"), ("system", "System"), ("clocks", "Zegary"), ("note", "Notatka"), ("time", "Czas"), ("astro", "Słońce i Księżyc"), ("photo", "Zdjęcie"), ("devices", "Urządzenia")];
 pub fn widget_name(k: &str) -> &'static str {
     WIDGETS.iter().find(|w| w.0 == k).map(|w| w.1).unwrap_or("")
 }
@@ -264,6 +268,11 @@ pub fn widget_icon(k: &str) -> &'static str {
         "music" => "music",
         "calendar" => "calendar",
         "system" => "cpu",
+        "note" => "fileText",
+        "time" => "hourglass",
+        "astro" => "sunMoon",
+        "photo" => "photo",
+        "devices" => "battery",
         _ => "clock",
     }
 }
@@ -275,6 +284,11 @@ pub fn widget_color(k: &str) -> Rgba {
         "music" => Rgba::rgb8(0xff, 0x37, 0x5f, 1.0),
         "calendar" => Rgba::rgb8(0xff, 0x45, 0x3a, 1.0),
         "system" => Rgba::rgb8(0x8e, 0x8e, 0x93, 1.0),
+        "note" => Rgba::rgb8(0xe0, 0xb0, 0x3c, 1.0),
+        "time" => Rgba::rgb8(0x5e, 0x5c, 0xe6, 1.0),
+        "astro" => Rgba::rgb8(0xbf, 0x5a, 0xf2, 1.0),
+        "photo" => Rgba::rgb8(0x64, 0xd2, 0xff, 1.0),
+        "devices" => Rgba::rgb8(0x34, 0xc7, 0x59, 1.0),
         _ => Rgba::rgb8(0xff, 0xcc, 0x00, 1.0),
     }
 }
@@ -296,15 +310,21 @@ pub fn groups(card: &str) -> Vec<Group> {
         "desk" => vec![
             g("Liczba kart", "cards", false, 0, 0, &[(json!(3), "Trzy"), (json!(2), "Dwie"), (json!(1), "Jedna"), (json!(0), "Bez kart")]),
             g("Zegar", "clock", false, 0, 0, &[(s("big"), "Duży"), (s("small"), "Mały"), (s("hide"), "Ukryty")]),
-            g("Data", "date", false, 0, 0, &[(s("show"), "Pokaż"), (s("hide"), "Ukryj")]),
+            g("Data", "date", false, 0, 0, &[(s("show"), "Pełna"), (s("short"), "Krótka"), (s("hide"), "Ukryta")]),
             g("Wschód i zachód słońca", "sun", false, 0, 0, &[(s("show"), "Pokaż"), (s("hide"), "Ukryj")]),
             g("Tło kart", "glass", false, 0, 0, &[(s("clear"), "Przejrzyste"), (s("light"), "Jaśniejsze"), (s("normal"), "Standard"), (s("dark"), "Ciemniejsze")]),
             g("Grubość zegara", "clockw", false, 0, 0, &[(s("thin"), "Cienki"), (s("regular"), "Standard"), (s("bold"), "Gruby")]),
-            g("Kolor zegara", "clockc", false, 0, 0, &[(s("white"), "Biały"), (s("accent"), "Akcent"), (s("warm"), "Ciepły")]),
+            g("Kolor zegara", "clockc", false, 0, 0, &[(s("white"), "Biały"), (s("accent"), "Akcent"), (s("warm"), "Ciepły"), (s("blue"), "Niebieski"), (s("pink"), "Różowy")]),
+            g("Format godziny", "h12", false, 0, 0, &[(s("24"), "24 h"), (s("12"), "12 h")]),
+            g("Przezroczystość zegara", "clocka", false, 0, 0, &[(s("full"), "Pełny"), (s("soft"), "Lżejszy"), (s("ghost"), "Ledwo widoczny")]),
+            g("Poświata kart", "glow", false, 0, 0, &[(s("off"), "Wyłączona"), (s("soft"), "Delikatna"), (s("normal"), "Standard"), (s("strong"), "Mocna")]),
         ],
         "weather" => vec![
             g("Główna liczba", "hero", false, 0, 0, &[(s("temp"), "Temperatura"), (s("feels"), "Odczuwalna"), (s("rain"), "Szansa opadu"), (s("wind"), "Wiatr")]),
             g("Wykres", "metric", false, 0, 0, &[(s("temp"), "Temperatura"), (s("rain"), "Opady"), (s("wind"), "Wiatr")]),
+            g("Krajobraz", "land", false, 0, 0, &[(s("fields"), "Pola"), (s("lake"), "Jezioro"), (s("mountains"), "Góry"), (s("city"), "Miasto"), (s("sea"), "Morze")]),
+            g("Deszcz i śnieg", "fx", false, 0, 0, &[(s("off"), "Wyłączone"), (s("soft"), "Delikatne"), (s("full"), "Pełne")]),
+            g("Słońce i księżyc", "astro", false, 0, 0, &[(s("show"), "Pokaż"), (s("hide"), "Ukryj")]),
             g("Oś czasu", "hours", false, 0, 0, &[(json!(12), "12 h"), (json!(24), "24 h"), (json!(48), "48 h")]),
             g("Prognoza dni", "days", false, 0, 0, &[(s("show"), "Pokaż"), (s("hide"), "Ukryj")]),
             g("Podpowiedzi w stopce", "insights", true, 0, 1, &[(s("rain"), "Opady"), (s("run"), "Okno na bieg"), (s("wear"), "Ubiór"), (s("wind"), "Porywy"), (s("light"), "Światło dnia"), (s("tomorrow"), "Jutro")]),
@@ -329,7 +349,42 @@ pub fn groups(card: &str) -> Vec<Group> {
         ],
         "clocks" => vec![
             g("Zegar", "style", false, 0, 0, &[(s("analog"), "Wskazówkowy"), (s("digital"), "Cyfrowy")]),
+            g("Tarcza", "face", false, 0, 0, &[(s("ticks"), "Kreski"), (s("numbers"), "Cyfry"), (s("minimal"), "Gładka")]),
+            g("Kolor", "accent", false, 0, 0, &[(s("accent"), "Akcent"), (s("warm"), "Ciepły"), (s("blue"), "Niebieski"), (s("white"), "Biały")]),
+            g("Format godziny", "h12", false, 0, 0, &[(s("24"), "24 h"), (s("12"), "12 h")]),
             g("Miasta", "cities", true, 3, 0, &crate::deskwidgets::CITIES.iter().map(|c| (s(c.0), c.1)).collect::<Vec<_>>()),
+        ],
+        "note" => vec![
+            g("Tekst", "size", false, 0, 0, &[(s("small"), "Mały"), (s("normal"), "Standard"), (s("large"), "Duży")]),
+            g("Wygląd", "look", false, 0, 0, &[(s("glass"), "Szkło"), (s("paper"), "Kartka")]),
+        ],
+        "time" => vec![
+            g("Pokaż", "show", true, 4, 1, &[(s("day"), "Dzień"), (s("week"), "Tydzień"), (s("month"), "Miesiąc"), (s("year"), "Rok")]),
+            g("Odliczanie", "count", false, 0, 0, &[(s("event"), "Wydarzenie"), (s("weekend"), "Weekend"), (s("newyear"), "Nowy Rok"), (s("hide"), "Ukryj")]),
+        ],
+        // the lock screen's clock (mist-ui-bin lock reads it when it starts)
+        "lock" => vec![
+            g("Zegar", "clock", false, 0, 0, &[(s("big"), "Duży"), (s("small"), "Mały"), (s("hide"), "Ukryty")]),
+            g("Grubość zegara", "clockw", false, 0, 0, &[(s("thin"), "Cienki"), (s("regular"), "Standard"), (s("bold"), "Gruby")]),
+            g("Kolor zegara", "clockc", false, 0, 0, &[(s("white"), "Biały"), (s("accent"), "Akcent"), (s("warm"), "Ciepły"), (s("blue"), "Niebieski"), (s("pink"), "Różowy")]),
+            g("Data", "date", false, 0, 0, &[(s("show"), "Pokaż"), (s("hide"), "Ukryj")]),
+            g("Format godziny", "h12", false, 0, 0, &[(s("24"), "24 h"), (s("12"), "12 h")]),
+            g("Format daty", "datef", false, 0, 0, &[(s("full"), "Pełna"), (s("short"), "Krótka")]),
+            g("Położenie zegara", "pos", false, 0, 0, &[(s("top"), "Góra"), (s("middle"), "Środek")]),
+            g("Rozmycie tapety", "blur", false, 0, 0, &[(s("wake"), "Po wybudzeniu"), (s("always"), "Zawsze"), (s("never"), "Nigdy")]),
+            g("Przyciemnienie", "dim", false, 0, 0, &[(s("none"), "Brak"), (s("normal"), "Standard"), (s("strong"), "Mocne")]),
+            g("Zdjęcie użytkownika", "avatar", false, 0, 0, &[(s("show"), "Pokaż"), (s("hide"), "Ukryj")]),
+        ],
+        "photo" => vec![
+            g("Zdjęcie", "pick", false, 0, 0, &[(s("daily"), "Codziennie inne"), (s("hourly"), "Co godzinę"), (s("file"), "Własny plik")]),
+            g("Kadr", "fit", false, 0, 0, &[(s("fill"), "Wypełnij"), (s("fit"), "Dopasuj")]),
+            g("Podpis", "caption", false, 0, 0, &[(s("show"), "Pokaż"), (s("hide"), "Ukryj")]),
+        ],
+        "devices" => vec![
+            g("Pokaż", "show", true, 3, 1, &[(s("laptop"), "Komputer"), (s("phone"), "Telefon"), (s("bt"), "Bluetooth")]),
+        ],
+        "astro" => vec![
+            g("Widok", "view", false, 0, 0, &[(s("both"), "Oba"), (s("sun"), "Słońce"), (s("moon"), "Księżyc")]),
         ],
         _ => vec![
             g("Główna liczba", "hero", false, 0, 0, &[(s("race"), "Do startu"), (s("week"), "Tydzień"), (s("year"), "Rok")]),
@@ -342,13 +397,19 @@ fn defaults() -> Value {
     json!({
         // a new install shows only the weather: Garmin and running need their integrations (docs/guides)
         "order": ["weather", "garmin", "running"],
-        "desk": { "cards": 1, "clock": "big", "date": "show", "sun": "show", "glass": "normal", "clockw": "regular", "clockc": "white" },
+        "desk": { "cards": 1, "clock": "big", "date": "show", "sun": "show", "glass": "normal", "clockw": "regular", "clockc": "white", "glow": "normal", "h12": "24", "clocka": "full" },
+        "lock": { "clock": "big", "clockw": "regular", "clockc": "white", "date": "show", "h12": "24", "datef": "full", "pos": "top", "blur": "wake", "dim": "normal", "avatar": "show" },
+        "photo": { "pick": "daily", "fit": "fill", "caption": "hide" },
+        "devices": { "show": ["laptop", "phone", "bt"] },
         "music": { "style": "cover", "show": ["progress", "controls", "source"] },
         "calendar": { "view": "month", "week": "mon", "next": "show" },
         "system": { "style": "rings", "show": ["cpu", "ram", "disk", "net"] },
-        "clocks": { "style": "analog", "cities": ["london", "newyork", "tokyo"] },
+        "clocks": { "style": "analog", "face": "ticks", "accent": "accent", "h12": "24", "cities": ["london", "newyork", "tokyo"] },
+        "note": { "size": "normal", "look": "glass" },
+        "time": { "show": ["day", "week", "month", "year"], "count": "event" },
+        "astro": { "view": "both" },
         "garmin": { "hero": "ready", "vitals": ["sleep", "hrv", "rhr", "stress"], "foot": "insight" },
-        "weather": { "hero": "temp", "metric": "temp", "hours": 24, "days": "show", "insights": ["rain", "run", "wear", "wind", "light", "tomorrow"] },
+        "weather": { "hero": "temp", "metric": "temp", "land": "fields", "fx": "soft", "astro": "show", "hours": 24, "days": "show", "insights": ["rain", "run", "wear", "wind", "light", "tomorrow"] },
         "running": { "hero": "race", "show": ["strip", "workout", "p5"], "foot": "last" }
     })
 }
@@ -727,6 +788,24 @@ pub fn footer(c: &mut Canvas, t: &mut Text, x: f32, y: f32, w: f32, icon: &str, 
     text(c, t, tx, y + (24.0 - lh) / 2.0, s, &sty, FG, true, Some(w - 24.0));
 }
 
+// the time as the clocks show it: 24 h, or 12 h (no AM / PM: the sky says which)
+pub fn clock_str(ts: i64, h12: bool) -> String {
+    let t = crate::data::local(ts);
+    format!("{}:{:02}", if h12 { (t.tm_hour + 11) % 12 + 1 } else { t.tm_hour }, t.tm_min)
+}
+// the clocks' colours (desk and lock: Kolor zegara)
+pub fn clock_colour(k: &str) -> Rgba {
+    match k {
+        "accent" => ACC.alpha(0.92),
+        "warm" => Rgba::rgb8(0xf6, 0xd9, 0xb0, 0.92),
+        "blue" => Rgba::rgb8(0xb4, 0xd0, 0xff, 0.92),
+        "pink" => Rgba::rgb8(0xff, 0xc2, 0xd6, 0.92),
+        _ => WHITE.alpha(0.86),
+    }
+}
+// the cards' glow, percent of the standard one (desk: Poświata kart)
+static GLOW: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(100);
+
 // ------------------------------------------------------------------ the stage
 pub struct Desk {
     pub stage: Option<LayerSurface>,
@@ -759,6 +838,10 @@ pub struct Desk {
     pub cal: Value,
     pub stats: (i32, f32, f32, f64),
     pub media_req: Option<&'static str>,
+    // Urządzenia: the laptop battery, the phone, Bluetooth on and its device (what the bar shows too)
+    pub devs: (Option<crate::sys::Bat>, Option<crate::bar::Phone>, bool, Option<Option<f32>>),
+    // Zdjęcie: what was picked (key, path, the decoded picture)
+    pub photo: Option<(String, String, Option<Pixmap>)>,
 }
 
 pub fn stage_h(t: &mut Text) -> f32 {
@@ -801,6 +884,8 @@ impl Desk {
             cal: Value::Null,
             stats: (0, 0.0, 0.0, 0.0),
             media_req: None,
+            devs: (None, None, false, None),
+            photo: None,
         }
     }
     pub fn editing(&self, card: &str) -> bool {
@@ -853,7 +938,9 @@ impl Desk {
     // tell mist-wall where the sky goes (only when it changed)
     pub fn write_sky(&mut self, t: &mut Text) {
         let (x, y) = self.card_at(t);
-        let s = json!({ "show": self.weather_on(), "x": x + 1, "y": y + 1, "w": WX_W as i32 - 2, "h": BENTO_H as i32 - 2 }).to_string();
+        // + the moment the card previews (an hour of the timeline, a day; 0 = now) and the landscape picked
+        let land = LANDS.iter().position(|l| *l == self.cfg.s("weather", "land")).unwrap_or(0);
+        let s = json!({ "show": self.weather_on(), "x": x + 1, "y": y + 1, "w": WX_W as i32 - 2, "h": BENTO_H as i32 - 2, "t": self.wx.sky_t, "land": land, "fx": match self.cfg.s("weather", "fx").as_str() { "off" => 0.0, "full" => 1.0, _ => 0.55 } }).to_string();
         if s != self.sky_written {
             let dir = format!("{}/mist", std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".into()));
             let tmp = format!("{dir}/.sky.json");
@@ -864,6 +951,10 @@ impl Desk {
     }
 
     // ---------------------------------------------------------------- paint: the stage window
+    // is this card one of the places on the desktop now (Urządzenia repaints on a battery, phone or Bluetooth change)
+    pub fn shows(&self, card: &str) -> bool {
+        self.stage_cfg && self.cfg.shown().iter().any(|k| k == card)
+    }
     pub fn paint_stage(&mut self, t: &mut Text) {
         let h = stage_h(t) + 60.0;
         if self.canvas.pm.width() != STAGE_W || self.canvas.pm.height() != h as u32 {
@@ -873,9 +964,12 @@ impl Desk {
         c.clear();
         self.hits.clear();
         let col_x = 40.0;
+        // DeskSettings: how strongly the cards glow in their colour
+        GLOW.store(match self.cfg.s("desk", "glow").as_str() { "off" => 0, "soft" => 50, "strong" => 180, _ => 100 }, std::sync::atomic::Ordering::Relaxed);
         // date, clock, sun path (cached per minute: their shadows are blurred)
         let minute = crate::data::now() / 60;
         let key = format!("{minute}|{}|{}|{}|{}|{}|{}", self.weather["sunrise"].as_str().unwrap_or(""), self.cfg.s("desk", "clock"), self.cfg.s("desk", "date"), self.cfg.s("desk", "sun"), self.cfg.s("desk", "clockw"), self.cfg.s("desk", "clockc"));
+        let key = format!("{key}|{}", self.cfg.v["desk"]);
         if self.top.as_ref().map(|t| t.0 != key).unwrap_or(true) {
             self.top = Some((key, self.paint_top(t)));
         }
@@ -893,6 +987,11 @@ impl Desk {
                 "calendar" => self.calendar_card(&mut c, t, x, y, w),
                 "system" => self.system_card(&mut c, t, x, y, w),
                 "clocks" => self.clocks_card(&mut c, t, x, y, w),
+                "note" => self.note_card(&mut c, t, x, y, w),
+                "time" => self.time_card(&mut c, t, x, y, w),
+                "astro" => self.astro_card(&mut c, t, x, y, w),
+                "photo" => self.photo_card(&mut c, t, x, y, w),
+                "devices" => self.devices_card(&mut c, t, x, y, w),
                 _ => {}
             }
         }
@@ -907,7 +1006,7 @@ impl Desk {
         let now = crate::data::now();
         let tm = crate::data::local(now);
         const DAYS: [&str; 7] = ["Niedziela", "Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota"];
-        let date = format!("{}, {} {}", DAYS[tm.tm_wday as usize], tm.tm_mday, crate::data::MONTHS_GEN[tm.tm_mon as usize]);
+        let date = if self.cfg.s("desk", "date") == "short" { format!("{}, {}.{:02}", crate::data::DAYS_SHORT[tm.tm_wday as usize], tm.tm_mday, tm.tm_mon + 1) } else { format!("{}, {} {}", DAYS[tm.tm_wday as usize], tm.tm_mday, crate::data::MONTHS_GEN[tm.tm_mon as usize]) };
         let ds = st(22.0, 600.0);
         let dh = line_h(t, &ds);
         // DeskSettings: the clock big / small / hidden, the date and the sun path shown or not. What is hidden
@@ -927,9 +1026,10 @@ impl Desk {
         // clock: shadow rgb(2, 6, 16) .22, blur 1 (of 48), 6 px down
         if csz > 0.0 {
             let wght = match self.cfg.s("desk", "clockw").as_str() { "thin" => 250.0, "bold" => 800.0, _ => 620.0 };
-            let ccol = match self.cfg.s("desk", "clockc").as_str() { "accent" => ACC.alpha(0.92), "warm" => Rgba::rgb8(0xf6, 0xd9, 0xb0, 0.92), _ => WHITE.alpha(0.86) };
+            let ccol = clock_colour(&self.cfg.s("desk", "clockc"));
+            let ccol = ccol.alpha(ccol.3 * match self.cfg.s("desk", "clocka").as_str() { "soft" => 0.62, "ghost" => 0.34, _ => 1.0 });
             let cs = st(csz, wght).spaced(sp).tnum();
-            let s = crate::data::hm(now);
+            let s = clock_str(now, self.cfg.s("desk", "h12") == "12");
             let cw = width(t, &s, &cs);
             let mut l = Canvas::new(STAGE_W, (line_h(t, &cs) + 120.0) as u32);
             text(&mut l, t, ((w - cw) / 2.0).round(), 60.0, &s, &cs, ccol, false, None);
@@ -969,7 +1069,9 @@ impl Desk {
     // CardGlass: glass, inner glow, (content), rim
     pub fn card_glass(c: &mut Canvas, x: f32, y: f32, w: f32, h: f32, tint: f32, glow: Option<(Rgba, f32, f32, f32)>) {
         Glass { radius: 26.0, tint, rims: false, shadow_opacity: 0.34, ..Default::default() }.paint(c, x, y, w, h);
-        if let Some((gc, gx, gy, gs)) = glow {
+        let k = GLOW.load(std::sync::atomic::Ordering::Relaxed) as f32 / 100.0;
+        if let Some((gc, gx, gy, gs)) = glow.filter(|_| k > 0.0) {
+            let gc = gc.alpha((gc.3 * k).min(0.6));
             if let Some(p) = crate::gfx::rrect_path(x + 1.0, y + 1.0, w - 2.0, h - 2.0, 25.0) {
                 let (cx, cy, r) = (x + w * gx, y + h * gy, w.max(h) * gs);
                 fill_rad(c, &p, cx, cy, r, &[(0.0, gc), (0.45, gc.alpha(gc.3 * 0.35)), (1.0, gc.alpha(0.0))]);
@@ -1321,6 +1423,15 @@ impl Desk {
             Some(Hit::Move(card, d)) => self.cfg.mv(card, d),
             Some(Hit::Media(cmd)) => {
                 self.media_req = Some(cmd);
+                return false;
+            }
+            Some(Hit::Note) => {
+                // the note is a plain file: the system's editor opens it (made on the first click)
+                let p = crate::deskwidgets::note_path();
+                if !std::path::Path::new(&p).exists() {
+                    let _ = std::fs::write(&p, "");
+                }
+                let _ = std::process::Command::new("setsid").args(["-f", "xdg-open", &p]).status();
                 return false;
             }
             Some(Hit::Opt(card, key, v)) => {

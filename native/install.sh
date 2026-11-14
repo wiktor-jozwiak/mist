@@ -36,3 +36,15 @@ mv -f "$HOME/.local/bin/.mist-comp.new" "$HOME/.local/bin/mist-comp"
 ls -l "$HOME/.local/bin/mist-comp"
 # mist-try: the whole desktop in a window on the current one
 install -m 755 mist-comp/session/mist-try "$HOME/.local/bin/mist-try"
+# the apps' launchers and icons (Files, Player, Settings): Exec points at this install; the dock's old tiles
+# of them are dropped so it draws the new icons
+apps=${XDG_DATA_HOME:-$HOME/.local/share}
+mkdir -p "$apps/applications" "$apps/icons/hicolor/scalable/apps"
+cp assets/icons/hicolor/scalable/apps/mist-*.svg "$apps/icons/hicolor/scalable/apps/"
+for f in dist/applications/*.desktop; do
+    sed "s|^Exec=mist-ui-bin|Exec=$HOME/.local/bin/mist-ui-bin|" "$f" >"$apps/applications/${f##*/}"
+done
+rm -f "$HOME"/.cache/mist/tiles/mist-*.png
+[ -f "$apps/icons/hicolor/icon-theme.cache" ] && command -v gtk-update-icon-cache >/dev/null &&
+    gtk-update-icon-cache -q -f -t "$apps/icons/hicolor" || true
+command -v update-desktop-database >/dev/null && update-desktop-database -q "$apps/applications" || true

@@ -1,5 +1,5 @@
 @@tagline
-macOS に着想を得た Wayland 用デスクトップシェル。Rust で書かれ、CPU で描画します。
+Linux 用の Wayland デスクトップシェルとコンポジター。Rust で書かれ、CPU で描画します。
 @@desk_img
 desktop-en.webp
 @@desk_alt
@@ -17,10 +17,14 @@ Mist のデスクトップ：トップバー、時計、天気・コンディシ
 @@h_dev
 開発
 @@intro
-Mist はデスクトップシェルのすべてをひとつのプロセスにまとめたものです：バー、Dock、Dynamic Island、
-デスクトップウィジェット、検索、コントロールセンター、通知、ロック画面、polkit エージェント。Hyprland の上でも、
-独自のコンポジター [`mist-comp`](#mist-comp) の上でも動き、いま使っているデスクトップの上で
-[ウィンドウの中で試す](#{{a_try}})こともできます。
+Mist はふたつのプログラムで、どちらも単独で使えます：
+
+| | 何か | どこで動くか |
+|---|---|---|
+| **シェル**（`mist-ui`、`mist-wall`） | バー、Dock、Dynamic Island、デスクトップウィジェット、検索、コントロールセンター、通知、ロック画面、polkit エージェント、ファイルマネージャー、動画プレーヤーをひとつのプロセスで | Hyprland、mist-comp、またはいま使っているデスクトップ上の[ウィンドウ](#{{a_try}}) |
+| **コンポジター**（[`mist-comp`](#mist-comp)） | Smithay ベースの Wayland コンポジター、専用のログイン画面つき | Hyprland と並ぶ独立したログインセッション |
+
+見た目は意図して macOS を参考にしています。中身は Linux のデスクトップです。
 @@note
 > Mist はひとりの日常のデスクトップです（Arch / CachyOS、デュアルモニター、NVIDIA）。完成したからではなく、
 > 動くから公開しています。コードを読む覚悟をしてください。
@@ -31,13 +35,13 @@ Dynamic Island：通知、音量、まもなく雨、次の予定
 @@sub_island
 Dynamic Island：通知、音量、1 時間以内の雨、次の予定
 @@sub_weather
-リアルタイムの GLSL の空に重なる天気カード
+天気と時刻に合わせて動くライブの空の上の天気カード
 @@alt_spot
-Spotlight 風の検索
+128*42 に答える Spotlight
 @@alt_set
-設定ウィンドウ
+設定のパーソナライズページ
 @@sub_spot
-Spotlight：アプリ、ファイル、コマンド、絵文字、ウェブ
+Spotlight：アプリ、ファイル、コマンド、計算、単位、タイムゾーン、絵文字、ウェブ
 @@sub_set
 設定：すべての項目がひとつのウィンドウに、すぐに反映
 @@alt_cc
@@ -53,33 +57,38 @@ Spotlight：アプリ、ファイル、コマンド、絵文字、ウェブ
 @@g_shell
 シェル
 @@b_shell
-- **トップバー：** 使用中のアプリ、システムトレイ（StatusNotifierItem + dbusmenu）、ネットワーク、Bluetooth、
-  オーディオ、CPU とメモリ、時計。
-- **Dock：** ピン留めと起動中のアプリ、拡大表示、ライブサムネイル付きのウィンドウ選択。
-- **Dynamic Island：** イコライザー付きのメディア、タイマー、着信、通知、音量。
-- **パネル：** Spotlight、スタート、アプリ切り替え、コントロールセンター、通知センター、クリップボード履歴、
-  絵文字、セッションメニュー、スクリーンショットツールバー。Spotlight は入力中に答えます：計算（`128*42`）、
-  単位（`212 f to c`、`2 gb to mb`）、タイムゾーン（`tokyo time`）。
-- **ウィンドウのスナップ**（Windows 11 風）：端や角へドラッグ、緑のボタンか `Super + Z` で Snap Layouts、
-  Snap Assist。
+- **トップバー：** アクティブなアプリ、システムトレイ（StatusNotifierItem + dbusmenu）、ネットワーク、Bluetooth、
+  サウンド、CPU とメモリ、時計。
+- **Dock：** ピン留めと実行中のアプリ、拡大表示、ライブサムネイル付きのウィンドウ選択。
+- **Dynamic Island：** イコライザー付きのメディア、タイマー、通話、通知、音量、Caps Lock、設定ファイルに
+  誤りがあるときのお知らせ（行と列つき）。
+- **パネル：** スタート、Spotlight、アプリスイッチャー、コントロールセンター、通知センター、カレンダー、
+  クリップボード履歴、絵文字、セッションメニュー。検索欄は普通のテキスト欄と同じく、カーソル、矢印キー、
+  Shift と Ctrl+A での選択が使えます。
+- **スクリーンショット：** 止めた画面の上で範囲を選択、ツールバー、画面の文字認識（OCR）、カラーピッカー。
+- **ウィンドウのスナップ**（Windows 11 風）：端や角へドラッグ、緑のボタンか `Super + Z` で Snap Layouts、Snap Assist。
+- **ロック画面** は PAM で動き、時計のスタイル、ぼかし、暗さを設定できます。
 @@g_desk
 デスクトップ
 @@b_desk
-- **時計とガラスのカード：** 天気、Garmin のコンディション、ランニング、音楽、カレンダー、システム、世界時計。
-  天気はアカウント不要の [Open-Meteo](https://open-meteo.com) から：1 時間ごとのグラフ、4 日間、1 時間以内の雨、
-  太陽と月。Garmin のカードは自分の Garmin Connect のデータを表示し、ローカルの SQLite ファイルに同期されます。
-  一度ログインするまでカードは表示されません（[ガイド](../guides/garmin.md)）。
-- **壁紙：** 写真、動く GLSL シーン、現在の天気に合わせた空。
+- **時計とガラスのカード：** 天気、Garmin のコンディション、ランニング、音楽、カレンダー、システム、世界時計、
+  ToDo 付きメモ、一日の進み具合、太陽と月、フォトフレーム、デバイスのバッテリー。Garmin のカードは自分の
+  Garmin Connect のデータをローカルの SQLite ファイルに同期して表示し、一度ログインするまでは表示されません
+  （[ガイド](../guides/garmin.md)）。
+- **天気** は [Open-Meteo](https://open-meteo.com) から、アカウント不要：1 時間ごとのグラフ、4 日間、次の 1 時間の雨、
+  太陽と月の一日。カードの空は天気と指した時刻に合わせてライブで描かれ、5 つの風景（畑、湖、山、街、海）の
+  どれかの上に広がります。
+- **壁紙：** 写真、ライブの GLSL シーン、または今の天気の空。
 - **テーマ：** Mist、Catppuccin、Nord、Gruvbox、Tokyo Night、Rosé Pine、Dracula、または自分の JSON ファイル。
-  ガラス、ウィンドウ、アクセントカラーは、シェルでも Files、Player、設定でもその場で切り替わります。
+  ガラス、ウィンドウ、アクセントはシェルと Files、Player、設定でその場で切り替わります。
 @@g_repl
 置き換えるもの
 @@b_repl
-- **デーモン：** 通知サーバー、polkit エージェント、ロック画面（PAM）、アイドルとスリープ。
-- **アプリ：** Mist Files（あらゆるアプリのファイル選択ダイアログも兼ねる）、Mist Player（libmpv）、設定（言語、
-  天気の地点、壁紙、デスクトップの配置、ウィジェット、夜間モード、ロックとスリープ、通知）。
-- **電話**（KDE Connect 経由）：バッテリー、通知、SMS と連絡先をパネルに、通話はアイランドに（通話は ADB を
-  予備の経路として使えます）。
+- **デーモン：** 通知サーバー、polkit エージェント、ロック画面、アイドルとスリープ。
+- **アプリ：** Mist Files、Mist Player、設定（ディスプレイ、サウンド、Bluetooth、ネットワーク、電源、アプリ、
+  壁紙、デスクトップとウィジェット、ロック画面、通知、言語）。
+- **電話**（KDE Connect 経由）：バッテリー、通知、パネルでの SMS と連絡先、アイランドでの着信（着信は ADB を
+  予備として使えます）。
 @@langs
 UI は**英語、ポーランド語、ドイツ語、スペイン語、フランス語**に対応し、`$LANG` か設定での選択に従います。
 言語は [native/assets/i18n](../../native/assets/i18n) の JSON ファイルひとつです。
@@ -213,6 +222,55 @@ Noto Sans を使います。
 @@credits
 [Smithay]、[smithay-client-toolkit]、[tiny-skia]、[swash]、[resvg]、[zbus]、[Tabler Icons] の上に作られています。
 最初のバージョンは [Quickshell] 上で動き、[Noctalia] を参考にしました。
+AI コーディングアシスタントが開発を手伝っています。
 @@apple
 Mist は Apple とは無関係です。macOS、Dynamic Island、Spotlight、SF Pro は Apple Inc. の商標であり、デザインの
 着想元を説明するためにのみ言及しています。
+@@alt_start
+スタート：検索欄、お気に入りのアプリ、今日のカレンダー、電話
+@@sub_start
+スタート：アプリ、ファイル、コマンド、今日の予定と電話
+@@alt_files
+Mist Files：詳細表示のフォルダー
+@@sub_files
+Mist Files、すべてのアプリのファイル選択ダイアログでもあります
+@@alt_player
+Mist Player：動画の上のコントロール
+@@sub_player
+libmpv ベースの Mist Player：チャプター、トラック、ピクチャーインピクチャー
+@@st_mem
+アイドル時のシェル全体のメモリ
+@@st_gl
+シェルプロセス内の OpenGL コンテキスト
+@@st_wake
+アイドル時のウェイクアップ、ポーリングなし
+@@h_tour
+ツアー
+@@alt_wall
+砂丘、GLSL のライブ壁紙
+@@sub_wall
+GLSL のライブ壁紙、写真、または現在の天気の空
+@@alt_emoji
+絵文字ピッカー
+@@sub_emoji
+検索とカテゴリ付きの絵文字ピッカー
+@@alt_themes
+7 つの内蔵テーマで表示したコントロールセンター
+@@sub_themes
+Mist、Catppuccin、Nord、Gruvbox、Tokyo Night、Rosé Pine、Dracula、または自作の JSON ファイル。ガラス、ウィンドウ、アクセントはその場で切り替わります。
+@@app_files
+タブ、プレビュー、スマート検索、システムのファイル選択
+@@app_player
+libmpv、MPRIS、ピクチャーインピクチャー、安定したフレーム間隔
+@@app_set_name
+設定
+@@app_set
+ディスプレイ、サウンド、ネットワーク、デスクトップ、ウィジェット、言語
+@@nums
+<b>数値</b>：同じ方法で測ったシェルとコンポジター
+@@h_stars
+スター履歴
+@@stars_alt
+wiktor-jozwiak/mist のスター履歴
+@@dev_pics
+このページの画像は同じオフスクリーン描画から、デモデータで作られています：`docs/img/hero.sh`、`docs/img/panels.sh`、`docs/img/gifs.sh`。

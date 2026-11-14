@@ -2,7 +2,7 @@
 """README numbers and translations from one benchmark series.
    gen.py OUTDIR|--apply SHELLS.jsonl[,MORE.jsonl] COMPOSITORS.jsonl
 OUTDIR: write README.md and README.<lang>.md there (dry run); --apply: write into the repository."""
-import json, re, statistics, subprocess, sys
+import json, re, statistics, sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -136,20 +136,25 @@ def main():
     en = re.sub(r'alt="Idle memory \(PSS\)[^"]*"',
                 f'alt="Idle memory (PSS) of each shell alone, from swaybar at {vals["lo"]} MB to Noctalia at {vals["hi"]} MB: '
                 f'Mist with a photo wallpaper {vals["p_pss"]} MB, Mist with the live wallpaper {vals["l_pss"]} MB"', en)
+    # the numbers under the hero image
+    en, n3 = re.subn(r"<h3>[\d.]+ MB</h3><sub>memory", f"<h3>{vals['p_pss']} MB</h3><sub>memory", en)
+    en, n4 = re.subn(r"<h3>[\d.]+ / s</h3>", f"<h3>{vals['wake']} / s</h3>", en)
+    assert n3 == 1 and n4 == 1, (n3, n4)
     en, n1 = re.subn(r"\| Shell \| What it draws[^\n]*\n(\|[^\n]*\n)+", shell_table(S, EN, "en") + "\n", en)
     en, n2 = re.subn(r"\| Compositor \| Memory \(PSS\)[^\n]*\n(\|[^\n]*\n)+", comp_table(C, EN, "en") + "\n", en)
     assert n1 == 1 and n2 == 1, (n1, n2)
     assert "@" not in re.sub(r"https?://\S+|[\w.]+@[\w.]+", "", en) or not re.search(r"@[A-Z_]+@", en), "token left"
     (ROOT / "README.md" if apply else out / "README.md").write_text(en, encoding="utf-8")
 
+    # the badges as in the English README, their relative links from docs/i18n
+    badges = [l for l in en.split("\n")[:30] if l.startswith("[![")]
+    assert len(badges) >= 4, badges
+    badges = "\n".join(re.sub(r"\]\((?!https?:)([^)]+)\)$", r"](../../\1)", l) for l in badges)
     skel = (HERE / "skel.md").read_text(encoding="utf-8")
     for lang in LANGS:
         T = parse(HERE / f"{lang}.txt")
-        old = subprocess.run(["git", "-C", str(ROOT), "show", f"HEAD:docs/i18n/README.{lang}.md"], capture_output=True, text=True, check=True).stdout.split("\n")
-        badges = [l for l in old[:14] if l.startswith("[![")]
-        assert len(badges) == 4, (lang, badges)
-        T["BADGES"] = "\n".join(badges)
-        for a, h in (("a_what", "h_what"), ("a_why", "h_why"), ("a_install", "h_install"), ("a_keys", "h_keys"), ("a_dev", "h_dev"), ("a_try", "h_try")):
+        T["BADGES"] = badges
+        for a, h in (("a_tour", "h_tour"), ("a_what", "h_what"), ("a_why", "h_why"), ("a_install", "h_install"), ("a_keys", "h_keys"), ("a_dev", "h_dev"), ("a_try", "h_try")):
             T[a] = slug(T[h])
         T["SHELLS"], T["COMPS"] = shell_table(S, T, lang), comp_table(C, T, lang)
         text = skel

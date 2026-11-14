@@ -775,25 +775,36 @@ impl Settings {
             Desktop => {
                 let cfg = &self.cfg;
                 let have: Vec<&'static str> = WIDGETS.iter().map(|w| w.0).filter(|k| crate::data::available(k)).collect();
-                let n = cfg.cards();
                 let shown = cfg.shown();
                 b.push(Block::DeskPreview);
-                b.push(Block::Caption("Karty".into()));
-                let mut rows = vec![Row::new("layout-dashboard", "Liczba kart", "Ile widżetów stoi pod zegarem", Ctl::Seg((0..=have.len().min(3)).map(|i| (if i == 0 { "Brak".to_string() } else { i.to_string() }, i == n, Act::Desk("desk", "cards", json!(i)))).collect()))];
+// one row picks the widgets (a tap adds or takes one off, three at most); the ones shown follow as
+                // rows that open their own settings. The number of places is the number picked
+                b.push(Block::Caption("Widżety".into()));
+                let mut rows = vec![Row::new("layout-grid", "Na pulpicie", "Kliknij, aby dodać lub zdjąć · najwyżej 3", Ctl::Chips(have.iter().map(|w| (widget_name(w).to_string(), shown.iter().any(|k| k == w), Act::WidgetShow(w, !shown.iter().any(|k| k == w)))).collect()))];
                 for (i, k) in shown.iter().enumerate() {
-                    let icon = WIDGETS.iter().find(|w| w.0 == k).map(|w| widget_icon(w.0)).unwrap_or("layout-grid");
-                    rows.push(Row::new(icon, &format!("Miejsce {}", i + 1), "", Ctl::Chips(have.iter().map(|w| (widget_name(w).to_string(), *w == k.as_str(), Act::DeskSlot(i, w))).collect())));
+                    if let Some(w) = WIDGETS.iter().find(|w| w.0 == k) {
+                        rows.push(Row::nav(widget_icon(w.0), w.1, &format!("Miejsce {}", i + 1), Widget(w.0)));
+                    }
                 }
-                rows.push(self.cfg_row("desk", "glass", "contrast", "Tło kart", "Jak mocno karty przyciemniają tapetę"));
-                rows.push(Row::nav("layout-grid", "Widżety", "Co pokazują i w jakiej kolejności", Widgets));
+                rows.push(Row::nav("settings", "Wszystkie widżety", "Ustawienia także tych ukrytych", Widgets));
                 b.push(Block::Card(rows));
+                b.push(Block::Caption("Wygląd kart".into()));
+                b.push(Block::Card(vec![
+                    self.cfg_row("desk", "glass", "contrast", "Tło", "Jak mocno karty przyciemniają tapetę"),
+                    self.cfg_row("desk", "glow", "sparkles", "Poświata", "Kolorowy blask w tle każdej karty"),
+                ]));
                 b.push(Block::Caption("Zegar".into()));
                 b.push(Block::Card(vec![
                     self.cfg_row("desk", "clock", "clock", "Rozmiar", ""),
-                    self.cfg_row("desk", "clockw", "typography", "Grubość", ""),
-                    self.cfg_row("desk", "clockc", "palette", "Kolor", ""),
+                    self.cfg_row("desk", "h12", "clock", "Format godziny", ""),
                     self.cfg_row("desk", "date", "calendar", "Data nad zegarem", ""),
-                    self.cfg_row("desk", "sun", "sun", "Wschód i zachód słońca", "Linia dnia pod zegarem"),
+                    self.cfg_row("desk", "sun", "sun", "Linia dnia pod zegarem", "Wschód i zachód słońca"),
+                ]));
+                b.push(Block::Caption("Wygląd zegara".into()));
+                b.push(Block::Card(vec![
+                    self.cfg_row("desk", "clockc", "palette", "Kolor", ""),
+                    self.cfg_row("desk", "clockw", "typography", "Grubość", ""),
+                    self.cfg_row("desk", "clocka", "contrast", "Przezroczystość", ""),
                 ]));
                 b.push(Block::Note("Prawy klik na karcie albo zegarze pulpitu otwiera tę stronę.".into()));
             }
@@ -825,6 +836,30 @@ impl Settings {
                 if k == "weather" {
                     self.place_blocks(&mut b);
                 }
+                // Pogoda has many options: three short cards by what they change, each row saying what it does
+                if k == "weather" {
+                    let row = |key: &'static str, icon: &'static str, sub: &str| {
+                        let label = groups(k).into_iter().find(|g| g.key == key).map(|g| g.label).unwrap_or("");
+                        self.cfg_row(k, key, icon, label, sub)
+                    };
+                    b.push(Block::Caption("Karta".into()));
+                    b.push(Block::Card(vec![
+                        row("hero", "numbers", "Duża liczba u góry karty"),
+                        row("metric", "gauge", "Co rysuje wykres"),
+                        row("hours", "clock", "Ile godzin naprzód"),
+                        row("days", "calendar", "Pięć dni pod wykresem"),
+                    ]));
+                    b.push(Block::Caption("Niebo".into()));
+                    b.push(Block::Card(vec![
+                        row("land", "photo", "Widok pod niebem"),
+                        row("fx", "rain", "Jak mocno pada na karcie"),
+                        row("astro", "sun", "Znaczniki wschodu, zachodu i fazy"),
+                    ]));
+                    b.push(Block::Caption("Stopka".into()));
+                    b.push(Block::Card(vec![row("insights", "info-circle", "Krótkie wskazówki na dole karty")]));
+                    b.push(Block::Note("Zmiany widać od razu na pulpicie.".into()));
+                    return b;
+                }
                 let rows: Vec<Row> = groups(k).iter().map(|g| self.cfg_row(k, g.key, opt_icon(g.key), g.label, "")).collect();
                 if !rows.is_empty() {
                     b.push(Block::Caption("Co pokazuje".into()));
@@ -851,7 +886,24 @@ impl Settings {
                     Row::new("clock", "Zablokuj po bezczynności", &mins(d.idle.0), Ctl::Chips(opts.iter().map(|s| (mins(*s), *s == d.idle.0, Act::Idle("lock", *s))).collect())),
                     Row::new("device-desktop", "Wyłącz ekran po", &mins(d.idle.1), Ctl::Chips(opts.iter().map(|s| (mins(*s), *s == d.idle.1, Act::Idle("off", *s))).collect())),
                 ]));
-                b.push(Block::Note("Filmy i muzyka w przeglądarce wstrzymują blokadę.".into()));
+b.push(Block::Note("Filmy i muzyka w przeglądarce wstrzymują blokadę.".into()));
+                b.push(Block::Caption("Zegar".into()));
+                b.push(Block::Card(vec![
+                    self.cfg_row("lock", "clock", "clock", "Rozmiar", ""),
+                    self.cfg_row("lock", "clockw", "typography", "Grubość", ""),
+                    self.cfg_row("lock", "clockc", "palette", "Kolor", ""),
+                    self.cfg_row("lock", "date", "calendar", "Data nad zegarem", ""),
+                    self.cfg_row("lock", "datef", "calendar", "Format daty", ""),
+                    self.cfg_row("lock", "h12", "clock", "Format godziny", ""),
+                    self.cfg_row("lock", "pos", "layout-dashboard", "Położenie", "Zegar u góry albo bliżej środka"),
+                ]));
+                b.push(Block::Caption("Tło i użytkownik".into()));
+                b.push(Block::Card(vec![
+                    self.cfg_row("lock", "blur", "photo", "Rozmycie tapety", "Kiedy tapeta pod blokadą jest rozmyta"),
+                    self.cfg_row("lock", "dim", "contrast", "Przyciemnienie", ""),
+                    self.cfg_row("lock", "avatar", "user-circle", "Zdjęcie użytkownika", ""),
+                ]));
+                b.push(Block::Note("Zmiany widać przy następnym zablokowaniu albo w podglądzie.".into()));
             }
             Apps => {
                 b.push(Block::Card(vec![

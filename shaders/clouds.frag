@@ -91,6 +91,8 @@ void main() {
     hor += vec3(0.04, 0.05, 0.08) * moonLight;
     float toSun = max(dot(normalize(rd.xz + 1e-4), normalize(L.xz + 1e-4)), 0.0);
     hor = mix(hor, vec3(0.98, 0.50, 0.26), warm * (0.35 + 0.65 * pow(toSun, 3.0)));
+    hor = mix(hor, vec3(0.62, 0.42, 0.52), warm * 0.30 * (1.0 - toSun));                // the pink belt opposite a low sun
+    hor += vec3(0.0, 0.012, 0.008) * nightK;                                          // airglow
     zen = mix(zen, vec3(0.30, 0.24, 0.46), warm * 0.40);
     hor += vec3(0.09, 0.06, 0.04) * (1.0 - dayK) * (0.4 + 0.6 * cov);                  // town glow
     vec3 gz = mix(vec3(0.09, 0.10, 0.14), vec3(0.38, 0.42, 0.49), dayK) * (1.0 - 0.30 * rain - 0.35 * storm);
@@ -107,13 +109,24 @@ void main() {
         sky = mix(hor * 0.9, field, smoothstep(0.0, -0.12, e));
     }
 
-    // aurora, behind everything
+    // aurora, behind everything: two curtains, green at the foot, violet above
     if (wx2.z > 0.0 && e > 0.0) {
-        float base = 0.18 + 0.03 * sin(rd.x * 6.0 + time * 0.12) + 0.02 * sin(rd.x * 17.0 - time * 0.25);
-        float above = e - base * 0.4;
-        float rays = (0.5 + 0.5 * noise(vec2(rd.x * 60.0 + time * 0.4, time * 0.1))) * (0.5 + 0.5 * noise(vec2(rd.x * 9.0 - time * 0.1, 2.0)));
-        float a = above > 0.0 ? exp(-above * 7.0) * smoothstep(0.0, 0.02, above) : 0.0;
-        sky += mix(vec3(0.20, 0.95, 0.55), vec3(0.75, 0.30, 0.85), smoothstep(0.03, 0.25, above)) * a * rays * wx2.z * nightK * 0.5;
+        for (int i = 0; i < 2; i++) {
+            float fi = float(i);
+            float base = 0.07 + 0.09 * fi + 0.05 * sin(rd.x * (4.0 + 3.0 * fi) + time * (0.10 + 0.05 * fi) + fi * 2.0) + 0.02 * sin(rd.x * 17.0 - time * 0.25);
+            float above = e - base;
+            float rays = (0.35 + 0.65 * noise(vec2(rd.x * (50.0 + 30.0 * fi) + time * 0.4, time * 0.1 + fi * 7.0))) * (0.4 + 0.6 * noise(vec2(rd.x * 7.0 - time * 0.1, 2.0 + fi)));
+            float a = above > 0.0 ? exp(-above * mix(4.5, 6.5, fi)) * smoothstep(0.0, 0.015, above) : 0.0;
+            sky += mix(vec3(0.16, 0.95, 0.50), vec3(0.70, 0.25, 0.85), smoothstep(0.05, 0.38, above)) * a * rays * wx2.z * nightK * mix(0.75, 0.45, fi);
+        }
+    }
+
+    // sheet lightning: now and then a cell of the storm deck lights up from inside
+    float sheet = 0.0, sheetX = 0.5;
+    if (storm > 0.0) {
+        float sl = floor(time * 8.0);
+        sheet = step(0.90, hash(vec2(sl, 4.4))) * (0.5 + 0.5 * hash(vec2(sl, 6.1))) * storm;
+        sheetX = hash(vec2(floor(sl / 3.0), 2.3));
     }
 
     // ------------------------------------------------------------ volumetric clouds
@@ -147,7 +160,8 @@ void main() {
                     float powder = 1.0 - exp(-d * 5.0);
                     vec3 lum = sunL * (Tl * phase * 0.55 + pow(Tl, 0.3) * 0.45 * (0.5 + 0.5 * powder)) + mix(ambBot, ambTop, h);
                     lum += vec3(0.85, 0.85, 1.0) * bolt.x * exp(-abs(uv.x - bolt.y) * 4.0) * 1.6;
-                    lum *= 1.0 - 0.30 * rain - 0.35 * storm;
+                    lum += vec3(0.62, 0.66, 0.95) * sheet * exp(-abs(uv.x - sheetX) * 5.0) * 1.1 * (1.0 - 0.5 * h);
+                    lum *= (1.0 - 0.30 * rain - 0.35 * storm) * mix(1.0, 0.62 + 0.38 * h, storm);   // a storm's deck is dark underneath
                     float Ts = exp(-d * sigma * dt);
                     scat += T * (1.0 - Ts) * lum;
                     T *= Ts;

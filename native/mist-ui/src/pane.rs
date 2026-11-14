@@ -22,6 +22,8 @@ pub enum Act {
     Open(&'static str, &'static str),
     // the screenshot toolbar: capture now
     Capture,
+    // the region picked over the frozen screen: the frozen picture, x, y, w, h in its pixels, copy to the clipboard
+    Crop(String, (i32, i32, i32, i32), bool),
     // close, start an app (Apps index)
     Launch(usize),
     // a media player command, stay open
@@ -50,6 +52,7 @@ pub struct Ctx<'a> {
     pub apps: &'a crate::apps::Apps,
     pub notif_hidden: &'a mut std::collections::HashMap<String, i64>,
     pub ctrl: bool,
+    pub shift: bool,
     pub st: &'a crate::bar::BarState,
     pub players: &'a [crate::media::Player],
     pub phone_name: &'a str,
@@ -132,6 +135,8 @@ pub fn native(name: &str) -> bool {
 pub fn make(name: &str, page: &str) -> Option<Box<dyn Pane>> {
     match name {
         "session" => Some(Box::new(crate::session::Session::new(page))),
+        // checks: MIST_SHOT_FILE=a copy of a picture (removed on close), the query "x0,y0,x1,y1" drags a box
+        "shotsel" => crate::shot::Region::new(std::env::var("MIST_SHOT_FILE").unwrap_or_default(), false).map(|r| Box::new(r) as Box<dyn Pane>),
         "keys" => Some(Box::new(crate::keys::Keys::new())),
         "calendar" => Some(Box::new(crate::calendar::Calendar::new())),
         "notifications" => Some(Box::new(crate::notifcenter::NotifCenter::new())),
@@ -222,6 +227,24 @@ pub fn full_name() -> String {
     g.split(' ').map(|s| { let mut c = s.chars(); c.next().map(|f| f.to_uppercase().collect::<String>() + &c.as_str().to_lowercase()).unwrap_or_default() }).collect::<Vec<_>>().join(" ")
 }
 
+// ------------------------------------------------------------------ the Spotlight / Start search field
+// LineEdit's keys (caret, Shift selection, Ctrl+A, Ctrl+arrows, Home/End, clipboard) plus the shell's
+// Ctrl+U (clear) and Ctrl+W (a word back); (used, text changed)
+pub fn search_key(f: &mut crate::edit::LineEdit, ev: &KeyEvent, ctrl: bool, shift: bool) -> (bool, bool) {
+    use crate::edit::EditResult;
+    use smithay_client_toolkit::seat::keyboard::Keysym;
+    let old = f.text.clone();
+    let used = match ev.keysym {
+        Keysym::u | Keysym::U if ctrl => {
+            f.set("");
+            true
+        }
+        Keysym::w | Keysym::W if ctrl => matches!(f.key(Keysym::BackSpace, None, true, false), EditResult::Used),
+        k => matches!(f.key(k, ev.utf8.as_deref(), ctrl, shift), EditResult::Used),
+    };
+    (used, f.text != old)
+}
+
 // ------------------------------------------------------------------ a one-line text field (TextInput)
 #[derive(Default)]
 pub struct Field {
@@ -229,6 +252,7 @@ pub struct Field {
     pub sel_all: bool,
 }
 impl Field {
+    #[cfg(test)]
     pub fn new(text: &str) -> Self {
         Field { text: text.to_string(), sel_all: false }
     }
@@ -379,5 +403,28 @@ mod tests {
         assert!(changed);
         assert!(!f.sel_all);
         assert_eq!(f.text, "search query");
+    }
+
+    // Spotlight / Start: arrows move the caret, Shift selects, Ctrl+A selects all, typing replaces it
+    #[test]
+    fn search_key_caret_and_selection() {
+        let mut f = crate::edit::LineEdit::new("firefox");
+        assert_eq!(search_key(&mut f, &key(Keysym::Left, None), false, false), (true, false));
+        assert_eq!(search_key(&mut f, &key(Keysym::Left, None), false, false), (true, false));
+        assert_eq!(f.caret, 5);
+        assert_eq!(search_key(&mut f, &key(Keysym::X, Some("X")), false, false), (true, true));
+        assert_eq!(f.text, "firefXox");
+        search_key(&mut f, &key(Keysym::Home, None), false, false);
+        search_key(&mut f, &key(Keysym::Right, None), false, true);
+        search_key(&mut f, &key(Keysym::Right, None), false, true);
+        assert!(f.has_sel());
+        search_key(&mut f, &key(Keysym::BackSpace, None), false, false);
+        assert_eq!(f.text, "refXox");
+        assert_eq!(search_key(&mut f, &key(Keysym::a, Some("\u{1}")), true, false), (true, false));
+        assert!(f.has_sel());
+        search_key(&mut f, &key(Keysym::k, Some("k")), false, false);
+        assert_eq!(f.text, "k");
+        search_key(&mut f, &key(Keysym::u, None), true, false);
+        assert_eq!(f.text, "");
     }
 }

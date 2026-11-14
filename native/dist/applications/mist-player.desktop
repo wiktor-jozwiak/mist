@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Mist Player
+GenericName=Media Player
+GenericName[pl]=Odtwarzacz multimediów
+GenericName[de]=Medienwiedergabe
+GenericName[es]=Reproductor multimedia
+GenericName[fr]=Lecteur multimédia
+Comment=Videos and music
+Comment[pl]=Filmy i muzyka
+Exec=mist-ui-bin player %U
+Icon=mist-player
+Terminal=false
+Categories=AudioVideo;Video;Audio;Player;
+MimeType=video/mp4;video/x-matroska;video/webm;video/x-msvideo;video/quicktime;video/x-ms-wmv;video/x-flv;video/mpeg;video/mp2t;video/ogg;video/3gpp;video/x-m4v;audio/mpeg;audio/flac;audio/ogg;audio/opus;audio/mp4;audio/aac;audio/x-wav;audio/x-ms-wma;audio/x-matroska;audio/x-mpegurl;audio/mpegurl;application/vnd.apple.mpegurl;application/x-mpegurl;
+StartupWMClass=mist-player

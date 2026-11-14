@@ -14,7 +14,7 @@ use tiny_skia::{PathBuilder, Pixmap};
 const MONTHS: [&str; 12] = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
 
 // the cities of Zegary: key, name, standard UTC offset (h), daylight saving rule
-pub const CITIES: [(&str, &str, i32, Dst); 8] = [
+pub const CITIES: [(&str, &str, i32, Dst); 16] = [
     ("london", "Londyn", 0, Dst::Eu),
     ("newyork", "Nowy Jork", -5, Dst::Us),
     ("sf", "San Francisco", -8, Dst::Us),
@@ -23,6 +23,14 @@ pub const CITIES: [(&str, &str, i32, Dst); 8] = [
     ("dubai", "Dubaj", 4, Dst::No),
     ("shanghai", "Szanghaj", 8, Dst::No),
     ("lisbon", "Lizbona", 0, Dst::Eu),
+    ("warsaw", "Warszawa", 1, Dst::Eu),
+    ("chicago", "Chicago", -6, Dst::Us),
+    ("saopaulo", "São Paulo", -3, Dst::No),
+    ("reykjavik", "Reykjavik", 0, Dst::No),
+    ("moscow", "Moskwa", 3, Dst::No),
+    ("bangkok", "Bangkok", 7, Dst::No),
+    ("singapore", "Singapur", 8, Dst::No),
+    ("seoul", "Seul", 9, Dst::No),
 ];
 #[derive(Clone, Copy, PartialEq)]
 pub enum Dst {
@@ -110,6 +118,22 @@ fn statvfs(path: &str) -> Option<(f64, f64)> {
         Some((tot - free, tot))
     }
 }
+// the note card's text: a plain file next to widgets.json
+pub fn note_path() -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let cfg = std::env::var("XDG_CONFIG_HOME").ok().filter(|d| !d.is_empty()).unwrap_or_else(|| format!("{home}/.config"));
+    format!("{cfg}/mist/note.txt")
+}
+// the parts of the day, the week (from Monday), the month and the year that have passed at `t` (0..1), the
+// month's and the year's length in days
+pub fn passed(t: i64) -> ([f32; 4], i32, i32) {
+    let tm = crate::data::local(t);
+    let (y, m) = ((tm.tm_year + 1900) as i64, (tm.tm_mon + 1) as i64);
+    let day = (tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec) as f32 / 86400.0;
+    let mlen = (days(if m == 12 { y + 1 } else { y }, if m == 12 { 1 } else { m + 1 }, 1) - days(y, m, 1)) as i32;
+    let ylen = (days(y + 1, 1, 1) - days(y, 1, 1)) as i32;
+    ([day, (((tm.tm_wday + 6) % 7) as f32 + day) / 7.0, ((tm.tm_mday - 1) as f32 + day) / mlen as f32, (tm.tm_yday as f32 + day) / ylen as f32], mlen, ylen)
+}
 fn uptime() -> String {
     let s: f64 = std::fs::read_to_string("/proc/uptime").ok().and_then(|s| s.split_whitespace().next().and_then(|x| x.parse().ok())).unwrap_or(0.0);
     let (d, h, m) = ((s / 86400.0) as i64, ((s % 86400.0) / 3600.0) as i64, ((s % 3600.0) / 60.0) as i64);
@@ -140,6 +164,367 @@ impl Desk {
     }
     fn hovering(&self, x: f32, y: f32, w: f32, h: f32) -> bool {
         self.ptr.map(|p| p.0 >= x && p.0 < x + w && p.1 >= y && p.1 < y + h).unwrap_or(false)
+    }
+
+    // ---------------- Notatka: a text file on the desktop; "- [ ]" and "- [x]" lines are a to-do list, "# " a
+    // heading, "- " a point. A click opens the file in the system's editor; the card reads it again with the
+    // stage's next paint (the minute at the latest)
+    pub(crate) fn note_card(&mut self, c: &mut Canvas, t: &mut Text, x: f32, y: f32, w: f32) {
+        let (cx, cy, cw) = (x + PAD, y + PAD, w - 2.0 * PAD);
+        let paper = self.cfg.s("note", "look") == "paper";
+        let glow = if paper { C_YELLOW.alpha(0.30) } else { WHITE.alpha(0.07) };
+        Self::card_glass(c, x, y, w, BENTO_H, glass_tint(&self.cfg), Some((glow, 0.5, 0.15, 0.95)));
+        let body = std::fs::read_to_string(note_path()).unwrap_or_default();
+        let todo = body.lines().filter(|l| l.trim_start().starts_with("- [ ]")).count();
+        let right = if todo > 0 { format!("{todo} do zrobienia") } else { String::new() };
+        self.head(c, t, "note", "Notatka", &right, x, y, w);
+        let fsz = match self.cfg.s("note", "size").as_str() { "small" => 12.0, "large" => 16.0, _ => 14.0 };
+        let (top, bottom) = (cy + 30.0, y + BENTO_H - PAD);
+        let ink = if paper { Rgba::rgb8(0xfb, 0xf1, 0xd6, 0.97) } else { FG };
+        if body.trim().is_empty() {
+            c.icon(t, x + w / 2.0, y + BENTO_H / 2.0 - 18.0, "fileText", 34.0, WHITE.alpha(0.35));
+            for (i, (s, sty, col)) in [("Pusta notatka", st(14.0, 600.0), MUTED), ("Kliknij, aby pisać", st(12.0, 500.0), FAINT)].into_iter().enumerate() {
+                let tw = width(t, s, &sty);
+                text(c, t, x + (w - tw) / 2.0, y + BENTO_H / 2.0 + 10.0 + 20.0 * i as f32, s, &sty, col, true, None);
+            }
+        }
+        let mut ly = top;
+        'lines: for raw in body.lines() {
+            let l = raw.trim_end();
+            if l.trim().is_empty() {
+                ly += fsz * 0.6;
+                continue;
+            }
+            let tl = l.trim_start();
+            // what leads the line: a box (done or not), a dot, nothing; a heading is heavier
+            let (mark, s, sty, col) = if let Some(r) = tl.strip_prefix("- [ ] ") {
+                (1, r, st(fsz, 550.0), ink)
+            } else if let Some(r) = tl.strip_prefix("- [x] ").or(tl.strip_prefix("- [X] ")) {
+                (2, r, st(fsz, 500.0), MUTED.alpha(0.6))
+            } else if let Some(r) = tl.strip_prefix("- ").or(tl.strip_prefix("* ")) {
+                (3, r, st(fsz, 550.0), ink)
+            } else if let Some(r) = tl.strip_prefix("# ") {
+                (0, r, st(fsz + 3.0, 700.0), ink)
+            } else {
+                (0, tl, st(fsz, 550.0), ink)
+            };
+            let ind = if mark > 0 { fsz + 8.0 } else { 0.0 };
+            let lh = (line_h(t, &sty) * 1.08).round();
+            for (i, part) in crate::gfx::wrap(t, s, &sty, cw - ind, 4).iter().enumerate() {
+                if ly + lh > bottom {
+                    // more than fits: say so in the corner
+                    let ms = st(11.0, 600.0);
+                    let mw = width(t, "…", &ms);
+                    text(c, t, cx + cw - mw, bottom - 12.0, "…", &ms, MUTED, true, None);
+                    break 'lines;
+                }
+                if i == 0 {
+                    let (bx, by, bs) = (cx, ly + (lh - fsz) / 2.0 + 1.0, fsz - 2.0);
+                    match mark {
+                        1 => border(c, bx, by, bs, bs, 4.0, 1.5, FG2.alpha(0.7)),
+                        2 => {
+                            rect(c, bx, by, bs, bs, 4.0, ACC.alpha(0.75));
+                            c.icon(t, bx + bs / 2.0, by + bs / 2.0, "tick", bs - 2.0, Rgba(0.04, 0.06, 0.1, 0.95));
+                        }
+                        3 => circle(c, bx + bs / 2.0, by + bs / 2.0, 2.2, FG2.alpha(0.8)),
+                        _ => {}
+                    }
+                }
+                text(c, t, cx + ind, ly, part, &sty, col, true, Some(cw - ind));
+                ly += lh;
+            }
+            ly += 2.0;
+        }
+        if !self.editing("note") {
+            self.hits.push((cx, top, cw, bottom - top, Hit::Note));
+        }
+        self.finish(c, t, "note", "Notatka", x, y, w);
+    }
+
+    // ---------------- Czas: how much of the day, the week, the month and the year has passed, and a countdown
+    pub(crate) fn time_card(&mut self, c: &mut Canvas, t: &mut Text, x: f32, y: f32, w: f32) {
+        let (cx, cy, cw) = (x + PAD, y + PAD, w - 2.0 * PAD);
+        let now = crate::data::now();
+        let tm = crate::data::local(now);
+        let tint = Rgba::rgb8(0xa9, 0xa6, 0xf5, 1.0);
+        Self::card_glass(c, x, y, w, BENTO_H, glass_tint(&self.cfg), Some((tint.alpha(0.16), 0.75, 0.2, 0.7)));
+        self.head(c, t, "time", "Czas", &format!("{} {}", tm.tm_mday, crate::data::MONTHS_GEN[tm.tm_mon as usize]), x, y, w);
+        let (f, mlen, ylen) = passed(now);
+        let left = 1440 - (tm.tm_hour * 60 + tm.tm_min);
+        let rows: Vec<(&str, f32, String)> = self.cfg.list("time", "show").iter().filter_map(|k| match k.as_str() {
+            "day" => Some(("Dzień", f[0], crate::wxcard::dur(left))),
+            "week" => Some(("Tydzień", f[1], format!("{}/7", (tm.tm_wday + 6) % 7 + 1))),
+            "month" => Some(("Miesiąc", f[2], format!("{}/{}", tm.tm_mday, mlen))),
+            "year" => Some(("Rok", f[3], format!("{}/{}", tm.tm_yday + 1, ylen))),
+            _ => None,
+        }).collect();
+        let count = self.cfg.s("time", "count");
+        let room = if count == "hide" { BENTO_H - 2.0 * PAD - 30.0 } else { FOOT_Y - 12.0 - 30.0 };
+        let step = (room / rows.len().max(1) as f32).min(60.0);
+        let mut ry = cy + 30.0 + (room - step * rows.len() as f32) / 2.0;
+        for (lab, v, det) in &rows {
+            text(c, t, cx, ry + 3.0, lab, &st(12.0, 550.0), MUTED, true, None);
+            let (vs, us) = (st(18.0, 600.0).tnum(), st(11.0, 500.0).tnum());
+            let pct = format!("{}", (v * 100.0).floor());
+            let (vw, uw, dw) = (width(t, &pct, &vs), width(t, "%", &us), width(t, det, &us));
+            text(c, t, cx + cw - vw - uw - 2.0, ry - 3.0, &pct, &vs, FG, true, None);
+            text(c, t, cx + cw - uw, ry + 3.0, "%", &us, MUTED, true, None);
+            text(c, t, cx + cw - vw - uw - 12.0 - dw, ry + 3.0, det, &us, FAINT, true, None);
+            let by = ry + 27.0;
+            rect(c, cx, by, cw, 5.0, 2.5, WHITE.alpha(0.12));
+            rect(c, cx, by, (cw * v.clamp(0.0, 1.0)).max(5.0), 5.0, 2.5, tint.alpha(0.92));
+            ry += step;
+        }
+        // the countdown: the next event of the calendar, the weekend, the New Year
+        let n_days = |n: i64| match n { 0 => "dziś".to_string(), 1 => "jutro".to_string(), n => format!("za {n} dni") };
+        let foot: Option<(&str, String, String)> = match count.as_str() {
+            "hide" => None,
+            "weekend" => {
+                let wd = (tm.tm_wday + 6) % 7; // 0 = Monday
+                Some(("calendar", "Weekend".into(), if wd >= 5 { "trwa".into() } else { n_days(5 - wd as i64) }))
+            }
+            "newyear" => Some(("sparkles", "Nowy Rok".into(), n_days((ylen - tm.tm_yday) as i64))),
+            _ => Some(match crate::data::upcoming(&self.cal, 1, 365).first() {
+                Some(e) => ("calEvent", e["title"].as_str().unwrap_or("").to_string(), crate::data::rel(e["start"].as_i64().unwrap_or(0))),
+                None => ("calEvent", "Nic w planach".into(), String::new()),
+            }),
+        };
+        if let Some((icon, title, when)) = foot {
+            let fy = y + PAD + FOOT_Y;
+            rect(c, cx, fy - 11.0, cw, 1.0, 0.0, HAIR);
+            c.icon(t, cx + 7.0, fy + 12.0, icon, 14.0, tint);
+            let ws = st(12.0, 650.0).tnum();
+            let ww = width(t, &when, &ws);
+            let fs = st(13.0, 600.0);
+            let flh = line_h(t, &fs);
+            text(c, t, cx + 22.0, fy + (24.0 - flh) / 2.0, &title, &fs, FG, true, Some(cw - 22.0 - ww - 10.0));
+            let wlh = line_h(t, &ws);
+            text(c, t, cx + cw - ww, fy + (24.0 - wlh) / 2.0, &when, &ws, tint, true, None);
+        }
+        self.finish(c, t, "time", "Czas", x, y, w);
+    }
+
+    // ---------------- Słońce i Księżyc: the day's arc with the Sun on it, the Moon's disc and phase
+    pub(crate) fn astro_card(&mut self, c: &mut Canvas, t: &mut Text, x: f32, y: f32, w: f32) {
+        let (cx, cy, cw) = (x + PAD, y + PAD, w - 2.0 * PAD);
+        let now = crate::data::now();
+        let tm = crate::data::local(now);
+        let nowms = (now / 60 * 60) as f64 * 1000.0;
+        let wx = self.weather.clone();
+        let (lat, lon) = (wx["lat"].as_f64().unwrap_or(51.48), wx["lon"].as_f64().unwrap_or(0.0));
+        let view = self.cfg.s("astro", "view");
+        let (sun_on, moon_on) = (view != "moon", view != "sun");
+        Self::card_glass(c, x, y, w, BENTO_H, glass_tint(&self.cfg), Some((if sun_on { C_YELLOW.alpha(0.14) } else { C_BLUE.alpha(0.14) }, 0.5, 0.2, 0.75)));
+        let sun = crate::astro::sun(nowms, lat, lon);
+        let moon = crate::astro::moon(nowms, lat, lon);
+        self.head(c, t, "astro", match view.as_str() { "sun" => "Słońce", "moon" => "Księżyc", _ => "Słońce i Księżyc" }, "", x, y, w);
+        let dim = FG2.alpha(0.72);
+        let (ls, vs) = (st(10.5, 500.0), st(13.0, 650.0).tnum());
+        let lh_ = line_h(t, &ls);
+        let alt_txt = |alt: f64| format!("{}{}°", if alt < -0.5 { "−" } else { "" }, alt.abs().round());
+        let cell = |c: &mut Canvas, t: &mut Text, n: usize, col: usize, yy: f32, label: &str, value: &str| {
+            let cwid = cw / n as f32;
+            let xx = cx + col as f32 * cwid;
+            text(c, t, xx, yy, label, &ls, dim, true, Some(cwid - 6.0));
+            text(c, t, xx, yy + lh_ + 1.0, value, &vs, FG, true, Some(cwid - 6.0));
+        };
+        let mut top = cy + 30.0;
+        if sun_on {
+            let days = wx["days"].as_array().cloned().unwrap_or_default();
+            let (r, s_) = (days.first().and_then(|d| d["rise"].as_str()).or(wx["sunrise"].as_str()).unwrap_or(""), days.first().and_then(|d| d["set"].as_str()).or(wx["sunset"].as_str()).unwrap_or(""));
+            let (rm, sm, nm) = (crate::wxcard::mins(r), crate::wxcard::mins(s_).max(crate::wxcard::mins(r) + 1), tm.tm_hour * 60 + tm.tm_min);
+            let day = nm >= rm && nm < sm;
+            // the arc: taller when the card is the Sun's alone
+            let amp = if moon_on { 44.0 } else { 84.0 };
+            let (ax0, ax1, hy) = (cx + 30.0, cx + cw - 30.0, top + amp + 8.0);
+            let pt = |f: f32| (ax0 + f * (ax1 - ax0), hy - amp * (std::f32::consts::PI * f).sin());
+            let arc = |f1: f32| {
+                let mut pb = PathBuilder::new();
+                let n = (48.0 * f1).ceil().max(1.0) as usize;
+                for i in 0..=n {
+                    let (px, py) = pt(f1 * i as f32 / n as f32);
+                    if i == 0 { pb.move_to(px, py) } else { pb.line_to(px, py) }
+                }
+                pb.finish()
+            };
+            if let Some(pa) = arc(1.0) {
+                stroke(c, &pa, 1.5, WHITE.alpha(0.24), true);
+            }
+            rect(c, cx, hy, cw, 1.0, 0.0, WHITE.alpha(0.20));
+            if day {
+                let f = (nm - rm) as f32 / (sm - rm) as f32;
+                if let Some(pa) = arc(f) {
+                    stroke(c, &pa, 2.2, C_YELLOW, true);
+                }
+                let (px, py) = pt(f);
+                circle(c, px, py, 10.0, C_YELLOW.alpha(0.16));
+                circle(c, px, py, 6.5, C_YELLOW.alpha(0.30));
+                circle(c, px, py, 4.0, Rgba::hex("#fff3c4"));
+            } else {
+                let night = (rm + 1440 - sm).max(1) as f32;
+                let g = (if nm >= sm { nm - sm } else { nm + 1440 - sm }) as f32 / night;
+                circle(c, ax1 - g * (ax1 - ax0), hy + 6.0 * (std::f32::consts::PI * g).sin(), 3.5, FG2.alpha(0.6));
+            }
+            let yy = hy + 12.0;
+            let left = if day { crate::wxcard::dur(sm - nm) } else { crate::wxcard::dur(if nm < rm { rm - nm } else { rm + 1440 - nm }) };
+            if moon_on {
+                cell(c, t, 3, 0, yy, "Wschód", &crate::wxcard::hhmm(r));
+                cell(c, t, 3, 1, yy, "Zachód", &crate::wxcard::hhmm(s_));
+                cell(c, t, 3, 2, yy, if day { "Do zachodu" } else { "Do wschodu" }, &left);
+                top = yy + lh_ + line_h(t, &vs) + 14.0;
+                rect(c, cx, top - 7.0, cw, 1.0, 0.0, HAIR);
+            } else {
+                cell(c, t, 2, 0, yy, "Wschód", &crate::wxcard::hhmm(r));
+                cell(c, t, 2, 1, yy, "Zachód", &crate::wxcard::hhmm(s_));
+                let yy = yy + lh_ + line_h(t, &vs) + 10.0;
+                cell(c, t, 2, 0, yy, if day { "Do zachodu" } else { "Do wschodu" }, &left);
+                cell(c, t, 2, 1, yy, "Wysokość", &alt_txt(sun.alt));
+                footer(c, t, cx, y + PAD + FOOT_Y, cw, "sun", &format!("dzień trwa {}", crate::wxcard::dur(sm - rm)), C_YELLOW);
+            }
+        }
+        if moon_on {
+            let dm = |v: Option<f64>| v.map(|v| crate::wxcard::day_mon((v / 1000.0) as i64)).unwrap_or("–".into());
+            let pct = format!("{}%", (moon.fraction * 100.0).round());
+            if sun_on {
+                // one row: the disc, the phase and how much is lit, the next full moon
+                let r = 22.0;
+                crate::wxcard::moon_disc(c, cx + r, top + r + 2.0, r, moon.phase);
+                let tx = cx + 2.0 * r + 12.0;
+                text(c, t, tx, top + 2.0, crate::wxcard::phase_name(moon.phase), &st(14.0, 650.0), FG, true, Some(cx + cw - tx));
+                text(c, t, tx, top + 22.0, &format!("{} · {}", pct, alt_txt(moon.alt)), &st(12.0, 550.0).tnum(), FG2, true, None);
+                let full = format!("pełnia {}", dm(crate::astro::next_phase(nowms, 0.5)));
+                footer(c, t, cx, y + PAD + FOOT_Y, cw, "moon", &full, Rgba::hex("#dce8f8"));
+            } else {
+                let r = 46.0;
+                crate::wxcard::moon_disc(c, x + w / 2.0, top + r + 6.0, r, moon.phase);
+                let ns_ = st(15.0, 650.0);
+                let name = crate::i18n::tr(crate::wxcard::phase_name(moon.phase)).into_owned();
+                let nw = width(t, &name, &ns_);
+                text(c, t, x + (w - nw) / 2.0, top + 2.0 * r + 16.0, &name, &ns_, FG, true, None);
+                let yy = top + 2.0 * r + 44.0;
+                let (rise, set) = crate::astro::moon_times(nowms, lat, lon);
+                let hm = |v: Option<f64>| v.map(|v| crate::data::hm((v / 1000.0) as i64)).unwrap_or("–".into());
+                cell(c, t, 4, 0, yy, "Oświetlenie", &pct);
+                cell(c, t, 4, 1, yy, "Wschód", &hm(rise));
+                cell(c, t, 4, 2, yy, "Zachód", &hm(set));
+                cell(c, t, 4, 3, yy, "Wysokość", &alt_txt(moon.alt));
+                footer(c, t, cx, y + PAD + FOOT_Y, cw, "moon", &format!("nów {} · pełnia {}", dm(crate::astro::next_phase(nowms, 0.0)), dm(crate::astro::next_phase(nowms, 0.5))), Rgba::hex("#dce8f8"));
+            }
+        }
+        self.finish(c, t, "astro", match view.as_str() { "sun" => "Słońce", "moon" => "Księżyc", _ => "Słońce i Księżyc" }, x, y, w);
+    }
+
+    // ---------------- Zdjęcie: a picture frame. A photo of the wallpaper folders, another one every day or hour,
+    // or the file ~/.config/mist/photo.jpg (.jpeg, .png). Decoded once per pick (640 px), kept until the next
+    pub(crate) fn photo_card(&mut self, c: &mut Canvas, t: &mut Text, x: f32, y: f32, w: f32) {
+        let now = crate::data::now();
+        let pick = self.cfg.s("photo", "pick");
+        let slot = match pick.as_str() { "hourly" => now / 3600, "file" => 0, _ => (now + crate::data::local(now).tm_gmtoff) / 86400 };
+        let key = format!("{pick}|{slot}");
+        if self.photo.as_ref().map(|p| p.0 != key).unwrap_or(true) {
+            let is_pic = |p: &str| { let l = p.to_lowercase(); l.ends_with(".jpg") || l.ends_with(".jpeg") || l.ends_with(".png") };
+            let path = if pick == "file" {
+                let dir = note_path().trim_end_matches("note.txt").to_string();
+                ["photo.jpg", "photo.jpeg", "photo.png"].iter().map(|n| format!("{dir}{n}")).find(|p| std::path::Path::new(p).exists())
+            } else {
+                let mut all: Vec<String> = crate::paths::photo_dirs().iter().filter_map(|d| std::fs::read_dir(d).ok()).flat_map(|rd| rd.flatten().map(|e| e.path().to_string_lossy().into_owned())).filter(|p| is_pic(p)).collect();
+                all.sort();
+                if all.is_empty() { None } else { Some(all[(slot.rem_euclid(all.len() as i64)) as usize].clone()) }
+            };
+            let pm = path.as_ref().and_then(|p| crate::img::decode_file(p, 640));
+            self.photo = Some((key, path.unwrap_or_default(), pm));
+        }
+        Self::card_glass(c, x, y, w, BENTO_H, glass_tint(&self.cfg), None);
+        let (path, has) = self.photo.as_ref().map(|p| (p.1.clone(), p.2.is_some())).unwrap_or_default();
+        if has {
+            let fill = self.cfg.s("photo", "fit") != "fit";
+            if let Some(pm) = self.photo.as_ref().and_then(|p| p.2.as_ref()) {
+                crate::img::draw(c, pm, x + 1.0, y + 1.0, w - 2.0, BENTO_H - 2.0, 25.0, fill, 1.0);
+            }
+            // the own file is always called "photo": nothing to caption
+            if self.cfg.s("photo", "caption") == "show" && pick != "file" {
+                let name = std::path::Path::new(&path).file_stem().map(|n| n.to_string_lossy().replace(['-', '_'], " ")).unwrap_or_default();
+                if let Some(p) = crate::gfx::rrect_path(x + 1.0, y + BENTO_H - 80.0, w - 2.0, 79.0, 25.0) {
+                    let k = Rgba(0.0, 0.0, 0.0, 1.0);
+                    fill_lin(c, &p, (0.0, y + BENTO_H - 80.0), (0.0, y + BENTO_H), &[(0.0, k.alpha(0.0)), (1.0, k.alpha(0.55))]);
+                }
+                text(c, t, x + PAD, y + BENTO_H - PAD - 16.0, &name, &st(13.0, 600.0), FG, true, Some(w - 2.0 * PAD));
+            }
+        } else {
+            c.icon(t, x + w / 2.0, y + BENTO_H / 2.0 - 18.0, "photo", 34.0, WHITE.alpha(0.35));
+            let (a, b) = ("Brak zdjęcia", if pick == "file" { "~/.config/mist/photo.jpg" } else { "Dodaj zdjęcia do folderu tapet" });
+            for (i, (s, sty, col)) in [(a, st(14.0, 600.0), MUTED), (b, st(11.5, 500.0), FAINT)].into_iter().enumerate() {
+                let tw = width(t, s, &sty).min(w - 2.0 * PAD);
+                text(c, t, x + (w - tw) / 2.0, y + BENTO_H / 2.0 + 10.0 + 20.0 * i as f32, s, &sty, col, true, Some(w - 2.0 * PAD));
+            }
+        }
+        self.head(c, t, "photo", "", "", x, y, w);
+        self.finish(c, t, "photo", "Zdjęcie", x, y, w);
+    }
+
+    // ---------------- Urządzenia: the batteries the bar already knows (laptop, phone, a Bluetooth device)
+    pub(crate) fn devices_card(&mut self, c: &mut Canvas, t: &mut Text, x: f32, y: f32, w: f32) {
+        let (cx, cy, cw) = (x + PAD, y + PAD, w - 2.0 * PAD);
+        let green = Rgba::rgb8(0x7d, 0xd8, 0x9a, 1.0);
+        Self::card_glass(c, x, y, w, BENTO_H, glass_tint(&self.cfg), Some((green.alpha(0.14), 0.2, 0.25, 0.7)));
+        self.head(c, t, "devices", "Urządzenia", "", x, y, w);
+        let (bat, phone, bt_on, bt_dev) = self.devs.clone();
+        // icon, name, level 0..1 when known, what to say instead of (or next to) it, charging
+        let mut rows: Vec<(&str, &str, Option<f32>, String, bool)> = Vec::new();
+        for k in self.cfg.list("devices", "show") {
+            match k.as_str() {
+                "laptop" => rows.push(match bat {
+                    Some(b) => ("battery", "Komputer", Some(b.pct / 100.0), if b.full { "naładowany".into() } else if b.secs > 0 { crate::wxcard::dur((b.secs / 60) as i32) } else { String::new() }, b.charging),
+                    None => ("plug", "Komputer", None, "zasilanie z sieci".into(), false),
+                }),
+                "phone" => rows.push(match &phone {
+                    Some(p) if p.battery >= 0 => ("mobile", "Telefon", Some(p.battery as f32 / 100.0), String::new(), p.charging),
+                    Some(_) => ("mobile", "Telefon", None, "połączony".into(), false),
+                    None => ("mobileOff", "Telefon", None, "niepołączony".into(), false),
+                }),
+                "bt" => rows.push(match (bt_on, bt_dev) {
+                    (false, _) => ("btOff", "Bluetooth", None, "wyłączony".into(), false),
+                    (true, Some(Some(f))) => ("headphones", "Bluetooth", Some(f), String::new(), false),
+                    (true, Some(None)) => ("btLink", "Bluetooth", None, "połączony".into(), false),
+                    (true, None) => ("bluetooth", "Bluetooth", None, "brak urządzeń".into(), false),
+                }),
+                _ => {}
+            }
+        }
+        let room = BENTO_H - 2.0 * PAD - 34.0;
+        let step = (room / rows.len().max(1) as f32).min(76.0);
+        let mut ry = cy + 34.0 + (room - step * rows.len() as f32) / 2.0;
+        for (icon, name, lvl, note, charging) in &rows {
+            c.icon(t, cx + 9.0, ry + 11.0, icon, 17.0, FG2);
+            text(c, t, cx + 28.0, ry + 2.0, name, &st(13.0, 600.0), FG, true, None);
+            let ns_ = st(11.0, 500.0);
+            match lvl {
+                Some(f) => {
+                    let (vs, us) = (st(20.0, 600.0).tnum(), st(11.0, 500.0));
+                    let v = format!("{}", (f * 100.0).round());
+                    let (vw, uw) = (width(t, &v, &vs), width(t, "%", &us));
+                    text(c, t, cx + cw - vw - uw - 2.0, ry - 4.0, &v, &vs, FG, true, None);
+                    text(c, t, cx + cw - uw, ry + 4.0, "%", &us, MUTED, true, None);
+                    if *charging {
+                        c.icon(t, cx + cw - vw - uw - 14.0, ry + 10.0, "bolt", 13.0, C_YELLOW);
+                    }
+                    if !note.is_empty() {
+                        text(c, t, cx + 28.0, ry + 20.0, note, &ns_, MUTED, true, None);
+                    }
+                    let by = ry + 42.0;
+                    let col = if *charging { green } else if *f <= 0.15 { BAD } else if *f <= 0.30 { WARN } else { green };
+                    rect(c, cx, by, cw, 5.0, 2.5, WHITE.alpha(0.12));
+                    rect(c, cx, by, (cw * f.clamp(0.0, 1.0)).max(5.0), 5.0, 2.5, col.alpha(0.92));
+                }
+                None => {
+                    let nw = width(t, note, &ns_);
+                    text(c, t, cx + cw - nw, ry + 4.0, note, &ns_, MUTED, true, None);
+                    rect(c, cx, ry + 42.0, cw, 1.0, 0.0, HAIR);
+                }
+            }
+            ry += step;
+        }
+        self.finish(c, t, "devices", "Urządzenia", x, y, w);
     }
 
     // ---------------- Muzyka: what plays now, its cover, where it is, three buttons
@@ -429,6 +814,9 @@ impl Desk {
         let tm = crate::data::local(now);
         let here = tm.tm_gmtoff;
         let analog = self.cfg.s("clocks", "style") != "digital";
+        let face = self.cfg.s("clocks", "face");
+        let h12 = self.cfg.s("clocks", "h12") == "12";
+        let acc = match self.cfg.s("clocks", "accent").as_str() { "warm" => Rgba::rgb8(0xf6, 0xd9, 0xb0, 1.0), "blue" => C_BLUE, "white" => FG, _ => ACC };
         Self::card_glass(c, x, y, w, BENTO_H, glass_tint(&self.cfg), Some((C_YELLOW.alpha(0.12), 0.25, 0.3, 0.7)));
         self.head(c, t, "clocks", "Zegary świata", "", x, y, w);
         let cities: Vec<_> = self.cfg.list("clocks", "cities").iter().filter_map(|k| CITIES.iter().find(|c| c.0 == k)).take(3).cloned().collect();
@@ -440,6 +828,17 @@ impl Desk {
             for i in 0..12 {
                 let a = i as f32 / 12.0 * std::f32::consts::TAU;
                 let (s, co) = (a.sin(), -a.cos());
+                // Tarcza: every hour ticked; 12, 3, 6 and 9 as numbers; or the quarters alone
+                if face == "minimal" && i % 3 != 0 {
+                    continue;
+                }
+                if face == "numbers" && i % 3 == 0 {
+                    let lab = if i == 0 { "12".to_string() } else { i.to_string() };
+                    let ns = st(12.0, 650.0).tnum();
+                    let (lw, lh) = (width(t, &lab, &ns), line_h(t, &ns));
+                    text(c, t, ox + s * (r - 14.0) - lw / 2.0, oy + co * (r - 14.0) - lh / 2.0, &lab, &ns, FG.alpha(0.85), false, None);
+                    continue;
+                }
                 let (r0, r1, wd) = if i % 3 == 0 { (r - 13.0, r - 5.0, 2.4) } else { (r - 9.0, r - 5.0, 1.4) };
                 let mut pb = PathBuilder::new();
                 pb.move_to(ox + s * r0, oy + co * r0);
@@ -459,19 +858,19 @@ impl Desk {
                     stroke(c, &p, wd, col, true);
                 }
             }
-            circle(c, ox, oy, 4.5, ACC);
+            circle(c, ox, oy, 4.5, acc);
             circle(c, ox, oy, 1.8, Rgba(0.04, 0.06, 0.1, 1.0));
             // the digital time + the day next to it
             let tx = ox + r + 18.0;
             let ts = st(34.0, 300.0).spaced(-1.0).tnum();
-            text(c, t, tx, oy - 34.0, &crate::data::hm(now), &ts, FG, true, None);
+            text(c, t, tx, oy - 34.0, &clock_str(now, h12), &ts, FG, true, None);
             const DAYS: [&str; 7] = ["niedziela", "poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota"];
-            text(c, t, tx, oy + 8.0, DAYS[tm.tm_wday as usize], &st(13.0, 600.0), ACC, true, None);
+            text(c, t, tx, oy + 8.0, DAYS[tm.tm_wday as usize], &st(13.0, 600.0), acc, true, None);
             text(c, t, tx, oy + 26.0, &format!("{} {}", tm.tm_mday, crate::data::MONTHS_GEN[tm.tm_mon as usize]), &st(12.0, 500.0), MUTED, true, None);
         } else {
             let ts = st(52.0, 250.0).spaced(-2.0).tnum();
-            text(c, t, cx, top - 4.0, &crate::data::hm(now), &ts, FG, true, None);
-            text(c, t, cx, top + 62.0, "Tutaj", &st(13.0, 600.0), ACC, true, None);
+            text(c, t, cx, top - 4.0, &clock_str(now, h12), &ts, FG, true, None);
+            text(c, t, cx, top + 62.0, "Tutaj", &st(13.0, 600.0), acc, true, None);
         }
         // the cities: name, the difference, the time (a moon at night)
         let mut ry = if analog { top + 146.0 } else { top + 98.0 };
@@ -494,7 +893,7 @@ impl Desk {
             text(c, t, cx + 24.0, ry, name, &ns_, FG, true, Some(cw * 0.55));
             let nh = line_h(t, &ns_);
             text(c, t, cx + 24.0, ry + nh - 1.0, &diff, &st(11.0, 500.0), MUTED, true, None);
-            let s = format!("{hh}:{mi:02}");
+            let s = format!("{}:{mi:02}", if h12 { (hh + 11) % 12 + 1 } else { hh });
             let ss = st(if analog { 20.0 } else { 26.0 }, 400.0).tnum();
             let sw = width(t, &s, &ss);
             text(c, t, cx + cw - sw, ry + if analog { 0.0 } else { -2.0 }, &s, &ss, FG, true, None);
@@ -507,6 +906,22 @@ impl Desk {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // the Czas card: every part is a fraction, the lengths are a calendar's, the day's part follows the clock
+    #[test]
+    fn parts_of_time_passed() {
+        for t in [1_794_585_600i64, 1_704_067_200, 1_709_251_199, 1_735_689_599] {
+            let (f, mlen, ylen) = passed(t);
+            assert!(f.iter().all(|v| (0.0..1.0).contains(v)), "{t}: {f:?}");
+            assert!((28..=31).contains(&mlen) && (365..=366).contains(&ylen), "{t}: {mlen} {ylen}");
+            let tm = crate::data::local(t);
+            assert!((f[0] - (tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec) as f32 / 86400.0).abs() < 1e-6);
+            assert!(f[3] >= tm.tm_yday as f32 / ylen as f32);
+        }
+        // every widget has a name, an icon of its own and options
+        for (k, name) in WIDGETS {
+            assert!(!name.is_empty() && !groups(k).is_empty(), "{k}");
+        }
+    }
     #[test]
     fn dst_rules() {
         // 2026-07-01 12:00 UTC: summer everywhere north, winter in Sydney
